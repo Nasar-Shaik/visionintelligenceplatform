@@ -1,0 +1,137 @@
+# 05 — Capability Architecture
+
+> **This is the core idea of the platform.** Read it carefully. Everything else composes from it.
+
+## Purpose
+Define the **reusable building block** — the *capability* — its contract, lifecycle, registry, and how capabilities compose into solutions without bespoke code. This section operationalizes Law 2 (Everything is a composable capability).
+
+## Responsibilities
+- Define what a capability is and the uniform contract every capability satisfies.
+- Define the capability catalog, registry, orchestration, and placement (edge/cloud).
+- Show how capabilities compose via events into solutions, and how new capabilities are added.
+
+---
+
+## 1. What is a capability?
+
+A **capability** is a self-describing, independently deployable unit of functionality with a versioned contract. It consumes typed inputs (frames, tracks, events, or other capability outputs) and produces typed outputs (detections, tracks, events, artifacts) **without knowing its consumers** and **without embedding any customer/industry logic**.
+
+Capabilities fall into families:
+- **Media capabilities**: ingestion, streaming, recording, frame extraction.
+- **Perception capabilities**: object/person/vehicle detection, tracking, re-ID, pose, face recognition, OCR/LPR, fire/smoke, audio analytics, scene classification.
+- **Spatial/temporal capabilities**: zone detection, line crossing, speed, queue, object-left/removed, heatmaps, trajectory, occupancy.
+- **Reasoning capabilities**: behavior analysis, anomaly detection, correlation.
+- **Platform capabilities**: event platform, rule engine, workflow engine, evidence, notification, analytics, report, search, model/dataset registry, deployment, monitoring.
+
+The full inventory is in [reference/AI-CAPABILITY-CATALOG](../reference/AI-CAPABILITY-CATALOG.md). **No capability is a "feature"; every feature is a composition of capabilities.**
+
+## 2. The capability contract (uniform for all)
+
+Every capability declares a **descriptor** (machine-readable, in `packages/contracts`) and implements a small interface. The descriptor is the law:
+
+```yaml
+capability:
+  id: perception.object-detection          # stable, namespaced
+  version: 2.3.0                            # semver of the contract
+  kind: perception                          # media|perception|spatial|reasoning|platform
+  inputs:
+    - type: media.frame                     # typed input contract(s)
+      rate: adaptive                        # frame-rate expectations
+  outputs:
+    - type: perception.detection            # typed output contract(s)
+  parameters:                               # tenant/camera-tunable config (schema)
+    confidence_threshold: {type: float, default: 0.5}
+    classes: {type: string[], default: ["person","vehicle"]}
+    roi: {type: polygon[], optional: true}
+  models:                                   # model-agnostic: refers to registry, not a file
+    selector: {task: object-detection, family: "yolo|detr|*"}
+  resource_profile:                         # for the scheduler
+    accelerator: [gpu, cpu]
+    est_load: {per_stream_ms: 12, mem_mb: 900}
+  placement: [edge, cloud]                  # where it MAY run
+  extension_points: [pre_process, post_process, class_map]
+```
+
+```typescript
+interface Capability<In, Out, Params> {
+  descriptor: CapabilityDescriptor;
+  init(ctx: CapabilityContext, params: Params): Promise<void>;   // load model via registry, warm up
+  process(input: In, ctx: RequestContext): Promise<Out>;         // pure w.r.t. business logic
+  health(): HealthStatus;
+  dispose(): Promise<void>;
+}
+```
+
+**Rules the contract enforces:**
+- **Model-agnostic**: a capability references a model by a **registry selector** (task/family/version range), never a hardcoded file or vendor. The runtime binds the concrete model. → [08](08-AI-ML-PLATFORM.md)
+- **Consumer-agnostic**: outputs go to the event backbone / typed channels; the capability never names who consumes them.
+- **Placement-agnostic**: the same implementation runs at edge or cloud; `placement` lists where it *may* run, the scheduler decides where it *does*.
+- **No industry logic**: parameters are generic (thresholds, classes, zones); "this is a shoplifting detector" is expressed by a **rule**, not by the capability.
+
+## 3. Capability registry & discovery
+
+- The **Capability Registry** (`services/registry`) holds descriptors, versions, and available implementations. Capabilities register at startup; consumers and the pipeline discover them by `id` + compatible version.
+- **Entitlement-gated**: which capabilities a tenant may enable is resolved from their plan/packs (see [06](06-MULTI-TENANT-SAAS.md)). A capability disabled by entitlement is invisible to that tenant.
+- **Plugins can register new capabilities** (subject to a trust tier) without any core change. → [20](20-EXTENSIBILITY.md)
+
+## 4. Orchestration & placement (the pipeline)
+
+The **Pipeline Orchestrator** (`services/pipeline` in cloud; `edge/agent` at edge) builds, per camera, a **capability graph** from the camera's assigned capabilities and the tenant's rules:
+
+```
+media.ingest → media.frame-extract ─┬→ perception.person-detection → perception.tracking ─┐
+                                     ├→ perception.fire-smoke                              │
+                                     └→ perception.lpr                                     ▼
+                                                                          reasoning.behavior + spatial.zone
+                                                                                           │
+                                                                                           ▼
+                                                                                   EVENT PLATFORM
+```
+
+- The graph is a **DAG of capabilities** wired by input/output types. The orchestrator resolves it from descriptors; it is **generated, not hand-coded per camera**.
+- **Placement**: the scheduler assigns each node to edge or cloud using `resource_profile`, available accelerators, latency class, and connectivity. Real-time/safety-critical nodes prefer edge; heavy/batch (embeddings, temporal action models, search) prefer cloud.
+- **Efficiency levers** (see [19](19-PERFORMANCE-AND-SCALE.md)): motion-gated adaptive sampling, model sharing/batching across streams, ROI masking, backpressure with graceful degradation (shed non-critical capabilities before dropping frames for fire/weapon).
+
+## 5. How capabilities compose into solutions
+
+Composition happens in **three declarative layers above capabilities**, never in capability code:
+
+1. **Events** — capability outputs become normalized events on the backbone. → [09](09-EVENT-PLATFORM.md)
+2. **Rules** — tenants declare what combinations of events matter. → [10](10-RULE-ENGINE.md)
+3. **Workflows** — declare what happens when they do. → [11](11-WORKFLOW-ENGINE.md)
+
+An **Industry Pack** bundles rule/workflow/dashboard/report templates for a vertical. → [13](13-INDUSTRY-PACKS.md)
+
+> **Worked example — "PPE compliance for a construction site" uses zero new code:**
+> capabilities `person-detection` + `ppe-attribute` + `zone-detection` already exist → event `attribute.ppe.missing` in `zone=hazard` → rule *IF ppe.missing in hazard-zone THEN incident(medium)* → workflow *notify safety officer, require acknowledgment, export clip* → the **Construction Pack** ships that rule/workflow/report as a template. The exact same capabilities serve a hospital hygiene-compliance solution with a different rule + pack.
+
+## 6. Adding a new capability (the extension flow)
+
+1. Write the **descriptor + contract** in `packages/contracts` (inputs/outputs typed, versioned).
+2. Implement `Capability<In,Out,Params>` in `ai/` (perception) or `services/` (platform).
+3. Reference models by **registry selector** (never a hardcoded model). Register model artifacts separately. → [08](08-AI-ML-PLATFORM.md)
+4. Add contract + unit + (if stateful) integration tests; declare `resource_profile` and `placement`.
+5. Register in the Capability Registry; gate behind an entitlement/pack.
+6. It is now discoverable and composable by rules/workflows/plugins — **no consumer changes required.**
+
+## Design decisions
+- **Uniform contract for all capabilities** (perception and platform alike) means the orchestrator, registry, entitlements, and observability treat everything the same way — one mental model.
+- **Model reference by selector** decouples capability lifecycle from model lifecycle; models can be retrained/canaried/rolled back without touching capabilities.
+- **DAG generated from descriptors** removes per-camera bespoke pipeline code — the biggest source of vertical lock-in in naive designs.
+
+## Advantages
+- New features and verticals are compositions → the product compounds instead of accreting code.
+- Capabilities are independently testable, deployable, scalable, and swappable (e.g., replace a YOLO detector with a DETR one behind the same contract).
+- Edge/cloud parity for free, because placement is a scheduler decision over identical implementations.
+
+## Tradeoffs
+- Requires disciplined contract design and a real registry/orchestrator up front (vs. a hardcoded pipeline). This is the deliberate cost of Law 2; it is repaid every time a new vertical costs a plugin instead of a fork.
+- The DAG orchestrator and scheduler are non-trivial components requiring careful performance work.
+
+## Future expansion
+- New sensor modalities (audio/thermal/radar/LiDAR/IoT) are just new media/perception capabilities behind the same contract.
+- Partner-published capabilities via the marketplace and plugin trust tiers.
+- Auto-composition: suggest capability graphs from a stated goal (higher-order tooling), still emitting only rules/workflows.
+
+## Cross-references
+[00-ENGINEERING-CONSTITUTION](../00-ENGINEERING-CONSTITUTION.md) · [08-AI-ML-PLATFORM](08-AI-ML-PLATFORM.md) · [09-EVENT-PLATFORM](09-EVENT-PLATFORM.md) · [13-INDUSTRY-PACKS](13-INDUSTRY-PACKS.md) · [20-EXTENSIBILITY](20-EXTENSIBILITY.md) · [reference/AI-CAPABILITY-CATALOG](../reference/AI-CAPABILITY-CATALOG.md)

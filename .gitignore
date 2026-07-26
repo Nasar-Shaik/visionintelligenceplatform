@@ -1,0 +1,47 @@
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Secrets & env (never commit — use the vault; see docs/architecture/15-SECURITY-ARCHITECTURE.md)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Node / TS
+node_modules/
+dist/
+build/
+.turbo/
+*.tsbuildlog
+coverage/
+
+# Python / AI
+__pycache__/
+*.pyc
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+*.onnx
+*.engine
+*.trt
+
+# ML artifacts (belong in the registry / object storage, not the repo)
+mlruns/
+.dvc/cache/
+datasets/
+models/weights/
+
+# Infra / local
+*.tfstate
+*.tfstate.*
+.terraform/
+docker-compose.override.yml
+
+# Logs & temp
+*.log
+tmp/
+.cache/
