@@ -6,24 +6,24 @@
 
 - **Current phase:** Phase 0 — Program Setup & Architecture ([ROADMAP](ROADMAP.md#phase-0--program-setup--architecture-current--34-weeks)).
 - **Architecture:** **FROZEN v1.0 (2026-07-27)** — sections 01–28 + ADRs 0001–0015 in [`../docs/`](../docs/). Go/No-Go: ✅ GO ([readiness review](../docs/ARCHITECTURE-READINESS-REVIEW.md)). All changes now go through [ADRs](../docs/adr/).
-- **Code:** Monorepo + `@vip/contracts` (19 tests) + CI quality gate live. Directory skeleton + self-documenting READMEs in place.
-- **Next concrete work:** first service scaffold `services/identity` (Fastify template) — see [TASK-BOARD → Now](TASK-BOARD.md#now) (P0-7).
+- **Code:** Monorepo + `@vip/contracts` (19 tests) + CI quality gate + `@vip/service-identity` Fastify template (19 tests) live. **38 tests** total.
+- **Next concrete work:** registry bootstrap (MLflow + DVC) — see [TASK-BOARD → Now](TASK-BOARD.md#now) (P0-5); then finish P0-6 secrets.
 
 ## Phase status
 
-| Phase                              | Status         | Notes                                                                                                                                   |
-| ---------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| P0 Program Setup & Architecture    | 🟡 In progress | Architecture frozen v1.0; monorepo + dev stack (Slice 0), contracts (Slice 1), CI gate (Slice 2) done; service scaffold + registry next |
-| P1 SaaS Foundation                 | ⚪ Not started | Blocked on P0 exit                                                                                                                      |
-| P2 Video & Ingestion               | ⚪ Not started |                                                                                                                                         |
-| P3 Capability & Inference Platform | ⚪ Not started |                                                                                                                                         |
-| P4 Event/Rule/Alert Platform       | ⚪ Not started | First sellable increment                                                                                                                |
-| P5 Workflow & Command Center       | ⚪ Not started |                                                                                                                                         |
-| P6 Analytics & Search              | ⚪ Not started |                                                                                                                                         |
-| P7 Extensibility & Industry Packs  | ⚪ Not started |                                                                                                                                         |
-| P8 Enterprise & Compliance         | ⚪ Not started |                                                                                                                                         |
-| P9 MLOps & Model Expansion         | ⚪ Not started |                                                                                                                                         |
-| P10 Production, Scale & GA         | ⚪ Not started |                                                                                                                                         |
+| Phase                              | Status         | Notes                                                                                                                                          |
+| ---------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| P0 Program Setup & Architecture    | 🟡 In progress | Frozen v1.0; monorepo+dev stack (S0), contracts (S1), CI gate (S2), identity service template (S3) done; registry (P0-5) + secrets (P0-6) next |
+| P1 SaaS Foundation                 | ⚪ Not started | Blocked on P0 exit                                                                                                                             |
+| P2 Video & Ingestion               | ⚪ Not started |                                                                                                                                                |
+| P3 Capability & Inference Platform | ⚪ Not started |                                                                                                                                                |
+| P4 Event/Rule/Alert Platform       | ⚪ Not started | First sellable increment                                                                                                                       |
+| P5 Workflow & Command Center       | ⚪ Not started |                                                                                                                                                |
+| P6 Analytics & Search              | ⚪ Not started |                                                                                                                                                |
+| P7 Extensibility & Industry Packs  | ⚪ Not started |                                                                                                                                                |
+| P8 Enterprise & Compliance         | ⚪ Not started |                                                                                                                                                |
+| P9 MLOps & Model Expansion         | ⚪ Not started |                                                                                                                                                |
+| P10 Production, Scale & GA         | ⚪ Not started |                                                                                                                                                |
 
 Legend: ✅ done · 🟢 on track · 🟡 in progress · 🔴 blocked · ⚪ not started
 
@@ -47,6 +47,7 @@ Final Enhancement (v1.0 freeze) ADRs accepted: [0011](../docs/adr/ADR-0011-contr
 
 ## Changelog
 
+- `[Claude · 2026-07-27]` **Phase 0 · Slice 3 — First service scaffold (P0-7).** Built `@vip/service-identity`, the reference **Fastify 5** service template: strict layering (`transport→application→domain`, `adapters` for I/O), zod-validated fail-fast config, `/health` `/ready` (readiness registry) `/metrics` (per-instance Prometheus), tenant-context seam (validates against the `TenantContext` contract; enforcement in P1), `ApiError` error envelope + correlation ids, graceful SIGTERM drain. **First consumer of `@vip/contracts`** (valid `service→shared` import edge). **19 service tests** (total 38) + live boot smoke-test all green. Deps at registry-verified latest stable (fastify 5.10, helmet 13.1, prom-client 15.1). Next: P0-5 registry bootstrap (awaiting approval).
 - `[Claude · 2026-07-27]` **Phase 0 · Slice 2 — CI skeleton (P0-3).** GitHub Actions quality gate (`.github/workflows/ci.yml`, 8 jobs incl. `ci-summary` rollup) over a shared composite setup action: format/lint/typecheck, test, build, **import-graph enforcement** (`tools/import-graph/` — zero-dep scanner + declarative `boundaries.json` for docs 22/23 rules; negative-tested all 4 rules), **contract-testing harness** (`tools/contracts/verify-schemas.mjs`), and **security scan** (gitleaks + semgrep + advisory pnpm-audit). Added `.gitleaks.toml`, `.github/dependabot.yml` (actions-only). Applied a one-time repo-wide **Prettier baseline** (100 files, cosmetic) so `format:check` is enforceable. Next: P0-7 first service scaffold (awaiting approval).
 - `[Claude · 2026-07-27]` **Phase 0 · Slice 1 — Contracts foundation (P0-2).** Built `@vip/contracts` (Zod 4: event envelope/catalog, capability descriptor+registry, config hierarchy, tenant context, API envelope) + native JSON-Schema codegen + **19 passing tests**. Upgraded toolchain to latest stable (registry-verified); TS pinned 5.9.3 pending typescript-eslint TS7 support (**TD-1**); Zod 3→4 code changes applied. Added `docs/project/DEPENDENCIES.md`. Next: P0-3 CI (awaiting approval).
 - `[Claude · 2026-07-27]` **Phase 0 · Slice 0 — Program & Continuity Setup.** Resolved ND-1 → NATS JetStream ([ADR-0016](../docs/adr/ADR-0016-nats-jetstream-event-backbone.md)); adopted Fastify ([ADR-0017](../docs/adr/ADR-0017-fastify-control-plane.md)); updated TECH-STACK + docs 04/09/18. Built AI-continuity system (`docs/ai/*`) + project-status system (`docs/project/*`) + first daily log. Scaffolded monorepo (pnpm/Turborepo/tsconfig/eslint/prettier — P0-1) and dev docker-compose (Mongo/Redis/MinIO/NATS — P0-4) + `.env.example`. No business logic. Next: P0-2 contracts (awaiting approval).

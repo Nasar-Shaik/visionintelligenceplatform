@@ -28,6 +28,17 @@
 | vitest            | ^4.1.10                  | 4.1.10                 | test runner                             |
 | tsx               | ^4.23.1                  | 4.23.1                 | run TS scripts (codegen)                |
 
+## Service runtime deps (verified 2026-07-27 via `npm view`)
+
+Introduced by `@vip/service-identity` (P0-7); the reference stack every TS service uses.
+
+| Package         | Pinned  | Registry latest stable | Notes                                          |
+| --------------- | ------- | ---------------------- | ---------------------------------------------- |
+| fastify         | ^5.10.0 | 5.10.0                 | service framework (ADR-0017)                   |
+| @fastify/helmet | ^13.1.0 | 13.1.0                 | security headers; peer fastify ^5              |
+| prom-client     | ^15.1.3 | 15.1.3                 | Prometheus `/metrics` (per-instance registry)  |
+| pino-pretty     | ^13.1.3 | 13.1.3                 | dev-only pretty logs (pino ships with fastify) |
+
 ## Major-version change notes (policy #5)
 
 ### Zod 3 → 4 (adopted)
@@ -46,3 +57,4 @@ TS 7.0.2 is the registry `latest` and builds/tests/typechecks fine, **but `types
 ## Verification log
 
 - `2026-07-27` Slice 1 (P0-2): installed with pnpm 11.17.0; `@vip/contracts` — **19 tests pass** (Vitest 4), typecheck clean (TS 5.9.3), **lint clean** (ESLint 10 + typescript-eslint 8.65), codegen emits 7 JSON Schemas (Zod 4 native). esbuild build script approved in `pnpm-workspace.yaml`.
+- `2026-07-27` Slice 3 (P0-7): added fastify 5.10.0 + @fastify/helmet 13.1.0 + prom-client 15.1.3 (+ dev pino-pretty 13.1.3) for `@vip/service-identity`. Install clean (no peer conflicts); **19 service tests pass**, typecheck/lint/build green, live boot smoke-test OK.

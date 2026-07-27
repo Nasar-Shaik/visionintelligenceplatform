@@ -18,7 +18,7 @@ Format: `- [ ] <id> — <task> · deps: <…> · phase: <Px> · owner: <—>`
 - [x] P0-4 — Docker Compose dev stack: Mongo, Redis, MinIO, **NATS/JetStream**. `[Claude · 2026-07-27]` (RTSP test source added in P2 when media ingestion begins)
 - [ ] P0-5 — Registry bootstrap: MLflow (models) + DVC (datasets) skeleton wired to object storage. · deps: P0-4 · phase: P0
 - [~] P0-6 — Secrets strategy: `.env.example` conventions done (no secrets in repo); Vault/cloud-KMS integration pattern still to wire. · deps: none · phase: P0
-- [ ] P0-7 — First empty service scaffold (`services/identity`) proving the Fastify service template (transport→service→domain→adapters, /health,/ready,/metrics). · deps: P0-2,P0-3 · phase: P0
+- [x] P0-7 — First empty service scaffold (`services/identity`) proving the Fastify service template (transport→application→domain→adapters, /health,/ready,/metrics, tenant-context seam, ApiError envelope, graceful shutdown). `[Claude · 2026-07-27]` (auth/users/data = P1)
 
 ## Next (Phase 1 — pull when P0 exits)
 

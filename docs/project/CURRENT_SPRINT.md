@@ -11,8 +11,8 @@
 | **Slice 0 — Program & Continuity Setup** | stack ADRs (0016/0017); `docs/ai/*`, `docs/project/*`, `docs/daily/*`; monorepo skeleton (P0-1); dev docker-compose (P0-4); `.env.example` (part P0-6) | ✅ done 2026-07-27         |
 | **Slice 1 — Contracts**                  | **P0-2** `packages/contracts` schema-first + codegen + 19 tests                                                                                        | ✅ done 2026-07-27         |
 | **Slice 2 — CI**                         | **P0-3** GitHub Actions: build/test/lint/scan + import-graph + contract-testing                                                                        | ✅ done 2026-07-27         |
-| **Slice 3 — First service**              | **P0-7** `services/identity` Fastify template (/health,/ready,/metrics; no business logic)                                                             | ⏭ next (awaiting approval) |
-| **Slice 4 — Registry bootstrap**         | **P0-5** MLflow + DVC skeleton                                                                                                                         | pending                    |
+| **Slice 3 — First service**              | **P0-7** `services/identity` Fastify template (/health,/ready,/metrics; no business logic)                                                             | ✅ done 2026-07-27         |
+| **Slice 4 — Registry bootstrap**         | **P0-5** MLflow + DVC skeleton                                                                                                                         | ⏭ next (awaiting approval) |
 
 ## Rules for this sprint
 
