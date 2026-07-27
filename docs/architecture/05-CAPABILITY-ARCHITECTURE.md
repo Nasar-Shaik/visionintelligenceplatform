@@ -68,11 +68,31 @@ interface Capability<In, Out, Params> {
 - **Placement-agnostic**: the same implementation runs at edge or cloud; `placement` lists where it *may* run, the scheduler decides where it *does*.
 - **No industry logic**: parameters are generic (thresholds, classes, zones); "this is a shoplifting detector" is expressed by a **rule**, not by the capability.
 
-## 3. Capability registry & discovery
+## 3. Capability Registry (runtime, self-registering)
 
-- The **Capability Registry** (`services/registry`) holds descriptors, versions, and available implementations. Capabilities register at startup; consumers and the pipeline discover them by `id` + compatible version.
-- **Entitlement-gated**: which capabilities a tenant may enable is resolved from their plan/packs (see [06](06-MULTI-TENANT-SAAS.md)). A capability disabled by entitlement is invisible to that tenant.
-- **Plugins can register new capabilities** (subject to a trust tier) without any core change. → [20](20-EXTENSIBILITY.md)
+The **Capability Registry** (`services/registry`) is the runtime source of truth for capabilities: every capability (and composition and connector) **self-registers at startup** and is discoverable by `id` + compatible version.
+
+**Stored per capability (the registry record):**
+```
+name · version · owner · description
+input_types · output_types · dependencies (capability graph)
+required_models (selectors) · required_gpu · required_cpu · memory_usage · latency (est.)
+generated_events · configuration_schema
+health_status · metrics (live) · license
+lifecycle_state: experimental | stable | deprecated
+```
+
+The registry supports:
+- **Discovery** — consumers/pipeline find capabilities by id/type/version.
+- **Dependency resolution** — the capability dependency graph ([§4a](#4a-capability-dependency-graph)) is resolved from `dependencies`; cycles are rejected.
+- **Scheduling** — `required_gpu/cpu/memory/latency` + `placement` feed the Execution Scheduler ([§4b](#4b-execution-scheduler)).
+- **Monitoring** — live `health_status`/`metrics` per capability flow to observability ([16](16-OBSERVABILITY.md)).
+- **Version compatibility** — consumers bind to compatible descriptor versions; the loader refuses incompatible ones.
+
+Additional rules:
+- **Entitlement-gated:** which capabilities a tenant may enable is resolved from their plan/packs ([06](06-MULTI-TENANT-SAAS.md)); a capability disabled by entitlement is invisible to that tenant.
+- **Lifecycle states** gate exposure: `experimental` (behind a flag), `stable` (GA), `deprecated` (warned, scheduled for removal).
+- **Plugins self-register new capabilities** (subject to a trust tier + certification, [20](20-EXTENSIBILITY.md)) without any core change; registration requires passing contract validation ([03](03-ARCHITECTURE-PRINCIPLES.md)).
 
 ## 4. Orchestration & placement (the pipeline)
 
@@ -92,13 +112,43 @@ media.ingest → media.frame-extract ─┬→ perception.person-detection → p
 - **Placement**: the scheduler assigns each node to edge or cloud using `resource_profile`, available accelerators, latency class, and connectivity. Real-time/safety-critical nodes prefer edge; heavy/batch (embeddings, temporal action models, search) prefer cloud.
 - **Efficiency levers** (see [19](19-PERFORMANCE-AND-SCALE.md)): motion-gated adaptive sampling, model sharing/batching across streams, ROI masking, backpressure with graceful degradation (shed non-critical capabilities before dropping frames for fire/weapon).
 
+### 4a. Capability dependency graph
+
+Capabilities have **typed input/output dependencies** that the orchestrator resolves into the DAG. The graph is **acyclic** and validated in CI (a cycle is a build failure). Representative dependencies:
+
+```
+person-detection ─┐
+vehicle-detection ─┼─▶ tracking ─┬─▶ reasoning.behavior ─▶ (loitering / fall / aggression)
+object-detection ──┘             ├─▶ spatial.line-crossing ─▶ people/vehicle counting
+                                 ├─▶ spatial.zone-detection ─▶ occupancy / area / queue
+                                 └─▶ spatial.speed-estimation ─▶ speeding
+object-detection + tracking ───────▶ object.left-behind / object.removed ─▶ asset/abandoned
+person-detection ─▶ pose ──────────▶ reasoning.behavior (fall/aggression/gesture)
+person-detection ─▶ attribute(PPE) ─▶ safety (ppe-missing)
+face-detection ─▶ face-recognition ; vehicle-detection ─▶ lpr
+```
+
+Rules the graph enforces: a capability declares the capability **outputs** it consumes (never another capability's internals); depth/placement flow from the graph; and the same graph feeds the **Composition Layer** ([24](24-COMPOSITION-FRAMEWORK.md)), where e.g. *Queue Analytics = tracking + zone* and *People Counting = tracking + line-crossing*. The full capability↔composition dependency table lives in [24 §3](24-COMPOSITION-FRAMEWORK.md).
+
+### 4b. Execution Scheduler
+
+The orchestrator's scheduler runs **only the capabilities a tenant actually needs**, and optimizes shared resources across all streams on a node. Inputs: each tenant/camera's enabled capabilities + compositions (from entitlements and referenced rules), capability `resource_profile`s, available accelerators, latency class, connectivity, and power budget.
+
+- **Demand-driven execution.** If Customer A needs only `tracking`, Customer B `tracking + OCR`, Customer C `tracking + pose`, Customer D `tracking + fire-detection`, the scheduler builds four different DAGs and loads only the required models. Capabilities not referenced by any enabled composition/rule are never scheduled.
+- **Optimization objectives:** GPU/CPU utilization (batch shared models across streams), memory (share loaded model instances), frame rate (per-capability adaptive FPS + motion gating), latency (reserved lanes for safety-critical: fire/weapon/fall), and **power** (throttle non-critical work on constrained edge devices).
+- **Placement:** edge vs cloud per node ([§4](#4-orchestration--placement-the-pipeline)); real-time/safety-critical prefer edge, heavy/batch prefer cloud.
+- **Backpressure:** under saturation, degrade in a defined order — lower FPS → defer non-critical capabilities/compositions → never drop frames for safety-critical. → [19](19-PERFORMANCE-AND-SCALE.md)
+
+This makes compute proportional to what customers actually use — the key to per-camera cost at scale.
+
 ## 5. How capabilities compose into solutions
 
-Composition happens in **three declarative layers above capabilities**, never in capability code:
+Composition happens in **declarative layers above capabilities**, never in capability code:
 
-1. **Events** — capability outputs become normalized events on the backbone. → [09](09-EVENT-PLATFORM.md)
-2. **Rules** — tenants declare what combinations of events matter. → [10](10-RULE-ENGINE.md)
-3. **Workflows** — declare what happens when they do. → [11](11-WORKFLOW-ENGINE.md)
+1. **Compositions** — reusable mid-level business measures (queue, occupancy, counting, perimeter…) assembled from capabilities, emitting higher-order events. → [24](24-COMPOSITION-FRAMEWORK.md)
+2. **Events** — capability/composition outputs become normalized events on the backbone. → [09](09-EVENT-PLATFORM.md)
+3. **Rules** — tenants declare what combinations of events matter. → [10](10-RULE-ENGINE.md)
+4. **Workflows** — declare what happens when they do. → [11](11-WORKFLOW-ENGINE.md)
 
 An **Industry Pack** bundles rule/workflow/dashboard/report templates for a vertical. → [13](13-INDUSTRY-PACKS.md)
 

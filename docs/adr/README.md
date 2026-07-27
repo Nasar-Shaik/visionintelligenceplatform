@@ -22,5 +22,17 @@ Any decision that changes: a **contract**, a **boundary/dependency rule**, a **t
 | [0003](ADR-0003-tenant-isolation-strategy.md) | Pooled-default / siloed-optional tenant isolation | Accepted |
 | [0004](ADR-0004-edge-first-placement.md) | Edge-first capability placement, one codebase | Accepted |
 | [0005](ADR-0005-event-driven-backbone.md) | Durable event backbone as the primary coupling | Accepted |
+| [0006](ADR-0006-composition-layer.md) | Introduce a Composition Layer between capabilities and events | Accepted |
+| [0007](ADR-0007-models-as-plugins.md) | Models as plugins (model provider extension point + marketplace) | Accepted |
+| [0008](ADR-0008-connector-platform.md) | Connector Platform for external system integration | Accepted |
+| [0009](ADR-0009-digital-twin.md) | Digital Twin spatial abstraction | Accepted |
+| [0010](ADR-0010-ddd-bounded-contexts-and-ownership.md) | Adopt DDD bounded contexts and explicit service ownership | Accepted |
+| [0011](ADR-0011-control-plane-data-plane-separation.md) | Explicit Control Plane / Data Plane separation | Accepted |
+| [0012](ADR-0012-model-adapter-layer.md) | Model Adapter Layer between capabilities and models | Accepted |
+| [0013](ADR-0013-policy-engine.md) | Policy Engine (distinct from the Rule Engine) | Accepted |
+| [0014](ADR-0014-configuration-hierarchy.md) | Hierarchical configuration inheritance | Accepted |
+| [0015](ADR-0015-contract-testing-and-plugin-certification.md) | Contract testing & plugin certification gate | Accepted |
 
 _Add new rows as ADRs are created. Never renumber; never delete._
+
+> ADRs 0006–0010 were produced by the **Enterprise Architecture Review** (2026-07-26). ADRs 0011–0015 were produced by the **Final Architecture Enhancement** (2026-07-27) that froze the architecture as **v1.0**. All are strengthenings that preserve the existing philosophy. **After v1.0 freeze, every architectural change requires a new ADR.**

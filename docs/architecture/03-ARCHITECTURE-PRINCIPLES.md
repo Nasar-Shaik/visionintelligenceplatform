@@ -56,6 +56,12 @@ Turn the Constitution's Five Laws into concrete, testable principles and enginee
 - No secrets, no PII in logs, no hardcoded tenant/customer/model constants.
 - Observability present on new paths; docs & tracking updated.
 
+### Contract testing ([ADR-0015](../adr/ADR-0015-contract-testing-and-plugin-certification.md))
+Every contract type is **verified automatically in CI**; a change that breaks a published contract fails the build. Contract types covered:
+- **API contracts** (OpenAPI/gRPC), **capability contracts** (descriptor + I/O), **event contracts** (envelope + catalog schemas), **connector contracts** ([25](25-CONNECTOR-PLATFORM.md)), **plugin contracts** (manifest + extension points), **workflow contracts**, **rule contracts** (DSL schema), **configuration contracts** (config schemas), and **model-adapter contracts** ([08](08-AI-ML-PLATFORM.md)).
+- **Consumer-driven** where a contract has known consumers (Pact-style); **schema/compat** checks otherwise (additive-only within a major).
+- **Every plugin must pass contract validation before loading** — the loader refuses non-conforming plugins ([20](20-EXTENSIBILITY.md)). This is the gate that keeps a large plugin ecosystem safe.
+
 ### Naming & vocabulary
 - Use the canonical terms from [reference/GLOSSARY](../reference/GLOSSARY.md) everywhere (code, docs, events, APIs). One concept, one name.
 

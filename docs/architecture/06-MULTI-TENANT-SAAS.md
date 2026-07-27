@@ -66,10 +66,25 @@ Cross-tenant access is validated **negatively**: automated tests attempt cross-t
 - **Billing** integrates a provider (Stripe or regional): per-camera subscription + metered add-ons, proration on camera add/remove, dunning, trials, freemium, coupons, and **reseller/partner billing** (sub-tenants under a partner brand with revenue share).
 - Quotas: soft-limit warnings and hard-limit actions (stop new uploads / prompt upgrade), tracked against plan.
 
-## 6. Configuration & branding
+## 6. Configuration Hierarchy & Branding
 
-- **Config** is layered: platform defaults → tenant → branch/site → camera, resolved with clear precedence and fully audited. No config in code (12-factor).
-- **White-label** (enterprise/OEM): logo, palette, favicon, email + app naming, reflected in web and mobile builds.
+Configuration is a **hierarchical inheritance chain** ([ADR-0014](../adr/ADR-0014-configuration-hierarchy.md)). No config in code (12-factor); every effective value is traceable, versioned, and rollback-able.
+
+**Inheritance chain (parent → child):**
+```
+Global → Platform → Tenant → Organization → Region → Country → Branch → Site →
+Building → Floor → Zone → Camera → Capability → Model → Rule → Workflow
+```
+
+- **Inheritance rules:** a child inherits its parent's **effective** config; only **overridden keys** change (sparse overrides). Unset keys always fall through to the nearest ancestor that sets them, down to Global defaults.
+- **Conflict resolution / priority:** **most-specific level wins** (Camera overrides Site overrides Tenant…). Within a level, explicit deny/lock beats inherit (a parent may mark a key **locked** to forbid child override — e.g. a compliance-mandated retention floor).
+- **Resolution:** a resolver computes the effective config for any node by walking the chain; results are **cached** (Redis) and pushed to the Data Plane with last-known-good ([27 §7](27-CONTROL-DATA-PLANE.md)).
+- **Provenance:** every effective value records which level set it (for debugging and audit).
+- **Versioning · audit · rollback:** config changes are versioned and audited ([15 §5](15-SECURITY-ARCHITECTURE.md)); any node's config can be rolled back to a prior version.
+
+This chain governs not just tenancy settings but **capability parameters, model-adapter config, rule thresholds, and workflow settings** — set a default once at Global/Tenant and override precisely at a single Camera or Zone.
+
+- **White-label** (enterprise/OEM): logo, palette, favicon, email + app naming, reflected in web and mobile builds — itself a config-hierarchy value.
 - **Custom domains**: `cctv.customer.com` with automated DNS verification + ACME TLS; per-tenant routing at the gateway.
 
 ## Design decisions

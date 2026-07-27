@@ -17,6 +17,7 @@ This repository is the **single source of truth** for the platform. It is design
 | **A product / business stakeholder** | [`docs/architecture/01-EXECUTIVE-SUMMARY.md`](docs/architecture/01-EXECUTIVE-SUMMARY.md) |
 | **Looking for "what's done / what's next"** | [`tracking/PROGRESS.md`](tracking/PROGRESS.md) and [`tracking/ROADMAP.md`](tracking/ROADMAP.md) |
 | **Making a significant technical decision** | [`docs/adr/`](docs/adr/) (Architecture Decision Records) |
+| **Committing / branching / opening a PR** | [`CONTRIBUTING.md`](CONTRIBUTING.md) (git workflow & Definition of Done) |
 
 ---
 
@@ -27,7 +28,8 @@ vision-intelligence-platform/
 ├── README.md                 # You are here — project entry point
 ├── docs/                     # The Engineering Constitution + full architecture (source of truth)
 │   ├── 00-ENGINEERING-CONSTITUTION.md
-│   ├── architecture/         # Numbered architecture sections (01..21)
+│   ├── ARCHITECTURE-READINESS-REVIEW.md  # v1.0 freeze gate + Go/No-Go
+│   ├── architecture/         # Numbered architecture sections (01..28)
 │   ├── adr/                  # Architecture Decision Records (immutable, append-only)
 │   ├── reference/            # Glossary, tech stack, AI capability catalog
 │   ├── runbooks/             # Operational runbooks (added as services ship)
@@ -37,7 +39,8 @@ vision-intelligence-platform/
 │   ├── ROADMAP.md            # Phase 0 → Enterprise Release → Future Vision
 │   ├── PROGRESS.md           # Current status of every phase/capability (the "where are we")
 │   ├── TASK-BOARD.md         # Actionable backlog (Now / Next / Later)
-│   └── MILESTONES.md         # Milestone definitions & acceptance gates
+│   ├── MILESTONES.md         # Milestone definitions & acceptance gates
+│   └── TECH-DEBT.md          # Known shortcuts/deferrals register
 ├── services/                 # Backend services (control plane + data plane). See services/README.md
 ├── ai/                       # Python AI/ML: inference runtime, capability workers, MLOps
 ├── edge/                     # Edge agent, fleet, offline runtime
@@ -67,7 +70,7 @@ Every top-level code directory contains a `README.md` describing its purpose, bo
 ## Status
 
 - **Phase:** Phase 0 (Architecture & Program Setup). See [`tracking/PROGRESS.md`](tracking/PROGRESS.md).
-- **Architecture:** Ratified v1.0 (this document set). Changes go through ADRs.
+- **Architecture:** **FROZEN v1.0** (2026-07-27) — implementation-ready. Go/No-Go: ✅ GO ([readiness review](docs/ARCHITECTURE-READINESS-REVIEW.md)). All changes now go through [ADRs](docs/adr/).
 
 ## Provenance
 

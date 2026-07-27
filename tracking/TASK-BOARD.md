@@ -30,6 +30,21 @@ Format: `- [ ] <id> — <task> · deps: <…> · phase: <Px> · owner: <—>`
 
 ## Later (Phase 2+)
 - Seeded from [ROADMAP](ROADMAP.md) as each phase approaches. Do not expand phases far ahead of their dependencies — keep the board honest.
+- **From the Enterprise Review** (build in their natural phases; architecture is ratified):
+  - Composition Layer runtime + registry + reference compositions ([24](../docs/architecture/24-COMPOSITION-FRAMEWORK.md)) → Phase 4/6.
+  - Connector Platform runtime + `connector.provider` + first adapters (REST/webhook/MQTT/POS) ([25](../docs/architecture/25-CONNECTOR-PLATFORM.md)) → Phase 8.
+  - `model.provider` extension point + marketplace surface ([08 §8](../docs/architecture/08-AI-ML-PLATFORM.md)) → Phase 9.
+  - Digital Twin projection + `/twin/*` API ([26](../docs/architecture/26-DIGITAL-TWIN.md)) → Phase 5/6.
+  - CI: extend import-graph checks to forbid cross-context DB access + enforce acyclic service/capability graphs ([23](../docs/architecture/23-SERVICE-OWNERSHIP.md)) → Phase 0/1.
+- **From the Final Enhancement (v1.0)**:
+  - Control-Plane vs Data-Plane deployment topologies + config/policy push-and-cache sync ([27](../docs/architecture/27-CONTROL-DATA-PLANE.md)) → Phase 1/2.
+  - Model Adapter Layer + adapter conformance tests ([08 §8a](../docs/architecture/08-AI-ML-PLATFORM.md)) → Phase 3.
+  - Runtime Capability Registry with full metadata schema ([05 §3](../docs/architecture/05-CAPABILITY-ARCHITECTURE.md)) → Phase 3.
+  - Policy Engine (PDP) + enforcement hooks across services ([28](../docs/architecture/28-POLICY-ENGINE.md)) → Phase 1 (authz) → Phase 8 (full compliance).
+  - Configuration hierarchy resolver + provenance/rollback ([06 §6](../docs/architecture/06-MULTI-TENANT-SAAS.md)) → Phase 1.
+  - Contract-testing harness (all contract types) + plugin certification pipeline ([03](../docs/architecture/03-ARCHITECTURE-PRINCIPLES.md), [20 §6a](../docs/architecture/20-EXTENSIBILITY.md)) → Phase 0 (harness) → Phase 7 (certification).
 
 ## Done
+- [x] ARCH-2 — Final Architecture Enhancement: **FROZE architecture v1.0**; added sections 27–28, ADRs 0011–0015, readiness review; integrated model-adapter/capability-registry/config-hierarchy/contract-testing/plugin-certification. `[Final Enhancement · 2026-07-27]`
+- [x] ARCH-1 — Enterprise Architecture Review v1.1: added sections 22–26, ADRs 0006–0010, TECH-DEBT register; integrated composition/scheduler/execution-graph/models-as-plugins/deployment-profiles/agent-continuity. `[Enterprise Review · 2026-07-26]`
 - [x] ARCH-0 — Ratify architecture v1.0 (Constitution + 21 sections + reference + 5 ADRs) and build tracking system + repo skeleton. `[Architecture · 2026-07-26]`

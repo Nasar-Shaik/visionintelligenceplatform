@@ -21,7 +21,7 @@ Everything that plausibly varies over a decade:
 - **Integrations** — POS, access control, SIEM, VMS, ITSM.
 
 ## 2. Extension points & hooks
-- **Extension points** are declared, versioned interfaces the core exposes (e.g. `capability.provider`, `rule.action`, `notification.channel`, `media.source`, `event.enricher`, `report.generator`). Plugins **implement** them; the core **discovers** them via the registry.
+- **Extension points** are declared, versioned interfaces the core exposes (e.g. `capability.provider`, `composition.provider`, `model.provider`, `connector.provider`, `rule.condition`, `rule.action`, `workflow.state`, `workflow.action`, `notification.channel`, `media.source`, `event.enricher`, `report.generator`). Plugins **implement** them; the core **discovers** them via the registry. Key additions from the Enterprise Architecture Review: **`model.provider`** (models as plugins → [08 §8](08-AI-ML-PLATFORM.md), [ADR-0007](../adr/ADR-0007-models-as-plugins.md)), **`composition.provider`** (reusable business compositions → [24](24-COMPOSITION-FRAMEWORK.md), [ADR-0006](../adr/ADR-0006-composition-layer.md)), and **`connector.provider`** (external-system integration → [25](25-CONNECTOR-PLATFORM.md), [ADR-0008](../adr/ADR-0008-connector-platform.md)).
 - **Hooks** are lifecycle callbacks the core invokes at defined moments (e.g. `onEventPersisted`, `onIncidentRaised`, `beforeEvidenceExport`, `onEdgeSync`). Hooks are for enrichment/observation and must be **side-effect-bounded** (no blocking the hot path; async where possible).
 - Extension points and hooks are **contracts** in `packages/contracts` — versioned, additive, documented.
 
@@ -38,6 +38,15 @@ Everything that plausibly varies over a decade:
 
 ## 6. Trust tiers & safety
 - **First-party** (built by us), **verified-partner** (reviewed + signed), **community** (sandboxed, restricted permissions). Declarative-only plugins (rules/workflows/dashboards) are inherently sandboxed. Code-bearing plugins (new capabilities/channels) run under resource limits and permission scoping; the loader refuses unsigned or incompatible plugins rather than failing at runtime.
+
+## 6a. Plugin certification ([ADR-0015](../adr/ADR-0015-contract-testing-and-plugin-certification.md))
+A plugin is **production-enabled only after passing certification** — a pipeline that yields a signed certificate bound to a platform-API range and trust tier. Certification checks:
+- **Compatibility** (platform-API range) · **API compliance** · **capability compliance** (satisfies its declared contracts).
+- **Security** (scan, no secret exfiltration, permission scope) · **version compatibility**.
+- **Performance & resource budgets** — latency, **memory**, **CPU**, **GPU** within declared `resource_profile`.
+- **Documentation** · **testing** (contract + unit) · **observability** (emits metrics/traces/logs) · **health checks**.
+
+Only **certified** plugins run in production; uncertified/community plugins are limited to sandboxed/dev environments. Certification results are recorded in the Plugin Registry ([23](23-SERVICE-OWNERSHIP.md)) and re-run on new plugin/platform versions. Certification builds on **contract testing** ([03](03-ARCHITECTURE-PRINCIPLES.md)) — contract validation is a prerequisite, certification adds the security/performance/ops bar.
 
 ## 7. Version compatibility
 - **Platform API** is semver'd; plugins declare a compatible range and are refused outside it (no silent breakage).

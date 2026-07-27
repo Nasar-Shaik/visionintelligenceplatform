@@ -6,8 +6,10 @@ Timelines assume a ~10–14 person cross-functional team (Platform, Video, AI/CV
 
 ---
 
+> **Architecture is FROZEN at v1.0 (2026-07-27)** — [readiness review: ✅ GO](../docs/ARCHITECTURE-READINESS-REVIEW.md). Implementation order below is fixed; changes to the architecture itself require an ADR.
+
 ## Phase 0 — Program Setup & Architecture (current) · ~3–4 weeks
-Monorepo (pnpm+Turborepo) + Python workspace; **`packages/contracts` bootstrap** (schema-first); CI skeleton (build/test/scan + import-graph enforcement); Docker Compose dev stack (Mongo, Redis, MinIO, streaming, RTSP test source); model/dataset registry bootstrap (MLflow + DVC); secrets strategy; **this documentation set ratified**. **Gate for all phases.**
+Monorepo (pnpm+Turborepo) + Python workspace; **`packages/contracts` bootstrap** (schema-first); CI skeleton (build/test/scan + **import-graph enforcement** + **contract-testing harness**); Docker Compose dev stack (Mongo, Redis, MinIO, streaming, RTSP test source); model/dataset registry bootstrap (MLflow + DVC); secrets strategy; **this documentation set ratified & frozen v1.0**. **Gate for all phases.**
 **Exit:** repo self-documenting; contracts pipeline generating types; CI green on an empty service.
 
 ## Phase 1 — SaaS Foundation · ~6–8 weeks

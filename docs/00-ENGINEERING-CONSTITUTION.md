@@ -68,7 +68,7 @@ These refine the Five Laws; the full treatment is in [03-ARCHITECTURE-PRINCIPLES
 
 ## 5. The composition model — how solutions are built
 
-A customer solution is **never** written as code. It is assembled from five layers:
+A customer solution is **never** written as code. It is assembled from six layers:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -81,10 +81,15 @@ A customer solution is **never** written as code. It is assembled from five laye
 ├─────────────────────────────────────────────────────────────────────┤
 │  EVENT PLATFORM           taxonomy · correlation · dedup · timeline    │
 ├─────────────────────────────────────────────────────────────────────┤
+│  COMPOSITION LAYER        reusable business measures (people counting, │
+│                           queue, occupancy, perimeter…)  → see doc 24  │
+├─────────────────────────────────────────────────────────────────────┤
 │  CAPABILITIES             ingestion · inference · tracking · OCR · …   │
 │                           (reusable building blocks, model-agnostic)   │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+> The **Composition Layer** ([24-COMPOSITION-FRAMEWORK](architecture/24-COMPOSITION-FRAMEWORK.md), [ADR-0006](adr/ADR-0006-composition-layer.md)) was added by the Enterprise Architecture Review. It is optional in the mental model — atomic capabilities can still feed events directly — but it is where reusable mid-level business logic lives so it is not re-authored in every tenant's rules. It carries no industry identity.
 
 **Example — "supermarket shoplifting alerting" is built, not coded:**
 1. **Capabilities** (already in core): video ingestion, person detection, tracking, pose, zone/line detection, object-left/removed, OCR (for POS), clip extraction.

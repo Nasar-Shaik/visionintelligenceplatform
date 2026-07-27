@@ -9,15 +9,21 @@ Define the end-to-end runtime flows: how a frame becomes a detection, an event, 
 
 ---
 
-## 1. Master pipeline (frame → value)
+## 1. Master pipeline / execution graph (frame → value)
+
+The runtime execution graph — every processing stage from camera to dashboard:
 
 ```
-Camera ─▶ Ingest ─▶ Decode ─▶ Frame-Extract(adaptive+motion-gate) ─▶ [Capability DAG]
-       Detection ─▶ Tracking ─▶ Pose/ReID/OCR/… ─▶ Spatial(zone/line/speed) ─▶ Behavior/Anomaly
+Camera ─▶ RTSP/RTMP Ingest ─▶ Frame Decoder ─▶ Frame Sampling (adaptive + motion-gate)
+       ─▶ Inference ─▶ Tracking ─▶ [Capability DAG: Pose/ReID/OCR/Attribute/Fire/… + Spatial(zone/line/speed) + Behavior/Anomaly]
+       ─▶ COMPOSITION LAYER (people-counting / queue / occupancy / perimeter / safety …)
        ─▶ EVENT PLATFORM ─▶ RULE ENGINE ─▶ (match) ─▶ WORKFLOW ENGINE
-       ─▶ Evidence(clip+snapshot+timeline) ─▶ Notification ─▶ Analytics/Search ─▶ Dashboards/API
+       ─▶ Evidence(clip+snapshot+timeline) ─▶ Notification ─▶ Analytics/Search + Digital Twin ─▶ Dashboards/API
 ```
-Stages 1–(behavior) are **capabilities** wired as a DAG ([05](05-CAPABILITY-ARCHITECTURE.md)). Everything from Event Platform onward is the composition backbone. **Steps run at the edge when an edge box is present** (real-time, offline, bandwidth-saving), shipping only events/evidence upstream; pure-cloud relays streams to cloud GPU workers; hybrid splits by capability placement.
+
+Stage responsibilities: **Ingest** (session/reconnect/backpressure) → **Decode** (HW-accelerated) → **Frame Sampling** (per-capability FPS, motion gating) → **Inference** (model-agnostic detections) → **Tracking** (stable IDs) → **Capability DAG** (perception/spatial/reasoning nodes) → **Composition** (reusable business measures → higher-order events, [24](24-COMPOSITION-FRAMEWORK.md)) → **Event Platform** (normalize/dedup/correlate) → **Rule Engine** (tenant meaning) → **Workflow** (response) → **Evidence / Notification / Analytics / Digital Twin** (outputs).
+
+Stages up to Composition are **capabilities/compositions** wired as a DAG by the Execution Scheduler ([05 §4b](05-CAPABILITY-ARCHITECTURE.md)); everything from the Event Platform onward is the composition backbone. **Steps run at the edge when an edge box is present** (real-time, offline, bandwidth-saving), shipping only events/evidence upstream; pure-cloud relays streams to cloud GPU workers; hybrid splits by capability placement.
 
 ## 2. Video flow
 

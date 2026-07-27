@@ -4,7 +4,7 @@
 
 ## Snapshot
 - **Current phase:** Phase 0 — Program Setup & Architecture ([ROADMAP](ROADMAP.md#phase-0--program-setup--architecture-current--34-weeks)).
-- **Architecture:** **Ratified v1.0** — full docs set in [`../docs/`](../docs/). Changes now go through [ADRs](../docs/adr/).
+- **Architecture:** **FROZEN v1.0 (2026-07-27)** — sections 01–28 + ADRs 0001–0015 in [`../docs/`](../docs/). Go/No-Go: ✅ GO ([readiness review](../docs/ARCHITECTURE-READINESS-REVIEW.md)). All changes now go through [ADRs](../docs/adr/).
 - **Code:** Not yet started. Directory skeleton + self-documenting READMEs in place.
 - **Next concrete work:** stand up the monorepo + `packages/contracts` + CI skeleton (see [TASK-BOARD → Now](TASK-BOARD.md#now)).
 
@@ -34,10 +34,15 @@ Track each capability from [reference/AI-CAPABILITY-CATALOG](../docs/reference/A
 
 ## Decisions of record
 Seed ADRs accepted: [0001](../docs/adr/ADR-0001-capability-composition-over-vertical-features.md) capability composition · [0002](../docs/adr/ADR-0002-model-agnostic-inference.md) model-agnostic inference · [0003](../docs/adr/ADR-0003-tenant-isolation-strategy.md) isolation strategy · [0004](../docs/adr/ADR-0004-edge-first-placement.md) edge-first placement · [0005](../docs/adr/ADR-0005-event-driven-backbone.md) event backbone.
+Enterprise Review ADRs accepted: [0006](../docs/adr/ADR-0006-composition-layer.md) composition layer · [0007](../docs/adr/ADR-0007-models-as-plugins.md) models-as-plugins · [0008](../docs/adr/ADR-0008-connector-platform.md) connector platform · [0009](../docs/adr/ADR-0009-digital-twin.md) digital twin · [0010](../docs/adr/ADR-0010-ddd-bounded-contexts-and-ownership.md) DDD bounded contexts + service ownership.
+Final Enhancement (v1.0 freeze) ADRs accepted: [0011](../docs/adr/ADR-0011-control-plane-data-plane-separation.md) control/data plane · [0012](../docs/adr/ADR-0012-model-adapter-layer.md) model adapter layer · [0013](../docs/adr/ADR-0013-policy-engine.md) policy engine · [0014](../docs/adr/ADR-0014-configuration-hierarchy.md) config hierarchy · [0015](../docs/adr/ADR-0015-contract-testing-and-plugin-certification.md) contract testing + plugin certification.
 
 ## Open risks / landmines (carry forward)
 - None recorded yet beyond the standing risk register in [ROADMAP](ROADMAP.md) and section-level tradeoffs. Add anything you hit here so the next agent doesn't rediscover it.
 
 ## Changelog
+- `[Final Enhancement · 2026-07-27]` **Architecture FROZEN as v1.0.** Added sections **27 Control/Data Plane** and **28 Policy Engine**; ADRs **0011–0015**; the **[Architecture Implementation Readiness Review](../docs/ARCHITECTURE-READINESS-REVIEW.md)** (completeness 99.9%, Go/No-Go ✅ GO). Integrated: Model Adapter Layer (doc 08), runtime Capability Registry schema (doc 05), Configuration Hierarchy (doc 06), Contract Testing (doc 03), Plugin Certification (doc 20). No existing decision reversed. Post-freeze: all architectural change via ADR only.
+- `[Enterprise Review · 2026-07-26]` Enterprise Architecture Review v1.1 (strengthenings, no redesign): added architecture sections **22 Bounded Contexts**, **23 Service Ownership + dependency graph**, **24 Composition Framework**, **25 Connector Platform**, **26 Digital Twin**; ADRs **0006–0010**; new tracking register **TECH-DEBT.md**. Integrated: capability dependency graph + Execution Scheduler (doc 05), execution graph with Composition (doc 07), models-as-plugins/marketplace (docs 08, 20), new extension points (doc 20), six-layer composition model (doc 00), deployment profiles (HARDWARE-SIZING), AI-agent continuity map (AGENT-ONBOARDING). No existing decision reversed; philosophy preserved.
+- `[Architecture · 2026-07-26]` Added git workflow conventions: [`CONTRIBUTING.md`](../CONTRIBUTING.md) (branch model, Conventional Commits, solo-tuned merge flow, DoD gate, ADR-before-code) + [`.github/pull_request_template.md`](../.github/pull_request_template.md). Cross-linked from README + AGENT-ONBOARDING §8. Repo now on git (`main` + `feature/v1`); branch protection intentionally deferred (single owner).
 - `[Architecture · 2026-07-26]` Harvested remaining implementation detail from the legacy analyses into three professional reference docs — [DEV-ENVIRONMENT](../docs/reference/DEV-ENVIRONMENT.md), [HARDWARE-SIZING](../docs/reference/HARDWARE-SIZING.md), [MODEL-REFERENCE](../docs/reference/MODEL-REFERENCE.md) — then archived the legacy folder to [`../docs/_archive/`](../docs/_archive/) (frozen provenance; not authoritative). Added root `.gitignore`. `docs/` is now the complete single source of truth.
 - `[Architecture · 2026-07-26]` Ratified architecture v1.0: merged three prior analyses (Fable/Grok/Gemini) into the Engineering Constitution + 21 architecture sections + reference + 5 ADRs; created the tracking system and self-documenting repo skeleton. Prior analyses moved to "superseded / provenance." Phase 0 opened.

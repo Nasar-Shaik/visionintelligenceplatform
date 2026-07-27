@@ -34,6 +34,19 @@ Every section follows the same template: **Purpose · Responsibilities · Archit
 | 19 | [Performance & Scale](architecture/19-PERFORMANCE-AND-SCALE.md) | 2 → 10,000 cameras; scaling strategy per tier |
 | 20 | [Extensibility & Plugin SDK](architecture/20-EXTENSIBILITY.md) | Extension points, hooks, DI, versioning, forward compatibility |
 | 21 | [API Architecture](architecture/21-API-ARCHITECTURE.md) | REST/WS/streaming/gRPC, versioning, auth flows, developer platform |
+| 22 | [Bounded Contexts (DDD)](architecture/22-BOUNDED-CONTEXTS.md) | Explicit domain boundaries, owned data, published/subscribed events per context |
+| 23 | [Service Ownership & Dependency Graph](architecture/23-SERVICE-OWNERSHIP.md) | Per-service ownership catalog + acyclic dependency graph |
+| 24 | [Capability Composition Framework](architecture/24-COMPOSITION-FRAMEWORK.md) | The reusable Composition Layer (people counting, queue, occupancy…) |
+| 25 | [Connector Platform](architecture/25-CONNECTOR-PLATFORM.md) | External-system integration (POS/ERP/access/MQTT/Modbus…) as plugins |
+| 26 | [Digital Twin](architecture/26-DIGITAL-TWIN.md) | Live spatial model for visualization & cross-camera reasoning |
+| 27 | [Control Plane / Data Plane](architecture/27-CONTROL-DATA-PLANE.md) | Separation of business management from video/AI processing |
+| 28 | [Policy Engine](architecture/28-POLICY-ENGINE.md) | Governance (who/what/where/when) — distinct from the Rule Engine |
+
+> Sections 22–26 / ADRs 0006–0010 came from the **Enterprise Architecture Review** (2026-07-26). Sections 27–28 / ADRs 0011–0015 came from the **Final Architecture Enhancement** (2026-07-27) that froze the architecture as **v1.0**. All preserve the existing philosophy.
+
+## Freeze status
+
+**Architecture Version 1.0 — FROZEN (2026-07-27).** See the [Architecture Implementation Readiness Review](ARCHITECTURE-READINESS-REVIEW.md) (Go/No-Go: ✅ GO). After freeze, **every architectural change requires an ADR** ([adr/](adr/)).
 
 ## Reference
 
