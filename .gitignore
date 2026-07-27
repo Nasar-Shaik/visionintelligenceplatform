@@ -36,7 +36,11 @@ packages/*/generated/
 # ML artifacts (belong in the registry / object storage, not the repo)
 mlruns/
 .dvc/cache/
-datasets/
+.dvc/tmp/
+.dvc/config.local
+# Root-level datasets dir only — ai/datasets/ is DVC-tracked (keeps *.dvc pointers +
+# READMEs; DVC writes a per-dir .gitignore for the actual bytes).
+/datasets/
 models/weights/
 
 # Infra / local

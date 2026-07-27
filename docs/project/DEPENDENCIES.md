@@ -39,6 +39,26 @@ Introduced by `@vip/service-identity` (P0-7); the reference stack every TS servi
 | prom-client     | ^15.1.3 | 15.1.3                 | Prometheus `/metrics` (per-instance registry)  |
 | pino-pretty     | ^13.1.3 | 13.1.3                 | dev-only pretty logs (pino ships with fastify) |
 
+## MLOps registry deps (verified 2026-07-27 · PyPI + Docker Hub)
+
+Introduced by P0-5 registry bootstrap (`ai/mlops/`, `infra/docker/mlflow/`). Python deps pinned exactly (`==`); no lockfile yet (see Q-011).
+
+| Package / Image | Pinned    | Registry latest | Notes                                             |
+| --------------- | --------- | --------------- | ------------------------------------------------- |
+| mlflow          | ==3.14.0  | 3.14.0          | tracking + Model Registry (server image + client) |
+| dvc             | ==3.67.1  | 3.67.1          | Dataset Registry CLI                              |
+| dvc-s3          | ==3.3.0   | 3.3.0           | DVC S3 (MinIO) remote driver                      |
+| boto3           | ==1.43.56 | 1.43.56         | S3 client (MLflow artifacts + DVC)                |
+| psycopg2-binary | ==2.9.12  | 2.9.12          | MLflow → Postgres backend driver (in image)       |
+| postgres (img)  | 17        | 18              | **17 chosen** — see note                          |
+| python (img)    | 3.12-slim | 3.14-slim       | 3.12 for broad ML-dep compatibility               |
+
+Image build validated locally (`docker compose build mlflow`) and the full stack ran the end-to-end smoke test (log run → artifact to MinIO → register model → read back).
+
+### Postgres 17 vs 18 · Python 3.12 vs 3.14 (deferred)
+
+Postgres **18** is GA, but **17** is chosen for the MLflow metadata backend — the most widely-deployed current major, unquestionably compatible with `psycopg2-binary 2.9.12` + MLflow 3.x. 18's default-behaviour changes (e.g. checksums) are unvalidated against this stack; revisit via Q-008. Python base pinned **3.12** (not 3.14) for the same conservative ML-ecosystem compatibility reason.
+
 ## Major-version change notes (policy #5)
 
 ### Zod 3 → 4 (adopted)
@@ -58,3 +78,4 @@ TS 7.0.2 is the registry `latest` and builds/tests/typechecks fine, **but `types
 
 - `2026-07-27` Slice 1 (P0-2): installed with pnpm 11.17.0; `@vip/contracts` — **19 tests pass** (Vitest 4), typecheck clean (TS 5.9.3), **lint clean** (ESLint 10 + typescript-eslint 8.65), codegen emits 7 JSON Schemas (Zod 4 native). esbuild build script approved in `pnpm-workspace.yaml`.
 - `2026-07-27` Slice 3 (P0-7): added fastify 5.10.0 + @fastify/helmet 13.1.0 + prom-client 15.1.3 (+ dev pino-pretty 13.1.3) for `@vip/service-identity`. Install clean (no peer conflicts); **19 service tests pass**, typecheck/lint/build green, live boot smoke-test OK.
+- `2026-07-27` Slice 4 (P0-5): pinned mlflow 3.14.0, dvc 3.67.1, dvc-s3 3.3.0, boto3 1.43.56, psycopg2-binary 2.9.12; images postgres:17, python:3.12-slim. MLflow image built; full MLOps stack (MinIO+Postgres+MLflow+bucket bootstrap) launched and passed the end-to-end registry smoke test; 5 stdlib config unit tests pass.

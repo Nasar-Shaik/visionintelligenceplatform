@@ -13,5 +13,6 @@ Numbering: `SPRINT-000N` maps 1:1 to Slice N in this phase.
 | [SPRINT-0001](SPRINT-0001.md) | 1     | `@vip/contracts` schema-first foundation          | ⏳ PENDING |
 | [SPRINT-0002](SPRINT-0002.md) | 2     | CI quality gate + import-graph + contract harness | ⏳ PENDING |
 | [SPRINT-0003](SPRINT-0003.md) | 3     | `@vip/service-identity` + governance framework    | ⏳ PENDING |
+| [SPRINT-0004](SPRINT-0004.md) | 4     | Registry bootstrap (MLflow + DVC)                 | ⏳ PENDING |
 
 New reviews copy [docs/templates/sprint-review.md](../templates/sprint-review.md).

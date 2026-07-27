@@ -132,3 +132,30 @@
 - **Reason:** External architect review requires self-contained, structured, append-only records; early establishment prevents historical loss.
 - **Impact:** Every future slice updates these before it is considered Done; see [DEFINITION_OF_DONE](DEFINITION_OF_DONE.md) and [QUALITY_GATES](QUALITY_GATES.md).
 - **Owner:** Claude · **Status:** Accepted · **Future Review:** No
+
+## ED-0015 — Model Registry = MLflow + Postgres backend + MinIO artifacts
+
+- **Date:** 2026-07-27 · **Slice:** 4 (P0-5)
+- **Decision:** Stand up the Model Registry as **MLflow** (tracking + model registry) with a **Postgres** backend store and **MinIO/S3** artifact store, served with `--serve-artifacts` so clients need only `MLFLOW_TRACKING_URI`.
+- **Alternatives Considered:** MLflow with a **SQLite/file** backend (no concurrency, not production-like, model-registry needs a DB); Weights & Biases / Neptune (SaaS, lock-in, cost); a bespoke registry (reinventing lineage/versioning).
+- **Reason:** Doc 08 §2 mandates an "MLflow-class registry + object storage"; Postgres is the production-representative backend; serve-artifacts keeps client config minimal and avoids spreading S3 creds.
+- **Impact:** New compose services (`mlflow`, `mlflow-postgres`, `createbuckets`) + a pinned MLflow image. Validated end-to-end (log run → MinIO artifact → register model → read back).
+- **Owner:** Claude · **Status:** Accepted · **Future Review:** Yes (harden auth/TLS + run as a managed service beyond dev)
+
+## ED-0016 — Dataset Registry = DVC with an S3 (MinIO) remote
+
+- **Date:** 2026-07-27 · **Slice:** 4 (P0-5)
+- **Decision:** Use **DVC** (remote on MinIO bucket `vip-datasets`) for dataset versioning; initialise at repo root; credentials via `.dvc/config.local`/env, never committed.
+- **Alternatives Considered:** **lakeFS** (heavier infra, git-like over object store — revisit if we need branchable data at scale, Q-010); raw S3 prefixes (no lineage/versioning); Git LFS (not built for large ML datasets).
+- **Reason:** Doc 08 §3 names DVC/lakeFS; DVC is lightweight, git-native (pointer files), and integrates with the same MinIO store. Good default for the bootstrap.
+- **Impact:** `.dvc/config`, `.dvcignore`, `ai/datasets/` added; `/datasets/` gitignore scoped to root so `ai/datasets/` pointers/READMEs are tracked.
+- **Owner:** Claude · **Status:** Accepted · **Future Review:** Yes (lakeFS comparison at data scale — Q-010)
+
+## ED-0017 — MLOps config stdlib-only + a dedicated Python CI job; Postgres 17 pin
+
+- **Date:** 2026-07-27 · **Slice:** 4 (P0-5)
+- **Decision:** Keep `ai/mlops/config.py` **stdlib-only** so it is unit-testable without MLflow/DVC; add a CI `mlops` job running those tests on Python 3.12 (no pip install). Pin **postgres:17** and **python:3.12-slim** (not the newest 18/3.14) for compatibility certainty.
+- **Alternatives Considered:** Put config in the Python workspace (deferred to P3); require heavy deps to test (slow, flaky CI); use newest images (unvalidated defaults).
+- **Reason:** A runnable, dependency-free test gives real CI coverage now; conservative image pins avoid unproven defaults. MLflow 3.x host-header protection also required an explicit `--allowed-hosts` for the compose service name.
+- **Impact:** CI gains a `mlops` job in the `ci-summary` rollup; DEPENDENCIES notes the 17/3.12 deferrals (Q-008).
+- **Owner:** Claude · **Status:** Accepted · **Future Review:** Yes (adopt a Python dep lockfile + linter — Q-011)

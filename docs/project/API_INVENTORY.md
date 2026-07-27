@@ -23,6 +23,17 @@
 - Tenant context (when present) is validated against the `TenantContext` contract via `x-tenant-id` / `x-principal-id` headers — **seam only in Phase 0**, enforced from P1.
 - Security headers set by `@fastify/helmet` (`x-content-type-options: nosniff`, `x-frame-options: SAMEORIGIN`, …).
 
+## Infrastructure services (third-party APIs in the dev stack)
+
+> Not VIP-authored endpoints; listed so integrators know what the stack exposes. Dev only, network-restricted, no auth (R-014).
+
+| Service | Endpoint                                            | Purpose                                                      | Auth                                   | Status |
+| ------- | --------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------- | ------ |
+| MLflow  | `http://localhost:45000/` (UI)                      | Model Registry + experiment tracking UI                      | None (dev)                             | infra  |
+| MLflow  | `GET /health`                                       | Liveness (used by the compose healthcheck)                   | None                                   | infra  |
+| MLflow  | `/api/2.0/mlflow/*` (REST)                          | Tracking + Model Registry REST API (used by `mlflow` client) | None (dev); `--allowed-hosts` enforced | infra  |
+| MinIO   | `http://localhost:49001/` (console) · `:49000` (S3) | Object storage (MLflow artifacts, DVC datasets)              | root creds                             | infra  |
+
 ## Planned (not yet implemented)
 
 | Service  | Endpoint (target)                              | Phase | Notes                                 |

@@ -1,0 +1,6 @@
+[core]
+    remote = minio
+    autostage = true
+['remote "minio"']
+    url = s3://vip-datasets
+    endpointurl = http://localhost:49000

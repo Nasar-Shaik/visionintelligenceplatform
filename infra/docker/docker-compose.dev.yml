@@ -82,8 +82,94 @@ services:
       timeout: 5s
       retries: 5
 
+  # ---- MLOps: object-store bucket bootstrap (one-shot) ---------------------
+  # Creates the buckets MLflow and DVC need, then exits. Idempotent.
+  createbuckets:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-vip_dev}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change_me_dev_only}
+      MLFLOW_ARTIFACTS_BUCKET: ${MLFLOW_ARTIFACTS_BUCKET:-mlflow-artifacts}
+      DVC_REMOTE_BUCKET: ${DVC_REMOTE_BUCKET:-vip-datasets}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
+        mc mb --ignore-existing "local/$$MLFLOW_ARTIFACTS_BUCKET" &&
+        mc mb --ignore-existing "local/$$DVC_REMOTE_BUCKET" &&
+        echo "buckets ready: $$MLFLOW_ARTIFACTS_BUCKET, $$DVC_REMOTE_BUCKET"
+    restart: 'no'
+
+  # ---- MLOps: Model Registry backend store — Postgres (docs/architecture/08 §2) ----
+  mlflow-postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${MLFLOW_DB_USER:-mlflow}
+      POSTGRES_PASSWORD: ${MLFLOW_DB_PASSWORD:-change_me_dev_only}
+      POSTGRES_DB: ${MLFLOW_DB_NAME:-mlflow}
+    ports:
+      - '${MLFLOW_DB_PORT:-45432}:5432'
+    volumes:
+      - mlflow_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${MLFLOW_DB_USER:-mlflow} -d ${MLFLOW_DB_NAME:-mlflow}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- MLOps: MLflow tracking + Model Registry (docs/architecture/08 §2) ----
+  # Backend store: Postgres · Artifact store: MinIO (S3), proxied via --serve-artifacts
+  # so clients only need MLFLOW_TRACKING_URI (no direct S3 creds for tracking).
+  mlflow:
+    build:
+      context: ./mlflow
+    restart: unless-stopped
+    depends_on:
+      mlflow-postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      createbuckets:
+        condition: service_completed_successfully
+    ports:
+      - '${MLFLOW_PORT:-45000}:5000'
+    environment:
+      # S3/MinIO for the server-side artifact proxy (container-internal endpoint).
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-vip_dev}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-change_me_dev_only}
+    command:
+      - mlflow
+      - server
+      - --host=0.0.0.0
+      - --port=5000
+      - --backend-store-uri=postgresql+psycopg2://${MLFLOW_DB_USER:-mlflow}:${MLFLOW_DB_PASSWORD:-change_me_dev_only}@mlflow-postgres:5432/${MLFLOW_DB_NAME:-mlflow}
+      - --artifacts-destination=s3://${MLFLOW_ARTIFACTS_BUCKET:-mlflow-artifacts}
+      - --serve-artifacts
+      # DNS-rebinding protection (MLflow 3.x): allow host access + the compose service
+      # name so other stack services can reach it. Dev stack only — never use '*' in prod.
+      - --allowed-hosts=localhost,127.0.0.1,mlflow,mlflow:5000
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
 volumes:
   mongo_data:
   redis_data:
   minio_data:
   nats_data:
+  mlflow_pg_data:

@@ -23,6 +23,25 @@
 
 ---
 
+## Sprint 0004 — Slice 4 (Registry bootstrap, P0-5) · 2026-07-27
+
+| Gate              | Result  | Reason                                                                                                                   |
+| ----------------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Architecture      | ✅ PASS | MLflow+Postgres+MinIO (doc 08 §2) + DVC (§3); no core coupling; import-graph unaffected (infra)                          |
+| Security          | ✅ PASS | No secrets committed (S3/DB creds are env placeholders); DVC creds via config.local; MLflow auth/TLS = prod TODO (R-014) |
+| Performance       | ➖ N/A  | Bootstrap wiring; registry scale/HA validated in P9                                                                      |
+| Testing           | ✅ PASS | 5 stdlib config unit tests + **live end-to-end integration smoke** (run→artifact→register→read-back)                     |
+| Documentation     | ✅ PASS | ai/mlops + ai/datasets READMEs + governance suite + trackers                                                             |
+| Dependency Review | ✅ PASS | mlflow 3.14.0, dvc 3.67.1, dvc-s3 3.3.0, boto3 1.43.56, psycopg2 2.9.12, postgres:17, python:3.12 — registry-verified    |
+| Lint              | ✅ PASS | TS lint clean (no TS change); Python lint deferred (Q-011)                                                               |
+| Formatting        | ✅ PASS | `pnpm format:check` clean                                                                                                |
+| Build             | ✅ PASS | `pnpm build` clean; MLflow image builds                                                                                  |
+| Docker            | ✅ PASS | Full MLOps stack launched healthy (MinIO/Postgres/MLflow/bucket bootstrap); smoke passed; torn down                      |
+| Maintainability   | ✅ PASS | Config in one place (compose/env); stdlib-testable config module                                                         |
+| Extensibility     | ✅ PASS | Registry selectors + model-card/CT hooks documented for P3/P9                                                            |
+
+**Overall: PASS** (Architecture Review ⏳ PENDING — see [docs/review/SPRINT-0004.md](../review/SPRINT-0004.md)).
+
 ## Sprint 0003 — Slice 3 (Identity service, P0-7) + Governance framework · 2026-07-27
 
 | Gate              | Result                  | Reason                                                                                                                                   |

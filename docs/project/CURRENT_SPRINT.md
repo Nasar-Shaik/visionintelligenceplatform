@@ -12,7 +12,8 @@
 | **Slice 1 — Contracts**                  | **P0-2** `packages/contracts` schema-first + codegen + 19 tests                                                                                        | ✅ done 2026-07-27         |
 | **Slice 2 — CI**                         | **P0-3** GitHub Actions: build/test/lint/scan + import-graph + contract-testing                                                                        | ✅ done 2026-07-27         |
 | **Slice 3 — First service**              | **P0-7** `services/identity` Fastify template (/health,/ready,/metrics; no business logic)                                                             | ✅ done 2026-07-27         |
-| **Slice 4 — Registry bootstrap**         | **P0-5** MLflow + DVC skeleton                                                                                                                         | ⏭ next (awaiting approval) |
+| **Slice 4 — Registry bootstrap**         | **P0-5** MLflow + DVC skeleton (validated end-to-end)                                                                                                  | ✅ done 2026-07-27         |
+| **Slice 5 — Secrets**                    | **P0-6** secrets management pattern (Vault vs KMS, Q-006) beyond `.env.example`                                                                        | ⏭ next (awaiting approval) |
 
 ## Rules for this sprint
 
