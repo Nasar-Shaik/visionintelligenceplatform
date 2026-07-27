@@ -168,3 +168,12 @@
 - **Reason:** Repo-owner deployment directive — `cp .env.example .env && docker compose up -d`, no extra infra. Simplicity + prod/self-host parity; zero new deps.
 - **Impact:** New `packages/config`; identity refactored onto it; `.env.example` header + doc 15 §4 reconciled; external managers documented as future-only extension points. Reverses the earlier "Vault/KMS" P0-6 framing.
 - **Owner:** Repo owner + Claude · **Status:** Accepted (supersedes the Vault/KMS assumption) · **Future Review:** Yes (only if an enterprise customer mandates a managed store)
+
+## ED-0019 — Phase 1 re-scoped to an end-to-end vertical ("Core Platform")
+
+- **Date:** 2026-07-27 · **Slice:** Phase 1 planning
+- **Decision:** Define Phase 1 as a thin **camera → alert vertical** (P1-1 Tenant, P1-2 Auth, P1-3 Camera, P1-4 RTSP Ingestion, P1-5 Events, P1-6 AI Inference, P1-7 Rules, P1-8 Alerts), documented under [`docs/architecture/phase1/`](../architecture/phase1/README.md). Enterprise breadth (billing/metering, full entitlements, hash-chained audit, connectors, industry packs, digital twin, analytics) moves to **Phase 3**; the old horizontal "SaaS Foundation" P1 list is superseded.
+- **Alternatives Considered:** Keep the horizontal Phase 1 (all SaaS-foundation services before any perception) — slower to a demonstrable product, integration risk deferred to the end.
+- **Reason:** Owner directive + fastest path to a testable, sellable spine; each slice consumes the previous stage's real output, so integration is proven continuously. **Frozen architecture (01–28) is unchanged — only the delivery order is.**
+- **Impact:** New `PROJECT_ROADMAP` + `phase1/` blueprint; `tracking/TASK-BOARD` Phase 1 list realigned; deferred items relabeled Phase 3. No architecture section edited.
+- **Owner:** Repo owner + Claude · **Status:** Accepted · **Future Review:** No (delivery-plan; revisit at Phase 1 exit)

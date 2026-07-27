@@ -15,6 +15,9 @@ Human-facing program status, backlog, decisions, and timeline. Where `tracking/`
 | [TECH_DEBT.md](TECH_DEBT.md)                             | Debt                                     | → tracking/TECH-DEBT.md              |
 | [PROJECT_TIMELINE.md](PROJECT_TIMELINE.md)               | Milestone timeline                       | → tracking/ROADMAP.md, MILESTONES.md |
 | [DEPENDENCIES.md](DEPENDENCIES.md)                       | Dependency policy + verified versions    | this file                            |
+| [PROJECT_ROADMAP.md](PROJECT_ROADMAP.md)                 | Top-level phase map (0→4)                | this file                            |
+
+> **Phase 1 blueprint:** [`../architecture/phase1/`](../architecture/phase1/README.md) — full pre-implementation architecture (awaiting Architect approval).
 
 ## Governance suite (Architect-mandated · append-only where noted)
 

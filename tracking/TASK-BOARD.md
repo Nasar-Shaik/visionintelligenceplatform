@@ -20,20 +20,25 @@ Format: `- [ ] <id> — <task> · deps: <…> · phase: <Px> · owner: <—>`
 - [x] P0-6 — Secrets & config: `.env`-only secrets (no external manager) + centralized typed fail-fast `@vip/config` (ADR-0018); identity refactored onto it. `[Claude · 2026-07-27]` (Vault/KMS = documented future extension point only)
 - [x] P0-7 — First empty service scaffold (`services/identity`) proving the Fastify service template (transport→application→domain→adapters, /health,/ready,/metrics, tenant-context seam, ApiError envelope, graceful shutdown). `[Claude · 2026-07-27]` (auth/users/data = P1)
 
-## Next (Phase 1 — pull when P0 exits)
+## Next (Phase 1 — Core Platform · camera→alert vertical) — BLUEPRINT UNDER ARCHITECT REVIEW
 
-- [ ] P1-1 — Tenant model + data-layer isolation guard (fail-closed `tenantId`; repo middleware). · deps: P0-7 · phase: P1
-- [ ] P1-2 — Identity service: OIDC/JWT/refresh(reuse-detection)/MFA. · deps: P1-1 · phase: P1
-- [ ] P1-3 — RBAC+ABAC policy module (`packages/permissions`) + scopes. · deps: P1-2 · phase: P1
-- [ ] P1-4 — Org hierarchy (org→region→country→branch→site→building→floor→zone→camera) schema + CRUD. · deps: P1-1 · phase: P1
-- [ ] P1-5 — Entitlements/feature-flags + Redis cache; `<FeatureGate>`. · deps: P1-1 · phase: P1
-- [ ] P1-6 — Hash-chained audit log service. · deps: P1-1 · phase: P1
-- [ ] P1-7 — Billing (Stripe) + usage metering + quotas. · deps: P1-5 · phase: P1
-- [ ] P1-8 — Cross-tenant isolation test suite (must fail-closed on every endpoint). · deps: P1-1 · phase: P1
+> Re-scoped per [ED-0019](../docs/project/ENGINEERING_DECISION_LOG.md); full blueprint in [`docs/architecture/phase1/`](../docs/architecture/phase1/README.md). Pull only after the blueprint is approved. Old horizontal P1 items (RBAC-only module, entitlements, audit, billing) → **Phase 3** (see Later).
+
+- [ ] P1-1 — Tenant foundation + fail-closed isolation guard (`tenant` svc, `@vip/tenancy`). · deps: P0 · [TENANT_ARCHITECTURE](../docs/architecture/phase1/TENANT_ARCHITECTURE.md)
+- [ ] P1-2 — Authentication + authz (OIDC/JWT/refresh, `gateway`, `@vip/permissions`). · deps: P1-1 · [AUTHENTICATION](../docs/architecture/phase1/AUTHENTICATION.md)
+- [ ] P1-3 — Camera registry + org hierarchy (`camera` svc). · deps: P1-1,P1-2 · [CAMERA_ARCHITECTURE](../docs/architecture/phase1/CAMERA_ARCHITECTURE.md)
+- [ ] P1-4 — RTSP ingestion + recording (`media` svc). · deps: P1-3 · [INGESTION_PIPELINE](../docs/architecture/phase1/INGESTION_PIPELINE.md)
+- [ ] P1-6 — AI inference capability (`inference` py, model-agnostic). · deps: P1-4 · [AI_PIPELINE](../docs/architecture/phase1/AI_PIPELINE.md)
+- [ ] P1-5 — Event pipeline (`events` svc, normalize/dedup/persist). · deps: P1-6,P1-1 · [EVENT_PIPELINE](../docs/architecture/phase1/EVENT_PIPELINE.md)
+- [ ] P1-7 — Rule engine (`rules` svc). · deps: P1-5 · [RULE_ENGINE](../docs/architecture/phase1/RULE_ENGINE.md)
+- [ ] P1-8 — Alert engine (`workflow` + `notify`, one channel). · deps: P1-7,P1-4,P1-2 · [ALERT_ENGINE](../docs/architecture/phase1/ALERT_ENGINE.md)
+- Standing gate: **cross-tenant isolation test suite** grows with every data path (P1-1 onward).
 
 ## Later (Phase 2+)
 
 - Seeded from [ROADMAP](ROADMAP.md) as each phase approaches. Do not expand phases far ahead of their dependencies — keep the board honest.
+- **Moved to Phase 3 (Enterprise)** by [ED-0019](../docs/project/ENGINEERING_DECISION_LOG.md): RBAC/ABAC full Policy Engine, entitlements/feature-flags, hash-chained audit, billing/metering/quotas, connector platform, industry packs, digital twin. (Phase 1 keeps the RBAC+scope subset it needs for isolation.)
+- **Phase 2 (Analytics):** read models, dashboards, structured + semantic/NL search, reports. See [PROJECT_ROADMAP](../docs/project/PROJECT_ROADMAP.md).
 - **From the Enterprise Review** (build in their natural phases; architecture is ratified):
   - Composition Layer runtime + registry + reference compositions ([24](../docs/architecture/24-COMPOSITION-FRAMEWORK.md)) → Phase 4/6.
   - Connector Platform runtime + `connector.provider` + first adapters (REST/webhook/MQTT/POS) ([25](../docs/architecture/25-CONNECTOR-PLATFORM.md)) → Phase 8.
