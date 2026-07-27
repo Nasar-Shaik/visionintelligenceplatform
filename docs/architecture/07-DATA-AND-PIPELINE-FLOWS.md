@@ -1,9 +1,11 @@
 # 07 — Data, Video, AI & Event Flows
 
 ## Purpose
+
 Define the end-to-end runtime flows: how a frame becomes a detection, an event, an incident, an alert, and evidence — and how data moves through the planes. This is the "verbs" companion to the "nouns" in [04](04-SYSTEM-OVERVIEW.md) and [05](05-CAPABILITY-ARCHITECTURE.md).
 
 ## Responsibilities
+
 - Specify the primary pipeline and every named sub-flow (video, AI/inference, event, rule, workflow, alert, evidence, incident, API, auth).
 - Define where each stage runs (edge/cloud) and the reliability guarantees.
 
@@ -79,24 +81,30 @@ External clients call `POST/GET /api/v1/*` through the gateway → authN/Z + ten
 Resolved context `{tenantId, roles, permissions, scopes, attributes}` → policy check `resource:action[:scope]` + ABAC attributes (time, camera sensitivity, reason-for-access, jurisdiction) → data-layer applies `tenantId` + scope filter → allow/deny (fail-closed), audited for sensitive actions. → [15](15-SECURITY-ARCHITECTURE.md)
 
 ## Reliability guarantees
+
 - **At-least-once** event delivery; consumers **idempotent** (dedupe keys).
 - **Outbox pattern** for services that write OLTP and emit events (no dual-write races).
 - **Backpressure & graceful degradation**: under load, drop to lower FPS / defer non-critical capabilities before dropping frames for safety-critical ones.
 - **Edge store-and-forward**: during WAN loss, events/evidence buffer locally and reconcile on reconnect with conflict resolution. → [14](14-EDGE-PLATFORM.md)
 
 ## Design decisions
+
 - **Events are the seam** between perception and meaning; nothing downstream depends on how a detection was produced.
 - **Evidence is derived from a ring buffer**, so pre-event context exists without continuous recording.
 
 ## Advantages
+
 - Each flow is independently observable, testable, and scalable.
 - Same flows at edge and cloud; only placement differs.
 
 ## Tradeoffs
+
 - Eventual consistency between planes; mitigated by correlation IDs, idempotency, and the outbox.
 
 ## Future expansion
+
 - Non-video flows (audio/thermal/IoT) enter at "Ingest" as new media capabilities; the rest of the pipeline is unchanged.
 
 ## Cross-references
+
 [05-CAPABILITY-ARCHITECTURE](05-CAPABILITY-ARCHITECTURE.md) · [09-EVENT-PLATFORM](09-EVENT-PLATFORM.md) · [10-RULE-ENGINE](10-RULE-ENGINE.md) · [11-WORKFLOW-ENGINE](11-WORKFLOW-ENGINE.md) · [12-EVIDENCE-MANAGEMENT](12-EVIDENCE-MANAGEMENT.md) · [19-PERFORMANCE-AND-SCALE](19-PERFORMANCE-AND-SCALE.md)

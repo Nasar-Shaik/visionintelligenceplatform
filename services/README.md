@@ -3,6 +3,7 @@
 Node.js/TypeScript services. **No industry/customer logic here** (Law 1). Each service is contract-first, tenant-scoped, observable, and independently deployable.
 
 ## Layout (one folder per service)
+
 ```
 gateway/       API gateway: authN/Z, tenant routing, rate limit        (Presentation)
 identity/      Tenants, users, roles, auth, sessions                    (Control)
@@ -23,6 +24,7 @@ search/        Structured + semantic/NL event search                   (Data)
 ```
 
 ## Conventions
+
 - Internal layout: `transport → application/service → domain → adapters(repos/clients)`. Domain never imports transport.
 - Internal RPC: gRPC (Protobuf from `packages/contracts`). Public: REST/OpenAPI + WS via `gateway`.
 - Mandatory: `/health`, `/ready`, `/metrics`; tenant context on every path; data-layer `tenantId` guard; outbox for event emission.

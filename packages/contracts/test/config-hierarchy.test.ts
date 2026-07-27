@@ -4,7 +4,13 @@ import { resolveEffectiveConfig, type ConfigNode } from '../src/config/hierarchy
 describe('resolveEffectiveConfig', () => {
   it('most-specific level wins (sparse override)', () => {
     const chain: ConfigNode[] = [
-      { level: 'global', nodeId: '*', values: { retentionDays: 7, fps: 10 }, lockedKeys: [], version: 0 },
+      {
+        level: 'global',
+        nodeId: '*',
+        values: { retentionDays: 7, fps: 10 },
+        lockedKeys: [],
+        version: 0,
+      },
       { level: 'tenant', nodeId: 't1', values: { retentionDays: 30 }, lockedKeys: [], version: 0 },
       { level: 'camera', nodeId: 'cam1', values: { fps: 5 }, lockedKeys: [], version: 0 },
     ];
@@ -17,8 +23,20 @@ describe('resolveEffectiveConfig', () => {
 
   it('a locked ancestor key cannot be overridden by descendants', () => {
     const chain: ConfigNode[] = [
-      { level: 'platform', nodeId: '*', values: { minRetentionDays: 30 }, lockedKeys: ['minRetentionDays'], version: 0 },
-      { level: 'camera', nodeId: 'cam1', values: { minRetentionDays: 1 }, lockedKeys: [], version: 0 },
+      {
+        level: 'platform',
+        nodeId: '*',
+        values: { minRetentionDays: 30 },
+        lockedKeys: ['minRetentionDays'],
+        version: 0,
+      },
+      {
+        level: 'camera',
+        nodeId: 'cam1',
+        values: { minRetentionDays: 1 },
+        lockedKeys: [],
+        version: 0,
+      },
     ];
     const eff = resolveEffectiveConfig(chain);
     expect(eff.minRetentionDays.value).toBe(30);

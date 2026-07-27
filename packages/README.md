@@ -3,6 +3,7 @@
 Cross-cutting libraries shared by services, edge, web, and mobile. **No industry logic** (Law 1).
 
 ## Layout
+
 ```
 contracts/     THE source of integration truth: schemas (Zod→JSON Schema/OpenAPI), Protobuf,
                event catalog, capability descriptors, plugin manifests. Types are GENERATED from here.
@@ -15,6 +16,7 @@ config/ i18n/ utils/ mobile-core/   Shared config, localization, utilities, mobi
 ```
 
 ## Rules
+
 - `contracts/` has **no runtime dependencies** so anything can depend on it. Contracts are versioned (semver); breaking change → major + ADR.
 - Never hand-maintain a type that can be generated from a contract.
 

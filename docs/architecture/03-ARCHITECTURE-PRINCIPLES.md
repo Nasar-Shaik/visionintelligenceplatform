@@ -1,9 +1,11 @@
 # 03 — Architecture & Engineering Principles
 
 ## Purpose
+
 Turn the Constitution's Five Laws into concrete, testable principles and engineering standards that guide day-to-day decisions and code review.
 
 ## Responsibilities
+
 - Define the 15 platform principles and what each forbids/requires.
 - Define the engineering standards (code, contracts, testing, review) every contributor follows.
 
@@ -32,55 +34,68 @@ Turn the Constitution's Five Laws into concrete, testable principles and enginee
 ## Part B — Engineering standards
 
 ### Contracts
+
 - Contracts (schemas, API specs, event definitions) live in `packages/contracts`, are the **single source of integration truth**, and are authored before code.
 - Schema-first: define with a schema language (Zod → JSON Schema / OpenAPI 3.1 for HTTP; Protobuf for gRPC and edge↔cloud; JSON Schema for events). Types are **generated**, never hand-maintained in two places.
 - Semantic versioning; additive-only within a major; breaking changes need an ADR + deprecation window.
 
 ### Services
+
 - 12-factor: config from environment, no config in code, stateless request handling, backing services attached by URL/credential.
 - Layered internally: `transport → application/service → domain → adapters(repositories/clients)`. Domain logic never imports transport.
 - Idempotency keys on all mutating public endpoints; retries assume at-least-once delivery everywhere.
 - Every service exposes `/health` (liveness), `/ready` (readiness), and `/metrics`.
 
 ### Data
+
 - Mandatory `tenantId` on every record; compound indexes lead with `tenantId`. Access without tenant context throws.
 - Separate **hot/OLTP**, **analytics/read-model**, **time-series**, **object**, **search/vector** stores by workload. → [18](18-DATA-ARCHITECTURE.md)
 - High-volume ephemeral data (raw detections) is TTL'd; only aggregates/events persist long-term.
 
 ### Testing (travels with code — see [tests/](../../tests/))
+
 - **Unit** for logic; **contract** tests for every published contract; **integration** with real backing services (Testcontainers); **isolation** tests proving cross-tenant access fails; **E2E** for critical journeys; **load/stress** to target camera counts; **model validation** gates (precision/recall, FP/FN) for AI capabilities.
 - A capability is not "done" without a contract test and an isolation test on any new data path.
 
 ### Code review gates (CI-enforced where possible)
+
 - Import graph respects §6 of the Constitution (no core→plugin, no capability↔capability internals).
 - No secrets, no PII in logs, no hardcoded tenant/customer/model constants.
 - Observability present on new paths; docs & tracking updated.
 
 ### Contract testing ([ADR-0015](../adr/ADR-0015-contract-testing-and-plugin-certification.md))
+
 Every contract type is **verified automatically in CI**; a change that breaks a published contract fails the build. Contract types covered:
+
 - **API contracts** (OpenAPI/gRPC), **capability contracts** (descriptor + I/O), **event contracts** (envelope + catalog schemas), **connector contracts** ([25](25-CONNECTOR-PLATFORM.md)), **plugin contracts** (manifest + extension points), **workflow contracts**, **rule contracts** (DSL schema), **configuration contracts** (config schemas), and **model-adapter contracts** ([08](08-AI-ML-PLATFORM.md)).
 - **Consumer-driven** where a contract has known consumers (Pact-style); **schema/compat** checks otherwise (additive-only within a major).
 - **Every plugin must pass contract validation before loading** — the loader refuses non-conforming plugins ([20](20-EXTENSIBILITY.md)). This is the gate that keeps a large plugin ecosystem safe.
 
 ### Naming & vocabulary
+
 - Use the canonical terms from [reference/GLOSSARY](../reference/GLOSSARY.md) everywhere (code, docs, events, APIs). One concept, one name.
 
 ---
 
 ## Design decisions
+
 - **Principles are enforced, not aspirational**: import-graph linting, contract tests, and isolation tests make violations fail CI rather than depend on reviewer memory.
 - **Schema-first + generated types** eliminates drift between services, SDKs, and docs.
 
 ## Advantages
+
 - New contributors and agents inherit a consistent system; review is about correctness, not style debates.
 - Enforcement in CI keeps the architecture intact as the team scales.
 
 ## Tradeoffs
+
 - Strict standards slow the very first commits (scaffolding contracts, DI, tests) but eliminate the compounding cost of divergence — the correct trade for a decade-long platform.
 
 ## Future expansion
+
 - Additional generated targets (Python/Go/mobile SDKs) from the same contracts.
 - Policy-as-code checks (OPA) for architectural and security invariants in CI.
 
 ## Cross-references
+
 [00-ENGINEERING-CONSTITUTION](../00-ENGINEERING-CONSTITUTION.md) · [20-EXTENSIBILITY](20-EXTENSIBILITY.md) · [21-API-ARCHITECTURE](21-API-ARCHITECTURE.md)

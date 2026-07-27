@@ -1,9 +1,11 @@
 # 04 — System Overview
 
 ## Purpose
+
 Provide the logical, physical, component and deployment views of the platform, and define how services communicate. This is the map that ties every other section together.
 
 ## Responsibilities
+
 - Describe the planes (edge, control, data, AI, presentation) and their boundaries.
 - Define inter-service communication patterns (sync, async, streaming).
 - Present deployment topologies (cloud, on-prem, hybrid, edge) as one architecture with different placements.
@@ -51,27 +53,27 @@ Provide the logical, physical, component and deployment views of the platform, a
 
 ## 3. Component view (representative services)
 
-| Plane | Service (dir) | Responsibility |
-|---|---|---|
-| Control | `services/identity` | Tenants, users, roles, auth, sessions |
-| Control | `services/entitlements` | Plans, feature flags, quotas, metering |
-| Control | `services/inventory` | Org→…→camera/device hierarchy, zones |
-| Control | `services/registry` | Model & dataset registry, plugin registry |
-| Control | `services/fleet` | Edge provisioning, health, OTA, config sync |
-| Control | `services/billing` | Subscriptions, invoices, usage rollups |
-| Data | `services/media` | Ingest, transcode, HLS/WebRTC, recording |
-| Data | `services/pipeline` | Frame extraction, capability orchestration |
-| Data | `services/events` | Event Platform (ingest, correlate, dedup, store, replay) |
-| Data | `services/rules` | Rule Engine evaluation |
-| Data | `services/workflow` | Incident/case/escalation orchestration |
-| Data | `services/evidence` | Clips, snapshots, timelines, export, retention |
-| Data | `services/notify` | Multi-channel notification + escalation delivery |
-| Data | `services/analytics` | Aggregation, read models, reports |
-| Data | `services/search` | Structured + semantic/NL event search |
-| AI | `ai/inference` | Model-agnostic inference runtime + workers |
-| AI | `ai/mlops` | Training, eval, registry integration, monitoring |
-| Edge | `edge/agent` | Local runtime, sync, offline, OTA client |
-| Presentation | `services/gateway` | API gateway, authN/Z, tenant routing, rate limit |
+| Plane        | Service (dir)           | Responsibility                                           |
+| ------------ | ----------------------- | -------------------------------------------------------- |
+| Control      | `services/identity`     | Tenants, users, roles, auth, sessions                    |
+| Control      | `services/entitlements` | Plans, feature flags, quotas, metering                   |
+| Control      | `services/inventory`    | Org→…→camera/device hierarchy, zones                     |
+| Control      | `services/registry`     | Model & dataset registry, plugin registry                |
+| Control      | `services/fleet`        | Edge provisioning, health, OTA, config sync              |
+| Control      | `services/billing`      | Subscriptions, invoices, usage rollups                   |
+| Data         | `services/media`        | Ingest, transcode, HLS/WebRTC, recording                 |
+| Data         | `services/pipeline`     | Frame extraction, capability orchestration               |
+| Data         | `services/events`       | Event Platform (ingest, correlate, dedup, store, replay) |
+| Data         | `services/rules`        | Rule Engine evaluation                                   |
+| Data         | `services/workflow`     | Incident/case/escalation orchestration                   |
+| Data         | `services/evidence`     | Clips, snapshots, timelines, export, retention           |
+| Data         | `services/notify`       | Multi-channel notification + escalation delivery         |
+| Data         | `services/analytics`    | Aggregation, read models, reports                        |
+| Data         | `services/search`       | Structured + semantic/NL event search                    |
+| AI           | `ai/inference`          | Model-agnostic inference runtime + workers               |
+| AI           | `ai/mlops`              | Training, eval, registry integration, monitoring         |
+| Edge         | `edge/agent`            | Local runtime, sync, offline, OTA client                 |
+| Presentation | `services/gateway`      | API gateway, authN/Z, tenant routing, rate limit         |
 
 Services are logical; several may co-deploy in small footprints and split out at scale. Boundaries are defined by **contracts**, so splitting/merging is a deployment choice, not a rewrite.
 
@@ -85,30 +87,35 @@ Services are logical; several may co-deploy in small footprints and split out at
 
 ## 5. Deployment topologies (one architecture, four placements)
 
-| Mode | Placement | Notes |
-|---|---|---|
-| **Cloud** | All planes in cloud; camera streams relayed to cloud GPU workers | Simplest; higher bandwidth/cloud-GPU cost |
-| **Edge-first hybrid (default)** | Ingestion + real-time inference + rules at edge; control/heavy/batch/analytics in cloud | Best cost/latency/privacy |
-| **On-prem** | All planes on customer infrastructure; optional air-gapped license server | Regulated/data-residency customers |
-| **Edge-only / offline** | Edge box runs full pipeline autonomously; syncs opportunistically | Remote sites, WAN-poor, privacy-max |
+| Mode                            | Placement                                                                               | Notes                                     |
+| ------------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------- |
+| **Cloud**                       | All planes in cloud; camera streams relayed to cloud GPU workers                        | Simplest; higher bandwidth/cloud-GPU cost |
+| **Edge-first hybrid (default)** | Ingestion + real-time inference + rules at edge; control/heavy/batch/analytics in cloud | Best cost/latency/privacy                 |
+| **On-prem**                     | All planes on customer infrastructure; optional air-gapped license server               | Regulated/data-residency customers        |
+| **Edge-only / offline**         | Edge box runs full pipeline autonomously; syncs opportunistically                       | Remote sites, WAN-poor, privacy-max       |
 
 Deployment mode changes **configuration and capability placement**, not code. → [14](14-EDGE-PLATFORM.md), [17](17-DEVOPS-AND-INFRA.md)
 
 ## Design decisions
+
 - **Plane separation** keeps control-plane availability independent of data-plane load and lets regions own their data.
 - **Contracts as boundaries** make the split between services a deployment/scale decision, avoiding premature microservice sprawl while preserving the option.
 - **Events as the default coupling** is what enables extensibility without redesign.
 
 ## Advantages
+
 - Independent scaling and failure isolation per plane/service.
 - Same mental model at every deployment size; footprint scales by co-deploying or splitting services.
 
 ## Tradeoffs
+
 - Distributed system complexity (eventual consistency, idempotency, tracing). Mitigated by the outbox pattern, correlation IDs, and mandatory observability.
 
 ## Future expansion
+
 - Additional planes/services (e.g., a dedicated "sensor-fusion" service) slot in behind contracts.
 - Multi-region active-active control plane; regional search federation.
 
 ## Cross-references
+
 [05-CAPABILITY-ARCHITECTURE](05-CAPABILITY-ARCHITECTURE.md) · [07-DATA-AND-PIPELINE-FLOWS](07-DATA-AND-PIPELINE-FLOWS.md) · [14-EDGE-PLATFORM](14-EDGE-PLATFORM.md) · [17-DEVOPS-AND-INFRA](17-DEVOPS-AND-INFRA.md)

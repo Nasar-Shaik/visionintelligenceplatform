@@ -1,9 +1,11 @@
 # 06 — Multi-Tenant SaaS Architecture
 
 ## Purpose
+
 Define the tenancy model, the organizational hierarchy, isolation strategy, subscription/entitlement system, billing/metering, and configuration — the SaaS backbone every capability hangs off. Operationalizes Law 5 (secure & isolated by default).
 
 ## Responsibilities
+
 - Own the tenant hierarchy and its scoping semantics.
 - Enforce tenant isolation at the data, storage, stream, and compute layers.
 - Resolve entitlements (plans, packs, feature flags, quotas) and meter usage.
@@ -37,6 +39,7 @@ Three isolation **modes**, one schema:
 3. **Edge-local** — each edge box is bound to exactly one tenant; local data encrypted; syncs only to that tenant's cloud space.
 
 **Isolation is enforced at every layer, not just the app:**
+
 - **Context**: an authenticated request resolves `{tenantId, scopes, roles, permissions}` into request-scoped context (`AsyncLocalStorage` / gRPC metadata / event headers) that propagates across every hop.
 - **Data**: repository guard auto-applies `tenantId`; a query without it is a hard error (fail-closed).
 - **Storage**: object keys prefixed per tenant (`{tenantId}/{cameraId}/{eventId}`), short-lived signed URLs, per-tenant **KMS data keys** (envelope encryption) for clips/PII.
@@ -71,6 +74,7 @@ Cross-tenant access is validated **negatively**: automated tests attempt cross-t
 Configuration is a **hierarchical inheritance chain** ([ADR-0014](../adr/ADR-0014-configuration-hierarchy.md)). No config in code (12-factor); every effective value is traceable, versioned, and rollback-able.
 
 **Inheritance chain (parent → child):**
+
 ```
 Global → Platform → Tenant → Organization → Region → Country → Branch → Site →
 Building → Floor → Zone → Camera → Capability → Model → Rule → Workflow
@@ -88,23 +92,28 @@ This chain governs not just tenancy settings but **capability parameters, model-
 - **Custom domains**: `cctv.customer.com` with automated DNS verification + ACME TLS; per-tenant routing at the gateway.
 
 ## Design decisions
+
 - **Pooled-by-default, siloed-when-required** balances cost efficiency with the hard isolation regulated buyers demand — one schema serves both. See [ADR-0003](../adr/ADR-0003-tenant-isolation-strategy.md).
 - **Isolation at the data layer, not by convention** makes leaks structurally hard rather than reviewer-dependent.
 - **Entitlements resolve capabilities** so the same capability catalog is monetized flexibly without code changes.
 
 ## Advantages
+
 - Cost-efficient multi-tenancy with an enterprise/regulated upgrade path.
 - Fine-grained scoping supports very large orgs (least-privilege at zone/camera level).
 - Metering/billing driven by the same event backbone as everything else.
 
 ## Tradeoffs
+
 - Deep hierarchy + ABAC adds authorization complexity; mitigated by a central policy module (`packages/permissions`) reused everywhere and covered by an RBAC/ABAC test matrix.
 - Siloed mode raises per-tenant operational cost; reserved for plans that justify it.
 
 ## Future expansion
+
 - Tenant-defined custom roles/permission bundles UI.
 - Delegated administration for partners/OEMs managing many sub-tenants.
 - Data-residency-aware global routing and per-region key custody.
 
 ## Cross-references
+
 [15-SECURITY-ARCHITECTURE](15-SECURITY-ARCHITECTURE.md) · [18-DATA-ARCHITECTURE](18-DATA-ARCHITECTURE.md) · [05-CAPABILITY-ARCHITECTURE](05-CAPABILITY-ARCHITECTURE.md) · [13-INDUSTRY-PACKS](13-INDUSTRY-PACKS.md)

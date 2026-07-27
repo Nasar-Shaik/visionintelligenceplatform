@@ -11,25 +11,25 @@ You are one of many contributors. You will start with **no memory** of prior wor
 
 Any assistant (Claude Code, Codex, ChatGPT, Gemini, Kimi, or a future system) can acquire full context from these fixed locations — no conversation history required:
 
-| You need… | Read |
-|---|---|
-| **Architecture** (the whole system) | [`docs/`](../docs/) → [`00-ENGINEERING-CONSTITUTION`](../docs/00-ENGINEERING-CONSTITUTION.md), sections 01–26 |
-| **Current status** (where are we) | [`PROGRESS.md`](PROGRESS.md) |
-| **Coding standards** | [`docs/architecture/03-ARCHITECTURE-PRINCIPLES`](../docs/architecture/03-ARCHITECTURE-PRINCIPLES.md) + [`../CONTRIBUTING.md`](../CONTRIBUTING.md) |
-| **Roadmap** | [`ROADMAP.md`](ROADMAP.md) |
-| **Pending work** | [`TASK-BOARD.md`](TASK-BOARD.md) |
-| **Completed work** | [`PROGRESS.md`](PROGRESS.md) + `TASK-BOARD.md` → Done |
-| **Design decisions** (why) | [`docs/adr/`](../docs/adr/) |
-| **Technical debt** | [`TECH-DEBT.md`](TECH-DEBT.md) |
-| **Next priorities** | [`TASK-BOARD.md`](TASK-BOARD.md) → Now |
-| **Domain/service ownership** | [`docs/architecture/22-BOUNDED-CONTEXTS`](../docs/architecture/22-BOUNDED-CONTEXTS.md), [`23-SERVICE-OWNERSHIP`](../docs/architecture/23-SERVICE-OWNERSHIP.md) |
-| **Control vs Data plane** | [`docs/architecture/27-CONTROL-DATA-PLANE`](../docs/architecture/27-CONTROL-DATA-PLANE.md) |
-| **Governance / policy** (who/what/where/when) | [`docs/architecture/28-POLICY-ENGINE`](../docs/architecture/28-POLICY-ENGINE.md) |
-| **Freeze status & Go/No-Go** | [`docs/ARCHITECTURE-READINESS-REVIEW`](../docs/ARCHITECTURE-READINESS-REVIEW.md) |
+| You need…                                     | Read                                                                                                                                                           |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Architecture** (the whole system)           | [`docs/`](../docs/) → [`00-ENGINEERING-CONSTITUTION`](../docs/00-ENGINEERING-CONSTITUTION.md), sections 01–26                                                  |
+| **Current status** (where are we)             | [`PROGRESS.md`](PROGRESS.md)                                                                                                                                   |
+| **Coding standards**                          | [`docs/architecture/03-ARCHITECTURE-PRINCIPLES`](../docs/architecture/03-ARCHITECTURE-PRINCIPLES.md) + [`../CONTRIBUTING.md`](../CONTRIBUTING.md)              |
+| **Roadmap**                                   | [`ROADMAP.md`](ROADMAP.md)                                                                                                                                     |
+| **Pending work**                              | [`TASK-BOARD.md`](TASK-BOARD.md)                                                                                                                               |
+| **Completed work**                            | [`PROGRESS.md`](PROGRESS.md) + `TASK-BOARD.md` → Done                                                                                                          |
+| **Design decisions** (why)                    | [`docs/adr/`](../docs/adr/)                                                                                                                                    |
+| **Technical debt**                            | [`TECH-DEBT.md`](TECH-DEBT.md)                                                                                                                                 |
+| **Next priorities**                           | [`TASK-BOARD.md`](TASK-BOARD.md) → Now                                                                                                                         |
+| **Domain/service ownership**                  | [`docs/architecture/22-BOUNDED-CONTEXTS`](../docs/architecture/22-BOUNDED-CONTEXTS.md), [`23-SERVICE-OWNERSHIP`](../docs/architecture/23-SERVICE-OWNERSHIP.md) |
+| **Control vs Data plane**                     | [`docs/architecture/27-CONTROL-DATA-PLANE`](../docs/architecture/27-CONTROL-DATA-PLANE.md)                                                                     |
+| **Governance / policy** (who/what/where/when) | [`docs/architecture/28-POLICY-ENGINE`](../docs/architecture/28-POLICY-ENGINE.md)                                                                               |
+| **Freeze status & Go/No-Go**                  | [`docs/ARCHITECTURE-READINESS-REVIEW`](../docs/ARCHITECTURE-READINESS-REVIEW.md)                                                                               |
 
 If any of these is stale or contradicts the code, fixing it is part of your task — the docs must never lie.
 
-> **Architecture is FROZEN at v1.0 (2026-07-27).** Sections 01–28 + ADRs 0001–0015 are the baseline. You may implement freely against it, but any change to the *architecture itself* requires a new ADR ([`docs/adr/`](../docs/adr/)) before code — never edit a frozen decision silently.
+> **Architecture is FROZEN at v1.0 (2026-07-27).** Sections 01–28 + ADRs 0001–0015 are the baseline. You may implement freely against it, but any change to the _architecture itself_ requires a new ADR ([`docs/adr/`](../docs/adr/)) before code — never edit a frozen decision silently.
 
 ## 1. Read-in sequence (do this every time you start)
 
@@ -83,6 +83,7 @@ You are not done until the record is updated:
 ## 6. When you are blocked or the spec is ambiguous
 
 Do **not** invent a customer workflow to unblock yourself. Instead:
+
 1. Record the ambiguity as a task in TASK-BOARD.md under **Needs-Decision**, with the options and a recommendation.
 2. If it changes architecture, draft an ADR in `Proposed` status.
 3. Pick the next unblocked task and continue.

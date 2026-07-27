@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { EVENT_CATALOG, EventCatalogEntry, isKnownEventType, lookupEvent } from '../src/events/catalog.js';
+import {
+  EVENT_CATALOG,
+  EventCatalogEntry,
+  isKnownEventType,
+  lookupEvent,
+} from '../src/events/catalog.js';
 import { apiEnvelope } from '../src/common/api-envelope.js';
 
 describe('event catalog', () => {
@@ -33,7 +38,9 @@ describe('apiEnvelope', () => {
   });
 
   it('accepts an error envelope', () => {
-    expect(() => Env.parse({ success: false, error: { code: 'not_found', message: 'nope' } })).not.toThrow();
+    expect(() =>
+      Env.parse({ success: false, error: { code: 'not_found', message: 'nope' } }),
+    ).not.toThrow();
   });
 
   it('rejects a success envelope missing data', () => {

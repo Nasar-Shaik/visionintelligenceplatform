@@ -3,9 +3,11 @@
 > **This is the core idea of the platform.** Read it carefully. Everything else composes from it.
 
 ## Purpose
-Define the **reusable building block** — the *capability* — its contract, lifecycle, registry, and how capabilities compose into solutions without bespoke code. This section operationalizes Law 2 (Everything is a composable capability).
+
+Define the **reusable building block** — the _capability_ — its contract, lifecycle, registry, and how capabilities compose into solutions without bespoke code. This section operationalizes Law 2 (Everything is a composable capability).
 
 ## Responsibilities
+
 - Define what a capability is and the uniform contract every capability satisfies.
 - Define the capability catalog, registry, orchestration, and placement (edge/cloud).
 - Show how capabilities compose via events into solutions, and how new capabilities are added.
@@ -17,6 +19,7 @@ Define the **reusable building block** — the *capability* — its contract, li
 A **capability** is a self-describing, independently deployable unit of functionality with a versioned contract. It consumes typed inputs (frames, tracks, events, or other capability outputs) and produces typed outputs (detections, tracks, events, artifacts) **without knowing its consumers** and **without embedding any customer/industry logic**.
 
 Capabilities fall into families:
+
 - **Media capabilities**: ingestion, streaming, recording, frame extraction.
 - **Perception capabilities**: object/person/vehicle detection, tracking, re-ID, pose, face recognition, OCR/LPR, fire/smoke, audio analytics, scene classification.
 - **Spatial/temporal capabilities**: zone detection, line crossing, speed, queue, object-left/removed, heatmaps, trajectory, occupancy.
@@ -55,17 +58,18 @@ capability:
 ```typescript
 interface Capability<In, Out, Params> {
   descriptor: CapabilityDescriptor;
-  init(ctx: CapabilityContext, params: Params): Promise<void>;   // load model via registry, warm up
-  process(input: In, ctx: RequestContext): Promise<Out>;         // pure w.r.t. business logic
+  init(ctx: CapabilityContext, params: Params): Promise<void>; // load model via registry, warm up
+  process(input: In, ctx: RequestContext): Promise<Out>; // pure w.r.t. business logic
   health(): HealthStatus;
   dispose(): Promise<void>;
 }
 ```
 
 **Rules the contract enforces:**
+
 - **Model-agnostic**: a capability references a model by a **registry selector** (task/family/version range), never a hardcoded file or vendor. The runtime binds the concrete model. → [08](08-AI-ML-PLATFORM.md)
 - **Consumer-agnostic**: outputs go to the event backbone / typed channels; the capability never names who consumes them.
-- **Placement-agnostic**: the same implementation runs at edge or cloud; `placement` lists where it *may* run, the scheduler decides where it *does*.
+- **Placement-agnostic**: the same implementation runs at edge or cloud; `placement` lists where it _may_ run, the scheduler decides where it _does_.
 - **No industry logic**: parameters are generic (thresholds, classes, zones); "this is a shoplifting detector" is expressed by a **rule**, not by the capability.
 
 ## 3. Capability Registry (runtime, self-registering)
@@ -73,6 +77,7 @@ interface Capability<In, Out, Params> {
 The **Capability Registry** (`services/registry`) is the runtime source of truth for capabilities: every capability (and composition and connector) **self-registers at startup** and is discoverable by `id` + compatible version.
 
 **Stored per capability (the registry record):**
+
 ```
 name · version · owner · description
 input_types · output_types · dependencies (capability graph)
@@ -83,6 +88,7 @@ lifecycle_state: experimental | stable | deprecated
 ```
 
 The registry supports:
+
 - **Discovery** — consumers/pipeline find capabilities by id/type/version.
 - **Dependency resolution** — the capability dependency graph ([§4a](#4a-capability-dependency-graph)) is resolved from `dependencies`; cycles are rejected.
 - **Scheduling** — `required_gpu/cpu/memory/latency` + `placement` feed the Execution Scheduler ([§4b](#4b-execution-scheduler)).
@@ -90,6 +96,7 @@ The registry supports:
 - **Version compatibility** — consumers bind to compatible descriptor versions; the loader refuses incompatible ones.
 
 Additional rules:
+
 - **Entitlement-gated:** which capabilities a tenant may enable is resolved from their plan/packs ([06](06-MULTI-TENANT-SAAS.md)); a capability disabled by entitlement is invisible to that tenant.
 - **Lifecycle states** gate exposure: `experimental` (behind a flag), `stable` (GA), `deprecated` (warned, scheduled for removal).
 - **Plugins self-register new capabilities** (subject to a trust tier + certification, [20](20-EXTENSIBILITY.md)) without any core change; registration requires passing contract validation ([03](03-ARCHITECTURE-PRINCIPLES.md)).
@@ -128,7 +135,7 @@ person-detection ─▶ attribute(PPE) ─▶ safety (ppe-missing)
 face-detection ─▶ face-recognition ; vehicle-detection ─▶ lpr
 ```
 
-Rules the graph enforces: a capability declares the capability **outputs** it consumes (never another capability's internals); depth/placement flow from the graph; and the same graph feeds the **Composition Layer** ([24](24-COMPOSITION-FRAMEWORK.md)), where e.g. *Queue Analytics = tracking + zone* and *People Counting = tracking + line-crossing*. The full capability↔composition dependency table lives in [24 §3](24-COMPOSITION-FRAMEWORK.md).
+Rules the graph enforces: a capability declares the capability **outputs** it consumes (never another capability's internals); depth/placement flow from the graph; and the same graph feeds the **Composition Layer** ([24](24-COMPOSITION-FRAMEWORK.md)), where e.g. _Queue Analytics = tracking + zone_ and _People Counting = tracking + line-crossing_. The full capability↔composition dependency table lives in [24 §3](24-COMPOSITION-FRAMEWORK.md).
 
 ### 4b. Execution Scheduler
 
@@ -153,7 +160,7 @@ Composition happens in **declarative layers above capabilities**, never in capab
 An **Industry Pack** bundles rule/workflow/dashboard/report templates for a vertical. → [13](13-INDUSTRY-PACKS.md)
 
 > **Worked example — "PPE compliance for a construction site" uses zero new code:**
-> capabilities `person-detection` + `ppe-attribute` + `zone-detection` already exist → event `attribute.ppe.missing` in `zone=hazard` → rule *IF ppe.missing in hazard-zone THEN incident(medium)* → workflow *notify safety officer, require acknowledgment, export clip* → the **Construction Pack** ships that rule/workflow/report as a template. The exact same capabilities serve a hospital hygiene-compliance solution with a different rule + pack.
+> capabilities `person-detection` + `ppe-attribute` + `zone-detection` already exist → event `attribute.ppe.missing` in `zone=hazard` → rule _IF ppe.missing in hazard-zone THEN incident(medium)_ → workflow _notify safety officer, require acknowledgment, export clip_ → the **Construction Pack** ships that rule/workflow/report as a template. The exact same capabilities serve a hospital hygiene-compliance solution with a different rule + pack.
 
 ## 6. Adding a new capability (the extension flow)
 
@@ -165,23 +172,28 @@ An **Industry Pack** bundles rule/workflow/dashboard/report templates for a vert
 6. It is now discoverable and composable by rules/workflows/plugins — **no consumer changes required.**
 
 ## Design decisions
+
 - **Uniform contract for all capabilities** (perception and platform alike) means the orchestrator, registry, entitlements, and observability treat everything the same way — one mental model.
 - **Model reference by selector** decouples capability lifecycle from model lifecycle; models can be retrained/canaried/rolled back without touching capabilities.
 - **DAG generated from descriptors** removes per-camera bespoke pipeline code — the biggest source of vertical lock-in in naive designs.
 
 ## Advantages
+
 - New features and verticals are compositions → the product compounds instead of accreting code.
 - Capabilities are independently testable, deployable, scalable, and swappable (e.g., replace a YOLO detector with a DETR one behind the same contract).
 - Edge/cloud parity for free, because placement is a scheduler decision over identical implementations.
 
 ## Tradeoffs
+
 - Requires disciplined contract design and a real registry/orchestrator up front (vs. a hardcoded pipeline). This is the deliberate cost of Law 2; it is repaid every time a new vertical costs a plugin instead of a fork.
 - The DAG orchestrator and scheduler are non-trivial components requiring careful performance work.
 
 ## Future expansion
+
 - New sensor modalities (audio/thermal/radar/LiDAR/IoT) are just new media/perception capabilities behind the same contract.
 - Partner-published capabilities via the marketplace and plugin trust tiers.
 - Auto-composition: suggest capability graphs from a stated goal (higher-order tooling), still emitting only rules/workflows.
 
 ## Cross-references
+
 [00-ENGINEERING-CONSTITUTION](../00-ENGINEERING-CONSTITUTION.md) · [08-AI-ML-PLATFORM](08-AI-ML-PLATFORM.md) · [09-EVENT-PLATFORM](09-EVENT-PLATFORM.md) · [13-INDUSTRY-PACKS](13-INDUSTRY-PACKS.md) · [20-EXTENSIBILITY](20-EXTENSIBILITY.md) · [reference/AI-CAPABILITY-CATALOG](../reference/AI-CAPABILITY-CATALOG.md)

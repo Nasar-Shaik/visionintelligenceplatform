@@ -30,26 +30,118 @@ export type EventCatalogEntry = z.infer<typeof EventCatalogEntry>;
  */
 export const EVENT_CATALOG: EventCatalogEntry[] = [
   // device / lifecycle
-  { type: 'device.camera.offline', description: 'A camera stopped reporting/heartbeat.', defaultPriority: 'high', pii: 'none' },
-  { type: 'device.camera.online', description: 'A camera resumed reporting.', defaultPriority: 'low', pii: 'none' },
+  {
+    type: 'device.camera.offline',
+    description: 'A camera stopped reporting/heartbeat.',
+    defaultPriority: 'high',
+    pii: 'none',
+  },
+  {
+    type: 'device.camera.online',
+    description: 'A camera resumed reporting.',
+    defaultPriority: 'low',
+    pii: 'none',
+  },
   // perception
-  { type: 'perception.person.detected', description: 'A person was detected in a frame.', producer: 'perception.person-detection', defaultPriority: 'info', pii: 'low' },
-  { type: 'perception.vehicle.detected', description: 'A vehicle was detected.', producer: 'perception.vehicle-detection', defaultPriority: 'info', pii: 'low' },
-  { type: 'perception.fire.detected', description: 'Fire/flame detected (safety-critical).', producer: 'perception.fire-smoke', defaultPriority: 'critical', pii: 'none' },
-  { type: 'perception.smoke.detected', description: 'Smoke detected (safety-critical).', producer: 'perception.fire-smoke', defaultPriority: 'critical', pii: 'none' },
-  { type: 'recognition.plate.read', description: 'A license/number plate was read.', producer: 'perception.lpr', defaultPriority: 'info', pii: 'high' },
-  { type: 'recognition.face.matched', description: 'A face matched an enrolled identity (policy-gated).', producer: 'perception.face-recognition', defaultPriority: 'medium', pii: 'high' },
+  {
+    type: 'perception.person.detected',
+    description: 'A person was detected in a frame.',
+    producer: 'perception.person-detection',
+    defaultPriority: 'info',
+    pii: 'low',
+  },
+  {
+    type: 'perception.vehicle.detected',
+    description: 'A vehicle was detected.',
+    producer: 'perception.vehicle-detection',
+    defaultPriority: 'info',
+    pii: 'low',
+  },
+  {
+    type: 'perception.fire.detected',
+    description: 'Fire/flame detected (safety-critical).',
+    producer: 'perception.fire-smoke',
+    defaultPriority: 'critical',
+    pii: 'none',
+  },
+  {
+    type: 'perception.smoke.detected',
+    description: 'Smoke detected (safety-critical).',
+    producer: 'perception.fire-smoke',
+    defaultPriority: 'critical',
+    pii: 'none',
+  },
+  {
+    type: 'recognition.plate.read',
+    description: 'A license/number plate was read.',
+    producer: 'perception.lpr',
+    defaultPriority: 'info',
+    pii: 'high',
+  },
+  {
+    type: 'recognition.face.matched',
+    description: 'A face matched an enrolled identity (policy-gated).',
+    producer: 'perception.face-recognition',
+    defaultPriority: 'medium',
+    pii: 'high',
+  },
   // spatial / temporal
-  { type: 'spatial.zone.entered', description: 'A tracked subject entered a zone.', producer: 'spatial.zone-detection', defaultPriority: 'info', pii: 'low' },
-  { type: 'spatial.zone.exited', description: 'A tracked subject exited a zone.', producer: 'spatial.zone-detection', defaultPriority: 'info', pii: 'low' },
-  { type: 'spatial.line.crossed', description: 'A tracked subject crossed a line (with direction).', producer: 'spatial.line-crossing', defaultPriority: 'info', pii: 'low' },
-  { type: 'temporal.dwell.exceeded', description: 'A subject dwelled in a zone beyond a threshold.', defaultPriority: 'low', pii: 'low' },
-  { type: 'object.left-behind', description: 'A static object was left behind by an absent owner.', producer: 'object.left-behind', defaultPriority: 'medium', pii: 'none' },
-  { type: 'object.removed', description: 'A monitored object was removed.', producer: 'object.removed', defaultPriority: 'medium', pii: 'none' },
+  {
+    type: 'spatial.zone.entered',
+    description: 'A tracked subject entered a zone.',
+    producer: 'spatial.zone-detection',
+    defaultPriority: 'info',
+    pii: 'low',
+  },
+  {
+    type: 'spatial.zone.exited',
+    description: 'A tracked subject exited a zone.',
+    producer: 'spatial.zone-detection',
+    defaultPriority: 'info',
+    pii: 'low',
+  },
+  {
+    type: 'spatial.line.crossed',
+    description: 'A tracked subject crossed a line (with direction).',
+    producer: 'spatial.line-crossing',
+    defaultPriority: 'info',
+    pii: 'low',
+  },
+  {
+    type: 'temporal.dwell.exceeded',
+    description: 'A subject dwelled in a zone beyond a threshold.',
+    defaultPriority: 'low',
+    pii: 'low',
+  },
+  {
+    type: 'object.left-behind',
+    description: 'A static object was left behind by an absent owner.',
+    producer: 'object.left-behind',
+    defaultPriority: 'medium',
+    pii: 'none',
+  },
+  {
+    type: 'object.removed',
+    description: 'A monitored object was removed.',
+    producer: 'object.removed',
+    defaultPriority: 'medium',
+    pii: 'none',
+  },
   // tracking
-  { type: 'tracking.track.updated', description: 'A track position/state was updated.', producer: 'perception.tracking', defaultPriority: 'info', pii: 'low' },
+  {
+    type: 'tracking.track.updated',
+    description: 'A track position/state was updated.',
+    producer: 'perception.tracking',
+    defaultPriority: 'info',
+    pii: 'low',
+  },
   // lifecycle (platform)
-  { type: 'incident.raised', description: 'A workflow incident was raised from a rule match.', defaultPriority: 'high', pii: 'none' },
+  {
+    type: 'incident.raised',
+    description: 'A workflow incident was raised from a rule match.',
+    defaultPriority: 'high',
+    pii: 'none',
+  },
 ];
 
 /** Fast lookup by type. Throws-free: returns undefined if unknown. */

@@ -1,9 +1,11 @@
 # 10 — Rule Engine
 
 ## Purpose
+
 Define the enterprise Rule Engine: the declarative system by which **tenants (and Industry Packs) decide what matters** — without code. Operationalizes Law 3 (rule-driven) and is the primary mechanism that keeps industry logic out of the core (Law 1).
 
 ## Responsibilities
+
 - Own the **Rule DSL**, the no-code **Rule Builder**, and the deterministic **evaluator**.
 - Support conditions/expressions, scheduling, windows, zones, temporal & spatial logic, thresholds, confidence, and actions.
 - Support reusable and industry **Rule Packs**, versioning, dry-run, and scoping.
@@ -18,26 +20,26 @@ WHEN  <context filters>    (time/schedule, zone, identity, count, camera scope)
 THEN  <actions>            (raise incident, extract evidence, notify, webhook, …)
 ```
 
-A rule is **data** (stored, versioned, scoped), compiled to a fast condition tree. Rules subscribe to the Event Platform and emit outcomes (typically `incident.candidate` or aggregate/log actions). Rules **never** contain industry names — "shoplifting" is a *rule someone authored*, not a rule type.
+A rule is **data** (stored, versioned, scoped), compiled to a fast condition tree. Rules subscribe to the Event Platform and emit outcomes (typically `incident.candidate` or aggregate/log actions). Rules **never** contain industry names — "shoplifting" is a _rule someone authored_, not a rule type.
 
 ## 2. Rule DSL
 
 A safe, declarative DSL (authored via the builder, serialized to JSON; also hand-writable/versionable). Illustrative:
 
 ```yaml
-rule: "restricted-area-after-hours"
-scope: { branchId: "*", zoneId: "server-room" }
+rule: 'restricted-area-after-hours'
+scope: { branchId: '*', zoneId: 'server-room' }
 if:
   all:
     - event: spatial.zone.entered
       where: { subject.class: person }
     - not: { event: recognition.face.matched, where: { group: employees } }
 when:
-  schedule: { between: "20:00-06:00", tz: "site" }
+  schedule: { between: '20:00-06:00', tz: 'site' }
 then:
-  - raise_incident: { severity: high, type: "unauthorized-access" }
+  - raise_incident: { severity: high, type: 'unauthorized-access' }
   - extract_evidence: { pre: 10s, post: 20s }
-  - notify: { policy: "security-escalation" }
+  - notify: { policy: 'security-escalation' }
   - escalate_if_unacked: { after: 3m }
 ```
 
@@ -89,19 +91,24 @@ The DSL is the contract; the builder is one authoring surface over it. Plugins s
 - Rules compiled to condition trees; evaluated per event with stateful operators in Redis; scoped and tenant-isolated; horizontally scalable (partitioned by tenant/camera). Deterministic and unit-testable; every rule change is versioned and dry-runnable.
 
 ## Design decisions
+
 - **DSL as the contract, builder as a view** keeps power users, APIs, and plugins first-class alongside the no-code UI.
 - **Dry-run over replayed events** turns rule authoring into a safe, measurable activity — critical for trust in a safety product.
 - **Rules carry no industry identity** — the single most important mechanism enforcing "no industry logic in core."
 
 ## Advantages
+
 - Customers self-serve their own detections/automations; new verticals ship as rule packs.
 - Deterministic, testable, auditable — suitable for regulated buyers.
 
 ## Tradeoffs
+
 - A safe DSL + stateful temporal evaluation is more work than hardcoded `if` checks, and expressive DSLs risk complexity; mitigated by templates, validation, dry-run, and guardrails (bounded state, no arbitrary code).
 
 ## Future expansion
+
 - ML-assisted rule suggestions from event history; natural-language → rule authoring; cross-camera/cross-site composite rules; CEP operators.
 
 ## Cross-references
+
 [09-EVENT-PLATFORM](09-EVENT-PLATFORM.md) · [11-WORKFLOW-ENGINE](11-WORKFLOW-ENGINE.md) · [13-INDUSTRY-PACKS](13-INDUSTRY-PACKS.md) · [20-EXTENSIBILITY](20-EXTENSIBILITY.md)

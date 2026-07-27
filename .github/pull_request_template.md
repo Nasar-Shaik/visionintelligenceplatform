@@ -4,6 +4,7 @@ Keep the checklist; delete guidance comments before submitting.
 -->
 
 ## What & why
+
 <!-- One paragraph: what this changes and the reason. Link the driving task. -->
 
 - **Task:** <!-- TASK-BOARD id, e.g. P0-2 -->
@@ -11,9 +12,11 @@ Keep the checklist; delete guidance comments before submitting.
 - **Scope:** <!-- services/ai/edge/packages/plugins/infra/tests/tools/docs/tracking or a service/capability -->
 
 ## How
+
 <!-- Brief notes on the approach; call out anything non-obvious for the next agent. -->
 
 ## Definition of Done (CONTRIBUTING.md §4 / AGENT-ONBOARDING §5)
+
 - [ ] Contract added/updated & versioned (if applicable); implementation matches it
 - [ ] **No core → plugin dependency; no industry/customer logic in the core** (Law 1)
 - [ ] Tenant isolation preserved; isolation test added for any new data path
@@ -24,8 +27,10 @@ Keep the checklist; delete guidance comments before submitting.
 - [ ] CI green
 
 ## Architecture impact
+
 - [ ] No architectural decision made — **or** — ADR added: `ADR-____` and affected `docs/architecture/NN-*.md` updated
 - [ ] No breaking contract change — **or** — `BREAKING CHANGE:` noted + deprecation/migration described
 
 ## Evidence
+
 <!-- Test output, screenshot, metric, or demo notes proving it works. -->

@@ -1,9 +1,11 @@
 # 11 — Workflow Engine
 
 ## Purpose
+
 Define the Workflow Engine: the declarative orchestration of **what happens after a rule fires** — incident/case management, escalation, notifications, approvals, operator/manager actions, and audit. Keeps human/automated response out of capability code (Law 1/3).
 
 ## Responsibilities
+
 - Instantiate and drive **incidents/cases** through their lifecycle.
 - Orchestrate **escalation**, **notifications**, **approvals**, and **operator/manager actions** declaratively.
 - Guarantee a complete, tamper-evident **audit trail** of every action.
@@ -61,20 +63,25 @@ The Workflow/Rule action `notify` is executed by the **Notification capability**
 - Every workflow action (state change, assignment, notification, approval, evidence access/export, override) is written to an **append-only, tamper-evident** (hash-chained) audit log, tenant-scoped and exportable for compliance/SIEM. This is the backbone of defensibility for regulated verticals. → [15](15-SECURITY-ARCHITECTURE.md)
 
 ## Design decisions
+
 - **Declarative state machines** (data, versioned) instead of coded workflows keep human process out of the core and let Industry Packs deliver process as templates.
 - **False-positive as a signal** closes the loop from human review back into model improvement.
 - **Approvals + tamper-evident audit** make the engine suitable for banks/hospitals/government out of the box.
 
 ## Advantages
+
 - Customers/verticals define their own response processes without code.
 - Uniform incident/case/audit model across every industry.
 - Escalation/SLA/on-call are configuration, not bespoke integrations.
 
 ## Tradeoffs
+
 - A general workflow state-machine engine is more complex than hardcoded alert routing; justified because response process varies enormously by customer and must not fork the core.
 
 ## Future expansion
+
 - Visual workflow builder; BPMN import; integrations with ticketing/ITSM/PSIM; automated remediation actions; SLA analytics and workforce optimization.
 
 ## Cross-references
+
 [10-RULE-ENGINE](10-RULE-ENGINE.md) · [12-EVIDENCE-MANAGEMENT](12-EVIDENCE-MANAGEMENT.md) · [13-INDUSTRY-PACKS](13-INDUSTRY-PACKS.md) · [15-SECURITY-ARCHITECTURE](15-SECURITY-ARCHITECTURE.md)

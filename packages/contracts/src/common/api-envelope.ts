@@ -32,7 +32,17 @@ export type ApiMeta = z.infer<typeof ApiMeta>;
  */
 export function apiEnvelope<T extends z.ZodTypeAny>(data: T) {
   return z.discriminatedUnion('success', [
-    z.object({ success: z.literal(true), data, meta: ApiMeta.optional(), error: z.undefined().optional() }),
-    z.object({ success: z.literal(false), error: ApiError, meta: ApiMeta.optional(), data: z.undefined().optional() }),
+    z.object({
+      success: z.literal(true),
+      data,
+      meta: ApiMeta.optional(),
+      error: z.undefined().optional(),
+    }),
+    z.object({
+      success: z.literal(false),
+      error: ApiError,
+      meta: ApiMeta.optional(),
+      data: z.undefined().optional(),
+    }),
   ]);
 }

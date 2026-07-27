@@ -1,9 +1,11 @@
 # 13 — Industry Packs (Plugins)
 
 ## Purpose
+
 Define the plugin model that keeps the core generic (Law 1). An **Industry Pack** is how a vertical (Retail, Hospital, School, Warehouse, Bank, Smart City, Parking, …) is delivered — as **configuration and templates**, never as core code.
 
 ## Responsibilities
+
 - Define exactly what a pack may and may not contribute.
 - Define pack packaging, installation, versioning, and isolation.
 - Guarantee the core builds/ships/tests correctly with all packs removed.
@@ -14,18 +16,19 @@ Define the plugin model that keeps the core generic (Law 1). An **Industry Pack*
 
 An Industry Pack contributes **declarative artifacts** on top of the core capabilities:
 
-| Contribution | Mechanism | Core equivalent |
-|---|---|---|
-| **Rules** | Rule Pack (DSL templates) | [10-RULE-ENGINE](10-RULE-ENGINE.md) |
-| **Workflows** | Workflow templates | [11-WORKFLOW-ENGINE](11-WORKFLOW-ENGINE.md) |
-| **Dashboards** | Dashboard/widget definitions | [16](16-OBSERVABILITY.md)/console |
-| **Reports** | Report definitions/schedules | [analytics] |
-| **Policies** | Retention, privacy, escalation, access policies | [06](06-MULTI-TENANT-SAAS.md)/[15](15-SECURITY-ARCHITECTURE.md) |
-| **Templates** | Zones/lines presets, onboarding wizards, notification templates | [10](10-RULE-ENGINE.md) |
-| **Capability enablement** | Declares which existing capabilities it needs | [05](05-CAPABILITY-ARCHITECTURE.md) |
+| Contribution              | Mechanism                                                       | Core equivalent                                                 |
+| ------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------- |
+| **Rules**                 | Rule Pack (DSL templates)                                       | [10-RULE-ENGINE](10-RULE-ENGINE.md)                             |
+| **Workflows**             | Workflow templates                                              | [11-WORKFLOW-ENGINE](11-WORKFLOW-ENGINE.md)                     |
+| **Dashboards**            | Dashboard/widget definitions                                    | [16](16-OBSERVABILITY.md)/console                               |
+| **Reports**               | Report definitions/schedules                                    | [analytics]                                                     |
+| **Policies**              | Retention, privacy, escalation, access policies                 | [06](06-MULTI-TENANT-SAAS.md)/[15](15-SECURITY-ARCHITECTURE.md) |
+| **Templates**             | Zones/lines presets, onboarding wizards, notification templates | [10](10-RULE-ENGINE.md)                                         |
+| **Capability enablement** | Declares which existing capabilities it needs                   | [05](05-CAPABILITY-ARCHITECTURE.md)                             |
 
 **A pack must NOT:**
-- Contain or duplicate AI/perception logic (it *references* capabilities; it never re-implements detection).
+
+- Contain or duplicate AI/perception logic (it _references_ capabilities; it never re-implements detection).
 - Add branches to the core or be imported by the core.
 - Depend on another pack.
 - Bypass entitlements, tenancy, or the contract boundary.
@@ -38,14 +41,14 @@ An Industry Pack contributes **declarative artifacts** on top of the core capabi
 pack:
   id: retail
   version: 1.4.0
-  platformApi: ">=1.0 <2.0"          # refuses to load outside this range
-  requiresCapabilities:               # references, not implementations
+  platformApi: '>=1.0 <2.0' # refuses to load outside this range
+  requiresCapabilities: # references, not implementations
     - perception.person-detection
     - perception.tracking
     - spatial.zone-detection
     - spatial.line-crossing
     - object.left-removed
-    - recognition.ocr                 # for POS correlation
+    - recognition.ocr # for POS correlation
   provides:
     rulePacks: [loss-prevention, queue-sla, after-hours]
     workflows: [lp-review, queue-response]
@@ -53,7 +56,7 @@ pack:
     reports: [footfall-conversion, shrink-weekly]
     policies: [retail-retention, retail-privacy]
     templates: [checkout-zones, entrance-lines]
-  entitlement: pack.retail            # gated by plan/subscription
+  entitlement: pack.retail # gated by plan/subscription
 ```
 
 ## 3. Installation & lifecycle
@@ -78,20 +81,25 @@ pack:
 All reuse the **same** core capabilities; they differ only in rules/workflows/dashboards/reports/policies/templates.
 
 ## Design decisions
+
 - **Declarative-only packs** are the enforcement mechanism for Law 1 — vertical velocity without core entropy.
 - **Manifest-declared capability dependencies** let the loader verify a pack can actually run before enabling it.
 - **Seed-vs-override tracking** lets packs upgrade without destroying tenant customization.
 
 ## Advantages
+
 - New verticals ship in days as configuration; the core stays lean and universally testable.
 - Partners/OEMs can author and sell packs via the marketplace.
 - One bug fix in a core capability benefits every vertical at once.
 
 ## Tradeoffs
+
 - Requires rich, expressive declarative surfaces (rules/workflows/dashboards/reports as data) up front; this investment is precisely what buys the "unlimited solutions" property.
 
 ## Future expansion
+
 - Pack marketplace with revenue share; certified-partner trust tier; pack analytics (which templates perform); cross-industry template libraries.
 
 ## Cross-references
+
 [00-ENGINEERING-CONSTITUTION](../00-ENGINEERING-CONSTITUTION.md) · [05-CAPABILITY-ARCHITECTURE](05-CAPABILITY-ARCHITECTURE.md) · [10-RULE-ENGINE](10-RULE-ENGINE.md) · [11-WORKFLOW-ENGINE](11-WORKFLOW-ENGINE.md) · [20-EXTENSIBILITY](20-EXTENSIBILITY.md)

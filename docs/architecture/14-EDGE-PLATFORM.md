@@ -1,9 +1,11 @@
 # 14 — Edge Platform
 
 ## Purpose
+
 Define the edge computing platform: the edge agent, camera discovery, provisioning, health, offline operation, OTA updates, and fleet management. Operationalizes Principles 9–10 (edge-first, offline-capable).
 
 ## Responsibilities
+
 - Run the same capability contracts locally, autonomously, and offline.
 - Discover, provision, and monitor cameras and edge devices.
 - Sync with the cloud (store-and-forward), receive OTA updates, and be managed at fleet scale.
@@ -50,21 +52,26 @@ A containerized runtime (`edge/agent`) deployed on Jetson (Orin Nano/NX/AGX), In
 - Fleet operations are tenant-scoped, RBAC-controlled, and audited.
 
 ## Design decisions
+
 - **Same contracts at edge and cloud** ([ADR-0004](../adr/ADR-0004-edge-first-placement.md)) is what makes deploy-anywhere real and avoids a second codebase.
 - **Embedded durable log + store-and-forward** gives true offline autonomy with deterministic reconciliation.
 - **Signed, staged, rollback-able OTA** makes managing a large fleet safe.
 
 ## Advantages
+
 - Real-time latency and privacy (video needn't leave the premises); bandwidth/cloud-GPU cost minimized.
 - Resilience: sites keep working through outages.
 - One engineering effort serves cloud and edge.
 
 ## Tradeoffs
+
 - Fleet management, OTA, and offline reconciliation are significant complexity; unavoidable for an edge-first platform and contained in `edge/` + `services/fleet`.
 - Heterogeneous edge hardware requires a supported-device matrix and per-target model builds.
 
 ## Future expansion
+
 - Edge clustering (multi-box sites sharing load), edge-to-edge re-ID, on-device federated fine-tuning, support for new accelerators and sensor gateways.
 
 ## Cross-references
+
 [05-CAPABILITY-ARCHITECTURE](05-CAPABILITY-ARCHITECTURE.md) · [07-DATA-AND-PIPELINE-FLOWS](07-DATA-AND-PIPELINE-FLOWS.md) · [08-AI-ML-PLATFORM](08-AI-ML-PLATFORM.md) · [17-DEVOPS-AND-INFRA](17-DEVOPS-AND-INFRA.md) · [19-PERFORMANCE-AND-SCALE](19-PERFORMANCE-AND-SCALE.md)

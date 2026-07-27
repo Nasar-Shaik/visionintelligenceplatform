@@ -21,7 +21,10 @@ export const Uuid = z.uuid();
  */
 export const EventType = z
   .string()
-  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+(?:-[a-z0-9]+)*)+$/, 'must be <domain>.<subject>.<predicate>');
+  .regex(
+    /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+(?:-[a-z0-9]+)*)+$/,
+    'must be <domain>.<subject>.<predicate>',
+  );
 
 /** Capability id `<family>.<name>` (docs/architecture/05 §2). e.g. "perception.person-detection". */
 export const CapabilityId = z

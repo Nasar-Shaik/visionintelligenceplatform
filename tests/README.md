@@ -3,6 +3,7 @@
 Per-service unit/contract/integration tests live **with their code**. This directory holds **cross-cutting** suites that span services or the whole platform.
 
 ## Layout
+
 ```
 isolation/   Cross-tenant access attempts on EVERY endpoint/stream — MUST fail-closed (milestones M3)
 e2e/         Critical journeys: onboard camera → capability DAG → event → rule → alert → evidence → search
@@ -14,6 +15,7 @@ scale/       1,000-camera load + 10,000-camera fleet simulation (M17)
 ```
 
 ## Rules
+
 - Isolation and safety-critical model gates are **release blockers**, not optional.
 - New data path → an isolation test. New capability → a contract + model-validation test. New rule/workflow primitive → an evaluator test.
 

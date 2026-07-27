@@ -1,8 +1,8 @@
 packages:
-  - "packages/*"
-  - "services/*"
-  - "plugins/**"
-  - "tools/*"
+  - 'packages/*'
+  - 'services/*'
+  - 'plugins/**'
+  - 'tools/*'
 allowBuilds:
   esbuild: true
 # Dependencies allowed to run install/build scripts (pnpm ≥10 blocks these by default).
