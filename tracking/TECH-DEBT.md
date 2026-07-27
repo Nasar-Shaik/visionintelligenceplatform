@@ -10,7 +10,7 @@
 ## Open debt
 | ID | Area | What / why (the shortcut) | Risk if left | Pay-down trigger | Sev |
 |----|------|---------------------------|--------------|------------------|-----|
-| _(none yet — architecture phase)_ | | | | | |
+| TD-1 | toolchain | TypeScript pinned to **5.9.3** instead of latest **7.0.2**, because `typescript-eslint` (latest 8.65) refuses TS 7.0 and type-aware linting would break. `[Claude · 2026-07-27]` | On latest-minus-one major of TS; miss TS7 native-compiler speed/features | typescript-eslint ships TS 7 support (typescript-eslint#10940) → bump TS to 7.x via ADR + rerun full gate | low |
 
 ## Resolved debt
 | ID | Area | Resolution | Commit/PR | Date |

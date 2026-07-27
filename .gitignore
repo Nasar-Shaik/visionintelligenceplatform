@@ -29,6 +29,9 @@ venv/
 *.engine
 *.trt
 
+# Generated contract artifacts (reproducible via `pnpm --filter @vip/contracts codegen`)
+packages/*/generated/
+
 # ML artifacts (belong in the registry / object storage, not the repo)
 mlruns/
 .dvc/cache/

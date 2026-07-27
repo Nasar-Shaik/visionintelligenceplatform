@@ -11,7 +11,7 @@ Format: `- [ ] <id> — <task> · deps: <…> · phase: <Px> · owner: <—>`
 
 ## Now (Phase 0)
 - [x] P0-1 — Initialize monorepo: pnpm workspace + Turborepo + shared tsconfig/eslint/prettier. `[Claude · 2026-07-27]` (Python workspace under `ai/` deferred to P3 when vision code starts)
-- [ ] P0-2 — Bootstrap `packages/contracts`: schema-first setup (Zod→JSON Schema/OpenAPI; Protobuf for gRPC/events), codegen for TS types. · deps: P0-1 · phase: P0 · **← NEXT SLICE (awaiting approval)**
+- [x] P0-2 — Bootstrap `packages/contracts`: Zod 4 schemas (event envelope/catalog, capability descriptor+registry record, config hierarchy, tenant context, API envelope) + native JSON-Schema codegen + 19 contract tests. `[Claude · 2026-07-27]` (Protobuf for gRPC/NATS payloads deferred until first service needs it)
 - [ ] P0-3 — CI skeleton (GitHub Actions): build, unit test, lint, SAST/secret scan, **import-graph enforcement** + **contract-testing harness**. · deps: P0-1 · phase: P0
 - [x] P0-4 — Docker Compose dev stack: Mongo, Redis, MinIO, **NATS/JetStream**. `[Claude · 2026-07-27]` (RTSP test source added in P2 when media ingestion begins)
 - [ ] P0-5 — Registry bootstrap: MLflow (models) + DVC (datasets) skeleton wired to object storage. · deps: P0-4 · phase: P0

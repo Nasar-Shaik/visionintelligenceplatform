@@ -3,4 +3,11 @@ packages:
   - "services/*"
   - "plugins/**"
   - "tools/*"
+allowBuilds:
+  esbuild: true
+# Dependencies allowed to run install/build scripts (pnpm ≥10 blocks these by default).
+# esbuild ships a platform binary via its postinstall and is required by Vitest.
+onlyBuiltDependencies:
+  - esbuild
+
 # Python vision workspace lives under ai/ and is managed separately (uv/pip), per the polyglot principle.
