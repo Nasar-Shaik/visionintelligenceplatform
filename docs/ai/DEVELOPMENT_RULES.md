@@ -33,3 +33,14 @@
 
 16. **One slice at a time.** Finish it production-ready; update docs + trackers; write the daily log; then stop. Never jump ahead; wait for approval before the next sprint.
 17. **The repo is the only source of truth.** Never rely on prior conversations. If context is missing, add it.
+
+## Governance (Architect-mandated — a slice is not Done until these are updated)
+
+18. **Definition of Done.** Every slice satisfies [DEFINITION_OF_DONE](../project/DEFINITION_OF_DONE.md). If any applicable item is incomplete, the slice is **NOT Done**.
+19. **Record decisions & uncertainty — never silently.** Append to [ENGINEERING_DECISION_LOG](../project/ENGINEERING_DECISION_LOG.md); log new [RISKS](../project/RISK_REGISTER.md), [ASSUMPTIONS](../project/ASSUMPTIONS.md), and [OPEN_QUESTIONS](../project/OPEN_QUESTIONS.md).
+20. **Honour the [CONSTRAINTS](../project/CONSTRAINTS.md).** They are hard rules; changing one needs an ADR.
+21. **Score the [QUALITY_GATES](../project/QUALITY_GATES.md)** (PASS/FAIL + reason) and update the [API_INVENTORY](../project/API_INVENTORY.md) for any endpoint change.
+22. **Write the PO-executable scenario** ([docs/testing/slice-NNN.md](../testing/)) and the **[sprint review](../review/)** — leave its **Architect Review section PENDING**; never self-approve.
+23. **Reuse the [templates](../templates/).** Do not invent new doc shapes.
+24. **Dependencies:** registry-verify latest stable (compatibility, breaking changes, maintenance, license, security); no alpha/beta/rc unless requested; record in [DEPENDENCIES](../project/DEPENDENCIES.md).
+25. **End-of-sprint validation + Architect handoff.** Answer the self-review questions; ensure every tracker/doc/daily-log is updated; produce a handoff sufficient to review the sprint without reading the whole repo.

@@ -1,0 +1,18 @@
+# Assumptions
+
+> Nothing is silently assumed. Every working assumption is recorded with how and when it will be validated.
+>
+> Schema: **ID · Assumption · Reason · Validation Method · Status**. Statuses: `Unvalidated` · `Validating` · `Validated` · `Invalidated`.
+
+| ID    | Assumption                                                                                    | Reason                                                             | Validation Method                                                                           | Status      |
+| ----- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- | ----------- |
+| A-001 | Node ≥22 runtime (dev on 24) is an acceptable target across edge + cloud                      | LTS support window; Fastify 5 + modern tooling need it             | CI runs on `.nvmrc` (24); revisit if an edge target caps Node lower                         | Validating  |
+| A-002 | NATS JetStream is sufficient as the sole event backbone at platform scale                     | ADR-0016; edge leaf-node topology, durable streams, low ops weight | Load/soak test with the camera-simulator in P2/P4; measure throughput + replay              | Unvalidated |
+| A-003 | MongoDB is an adequate primary store for multi-tenant operational data                        | Flexible schema for evolving contexts; team familiarity            | Model the first owned stores (Identity/Tenant) in P1; validate isolation + query patterns   | Unvalidated |
+| A-004 | The npm registry is reachable for version verification (`npm view`) during development        | Required by the dependency policy (no versions from memory)        | Confirmed each slice; policy has a documented fallback (state + placeholder) when offline   | Validated   |
+| A-005 | Retail/Supermarket is the first target industry, built as plugins (no core changes)           | Master Development Prompt; capability-first core                   | Begins only after platform slices; enforced by import-graph noCoreToPlugin                  | Unvalidated |
+| A-006 | Zod-derived JSON Schema is sufficient to serve polyglot consumers (TS + Python) and OpenAPI   | Single source of truth avoids drift (Law 4)                        | Generate + consume from a Python capability in P3; add Protobuf only if a wire need appears | Validating  |
+| A-007 | Solo developer for now; branch protection can be deferred                                     | Stated by the repo owner                                           | Enable `ci-summary` required check when collaborators join                                  | Validated   |
+| A-008 | Fastify `inject()` unit/HTTP tests are sufficient until Testcontainers integration tests land | No external deps wired yet in Phase 0                              | Add Testcontainers-based integration tests when the first adapter (Mongo) is wired (P1)     | Validating  |
+| A-009 | The frozen v1.0 architecture is stable enough to build against without redesign               | Two review rounds + readiness Go decision                          | Any needed change goes through an ADR; watch for repeated ADRs signalling a design gap      | Validating  |
+| A-010 | `4xxxx` host ports avoid all local conflicts on the developer's machine                       | Developer runs MERN stacks on standard ports                       | Confirmed by developer; overridable via `.env` if a new conflict appears                    | Validated   |

@@ -1,0 +1,34 @@
+# API Inventory
+
+> Every API endpoint across all services. Updated whenever an endpoint is added, changed, or removed.
+>
+> Schema per endpoint: **Service · Method+Endpoint · Purpose · Authentication · Input · Output · Dependencies · Status · Version**.
+> Status: `stable` · `beta` · `scaffold` (infra-only, no business logic) · `deprecated`.
+
+## @vip/service-identity (v0.1.0)
+
+> Phase 0 scaffold — infrastructure endpoints only. Business APIs (`/auth/*`, `/users`, `/api-keys`) arrive in P1 (see [docs/architecture/23](../architecture/23-SERVICE-OWNERSHIP.md) › identity).
+
+| Method | Endpoint   | Purpose                                  | Auth                      | Input | Output                                                      | Dependencies                    | Status   | Version |
+| ------ | ---------- | ---------------------------------------- | ------------------------- | ----- | ----------------------------------------------------------- | ------------------------------- | -------- | ------- |
+| GET    | `/health`  | Liveness probe (process is up)           | None                      | —     | `200 {"status":"ok"}`                                       | none                            | scaffold | 0.1.0   |
+| GET    | `/ready`   | Readiness probe (dependencies reachable) | None                      | —     | `200 {"status":"pass","checks":[]}` / `503` on fail         | ReadinessRegistry (empty in P0) | scaffold | 0.1.0   |
+| GET    | `/metrics` | Prometheus exposition                    | None (network-restricted) | —     | `200` text/plain; per-instance registry, `service` label    | prom-client                     | scaffold | 0.1.0   |
+| GET    | `/`        | Service-info snapshot                    | None                      | —     | `200 {success,data:{name,version,startedAt,uptimeSeconds}}` | —                               | scaffold | 0.1.0   |
+
+**Conventions (all services):**
+
+- Every response carries a correlation id — inbound `x-request-id` is honoured, else one is generated (`genReqId`).
+- Errors use the `@vip/contracts` `ApiError` envelope: `{ success:false, error:{ code, message, correlationId, details? } }`. 5xx messages are opaque (real cause logged server-side).
+- Tenant context (when present) is validated against the `TenantContext` contract via `x-tenant-id` / `x-principal-id` headers — **seam only in Phase 0**, enforced from P1.
+- Security headers set by `@fastify/helmet` (`x-content-type-options: nosniff`, `x-frame-options: SAMEORIGIN`, …).
+
+## Planned (not yet implemented)
+
+| Service  | Endpoint (target)                              | Phase | Notes                                 |
+| -------- | ---------------------------------------------- | ----- | ------------------------------------- |
+| identity | `POST /auth/*`, `GET/POST /users`, `/api-keys` | P1    | OIDC/JWT/refresh(reuse-detection)/MFA |
+| gateway  | public REST/OpenAPI + WS surface               | P1    | authN/Z, tenant routing, rate limit   |
+| tenant   | `/tenants`, config/entitlements                | P1    |                                       |
+
+_Add rows as each service exposes endpoints; keep this table in sync with each service README and the generated OpenAPI (from `@vip/contracts`)._

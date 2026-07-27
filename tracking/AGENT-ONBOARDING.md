@@ -11,23 +11,28 @@ You are one of many contributors. You will start with **no memory** of prior wor
 
 Any assistant (Claude Code, Codex, ChatGPT, Gemini, Kimi, or a future system) can acquire full context from these fixed locations — no conversation history required:
 
-| You need…                                     | Read                                                                                                                                                           |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Architecture** (the whole system)           | [`docs/`](../docs/) → [`00-ENGINEERING-CONSTITUTION`](../docs/00-ENGINEERING-CONSTITUTION.md), sections 01–26                                                  |
-| **Current status** (where are we)             | [`PROGRESS.md`](PROGRESS.md)                                                                                                                                   |
-| **Coding standards**                          | [`docs/architecture/03-ARCHITECTURE-PRINCIPLES`](../docs/architecture/03-ARCHITECTURE-PRINCIPLES.md) + [`../CONTRIBUTING.md`](../CONTRIBUTING.md)              |
-| **Roadmap**                                   | [`ROADMAP.md`](ROADMAP.md)                                                                                                                                     |
-| **Pending work**                              | [`TASK-BOARD.md`](TASK-BOARD.md)                                                                                                                               |
-| **Completed work**                            | [`PROGRESS.md`](PROGRESS.md) + `TASK-BOARD.md` → Done                                                                                                          |
-| **Design decisions** (why)                    | [`docs/adr/`](../docs/adr/)                                                                                                                                    |
-| **Technical debt**                            | [`TECH-DEBT.md`](TECH-DEBT.md)                                                                                                                                 |
-| **Next priorities**                           | [`TASK-BOARD.md`](TASK-BOARD.md) → Now                                                                                                                         |
-| **Domain/service ownership**                  | [`docs/architecture/22-BOUNDED-CONTEXTS`](../docs/architecture/22-BOUNDED-CONTEXTS.md), [`23-SERVICE-OWNERSHIP`](../docs/architecture/23-SERVICE-OWNERSHIP.md) |
-| **Control vs Data plane**                     | [`docs/architecture/27-CONTROL-DATA-PLANE`](../docs/architecture/27-CONTROL-DATA-PLANE.md)                                                                     |
-| **Governance / policy** (who/what/where/when) | [`docs/architecture/28-POLICY-ENGINE`](../docs/architecture/28-POLICY-ENGINE.md)                                                                               |
-| **Freeze status & Go/No-Go**                  | [`docs/ARCHITECTURE-READINESS-REVIEW`](../docs/ARCHITECTURE-READINESS-REVIEW.md)                                                                               |
+| You need…                                     | Read                                                                                                                                                                                      |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Architecture** (the whole system)           | [`docs/`](../docs/) → [`00-ENGINEERING-CONSTITUTION`](../docs/00-ENGINEERING-CONSTITUTION.md), sections 01–26                                                                             |
+| **Current status** (where are we)             | [`PROGRESS.md`](PROGRESS.md)                                                                                                                                                              |
+| **Coding standards**                          | [`docs/architecture/03-ARCHITECTURE-PRINCIPLES`](../docs/architecture/03-ARCHITECTURE-PRINCIPLES.md) + [`../CONTRIBUTING.md`](../CONTRIBUTING.md)                                         |
+| **Roadmap**                                   | [`ROADMAP.md`](ROADMAP.md)                                                                                                                                                                |
+| **Pending work**                              | [`TASK-BOARD.md`](TASK-BOARD.md)                                                                                                                                                          |
+| **Completed work**                            | [`PROGRESS.md`](PROGRESS.md) + `TASK-BOARD.md` → Done                                                                                                                                     |
+| **Design decisions** (why)                    | [`docs/adr/`](../docs/adr/)                                                                                                                                                               |
+| **Technical debt**                            | [`TECH-DEBT.md`](TECH-DEBT.md)                                                                                                                                                            |
+| **Next priorities**                           | [`TASK-BOARD.md`](TASK-BOARD.md) → Now                                                                                                                                                    |
+| **Domain/service ownership**                  | [`docs/architecture/22-BOUNDED-CONTEXTS`](../docs/architecture/22-BOUNDED-CONTEXTS.md), [`23-SERVICE-OWNERSHIP`](../docs/architecture/23-SERVICE-OWNERSHIP.md)                            |
+| **Control vs Data plane**                     | [`docs/architecture/27-CONTROL-DATA-PLANE`](../docs/architecture/27-CONTROL-DATA-PLANE.md)                                                                                                |
+| **Governance / policy** (who/what/where/when) | [`docs/architecture/28-POLICY-ENGINE`](../docs/architecture/28-POLICY-ENGINE.md)                                                                                                          |
+| **Freeze status & Go/No-Go**                  | [`docs/ARCHITECTURE-READINESS-REVIEW`](../docs/ARCHITECTURE-READINESS-REVIEW.md)                                                                                                          |
+| **Governance suite** (decisions/risks/DoD)    | [`docs/project/`](../docs/project/README.md) → ENGINEERING_DECISION_LOG · RISK_REGISTER · ASSUMPTIONS · OPEN_QUESTIONS · CONSTRAINTS · DEFINITION_OF_DONE · QUALITY_GATES · API_INVENTORY |
+| **Hard rules you must never break**           | [`docs/project/CONSTRAINTS`](../docs/project/CONSTRAINTS.md)                                                                                                                              |
+| **Per-sprint review / Architect handoff**     | [`docs/review/`](../docs/review/README.md) · scenarios [`docs/testing/`](../docs/testing/README.md) · templates [`docs/templates/`](../docs/templates/README.md)                          |
 
 If any of these is stale or contradicts the code, fixing it is part of your task — the docs must never lie.
+
+> **Every slice is governed.** Before a slice is Done it must satisfy [`DEFINITION_OF_DONE`](../docs/project/DEFINITION_OF_DONE.md) and update the governance suite (see [`docs/ai/DEVELOPMENT_RULES`](../docs/ai/DEVELOPMENT_RULES.md) rules 18–25). The Architect Review section of each sprint review is left **PENDING** — never self-approved.
 
 > **Architecture is FROZEN at v1.0 (2026-07-27).** Sections 01–28 + ADRs 0001–0015 are the baseline. You may implement freely against it, but any change to the _architecture itself_ requires a new ADR ([`docs/adr/`](../docs/adr/)) before code — never edit a frozen decision silently.
 
