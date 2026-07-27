@@ -5,20 +5,23 @@
 Format: `- [ ] <id> — <task> · deps: <…> · phase: <Px> · owner: <—>`
 
 ## Needs-Decision (resolve before/while building; may need an ADR)
+
 - [x] ND-1 — Event backbone → **NATS + JetStream** (leaf nodes at edge). Resolved [ADR-0016](../docs/adr/ADR-0016-nats-jetstream-event-backbone.md). `[Claude · 2026-07-27]`
 - [ ] ND-2 — Choose vector DB (Qdrant vs Milvus vs Atlas Vector) for event embeddings. deps: none · affects P6.
 - [ ] ND-3 — Choose primary edge orchestrator (k3s vs balena vs bespoke) for fleet. deps: none · affects P2/P14.
 
 ## Now (Phase 0)
+
 - [x] P0-1 — Initialize monorepo: pnpm workspace + Turborepo + shared tsconfig/eslint/prettier. `[Claude · 2026-07-27]` (Python workspace under `ai/` deferred to P3 when vision code starts)
 - [x] P0-2 — Bootstrap `packages/contracts`: Zod 4 schemas (event envelope/catalog, capability descriptor+registry record, config hierarchy, tenant context, API envelope) + native JSON-Schema codegen + 19 contract tests. `[Claude · 2026-07-27]` (Protobuf for gRPC/NATS payloads deferred until first service needs it)
-- [ ] P0-3 — CI skeleton (GitHub Actions): build, unit test, lint, SAST/secret scan, **import-graph enforcement** + **contract-testing harness**. · deps: P0-1 · phase: P0
+- [x] P0-3 — CI skeleton (GitHub Actions): build, unit test, lint/format/typecheck, SAST/secret scan (gitleaks+semgrep), advisory dep-audit, **import-graph enforcement** (`tools/import-graph/`) + **contract-testing harness** (`tools/contracts/`). `[Claude · 2026-07-27]` (coverage output + SARIF upload deferred)
 - [x] P0-4 — Docker Compose dev stack: Mongo, Redis, MinIO, **NATS/JetStream**. `[Claude · 2026-07-27]` (RTSP test source added in P2 when media ingestion begins)
 - [ ] P0-5 — Registry bootstrap: MLflow (models) + DVC (datasets) skeleton wired to object storage. · deps: P0-4 · phase: P0
 - [~] P0-6 — Secrets strategy: `.env.example` conventions done (no secrets in repo); Vault/cloud-KMS integration pattern still to wire. · deps: none · phase: P0
 - [ ] P0-7 — First empty service scaffold (`services/identity`) proving the Fastify service template (transport→service→domain→adapters, /health,/ready,/metrics). · deps: P0-2,P0-3 · phase: P0
 
 ## Next (Phase 1 — pull when P0 exits)
+
 - [ ] P1-1 — Tenant model + data-layer isolation guard (fail-closed `tenantId`; repo middleware). · deps: P0-7 · phase: P1
 - [ ] P1-2 — Identity service: OIDC/JWT/refresh(reuse-detection)/MFA. · deps: P1-1 · phase: P1
 - [ ] P1-3 — RBAC+ABAC policy module (`packages/permissions`) + scopes. · deps: P1-2 · phase: P1
@@ -29,6 +32,7 @@ Format: `- [ ] <id> — <task> · deps: <…> · phase: <Px> · owner: <—>`
 - [ ] P1-8 — Cross-tenant isolation test suite (must fail-closed on every endpoint). · deps: P1-1 · phase: P1
 
 ## Later (Phase 2+)
+
 - Seeded from [ROADMAP](ROADMAP.md) as each phase approaches. Do not expand phases far ahead of their dependencies — keep the board honest.
 - **From the Enterprise Review** (build in their natural phases; architecture is ratified):
   - Composition Layer runtime + registry + reference compositions ([24](../docs/architecture/24-COMPOSITION-FRAMEWORK.md)) → Phase 4/6.
@@ -45,6 +49,7 @@ Format: `- [ ] <id> — <task> · deps: <…> · phase: <Px> · owner: <—>`
   - Contract-testing harness (all contract types) + plugin certification pipeline ([03](../docs/architecture/03-ARCHITECTURE-PRINCIPLES.md), [20 §6a](../docs/architecture/20-EXTENSIBILITY.md)) → Phase 0 (harness) → Phase 7 (certification).
 
 ## Done
+
 - [x] ARCH-2 — Final Architecture Enhancement: **FROZE architecture v1.0**; added sections 27–28, ADRs 0011–0015, readiness review; integrated model-adapter/capability-registry/config-hierarchy/contract-testing/plugin-certification. `[Final Enhancement · 2026-07-27]`
 - [x] ARCH-1 — Enterprise Architecture Review v1.1: added sections 22–26, ADRs 0006–0010, TECH-DEBT register; integrated composition/scheduler/execution-graph/models-as-plugins/deployment-profiles/agent-continuity. `[Enterprise Review · 2026-07-26]`
 - [x] ARCH-0 — Ratify architecture v1.0 (Constitution + 21 sections + reference + 5 ADRs) and build tracking system + repo skeleton. `[Architecture · 2026-07-26]`

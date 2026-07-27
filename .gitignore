@@ -16,6 +16,7 @@ dist/
 build/
 .turbo/
 *.tsbuildlog
+*.tsbuildinfo
 coverage/
 
 # Python / AI

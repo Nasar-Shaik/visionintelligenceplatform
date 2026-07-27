@@ -1,0 +1,26 @@
+name: Setup workspace
+description: >-
+  Install pnpm (version pinned via the root package.json `packageManager` field),
+  Node (version pinned via `.nvmrc`), and the workspace dependencies with a frozen
+  lockfile. Shared by every CI job so the toolchain is identical everywhere.
+
+runs:
+  using: composite
+  steps:
+    # pnpm reads its version from the root package.json `packageManager` field
+    # (currently pnpm@11.17.0). Keeping it there means one source of truth.
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+
+    # Node version comes from .nvmrc (currently 24) — same file developers use locally.
+    - name: Install Node
+      uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+        cache: pnpm
+
+    # --frozen-lockfile fails if pnpm-lock.yaml is out of date with the manifests,
+    # which enforces the dependency policy: no silent, unreviewed version drift in CI.
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile

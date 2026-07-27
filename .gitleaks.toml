@@ -1,0 +1,18 @@
+# gitleaks configuration — secret scanning in CI (.github/workflows/ci.yml).
+# Extends the built-in rule set; adds allowlists for known-safe dev placeholders so
+# the scan flags real leaks, not our documented examples.
+title = "VIP gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Non-secret dev placeholders and example files."
+# .env.example ships intentionally fake credentials (all "change_me_dev_only").
+paths = [
+  '''\.env\.example$''',
+]
+# Documented placeholder used throughout dev config and docs.
+regexes = [
+  '''change_me_dev_only''',
+]

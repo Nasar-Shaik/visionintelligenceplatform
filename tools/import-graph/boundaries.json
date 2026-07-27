@@ -1,0 +1,43 @@
+{
+  "$comment": "Declarative architecture-boundary policy enforced in CI by check-imports.mjs. Codifies the invariants in docs/architecture/22-BOUNDED-CONTEXTS.md and 23-SERVICE-OWNERSHIP.md. Editing a rule here is an architecture change — record it via an ADR.",
+  "layers": {
+    "shared": {
+      "match": "packages/",
+      "description": "Cross-cutting shared libraries (e.g. @vip/contracts). Importable by anything. Must NOT import services or plugins."
+    },
+    "service": {
+      "match": "services/",
+      "description": "Bounded-context services. May import shared libs only. Must reach other services via API/events, never by importing their internals."
+    },
+    "plugin": {
+      "match": "plugins/",
+      "description": "Industry packs, connectors, model providers. May import shared libs (and their own SDK). The core must never import a plugin."
+    },
+    "tool": {
+      "match": "tools/",
+      "description": "Repo tooling. Not part of the runtime dependency graph."
+    }
+  },
+  "rules": {
+    "noDeepImports": {
+      "enabled": true,
+      "description": "Import a workspace package by its public entry point only — never a deep path into its internals (e.g. @vip/contracts, not @vip/contracts/src/events/envelope). Preserves each package's encapsulation and its right to refactor internals."
+    },
+    "noCoreToPlugin": {
+      "enabled": true,
+      "from": ["shared", "service"],
+      "to": ["plugin"],
+      "description": "The core (shared libs + services) must never depend on a plugin. Industries/connectors/models are pluggable; the core stays industry-agnostic (Law 1)."
+    },
+    "noCrossServiceInternals": {
+      "enabled": true,
+      "from": ["service"],
+      "to": ["service"],
+      "description": "A service must not import another service's code. Cross-context communication is API/events only, so contexts stay independently deployable (22 golden rule, 23 no-shared-code)."
+    },
+    "noCycles": {
+      "enabled": true,
+      "description": "The workspace package dependency graph must remain acyclic (23 §no-cycles invariant)."
+    }
+  }
+}

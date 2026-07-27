@@ -1,0 +1,134 @@
+name: CI
+
+# Quality gate for the monorepo. Every push to a working branch and every PR into
+# main runs the full gate. Definition of a green build (Phase 0 exit, docs/project/
+# CURRENT_SPRINT.md): format/lint/typecheck clean, unit tests pass, build succeeds,
+# import-graph boundaries hold, contract artifacts verify, and no secrets/SAST findings.
+on:
+  push:
+    branches: ['main', 'feature/**', 'fix/**', 'chore/**']
+  pull_request:
+    branches: ['main']
+  workflow_dispatch: {}
+
+# One in-flight run per ref; newer pushes cancel superseded runs.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: jobs only read the checkout. Widen per-job if a step needs more.
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Lint · Format · Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Prettier (format check)
+        run: pnpm format:check
+      - name: ESLint
+        run: pnpm lint
+      - name: TypeScript (typecheck)
+        run: pnpm typecheck
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Run tests
+        run: pnpm test
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: '**/coverage/**'
+          if-no-files-found: ignore
+          retention-days: 7
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Build all packages
+        run: pnpm build
+
+  import-graph:
+    name: Import-graph boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Enforce architecture boundaries
+        run: pnpm check:imports
+
+  contracts:
+    name: Contract-testing harness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Contract tests
+        run: pnpm --filter @vip/contracts test
+      - name: Generate contract artifacts
+        run: pnpm --filter @vip/contracts codegen
+      - name: Verify generated schemas
+        run: pnpm verify:contracts
+
+  security:
+    name: Security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks needs full history to scan all commits
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml
+      # Semgrep run via pip keeps the step self-contained and pinned to curated
+      # rulesets (no marketplace token, no `--config auto` surprises). --error makes
+      # findings fail the job.
+      - name: SAST (semgrep)
+        run: |
+          python3 -m pip install --quiet semgrep
+          semgrep scan --error \
+            --config p/typescript \
+            --config p/security-audit \
+            --config p/secrets
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      # Surfaces known high/critical advisories in the resolved tree. Advisory, not
+      # a hard gate: transitive advisories we can't immediately fix must not block
+      # merges — they are triaged deliberately (dependency policy,
+      # docs/project/DEPENDENCIES.md). The step still turns the log red for visibility.
+      - name: pnpm audit
+        continue-on-error: true
+        run: pnpm audit --audit-level=high
+
+  # Single required status other jobs roll up into — target this in branch protection.
+  ci-summary:
+    name: CI summary
+    runs-on: ubuntu-latest
+    needs: [quality, test, build, import-graph, contracts, security, dependency-audit]
+    if: always()
+    steps:
+      - name: Fail if any upstream job failed
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "One or more CI jobs failed."
+            exit 1
+          fi
+          echo "All CI jobs passed."

@@ -1,0 +1,18 @@
+version: 2
+
+# Scope is intentionally narrow. npm/pnpm dependencies are upgraded MANUALLY under
+# the dependency policy (docs/project/DEPENDENCIES.md): verify the latest stable from
+# the registry, no alpha/beta/rc, check compatibility, document the change. Automated
+# version bumps would bypass that review, so Dependabot here only keeps GitHub Actions
+# pinned to current majors — low-risk, and it never touches the application lockfile.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns: ['*']

@@ -3,44 +3,51 @@
 > **The first thing any agent reads to know "where are we."** Update it every working session. Sign entries `[<agent/name> · YYYY-MM-DD]`. Write for a stranger with zero context.
 
 ## Snapshot
+
 - **Current phase:** Phase 0 — Program Setup & Architecture ([ROADMAP](ROADMAP.md#phase-0--program-setup--architecture-current--34-weeks)).
 - **Architecture:** **FROZEN v1.0 (2026-07-27)** — sections 01–28 + ADRs 0001–0015 in [`../docs/`](../docs/). Go/No-Go: ✅ GO ([readiness review](../docs/ARCHITECTURE-READINESS-REVIEW.md)). All changes now go through [ADRs](../docs/adr/).
-- **Code:** Not yet started. Directory skeleton + self-documenting READMEs in place.
-- **Next concrete work:** stand up the monorepo + `packages/contracts` + CI skeleton (see [TASK-BOARD → Now](TASK-BOARD.md#now)).
+- **Code:** Monorepo + `@vip/contracts` (19 tests) + CI quality gate live. Directory skeleton + self-documenting READMEs in place.
+- **Next concrete work:** first service scaffold `services/identity` (Fastify template) — see [TASK-BOARD → Now](TASK-BOARD.md#now) (P0-7).
 
 ## Phase status
-| Phase | Status | Notes |
-|---|---|---|
-| P0 Program Setup & Architecture | 🟡 In progress | Architecture frozen v1.0; monorepo + dev stack + continuity docs done (Slice 0); contracts/CI/service scaffold next |
-| P1 SaaS Foundation | ⚪ Not started | Blocked on P0 exit |
-| P2 Video & Ingestion | ⚪ Not started | |
-| P3 Capability & Inference Platform | ⚪ Not started | |
-| P4 Event/Rule/Alert Platform | ⚪ Not started | First sellable increment |
-| P5 Workflow & Command Center | ⚪ Not started | |
-| P6 Analytics & Search | ⚪ Not started | |
-| P7 Extensibility & Industry Packs | ⚪ Not started | |
-| P8 Enterprise & Compliance | ⚪ Not started | |
-| P9 MLOps & Model Expansion | ⚪ Not started | |
-| P10 Production, Scale & GA | ⚪ Not started | |
+
+| Phase                              | Status         | Notes                                                                                                                                   |
+| ---------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| P0 Program Setup & Architecture    | 🟡 In progress | Architecture frozen v1.0; monorepo + dev stack (Slice 0), contracts (Slice 1), CI gate (Slice 2) done; service scaffold + registry next |
+| P1 SaaS Foundation                 | ⚪ Not started | Blocked on P0 exit                                                                                                                      |
+| P2 Video & Ingestion               | ⚪ Not started |                                                                                                                                         |
+| P3 Capability & Inference Platform | ⚪ Not started |                                                                                                                                         |
+| P4 Event/Rule/Alert Platform       | ⚪ Not started | First sellable increment                                                                                                                |
+| P5 Workflow & Command Center       | ⚪ Not started |                                                                                                                                         |
+| P6 Analytics & Search              | ⚪ Not started |                                                                                                                                         |
+| P7 Extensibility & Industry Packs  | ⚪ Not started |                                                                                                                                         |
+| P8 Enterprise & Compliance         | ⚪ Not started |                                                                                                                                         |
+| P9 MLOps & Model Expansion         | ⚪ Not started |                                                                                                                                         |
+| P10 Production, Scale & GA         | ⚪ Not started |                                                                                                                                         |
 
 Legend: ✅ done · 🟢 on track · 🟡 in progress · 🔴 blocked · ⚪ not started
 
 ## Capability status (fills in during P3+)
+
 Track each capability from [reference/AI-CAPABILITY-CATALOG](../docs/reference/AI-CAPABILITY-CATALOG.md): `not-started → contract → implemented → tested → GA`. None started yet.
 
-| Capability | Contract | Impl | Tests | GA |
-|---|---|---|---|---|
-| _(add rows as capabilities begin in P3)_ | | | | |
+| Capability                               | Contract | Impl | Tests | GA  |
+| ---------------------------------------- | -------- | ---- | ----- | --- |
+| _(add rows as capabilities begin in P3)_ |          |      |       |     |
 
 ## Decisions of record
+
 Seed ADRs accepted: [0001](../docs/adr/ADR-0001-capability-composition-over-vertical-features.md) capability composition · [0002](../docs/adr/ADR-0002-model-agnostic-inference.md) model-agnostic inference · [0003](../docs/adr/ADR-0003-tenant-isolation-strategy.md) isolation strategy · [0004](../docs/adr/ADR-0004-edge-first-placement.md) edge-first placement · [0005](../docs/adr/ADR-0005-event-driven-backbone.md) event backbone.
 Enterprise Review ADRs accepted: [0006](../docs/adr/ADR-0006-composition-layer.md) composition layer · [0007](../docs/adr/ADR-0007-models-as-plugins.md) models-as-plugins · [0008](../docs/adr/ADR-0008-connector-platform.md) connector platform · [0009](../docs/adr/ADR-0009-digital-twin.md) digital twin · [0010](../docs/adr/ADR-0010-ddd-bounded-contexts-and-ownership.md) DDD bounded contexts + service ownership.
 Final Enhancement (v1.0 freeze) ADRs accepted: [0011](../docs/adr/ADR-0011-control-plane-data-plane-separation.md) control/data plane · [0012](../docs/adr/ADR-0012-model-adapter-layer.md) model adapter layer · [0013](../docs/adr/ADR-0013-policy-engine.md) policy engine · [0014](../docs/adr/ADR-0014-configuration-hierarchy.md) config hierarchy · [0015](../docs/adr/ADR-0015-contract-testing-and-plugin-certification.md) contract testing + plugin certification.
 
 ## Open risks / landmines (carry forward)
+
 - None recorded yet beyond the standing risk register in [ROADMAP](ROADMAP.md) and section-level tradeoffs. Add anything you hit here so the next agent doesn't rediscover it.
 
 ## Changelog
+
+- `[Claude · 2026-07-27]` **Phase 0 · Slice 2 — CI skeleton (P0-3).** GitHub Actions quality gate (`.github/workflows/ci.yml`, 8 jobs incl. `ci-summary` rollup) over a shared composite setup action: format/lint/typecheck, test, build, **import-graph enforcement** (`tools/import-graph/` — zero-dep scanner + declarative `boundaries.json` for docs 22/23 rules; negative-tested all 4 rules), **contract-testing harness** (`tools/contracts/verify-schemas.mjs`), and **security scan** (gitleaks + semgrep + advisory pnpm-audit). Added `.gitleaks.toml`, `.github/dependabot.yml` (actions-only). Applied a one-time repo-wide **Prettier baseline** (100 files, cosmetic) so `format:check` is enforceable. Next: P0-7 first service scaffold (awaiting approval).
 - `[Claude · 2026-07-27]` **Phase 0 · Slice 1 — Contracts foundation (P0-2).** Built `@vip/contracts` (Zod 4: event envelope/catalog, capability descriptor+registry, config hierarchy, tenant context, API envelope) + native JSON-Schema codegen + **19 passing tests**. Upgraded toolchain to latest stable (registry-verified); TS pinned 5.9.3 pending typescript-eslint TS7 support (**TD-1**); Zod 3→4 code changes applied. Added `docs/project/DEPENDENCIES.md`. Next: P0-3 CI (awaiting approval).
 - `[Claude · 2026-07-27]` **Phase 0 · Slice 0 — Program & Continuity Setup.** Resolved ND-1 → NATS JetStream ([ADR-0016](../docs/adr/ADR-0016-nats-jetstream-event-backbone.md)); adopted Fastify ([ADR-0017](../docs/adr/ADR-0017-fastify-control-plane.md)); updated TECH-STACK + docs 04/09/18. Built AI-continuity system (`docs/ai/*`) + project-status system (`docs/project/*`) + first daily log. Scaffolded monorepo (pnpm/Turborepo/tsconfig/eslint/prettier — P0-1) and dev docker-compose (Mongo/Redis/MinIO/NATS — P0-4) + `.env.example`. No business logic. Next: P0-2 contracts (awaiting approval).
 - `[Final Enhancement · 2026-07-27]` **Architecture FROZEN as v1.0.** Added sections **27 Control/Data Plane** and **28 Policy Engine**; ADRs **0011–0015**; the **[Architecture Implementation Readiness Review](../docs/ARCHITECTURE-READINESS-REVIEW.md)** (completeness 99.9%, Go/No-Go ✅ GO). Integrated: Model Adapter Layer (doc 08), runtime Capability Registry schema (doc 05), Configuration Hierarchy (doc 06), Contract Testing (doc 03), Plugin Certification (doc 20). No existing decision reversed. Post-freeze: all architectural change via ADR only.
