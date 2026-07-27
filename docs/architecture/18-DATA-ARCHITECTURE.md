@@ -14,7 +14,7 @@ Define the data stores, their roles, schema conventions, indexing, retention, ar
 |---|---|---|---|
 | **OLTP** | **MongoDB** (sharded by `tenantId`) | Orgs, cameras, events, incidents, rules, workflows, evidence metadata | Flexible schema for evolving event/attribute shapes; horizontal sharding |
 | **Cache / state / queue** | **Redis** (cluster) | Sessions, entitlements cache, rule state (dwell/sequence/cooldown), rate limits, ephemeral coordination | Low-latency stateful ops |
-| **Event backbone** | **Kafka/Redpanda** (cloud) · embedded log (edge) | Durable event stream, replay | Ordered, partitioned, replayable |
+| **Event backbone** | **NATS JetStream** (cloud) · NATS leaf nodes (edge) | Durable event stream, replay | Replayable, subject-routed, edge-first ([ADR-0016](../adr/ADR-0016-nats-jetstream-event-backbone.md)) |
 | **Object storage** | **S3 / MinIO / Blob** | Clips, snapshots, model artifacts, dataset artifacts, exports | Cheap, tiered, signed URLs |
 | **Time-series** | TS store (e.g. Timescale/Influx/Mongo TS) | Aggregates: footfall, occupancy, counts, heatmaps, metrics | Efficient windowed analytics |
 | **Search + vector** | Search engine + **vector DB** (Qdrant/Milvus/Atlas Vector) | Event text/metadata search + CLIP/caption embeddings (per-tenant namespace) | Structured + semantic/NL search |

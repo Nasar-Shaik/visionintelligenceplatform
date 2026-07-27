@@ -1,0 +1,82 @@
+# Local development stack for the Vision Intelligence Platform.
+# Backing services only — application services run from the monorepo against these.
+# Usage:  docker compose -f infra/docker/docker-compose.dev.yml up -d
+# Config comes from ../../.env (copy from ../../.env.example). NEVER commit real secrets.
+#
+# Architecture refs: docs/reference/DEV-ENVIRONMENT.md, docs/reference/TECH-STACK.md,
+# docs/architecture/18-DATA-ARCHITECTURE.md, ADR-0016 (NATS JetStream).
+name: vip-dev
+
+services:
+  # ---- OLTP: MongoDB (docs/architecture/18) --------------------------------
+  mongodb:
+    image: mongo:8
+    restart: unless-stopped
+    ports:
+      - "${MONGO_PORT:-47017}:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-vip_dev}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-change_me_dev_only}
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Cache / state / queue: Redis (docs/architecture/18) -----------------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-change_me_dev_only}"]
+    ports:
+      - "${REDIS_PORT:-46379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-change_me_dev_only}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Object storage: MinIO (S3-compatible) (docs/architecture/18) --------
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    ports:
+      - "${MINIO_PORT:-49000}:9000"
+      - "${MINIO_CONSOLE_PORT:-49001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-vip_dev}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change_me_dev_only}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---- Event backbone: NATS + JetStream (ADR-0016, docs/architecture/09) ---
+  nats:
+    image: nats:2.10-alpine
+    restart: unless-stopped
+    command: ["-js", "-m", "8222", "-sd", "/data"]  # -js enable JetStream; -m monitoring; -sd store dir
+    ports:
+      - "${NATS_PORT:-44222}:4222"       # client
+      - "${NATS_MONITOR_PORT:-48222}:8222" # monitoring/health
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mongo_data:
+  redis_data:
+  minio_data:
+  nats_data:

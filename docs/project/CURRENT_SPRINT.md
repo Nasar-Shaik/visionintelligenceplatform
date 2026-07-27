@@ -1,0 +1,19 @@
+# CURRENT SPRINT
+
+- **Phase:** Phase 0 — Program Setup & Architecture ([ROADMAP](../../tracking/ROADMAP.md)).
+- **Goal:** Stand up the monorepo, contracts pipeline, CI, dev stack, and continuity system so feature work can begin on a solid, self-documenting foundation.
+- **Definition of exit (Phase 0):** repo self-documenting; `packages/contracts` generating types; CI green (build/test/scan + import-graph + contract-testing harness) on an empty service; dev stack (Mongo/Redis/MinIO/NATS) runs.
+
+## Slices (one at a time)
+| Slice | Item(s) | Status |
+|-------|---------|--------|
+| **Slice 0 — Program & Continuity Setup** | stack ADRs (0016/0017); `docs/ai/*`, `docs/project/*`, `docs/daily/*`; monorepo skeleton (P0-1); dev docker-compose (P0-4); `.env.example` (part P0-6) | ✅ done 2026-07-27 |
+| **Slice 1 — Contracts** | **P0-2** `packages/contracts` schema-first + codegen | ⏭ next (awaiting approval) |
+| **Slice 2 — CI** | **P0-3** GitHub Actions: build/test/lint/scan + import-graph + contract-testing | pending |
+| **Slice 3 — First service** | **P0-7** `services/identity` Fastify template (/health,/ready,/metrics; no business logic) | pending |
+| **Slice 4 — Registry bootstrap** | **P0-5** MLflow + DVC skeleton | pending |
+
+## Rules for this sprint
+Setup only — **no business/vertical features**, nothing past Phase 0. Retail logic (the first industry) is deferred to Industry-Pack work in later phases and always lives in `plugins/`.
+
+See also: [../../tracking/TASK-BOARD.md](../../tracking/TASK-BOARD.md) (canonical Now list), [../ai/CURRENT_CONTEXT.md](../ai/CURRENT_CONTEXT.md).

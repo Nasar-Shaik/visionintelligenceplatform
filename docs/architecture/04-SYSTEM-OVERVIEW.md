@@ -78,7 +78,7 @@ Services are logical; several may co-deploy in small footprints and split out at
 ## 4. Service communication
 
 - **Synchronous (request/response)** — for queries and commands with an immediate answer: **gRPC** service-to-service (Protobuf contracts), **REST/HTTP** at the public edge (OpenAPI), **GraphQL BFF optional** for the console. Used sparingly and never to couple two capabilities' business logic.
-- **Asynchronous (events)** — the default for anything reactive: a durable **event backbone** (Kafka/Redpanda in cloud; embedded log at edge) carrying versioned events. Capabilities publish/subscribe; they do not call each other. Delivery is at-least-once; consumers are idempotent. → [09](09-EVENT-PLATFORM.md)
+- **Asynchronous (events)** — the default for anything reactive: a durable **event backbone** (NATS JetStream in cloud; NATS leaf nodes at edge — [ADR-0016](../adr/ADR-0016-nats-jetstream-event-backbone.md)) carrying versioned events. Capabilities publish/subscribe; they do not call each other. Delivery is at-least-once; consumers are idempotent. → [09](09-EVENT-PLATFORM.md)
 - **Streaming (media)** — RTSP/RTMP ingest; **WebRTC** for low-latency live; **HLS** for scalable playback; all media URLs are short-lived signed tokens. → [07](07-DATA-AND-PIPELINE-FLOWS.md)
 - **Edge↔cloud** — mutual-TLS, store-and-forward sync of events/evidence/health; config and model OTA pulled by the edge. → [14](14-EDGE-PLATFORM.md)
 - **Outbox pattern** for reliable event emission from services that also write OLTP (no dual-write races).

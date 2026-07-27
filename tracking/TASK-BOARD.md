@@ -5,18 +5,18 @@
 Format: `- [ ] <id> — <task> · deps: <…> · phase: <Px> · owner: <—>`
 
 ## Needs-Decision (resolve before/while building; may need an ADR)
-- [ ] ND-1 — Confirm managed vs self-hosted streaming backbone for cloud (Kafka vs Redpanda vs cloud-native). deps: none · propose ADR-0006 if it changes TECH-STACK.
+- [x] ND-1 — Event backbone → **NATS + JetStream** (leaf nodes at edge). Resolved [ADR-0016](../docs/adr/ADR-0016-nats-jetstream-event-backbone.md). `[Claude · 2026-07-27]`
 - [ ] ND-2 — Choose vector DB (Qdrant vs Milvus vs Atlas Vector) for event embeddings. deps: none · affects P6.
 - [ ] ND-3 — Choose primary edge orchestrator (k3s vs balena vs bespoke) for fleet. deps: none · affects P2/P14.
 
 ## Now (Phase 0)
-- [ ] P0-1 — Initialize monorepo: pnpm workspace + Turborepo + Python workspace under `ai/`; shared tsconfig/eslint/prettier. · deps: none · phase: P0
-- [ ] P0-2 — Bootstrap `packages/contracts`: schema-first setup (Zod→JSON Schema/OpenAPI; Protobuf for gRPC/events), codegen for TS types. · deps: P0-1 · phase: P0
-- [ ] P0-3 — CI skeleton (GitHub Actions): build, unit test, lint, SAST/secret scan, **import-graph enforcement** (no core→plugin, no capability internals). · deps: P0-1 · phase: P0
-- [ ] P0-4 — Docker Compose dev stack: Mongo, Redis, MinIO, streaming backbone, RTSP test source. · deps: none · phase: P0
+- [x] P0-1 — Initialize monorepo: pnpm workspace + Turborepo + shared tsconfig/eslint/prettier. `[Claude · 2026-07-27]` (Python workspace under `ai/` deferred to P3 when vision code starts)
+- [ ] P0-2 — Bootstrap `packages/contracts`: schema-first setup (Zod→JSON Schema/OpenAPI; Protobuf for gRPC/events), codegen for TS types. · deps: P0-1 · phase: P0 · **← NEXT SLICE (awaiting approval)**
+- [ ] P0-3 — CI skeleton (GitHub Actions): build, unit test, lint, SAST/secret scan, **import-graph enforcement** + **contract-testing harness**. · deps: P0-1 · phase: P0
+- [x] P0-4 — Docker Compose dev stack: Mongo, Redis, MinIO, **NATS/JetStream**. `[Claude · 2026-07-27]` (RTSP test source added in P2 when media ingestion begins)
 - [ ] P0-5 — Registry bootstrap: MLflow (models) + DVC (datasets) skeleton wired to object storage. · deps: P0-4 · phase: P0
-- [ ] P0-6 — Secrets strategy: Vault/cloud-KMS integration pattern + `.env` conventions (no secrets in repo). · deps: none · phase: P0
-- [ ] P0-7 — First empty service scaffold (`services/gateway` or `services/identity`) proving the service template (transport→service→domain→adapters, /health,/ready,/metrics). · deps: P0-2,P0-3 · phase: P0
+- [~] P0-6 — Secrets strategy: `.env.example` conventions done (no secrets in repo); Vault/cloud-KMS integration pattern still to wire. · deps: none · phase: P0
+- [ ] P0-7 — First empty service scaffold (`services/identity`) proving the Fastify service template (transport→service→domain→adapters, /health,/ready,/metrics). · deps: P0-2,P0-3 · phase: P0
 
 ## Next (Phase 1 — pull when P0 exits)
 - [ ] P1-1 — Tenant model + data-layer isolation guard (fail-closed `tenantId`; repo middleware). · deps: P0-7 · phase: P1

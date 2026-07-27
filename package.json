@@ -1,0 +1,32 @@
+{
+  "name": "vision-intelligence-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Enterprise multi-tenant Vision Intelligence Platform (monorepo root). Architecture frozen v1.0 — see docs/.",
+  "type": "module",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
+    "dev:stack": "docker compose -f infra/docker/docker-compose.dev.yml up -d",
+    "dev:stack:down": "docker compose -f infra/docker/docker-compose.dev.yml down",
+    "dev:stack:logs": "docker compose -f infra/docker/docker-compose.dev.yml logs -f"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.11.0",
+    "@types/node": "^22.7.0",
+    "eslint": "^9.11.0",
+    "prettier": "^3.3.3",
+    "turbo": "^2.1.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.7.0"
+  }
+}

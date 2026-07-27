@@ -5,8 +5,8 @@
 ## Backend / services
 | Concern | Choice | Rationale |
 |---|---|---|
-| Service language | **Node.js + TypeScript** (control/data plane), **Python** (AI/ML) | TS for typed contracts + velocity; Python for the CV/ML ecosystem |
-| Internal RPC | **gRPC + Protobuf** | Typed, low-latency service-to-service |
+| Service framework | **Node.js + Fastify + TypeScript** (control/data plane), **Python + FastAPI** (AI/ML) | Fastify: native TS + JSON-Schema validation (contract-first); FastAPI for the CV/ML ecosystem. [ADR-0017](../adr/ADR-0017-fastify-control-plane.md) |
+| Internal RPC | **NATS request-reply** (default), **gRPC + Protobuf** where heavy typed calls warrant | Lightweight over the same backbone; gRPC optional |
 | Public API | **REST/HTTP + OpenAPI 3.1** (generated), WebSocket, webhooks | Standard, documented, SDK-generable |
 | Schema/validation | **Zod → JSON Schema/OpenAPI**; Protobuf for gRPC/edge | Schema-first, single source, generated types |
 | Async jobs | **BullMQ (Redis)** / worker pools | Clip transcode, embeddings, reports, retention, OTA |
@@ -16,7 +16,7 @@
 |---|---|---|
 | OLTP | **MongoDB** (sharded by tenant) | Flexible evolving event/attribute schema; horizontal sharding |
 | Cache/state/queue | **Redis** (cluster) | Sessions, entitlements, rule state, rate limits |
-| Event backbone | **Kafka/Redpanda** (cloud), embedded log (edge) | Durable, ordered, partitioned, replayable |
+| Event backbone | **NATS + JetStream** (cloud), NATS **leaf nodes** (edge) | Durable, replayable streams; lightweight edge-first fit. [ADR-0016](../adr/ADR-0016-nats-jetstream-event-backbone.md) |
 | Object storage | **S3 / MinIO / Azure Blob** | Clips, models, datasets, exports; tiered; signed URLs |
 | Time-series | Timescale/Influx/Mongo-TS | Aggregates, metrics |
 | Search + vector | Search engine + **Qdrant/Milvus/Atlas Vector** | Structured + semantic/NL event search |

@@ -78,7 +78,7 @@ Every event has a priority (`critical|high|medium|low|info`), defaulted by catal
 
 ## 7. Streaming
 
-- Durable backbone (**Kafka/Redpanda** cloud; embedded log at edge). Topics partitioned by tenant/camera for ordering and scale; at-least-once delivery; idempotent consumers.
+- Durable backbone (**NATS JetStream** cloud; NATS **leaf nodes** at edge — [ADR-0016](../adr/ADR-0016-nats-jetstream-event-backbone.md)). Subjects follow the taxonomy and are partitioned by tenant/camera for ordering and scale; at-least-once delivery; idempotent consumers.
 - **Live fan-out** to clients via WebSocket rooms (`t:{tenant}:b:{branch}:cam:{camera}`), RBAC/scope enforced per subscription.
 
 ## 8. Replay

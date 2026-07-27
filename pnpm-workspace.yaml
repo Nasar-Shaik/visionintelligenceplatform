@@ -1,0 +1,6 @@
+packages:
+  - "packages/*"
+  - "services/*"
+  - "plugins/**"
+  - "tools/*"
+# Python vision workspace lives under ai/ and is managed separately (uv/pip), per the polyglot principle.
