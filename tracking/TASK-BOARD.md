@@ -17,7 +17,7 @@ Format: `- [ ] <id> — <task> · deps: <…> · phase: <Px> · owner: <—>`
 - [x] P0-3 — CI skeleton (GitHub Actions): build, unit test, lint/format/typecheck, SAST/secret scan (gitleaks+semgrep), advisory dep-audit, **import-graph enforcement** (`tools/import-graph/`) + **contract-testing harness** (`tools/contracts/`). `[Claude · 2026-07-27]` (coverage output + SARIF upload deferred)
 - [x] P0-4 — Docker Compose dev stack: Mongo, Redis, MinIO, **NATS/JetStream**. `[Claude · 2026-07-27]` (RTSP test source added in P2 when media ingestion begins)
 - [x] P0-5 — Registry bootstrap: MLflow (models, Postgres backend + MinIO artifacts) + DVC (datasets, MinIO S3 remote) skeleton wired to object storage. `[Claude · 2026-07-27]` (validated end-to-end: run→artifact→register→read-back)
-- [~] P0-6 — Secrets strategy: `.env.example` conventions done (no secrets in repo); Vault/cloud-KMS integration pattern still to wire. · deps: none · phase: P0
+- [x] P0-6 — Secrets & config: `.env`-only secrets (no external manager) + centralized typed fail-fast `@vip/config` (ADR-0018); identity refactored onto it. `[Claude · 2026-07-27]` (Vault/KMS = documented future extension point only)
 - [x] P0-7 — First empty service scaffold (`services/identity`) proving the Fastify service template (transport→application→domain→adapters, /health,/ready,/metrics, tenant-context seam, ApiError envelope, graceful shutdown). `[Claude · 2026-07-27]` (auth/users/data = P1)
 
 ## Next (Phase 1 — pull when P0 exits)

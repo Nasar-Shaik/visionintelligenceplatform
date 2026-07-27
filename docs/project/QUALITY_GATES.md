@@ -23,6 +23,23 @@
 
 ---
 
+## Sprint 0005 — Slice 5 (Secrets & centralized config, P0-6) · 2026-07-27
+
+| Gate                      | Result  | Reason                                                                                                                      |
+| ------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Architecture              | ✅ PASS | New `@vip/config` shared lib (ADR-0018); identity refactored onto it; import-graph 3 pkgs / 2 edges / 0 violations          |
+| Security                  | ✅ PASS | `.env`-only secrets; no external manager; no `process.env` in business logic; fail-fast on bad config; no secrets committed |
+| Performance               | ➖ N/A  | Config load is startup-only                                                                                                 |
+| Testing                   | ✅ PASS | `@vip/config` 14 tests; identity refactor keeps 19; runtime smoke (fail-fast verified). 52 TS tests                         |
+| Documentation             | ✅ PASS | ADR-0018 + doc 15 §4 reconciled + `.env.example` + README + governance suite                                                |
+| Dependency Review         | ✅ PASS | **Zero new deps** (Node `process.loadEnvFile()` built-in; reuses zod)                                                       |
+| Lint / Formatting / Build | ✅ PASS | all clean                                                                                                                   |
+| Docker                    | ➖ N/A  | No stack change (identity still boots; verified)                                                                            |
+| Maintainability           | ✅ PASS | One typed config surface; grouped by concern; no abstraction without value                                                  |
+| Extensibility             | ✅ PASS | Future secret stores are a single documented extension point; group loaders unchanged                                       |
+
+**Overall: PASS** (Architecture Review ⏳ PENDING — see [docs/review/SPRINT-0005.md](../review/SPRINT-0005.md)).
+
 ## Sprint 0004 — Slice 4 (Registry bootstrap, P0-5) · 2026-07-27
 
 | Gate              | Result  | Reason                                                                                                                   |

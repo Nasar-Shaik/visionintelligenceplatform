@@ -7,7 +7,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
-import type { AppConfig } from '../config/env.js';
+import type { ServiceConfig } from '../config/env.js';
 import { ReadinessRegistry } from '../application/readiness.js';
 import { registerSecurity } from './plugins/security.js';
 import { registerMetrics } from './plugins/observability.js';
@@ -18,7 +18,7 @@ import { registerMetricsRoute } from './routes/metrics.js';
 import { registerRootRoute } from './routes/root.js';
 
 export interface BuildServerOptions {
-  config: AppConfig;
+  config: ServiceConfig;
   /** Process start time (for uptime). Injectable for deterministic tests. */
   startedAt?: Date;
   /** Pre-seeded readiness registry (adapters register their checks here). */
@@ -37,8 +37,8 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
 
   const app = Fastify({
     logger: {
-      level: config.LOG_LEVEL,
-      ...(config.NODE_ENV === 'development'
+      level: config.logLevel,
+      ...(config.nodeEnv === 'development'
         ? {
             transport: {
               target: 'pino-pretty',
@@ -56,13 +56,13 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
   });
 
   await registerSecurity(app);
-  const registry = registerMetrics(app, { serviceName: config.SERVICE_NAME });
+  const registry = registerMetrics(app, { serviceName: config.serviceName });
   registerTenantContext(app);
   registerErrorHandler(app);
 
   registerHealthRoutes(app, { readiness });
   registerMetricsRoute(app, registry);
-  registerRootRoute(app, { name: config.SERVICE_NAME, version: config.SERVICE_VERSION, startedAt });
+  registerRootRoute(app, { name: config.serviceName, version: config.serviceVersion, startedAt });
 
   return { app, readiness };
 }

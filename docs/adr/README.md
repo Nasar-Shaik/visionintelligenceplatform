@@ -38,6 +38,7 @@ Any decision that changes: a **contract**, a **boundary/dependency rule**, a **t
 | [0015](ADR-0015-contract-testing-and-plugin-certification.md)     | Contract testing & plugin certification gate                     | Accepted |
 | [0016](ADR-0016-nats-jetstream-event-backbone.md)                 | NATS JetStream as the event backbone & messaging (resolves ND-1) | Accepted |
 | [0017](ADR-0017-fastify-control-plane.md)                         | Fastify for Control-Plane / TypeScript services                  | Accepted |
+| [0018](ADR-0018-env-only-secrets-and-centralized-config.md)       | `.env`-only secrets & centralized configuration                  | Accepted |
 
 _Add new rows as ADRs are created. Never renumber; never delete._
 

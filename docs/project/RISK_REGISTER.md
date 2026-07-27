@@ -21,6 +21,7 @@
 | R-012 | MLflow 3.x host-header + CORS hardening can silently block internal service integration if hosts aren't allowlisted            | Operational / Technology | Med    | Med         | **Med**  | `--allowed-hosts` set for the compose service name; document for any new client host ([ED-0017](ENGINEERING_DECISION_LOG.md))               | Claude | Mitigating |
 | R-013 | Python MLOps deps are pinned (`==`) but have no lockfile — transitive drift possible, unlike the pnpm `--frozen-lockfile` gate | Dependency               | Med    | Med         | **Med**  | Exact pins now; adopt a Python lockfile (uv/pip-tools) — Q-011                                                                              | Claude | Open       |
 | R-014 | MLflow/Postgres/S3 dev credentials are placeholders; MLflow runs without auth/TLS (dev-scoped)                                 | Security                 | High   | Low         | **Med**  | Dev-only; prod needs auth/TLS + KMS secrets (P0-6, [ED-0015](ENGINEERING_DECISION_LOG.md))                                                  | Claude | Open       |
+| R-015 | `.env`-only secrets have no built-in rotation/audit/leasing that a managed store provides                                      | Security / Operational   | Med    | Low         | **Low**  | Accepted for the self-host model (ADR-0018); protect env via OS/orchestrator; managed store is an optional future extension point           | Claude | Accepted   |
 
 ## New this sprint (Slice 3 + governance)
 

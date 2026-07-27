@@ -11,5 +11,6 @@ do not replace the manual sign-off.
 | 2     | [slice-002.md](slice-002.md) | CI quality gate + import-graph + contract harness |
 | 3     | [slice-003.md](slice-003.md) | `@vip/service-identity` Fastify template          |
 | 4     | [slice-004.md](slice-004.md) | Registry bootstrap — MLflow + DVC                 |
+| 5     | [slice-005.md](slice-005.md) | Secrets & centralized config — `@vip/config`      |
 
 New slices copy [docs/templates/test-scenario.md](../templates/test-scenario.md).

@@ -31,7 +31,8 @@ Define enterprise security: authentication, authorization, encryption, secrets, 
 
 ## 4. Secrets & key management
 
-- Central secrets vault (e.g. Vault/cloud KMS); no secrets in code or images (12-factor). Automatic **key rotation** (data keys, service creds, edge device certs). Signed, hardened container images.
+- **Application/deployment secrets** come from the **environment** (`.env` in dev; orchestrator-injected in prod), loaded and validated by `@vip/config` — no secrets in code or images (12-factor). **No external secret manager is required** for the default self-hosted deployment ([ADR-0018](../adr/ADR-0018-env-only-secrets-and-centralized-config.md)); Vault / cloud secret managers / Kubernetes Secrets are **optional** enterprise extension points (populate the process environment; loaders are unchanged).
+- **Data-protection keys** are a separate concern: per-tenant **KMS data keys** (envelope encryption for evidence/PII), edge device certs, and camera/connector credential vaulting — with automatic **key rotation**. Signed, hardened container images.
 
 ## 5. Audit logs
 

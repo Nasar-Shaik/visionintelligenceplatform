@@ -1,31 +1,17 @@
 /**
- * Typed, validated configuration (12-factor / Principle 8). Environment is the ONLY
- * config source; the service fails fast at boot if anything is missing or malformed,
- * so a misconfigured instance never serves traffic.
+ * Service configuration — delegates to the shared `@vip/config` app group (no service
+ * re-implements env parsing; no code reads `process.env` directly, ADR-0018) and layers
+ * on the service version. Fail-fast validation happens inside `@vip/config`.
  */
-import { z } from 'zod';
+import { loadAppConfig, type AppConfig } from '@vip/config';
 
-const EnvSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  /** Logical service name — appears in logs/metrics/traces. */
-  SERVICE_NAME: z.string().min(1).default('identity'),
+export interface ServiceConfig extends AppConfig {
   /** Semantic version, injected by the package manager at runtime when present. */
-  SERVICE_VERSION: z.string().min(1).default('0.1.0'),
-  HOST: z.string().min(1).default('0.0.0.0'),
-  PORT: z.coerce.number().int().min(1).max(65535).default(8080),
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
-});
+  serviceVersion: string;
+}
 
-export type AppConfig = z.infer<typeof EnvSchema>;
-
-/**
- * Parse and validate configuration from a raw environment (defaults to `process.env`).
- * @throws ZodError with all offending keys if validation fails — caught at bootstrap.
- */
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  return EnvSchema.parse({
-    ...env,
-    // npm/pnpm expose the manifest version here; fall back to the schema default.
-    SERVICE_VERSION: env.SERVICE_VERSION ?? env.npm_package_version,
-  });
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
+  const app = loadAppConfig(env, { serviceName: 'identity', port: 8080 });
+  const serviceVersion = env.SERVICE_VERSION ?? env.npm_package_version ?? '0.1.0';
+  return { ...app, serviceVersion };
 }

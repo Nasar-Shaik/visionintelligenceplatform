@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@fastify/helmet": "^13.1.0",
+    "@vip/config": "workspace:*",
     "@vip/contracts": "workspace:*",
     "fastify": "^5.10.0",
     "prom-client": "^15.1.3",

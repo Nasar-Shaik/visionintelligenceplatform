@@ -32,5 +32,7 @@
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._
+    15b. **Never read `process.env` directly in business logic.** All configuration flows through `@vip/config` (typed, validated, grouped); Python via `ai/mlops/config.py`. — _enforced: review; [ADR-0018](../adr/ADR-0018-env-only-secrets-and-centralized-config.md)._
+    15c. **Never require an external secret manager.** `.env` (dev) / injected env (prod) is the only secrets source; deployment stays `cp .env.example .env → compose up`. Vault/KMS/K8s-Secrets are optional, documentation-only extension points. — _enforced: review; ADR-0018._
 16. **Every service/package/plugin/capability ships a `README.md`** (purpose, responsibilities, architecture position, dependencies, config, run, test, extension points). — _enforced: review; [DoD](DEFINITION_OF_DONE.md)._
 17. **Every slice satisfies the [Definition of Done](DEFINITION_OF_DONE.md)** and updates all governance trackers before it is Done. — _enforced: end-of-sprint validation._

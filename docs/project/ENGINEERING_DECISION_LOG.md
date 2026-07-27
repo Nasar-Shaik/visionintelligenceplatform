@@ -159,3 +159,12 @@
 - **Reason:** A runnable, dependency-free test gives real CI coverage now; conservative image pins avoid unproven defaults. MLflow 3.x host-header protection also required an explicit `--allowed-hosts` for the compose service name.
 - **Impact:** CI gains a `mlops` job in the `ci-summary` rollup; DEPENDENCIES notes the 17/3.12 deferrals (Q-008).
 - **Owner:** Claude · **Status:** Accepted · **Future Review:** Yes (adopt a Python dep lockfile + linter — Q-011)
+
+## ED-0018 — `.env`-only secrets + centralized `@vip/config`
+
+- **Date:** 2026-07-27 · **Slice:** 5 (P0-6) · **ADR:** [0018](../adr/ADR-0018-env-only-secrets-and-centralized-config.md)
+- **Decision:** `.env` is the only secrets source (no external secret manager); build `@vip/config` — a centralized, typed, fail-fast, grouped config package that every TS service loads config through (no code reads `process.env` directly). Resolves Q-006.
+- **Alternatives Considered:** Vault (self-host infra burden); cloud KMS/Secrets Manager (cloud coupling); a `SecretsProvider` abstraction now (no immediate 2nd impl); `dotenv` (unneeded — Node `process.loadEnvFile()`).
+- **Reason:** Repo-owner deployment directive — `cp .env.example .env && docker compose up -d`, no extra infra. Simplicity + prod/self-host parity; zero new deps.
+- **Impact:** New `packages/config`; identity refactored onto it; `.env.example` header + doc 15 §4 reconciled; external managers documented as future-only extension points. Reverses the earlier "Vault/KMS" P0-6 framing.
+- **Owner:** Repo owner + Claude · **Status:** Accepted (supersedes the Vault/KMS assumption) · **Future Review:** Yes (only if an enterprise customer mandates a managed store)

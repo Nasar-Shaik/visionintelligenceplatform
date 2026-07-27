@@ -3,10 +3,12 @@
  * gracefully on SIGTERM/SIGINT (drain in-flight requests before exit — Principle 8,
  * 12-factor disposability). This is the only file that touches the process/network.
  */
+import { loadDotEnv } from '@vip/config';
 import { loadConfig } from './config/env.js';
 import { buildServer } from './transport/server.js';
 
 async function main(): Promise<void> {
+  loadDotEnv(); // load .env into process.env once (no-op in prod / tests)
   const config = loadConfig();
   const { app } = await buildServer({ config });
 
@@ -21,7 +23,7 @@ async function main(): Promise<void> {
   }
   process.on('unhandledRejection', (reason) => app.log.error({ reason }, 'unhandledRejection'));
 
-  await app.listen({ host: config.HOST, port: config.PORT });
+  await app.listen({ host: config.host, port: config.port });
 }
 
 main().catch((err: unknown) => {
