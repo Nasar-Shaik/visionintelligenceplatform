@@ -94,7 +94,7 @@ flowchart TD
 - **Objective:** Run one model-agnostic capability over frames and produce detections.
 - **Dependencies:** P1-4 (frames), Phase 0 MLOps registry (model artifact), `ai/mlops` config. Python runtime formalizes here.
 - **Acceptance:** a frame in → a detection out (class + confidence + bbox) conforming to the capability contract; the capability self-describes; model is bound by **selector** (swap without code change). Start CPU/ONNX, one model, batch=1.
-- **Status:** ⬜ Not started.
+- **Status:** 🟢 Code complete — ⏳ Architect review. Manifest-driven **AI Runtime Platform** (`ai/inference`, Python): ModelAdapter seam, staged pipeline, lifecycle states, metrics, version metadata ([ED-0026](../../project/ENGINEERING_DECISION_LOG.md); real-ONNX/events [TD-5](../../../tracking/TECH-DEBT.md)).
 
 ### P1-5 — Event pipeline · **L** · [EVENT_PIPELINE](EVENT_PIPELINE.md)
 

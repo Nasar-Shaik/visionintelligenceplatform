@@ -1,0 +1,11 @@
+# Inference runtime — HEAVY deps for the `onnx` backend only (integration/production).
+# The default `stub` backend and the entire unit-test suite are STDLIB-ONLY and need none of these
+# (matching ai/mlops). Pinned + registry-verified (docs/project/DEPENDENCIES.md).
+#
+#   python -m pip install -r ai/inference/requirements.txt   # only to run the real ONNX backend
+onnxruntime==1.19.2
+numpy==2.0.2
+pillow==11.3.0
+# Model Registry client — resolves + downloads model artifacts (aligned with ai/mlops).
+mlflow==3.14.0
+boto3==1.43.56

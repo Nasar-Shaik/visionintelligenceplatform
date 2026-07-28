@@ -85,6 +85,17 @@
 | GET    | `/streams`                        | List the tenant's workers             | `stream:read`    | `200 {success,data:StreamStatus[]}` · `401/403`   | —                            | beta     | 0.1.0   |
 | GET    | `/health` `/ready` `/metrics` `/` | Liveness / readiness / metrics / info | None             | as template (`/ready` includes a `storage` check) | prom-client, @vip/storage    | scaffold | 0.1.0   |
 
+## inference (ai/inference, Python — v0.1.0)
+
+> Phase 1 P1-6. The AI capability runtime (Perception context). Manifest-driven capabilities, model-agnostic (selector→registry via the adapter layer), staged pipeline, lifecycle states, metrics, version-stamped results. Internal (called by the pipeline, not user-facing); `/infer` is `x-internal-key` gated and fail-closed on missing tenant. Stdlib `http.server` transport.
+
+| Method | Endpoint                          | Purpose                                            | Auth             | Input              | Output                                                   | Status |
+| ------ | --------------------------------- | -------------------------------------------------- | ---------------- | ------------------ | -------------------------------------------------------- | ------ |
+| POST   | `/infer`                          | Run a capability over one frame                    | `x-internal-key` | `InferenceRequest` | `200 {success,data:DetectionResult}` · `400/401/404/500` | beta   |
+| GET    | `/capabilities`                   | Descriptors of all loaded capabilities (discovery) | None             | —                  | `200 {success,data:CapabilityDescriptor[]}`              | beta   |
+| GET    | `/status`                         | Per-capability lifecycle state + metrics           | None             | —                  | `200 {success,data:[…]}`                                 | beta   |
+| GET    | `/health` `/ready` `/metrics` `/` | liveness / readiness / Prometheus / info           | None             | —                  | infra (`/ready` = default capability READY)              | beta   |
+
 ## Infrastructure services (third-party APIs in the dev stack)
 
 > Not VIP-authored endpoints; listed so integrators know what the stack exposes. Dev only, network-restricted, no auth (R-014).

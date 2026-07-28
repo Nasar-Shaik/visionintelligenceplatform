@@ -119,17 +119,20 @@ jobs:
         run: pnpm audit --audit-level=high
 
   mlops:
-    name: MLOps config tests
+    name: MLOps + inference unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      # Stdlib-only unit tests (no pip install) — validate the registry config loader.
-      # Heavy MLflow/DVC integration is exercised manually against the dev stack.
+      # Stdlib-only unit tests (no pip install) — the registry config loader (P0) and the
+      # inference capability runtime (P1-6). Heavy MLflow/DVC/ONNX integration is exercised
+      # manually against the dev stack (the `onnx` backend is not loaded by these tests).
       - name: Registry config unit tests
         run: python -m unittest discover -s ai/mlops/tests -p 'test_*.py'
+      - name: Inference runtime unit tests
+        run: python -m unittest discover -s ai/inference/tests -p 'test_*.py'
 
   # Single required status other jobs roll up into — target this in branch protection.
   ci-summary:

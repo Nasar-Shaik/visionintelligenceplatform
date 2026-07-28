@@ -21,6 +21,7 @@ import { Tenant, OrgNode } from '../src/tenant/tenant.js';
 import { User, Principal, TokenPair } from '../src/auth/auth.js';
 import { Camera, CaptureProfile, CameraHealth } from '../src/camera/camera.js';
 import { StreamStatus, RecordingSegment } from '../src/media/media.js';
+import { Detection, DetectionResult, InferenceRequest } from '../src/perception/perception.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, '..', 'generated');
@@ -43,6 +44,9 @@ const schemas: Record<string, z.ZodType> = {
   'camera-health': CameraHealth,
   'stream-status': StreamStatus,
   'recording-segment': RecordingSegment,
+  detection: Detection,
+  'detection-result': DetectionResult,
+  'inference-request': InferenceRequest,
 };
 
 mkdirSync(outDir, { recursive: true });

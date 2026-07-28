@@ -37,6 +37,9 @@ const REQUIRED = [
   'camera-health',
   'stream-status',
   'recording-segment',
+  'detection',
+  'detection-result',
+  'inference-request',
 ];
 
 const errors = [];

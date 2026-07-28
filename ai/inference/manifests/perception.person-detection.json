@@ -1,0 +1,21 @@
+{
+  "capabilityId": "perception.person-detection",
+  "version": "0.1.0",
+  "kind": "perception",
+  "enabled": true,
+  "inputTypes": ["media.frame"],
+  "outputType": "perception.detection",
+  "executionProviders": ["stub", "CPUExecutionProvider"],
+  "requiredModel": {
+    "task": "object-detection",
+    "family": "*",
+    "versionRange": "",
+    "accelerator": "cpu"
+  },
+  "minConfidence": 0.5,
+  "tracking": false,
+  "preprocessing": "letterbox",
+  "postprocessing": "confidence-threshold",
+  "generatedEvents": ["perception.person.detected"],
+  "placement": ["cloud", "edge"]
+}

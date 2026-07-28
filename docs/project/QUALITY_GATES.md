@@ -23,6 +23,29 @@
 
 ---
 
+## Sprint 0010 — Slice 10 (P1-6 AI inference / capability runtime) · 2026-07-28
+
+> Principal-Architect P1-6 review **approved** with 8 platform improvements (manifests, adapter
+> layer, FrameContext, generic detections, lifecycle states, metrics, version metadata, staged
+> pipeline) — all folded in ([ED-0026](ENGINEERING_DECISION_LOG.md)).
+
+| Gate              | Result  | Reason                                                                                                                                                                                                                                           |
+| ----------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Architecture      | ✅ PASS | Model-agnostic runtime (ADR-0002/0012): manifest-driven registry, `ModelAdapter` seam (runtime never imports onnxruntime), staged pipeline; `check:imports` 12 pkgs / 0 violations (Python `ai/` is outside the TS graph); frozen v1.0 unchanged |
+| Security          | ✅ PASS | `/infer` `x-internal-key` gated (constant-time); **fail-closed** — a frame without tenant context is dropped (counted), never inferred; capability persists no tenant data; models shared, data isolated; no secrets committed                   |
+| Performance       | ➖ N/A  | CPU/stub + batch=1 (Phase 1); per-frame inference/decode latency + FPS metered from day one; batching-within-tenant + GPU providers deferred (R-005)                                                                                             |
+| Testing           | ✅ PASS | 40 slice tests: **38 Python** (stdlib unittest — selector, manifest/discovery, capability lifecycle+fail-closed, metrics, config, full HTTP `/infer` round-trip) + 2 TS perception-contract; live-validated end-to-end (frame → detection)       |
+| Documentation     | ✅ PASS | inference README (8-point architecture), AI_PIPELINE grounding, API_INVENTORY, DEPENDENCIES, slice-010, trackers; TD-5 recorded                                                                                                                  |
+| Dependency Review | ✅ PASS | **Zero new npm deps**; runtime + tests **Python stdlib-only**; onnx-backend deps (onnxruntime/numpy/pillow/mlflow/boto3) pinned + registry-verified, integration-only — [ED-0026](ENGINEERING_DECISION_LOG.md)                                   |
+| Lint              | ✅ PASS | `pnpm lint` clean (12 pkgs); Python kept import-clean (stdlib) — heavy adapters lazily imported                                                                                                                                                  |
+| Formatting        | ✅ PASS | `pnpm format:check` clean                                                                                                                                                                                                                        |
+| Build             | ✅ PASS | `pnpm build` all packages; `verify:contracts` 20 schemas                                                                                                                                                                                         |
+| Docker            | ➖ N/A  | No new container (Python service runs from the repo); the `onnx` backend resolves models from the existing dev-stack MLflow                                                                                                                      |
+| Maintainability   | ✅ PASS | Small Protocols, interfaces over inheritance, heavy deps isolated behind lazy imports; every pipeline stage independently testable/replaceable                                                                                                   |
+| Extensibility     | ✅ PASS | Zero-code capability registration (manifests); new backends (TensorRT/OpenVINO/…) + new capabilities + per-tenant sets drop in via the same seams; event-sink stage is the P1-5 wiring point                                                     |
+
+**Overall: PASS** (Architecture Review ⏳ PENDING — see [REVIEW_HISTORY](../tracker/REVIEW_HISTORY.md)).
+
 ## Sprint 0009 — Slice 9 (P1-4 RTSP ingestion + recording) · 2026-07-28
 
 | Gate              | Result  | Reason                                                                                                                                                                                                                                                                              |
