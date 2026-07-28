@@ -1,0 +1,120 @@
+import { describe, expect, it } from 'vitest';
+import {
+  Camera,
+  CameraProtocol,
+  CaptureProfile,
+  CreateCameraInput,
+  StreamUrl,
+  UpdateCameraInput,
+} from '../src/camera/camera.js';
+import { isKnownEventType } from '../src/events/catalog.js';
+
+const now = '2026-07-28T00:00:00.000Z';
+
+describe('StreamUrl', () => {
+  it('accepts rtsp/rtmp (and TLS variants) URLs', () => {
+    expect(StreamUrl.safeParse('rtsp://cam.local:554/stream').success).toBe(true);
+    expect(StreamUrl.safeParse('rtmps://cam.local/live').success).toBe(true);
+  });
+
+  it('rejects non-stream schemes', () => {
+    expect(StreamUrl.safeParse('http://cam.local/stream').success).toBe(false);
+  });
+
+  it('rejects credentials embedded in the URL (must be vaulted separately)', () => {
+    expect(StreamUrl.safeParse('rtsp://admin:secret@cam.local:554/stream').success).toBe(false);
+  });
+});
+
+describe('CreateCameraInput', () => {
+  const base = {
+    zoneId: 'on_zone1',
+    name: 'Lobby',
+    protocol: 'rtsp' as const,
+    streamUrl: 'rtsp://cam.local:554/stream',
+  };
+
+  it('accepts a minimal valid camera', () => {
+    expect(CreateCameraInput.safeParse(base).success).toBe(true);
+  });
+
+  it('accepts optional credentials + capture profile', () => {
+    const r = CreateCameraInput.safeParse({
+      ...base,
+      credentials: { username: 'admin', password: 'p@ss' },
+      capture: { codec: 'h264', resolution: '1920x1080', fps: 25, ptz: true },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects a streamUrl whose scheme mismatches the protocol', () => {
+    const r = CreateCameraInput.safeParse({ ...base, protocol: 'rtmp' });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejects a bad resolution format', () => {
+    const r = CreateCameraInput.safeParse({ ...base, capture: { resolution: '1080p' } });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe('UpdateCameraInput', () => {
+  it('requires at least one field', () => {
+    expect(UpdateCameraInput.safeParse({}).success).toBe(false);
+  });
+  it('accepts a single field', () => {
+    expect(UpdateCameraInput.safeParse({ status: 'disabled' }).success).toBe(true);
+  });
+  it('has no protocol field (protocol is immutable)', () => {
+    const r = UpdateCameraInput.parse({ name: 'x', protocol: 'rtmp' } as never);
+    expect('protocol' in r).toBe(false);
+  });
+});
+
+describe('Camera (returned shape)', () => {
+  it('parses a full record and never carries credentials', () => {
+    const cam = {
+      id: 'cam_1',
+      tenantId: 'tnt_a',
+      zoneId: 'on_zone1',
+      name: 'Lobby',
+      protocol: 'rtsp',
+      streamUrl: 'rtsp://cam.local:554/stream',
+      status: 'enabled',
+      capture: { ptz: false },
+      health: { status: 'unknown' },
+      hasCredentials: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const parsed = Camera.parse(cam);
+    expect(parsed.hasCredentials).toBe(true);
+    expect('credentials' in parsed).toBe(false);
+    expect('password' in parsed).toBe(false);
+  });
+});
+
+describe('CaptureProfile', () => {
+  it('defaults ptz to false', () => {
+    expect(CaptureProfile.parse({}).ptz).toBe(false);
+  });
+});
+
+describe('camera event catalog', () => {
+  it('registers the camera lifecycle events', () => {
+    for (const t of [
+      'camera.registered',
+      'camera.updated',
+      'camera.removed',
+      'camera.health.changed',
+    ]) {
+      expect(isKnownEventType(t)).toBe(true);
+    }
+  });
+});
+
+describe('CameraProtocol', () => {
+  it('is rtsp | rtmp', () => {
+    expect(CameraProtocol.options).toEqual(['rtsp', 'rtmp']);
+  });
+});

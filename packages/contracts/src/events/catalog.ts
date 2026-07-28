@@ -91,6 +91,31 @@ export const EVENT_CATALOG: EventCatalogEntry[] = [
     defaultPriority: 'low',
     pii: 'none',
   },
+  // camera inventory (control-plane; P1-3)
+  {
+    type: 'camera.registered',
+    description: 'A camera was onboarded under a tenant (consumed by media/ingestion).',
+    defaultPriority: 'low',
+    pii: 'none',
+  },
+  {
+    type: 'camera.updated',
+    description: 'A camera’s configuration changed (zone, stream, capture, status, credentials).',
+    defaultPriority: 'info',
+    pii: 'none',
+  },
+  {
+    type: 'camera.removed',
+    description: 'A camera was removed from the inventory (ingestion should stop).',
+    defaultPriority: 'low',
+    pii: 'none',
+  },
+  {
+    type: 'camera.health.changed',
+    description: 'A camera’s observed health transitioned (unknown/online/offline/unhealthy).',
+    defaultPriority: 'medium',
+    pii: 'none',
+  },
   // device / lifecycle
   {
     type: 'device.camera.offline',

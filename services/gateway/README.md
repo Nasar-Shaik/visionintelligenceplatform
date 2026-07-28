@@ -19,7 +19,8 @@ Design: [phase1/AUTHENTICATION](../../docs/architecture/phase1/AUTHENTICATION.md
 
 - **Trust boundary:** on every proxied request the gateway drops client `x-tenant-id` / `x-principal-id`
   / `x-roles` and re-sets them from the validated token (spoofing prevention — see `src/transport/context.ts`).
-- **Upstreams** are configured by prefix: `identity` → `IDENTITY_URL`, `tenant` → `TENANT_URL`.
+- **Upstreams** are configured by prefix: `identity` → `IDENTITY_URL`, `tenant` → `TENANT_URL`,
+  `camera` → `CAMERA_URL`.
 - P1-2 proxies JSON bodies; streaming/multipart and richer routing are later extensions.
 
 ## Configuration

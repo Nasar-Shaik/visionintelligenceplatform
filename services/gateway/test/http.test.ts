@@ -47,6 +47,19 @@ async function token(): Promise<string> {
   return (await signAccessToken(claims, jwtOpts)).token;
 }
 
+describe('config', () => {
+  it('registers identity, tenant, and camera upstreams (with defaults)', () => {
+    const c = loadConfig({
+      NODE_ENV: 'test',
+      SERVICE_NAME: 'gateway',
+      LOG_LEVEL: 'silent',
+      JWT_SECRET: SECRET,
+    });
+    expect(Object.keys(c.upstreams).sort()).toEqual(['camera', 'identity', 'tenant']);
+    expect(c.upstreams.camera).toBe('http://localhost:8082');
+  });
+});
+
 describe('context helpers', () => {
   it('forwardHeaders maps claims to internal headers', () => {
     expect(forwardHeaders(claims)).toEqual({

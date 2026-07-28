@@ -14,7 +14,7 @@ import { z } from 'zod';
 export interface ServiceConfig extends AppConfig {
   serviceVersion: string;
   jwt: JwtConfig;
-  /** Prefix → upstream base URL, e.g. `{ identity: 'http://localhost:8080' }`. */
+  /** Prefix → upstream base URL, e.g. `{ identity, tenant, camera }`. */
   upstreams: Record<string, string>;
 }
 
@@ -25,6 +25,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
     z.object({
       IDENTITY_URL: z.url().default('http://localhost:8080'),
       TENANT_URL: z.url().default('http://localhost:8081'),
+      CAMERA_URL: z.url().default('http://localhost:8082'),
     }),
     env,
     'gateway',
@@ -34,6 +35,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
     ...app,
     serviceVersion,
     jwt,
-    upstreams: { identity: g.IDENTITY_URL, tenant: g.TENANT_URL },
+    upstreams: { identity: g.IDENTITY_URL, tenant: g.TENANT_URL, camera: g.CAMERA_URL },
   };
 }

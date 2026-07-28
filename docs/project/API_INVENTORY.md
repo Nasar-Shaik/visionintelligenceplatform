@@ -49,6 +49,21 @@
 | POST   | `/tenants/:tenantId/org-nodes`    | Create an org-hierarchy node          | tenant context   | `CreateOrgNodeInput` | `201 {success,data:OrgNode}` · `400/401/403`    | Mongo, @vip/tenancy | beta     | 0.1.0   |
 | GET    | `/health` `/ready` `/metrics` `/` | Liveness / readiness / metrics / info | None             | —                    | as identity (`/ready` includes a `mongo` check) | prom-client         | scaffold | 0.1.0   |
 
+## @vip/service-camera (v0.1.0)
+
+> Phase 1 P1-3. Camera inventory: onboard cameras into the tenant-owned org hierarchy (`zoneId` → `OrgNode`), vault credentials at rest (`@vip/crypto`, AES-256-GCM), publish `camera.*` lifecycle events. Verifies the identity-issued Bearer token itself (`iss=identity`, `aud=vip`); every route is permission-gated (deny-by-default) and tenant-scoped from the token — a camera in another tenant is a **404** (no existence leak). **Credentials are never returned** (only `hasCredentials`).
+
+| Method | Endpoint                          | Purpose                                 | Auth            | Input                  | Output                                          | Dependencies                     | Status   | Version |
+| ------ | --------------------------------- | --------------------------------------- | --------------- | ---------------------- | ----------------------------------------------- | -------------------------------- | -------- | ------- |
+| POST   | `/cameras`                        | Onboard a camera (vault credentials)    | `camera:create` | `CreateCameraInput`    | `201 {success,data:Camera}` · `400/401/403/409` | Mongo, @vip/tenancy, @vip/crypto | beta     | 0.1.0   |
+| GET    | `/cameras`                        | List the tenant's cameras               | `camera:read`   | —                      | `200 {success,data:Camera[]}` · `401/403`       | Mongo, @vip/tenancy              | beta     | 0.1.0   |
+| GET    | `/cameras/:id`                    | Get one camera (own tenant)             | `camera:read`   | —                      | `200 {success,data:Camera}` · `401/403/404`     | Mongo, @vip/tenancy              | beta     | 0.1.0   |
+| PATCH  | `/cameras/:id`                    | Update / re-vault credentials           | `camera:update` | `UpdateCameraInput`    | `200 {success,data:Camera}` · `400/401/403/404` | Mongo, @vip/tenancy, @vip/crypto | beta     | 0.1.0   |
+| DELETE | `/cameras/:id`                    | Remove a camera from inventory          | `camera:delete` | —                      | `204` · `401/403/404`                           | Mongo, @vip/tenancy              | beta     | 0.1.0   |
+| GET    | `/cameras/:id/health`             | Camera observed health (unknown → P1-4) | `camera:read`   | —                      | `200 {success,data:CameraHealthReport}` · `404` | Mongo, @vip/tenancy              | beta     | 0.1.0   |
+| POST   | `/cameras/discover`               | ONVIF/network discovery (stub)          | `camera:create` | `DiscoverCamerasInput` | `501 not_implemented`                           | —                                | stub     | 0.1.0   |
+| GET    | `/health` `/ready` `/metrics` `/` | Liveness / readiness / metrics / info   | None            | —                      | as identity (`/ready` includes a `mongo` check) | prom-client                      | scaffold | 0.1.0   |
+
 ## Infrastructure services (third-party APIs in the dev stack)
 
 > Not VIP-authored endpoints; listed so integrators know what the stack exposes. Dev only, network-restricted, no auth (R-014).

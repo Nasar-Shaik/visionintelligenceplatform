@@ -32,6 +32,9 @@ const REQUIRED = [
   'user',
   'principal',
   'token-pair',
+  'camera',
+  'capture-profile',
+  'camera-health',
 ];
 
 const errors = [];

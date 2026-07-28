@@ -23,6 +23,25 @@
 
 ---
 
+## Sprint 0008 — Slice 8 (P1-3 Camera registry + org hierarchy) · 2026-07-28
+
+| Gate              | Result  | Reason                                                                                                                                                                                                                                                                            |
+| ----------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Architecture      | ✅ PASS | `check:imports` 10 pkgs / 0 violations; only `service→shared` edges (camera→contracts/config/tenancy/auth/permissions/crypto); Camera owns cameras, Tenant keeps the hierarchy (22 §1/§3); frozen v1.0 unchanged ([ED-0024](ENGINEERING_DECISION_LOG.md))                         |
+| Security          | ✅ PASS | Camera credentials **vaulted at rest** (AES-256-GCM, `@vip/crypto`); never returned/logged (`hasCredentials` only); URL-embedded creds rejected; per-service token verification; deny-by-default authz; cross-tenant → opaque 404; no secrets committed                           |
+| Performance       | ➖ N/A  | Tenant-leading indexes (`uniq_tenant_stream`, `tenant_zone`); scrypt key derived once at boot; scale validated later (R-005)                                                                                                                                                      |
+| Testing           | ✅ PASS | 48 TS tests for the slice (12 crypto, 14 camera contracts, 22 camera service incl. 4 real-Mongo integration): vaulting round-trip + tamper/wrong-key, authz, credential-safety, **cross-tenant isolation**; live-validated against dev-stack Mongo (repo total 200, 210 w/ Mongo) |
+| Documentation     | ✅ PASS | crypto + camera READMEs, CAMERA_ARCHITECTURE grounding, API_INVENTORY, DEPENDENCIES, slice-008, trackers; TD-3 recorded                                                                                                                                                           |
+| Dependency Review | ✅ PASS | **Zero new external deps** — `@vip/crypto` is `node:crypto` only (argon2/libsodium rejected, no native build); camera reuses the fastify/mongodb set — [ED-0024](ENGINEERING_DECISION_LOG.md)                                                                                     |
+| Lint              | ✅ PASS | `pnpm lint` clean (type-aware, 10 pkgs)                                                                                                                                                                                                                                           |
+| Formatting        | ✅ PASS | `pnpm format:check` clean                                                                                                                                                                                                                                                         |
+| Build             | ✅ PASS | `pnpm build` all packages; `verify:contracts` 15 schemas                                                                                                                                                                                                                          |
+| Docker            | ✅ PASS | camera boots against dev-stack Mongo; integration suite green (unique index, ciphertext round-trip, isolation)                                                                                                                                                                    |
+| Maintainability   | ✅ PASS | strict layering (credential sealing in application, domain stays pure); reusable `@vip/crypto`; explicit DI                                                                                                                                                                       |
+| Extensibility     | ✅ PASS | ONVIF discovery route stubbed (501) ahead of impl; envelope `v1` tag reserves key rotation; publisher seam for `camera.*` (NATS P1-5); async zone reconciliation seam (TD-3)                                                                                                      |
+
+**Overall: PASS** (Architecture Review ⏳ PENDING — see [REVIEW_HISTORY](../tracker/REVIEW_HISTORY.md)).
+
 ## Sprint 0007 — Slice 7 (P1-2 Authentication + authorization) · 2026-07-28
 
 | Gate              | Result  | Reason                                                                                                                                                                                                              |

@@ -6,6 +6,7 @@ import { loadNatsConfig } from '../src/nats.js';
 import { loadStorageConfig } from '../src/storage.js';
 import { loadAiConfig } from '../src/ai.js';
 import { loadJwtConfig } from '../src/jwt.js';
+import { loadCryptoConfig } from '../src/crypto.js';
 
 describe('infrastructure config groups', () => {
   it('database: maps MONGO_URI → uri', () => {
@@ -41,6 +42,11 @@ describe('infrastructure config groups', () => {
     expect(c.refreshTtl).toBe('7d');
   });
 
+  it('crypto: maps CREDENTIAL_ENCRYPTION_KEY → encryptionKey', () => {
+    const c = loadCryptoConfig({ CREDENTIAL_ENCRYPTION_KEY: 'x'.repeat(16) });
+    expect(c.encryptionKey).toBe('x'.repeat(16));
+  });
+
   it('each group fails fast when its required key is missing', () => {
     expect(() => loadDatabaseConfig({})).toThrow(ConfigError);
     expect(() => loadRedisConfig({})).toThrow(ConfigError);
@@ -48,5 +54,6 @@ describe('infrastructure config groups', () => {
     expect(() => loadStorageConfig({})).toThrow(ConfigError);
     expect(() => loadAiConfig({})).toThrow(ConfigError);
     expect(() => loadJwtConfig({ JWT_SECRET: 'too-short' })).toThrow(ConfigError);
+    expect(() => loadCryptoConfig({ CREDENTIAL_ENCRYPTION_KEY: 'short' })).toThrow(ConfigError);
   });
 });

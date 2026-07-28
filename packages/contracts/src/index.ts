@@ -18,6 +18,9 @@ export * from './tenant/tenant.js';
 // auth: users, tokens, principal (P1-2)
 export * from './auth/auth.js';
 
+// camera inventory (P1-3)
+export * from './camera/camera.js';
+
 // events
 export * from './events/priority.js';
 export * from './events/envelope.js';

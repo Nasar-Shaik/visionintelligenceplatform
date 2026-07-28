@@ -62,14 +62,14 @@ flowchart TD
 - **Objective:** Establish the tenant as the root of all data + a data-layer guard that makes cross-tenant access structurally impossible.
 - **Dependencies:** Phase 0 (`@vip/contracts`, `@vip/config`, identity template, Mongo). None within Phase 1.
 - **Acceptance:** every persisted record carries `tenantId`; a query without tenant context is rejected (fail-closed); the **cross-tenant isolation suite (baseline)** passes; `tenant` service exposes CRUD + `/health` `/ready` `/metrics`. Guard unit-tested; integration on Testcontainers Mongo.
-- **Status:** ⬜ Not started (next slice).
+- **Status:** 🟢 Code complete — ⏳ Architect review.
 
 ### P1-2 — Authentication & authorization · **L** · [AUTHENTICATION](AUTHENTICATION.md)
 
 - **Objective:** Authenticate principals, mint the tenant context, authorize via RBAC/ABAC through the Policy Engine boundary.
 - **Dependencies:** P1-1 (tenant context to mint).
 - **Acceptance:** login issues access+refresh; refresh-reuse revokes the lineage; gateway rejects unauthenticated/expired; a permission check gates a protected route; context flows token → downstream; a user of tenant A cannot act on tenant B.
-- **Status:** ⬜ Not started.
+- **Status:** 🟢 Code complete — ⏳ Architect review.
 
 ## M2 — Camera & Media Ingestion
 
@@ -78,7 +78,7 @@ flowchart TD
 - **Objective:** Model the location hierarchy and onboard cameras with credentials encrypted at rest.
 - **Dependencies:** P1-1 (tenant scoping), P1-2 (authz to manage cameras).
 - **Acceptance:** a tenant creates a hierarchy and adds a camera; camera is tenant + zone scoped; `camera.registered` emitted; credentials never returned in plaintext; cameras never cross tenants (isolation test).
-- **Status:** ⬜ Not started.
+- **Status:** 🟢 Code complete — ⏳ Architect review. Credentials vaulted via **`@vip/crypto`** (AES-256-GCM); hierarchy stays Tenant-owned, camera references `zoneId` ([ED-0024](../../project/ENGINEERING_DECISION_LOG.md)).
 
 ### P1-4 — RTSP ingestion + recording · **L** · [INGESTION_PIPELINE](INGESTION_PIPELINE.md) · [STORAGE_ARCHITECTURE](STORAGE_ARCHITECTURE.md)
 

@@ -19,6 +19,7 @@ import { ApiError } from '../src/common/api-envelope.js';
 import { ConfigNode } from '../src/config/hierarchy.js';
 import { Tenant, OrgNode } from '../src/tenant/tenant.js';
 import { User, Principal, TokenPair } from '../src/auth/auth.js';
+import { Camera, CaptureProfile, CameraHealth } from '../src/camera/camera.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, '..', 'generated');
@@ -36,6 +37,9 @@ const schemas: Record<string, z.ZodType> = {
   user: User,
   principal: Principal,
   'token-pair': TokenPair,
+  camera: Camera,
+  'capture-profile': CaptureProfile,
+  'camera-health': CameraHealth,
 };
 
 mkdirSync(outDir, { recursive: true });

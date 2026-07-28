@@ -35,5 +35,8 @@ export type { AiConfig } from './ai.js';
 export { loadJwtConfig } from './jwt.js';
 export type { JwtConfig } from './jwt.js';
 
+export { loadCryptoConfig } from './crypto.js';
+export type { CryptoConfig } from './crypto.js';
+
 /** Package version — bump per Constitution §7. */
 export const CONFIG_VERSION = '0.1.0';
