@@ -27,6 +27,8 @@ const REQUIRED = [
   'tenant-context',
   'api-error',
   'config-node',
+  'tenant',
+  'org-node',
 ];
 
 const errors = [];
@@ -35,7 +37,9 @@ let present = [];
 try {
   present = readdirSync(GEN_DIR).filter((f) => f.endsWith('.schema.json'));
 } catch {
-  console.error(`contracts: no generated schemas at ${GEN_DIR}. Run: pnpm --filter @vip/contracts codegen`);
+  console.error(
+    `contracts: no generated schemas at ${GEN_DIR}. Run: pnpm --filter @vip/contracts codegen`,
+  );
   process.exit(1);
 }
 
@@ -53,7 +57,9 @@ for (const name of REQUIRED) {
     continue;
   }
   if (typeof doc.$schema !== 'string' || !doc.$schema.includes(TARGET_DRAFT)) {
-    errors.push(`${file}: $schema must target JSON Schema draft ${TARGET_DRAFT} (got ${doc.$schema ?? 'none'})`);
+    errors.push(
+      `${file}: $schema must target JSON Schema draft ${TARGET_DRAFT} (got ${doc.$schema ?? 'none'})`,
+    );
   }
   const hasShape = doc.type || doc.$ref || doc.anyOf || doc.allOf || doc.oneOf || doc.properties;
   if (!hasShape) {
@@ -67,5 +73,7 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
-console.log(`contracts: OK — ${REQUIRED.length} schema(s) present, valid JSON, draft ${TARGET_DRAFT}.`);
+console.log(
+  `contracts: OK — ${REQUIRED.length} schema(s) present, valid JSON, draft ${TARGET_DRAFT}.`,
+);
 process.exit(0);

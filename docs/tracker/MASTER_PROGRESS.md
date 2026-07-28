@@ -7,10 +7,10 @@ _Last updated: 2026-07-28 · Claude_
 ## Snapshot
 
 - **Phase:** Phase 1 — Core Platform (camera → alert vertical). Architecture **FROZEN v1.0**; blueprint **approved**; documentation optimized.
-- **Current slice:** P1-1 — Tenant foundation + fail-closed isolation (implementation starting).
-- **Next recommended slice:** P1-1, then P1-2 (per [Phase 1 ROADMAP](../architecture/phase1/ROADMAP.md)).
+- **Current slice:** P1-1 — Tenant foundation + fail-closed isolation — **code complete, awaiting Architect review**.
+- **Next recommended slice:** P1-2 Authentication + authorization (per [Phase 1 ROADMAP](../architecture/phase1/ROADMAP.md)).
 - **Blockers:** none.
-- **Overall completion:** Phase 0 **100%** · Phase 1 **0%** (0 / 8 slices) · Program ≈ **8%** (of Phases 0–4).
+- **Overall completion:** Phase 0 **100%** · Phase 1 **~12%** (P1-1 code complete, 0 / 8 approved) · Program ≈ **9%** (of Phases 0–4).
 
 ## Phase status
 
@@ -26,29 +26,29 @@ Legend: ✅ done · 🟢 on track · 🟡 in progress · 🔴 blocked · ⚪ not
 
 ## Phase 1 — milestone & slice status
 
-| Milestone         | Slice | Subject                                   | Status         | Review |
-| ----------------- | ----- | ----------------------------------------- | -------------- | ------ |
-| **M1** Access     | P1-1  | Tenant foundation + fail-closed isolation | 🟡 In progress | —      |
-|                   | P1-2  | Authentication + authorization            | ⚪ Not started | —      |
-| **M2** Ingestion  | P1-3  | Camera registry + org hierarchy           | ⚪ Not started | —      |
-|                   | P1-4  | RTSP ingestion + recording                | ⚪ Not started | —      |
-| **M3** Perception | P1-6  | AI inference (capability runtime)         | ⚪ Not started | —      |
-|                   | P1-5  | Event pipeline                            | ⚪ Not started | —      |
-| **M4** Response   | P1-7  | Rule engine                               | ⚪ Not started | —      |
-|                   | P1-8  | Alert engine                              | ⚪ Not started | —      |
+| Milestone         | Slice | Subject                                   | Status           | Review     |
+| ----------------- | ----- | ----------------------------------------- | ---------------- | ---------- |
+| **M1** Access     | P1-1  | Tenant foundation + fail-closed isolation | 🟢 Code complete | ⏳ PENDING |
+|                   | P1-2  | Authentication + authorization            | ⚪ Not started   | —          |
+| **M2** Ingestion  | P1-3  | Camera registry + org hierarchy           | ⚪ Not started   | —          |
+|                   | P1-4  | RTSP ingestion + recording                | ⚪ Not started   | —          |
+| **M3** Perception | P1-6  | AI inference (capability runtime)         | ⚪ Not started   | —          |
+|                   | P1-5  | Event pipeline                            | ⚪ Not started   | —          |
+| **M4** Response   | P1-7  | Rule engine                               | ⚪ Not started   | —          |
+|                   | P1-8  | Alert engine                              | ⚪ Not started   | —          |
 
 - **Completed slices:** none yet.
 - **Remaining slices:** P1-1 … P1-8 (8).
 
 ## Gate status (current focus: P1-1)
 
-| Gate                      | Status                                                                                     |
-| ------------------------- | ------------------------------------------------------------------------------------------ |
-| **Architecture approval** | ✅ Phase 1 blueprint approved (2026-07-28); frozen v1.0 unchanged                          |
-| **Implementation**        | 🟡 P1-1 starting — no code yet                                                             |
-| **Testing**               | ⚪ P1-1 test suites (guard unit + Testcontainers integration + isolation baseline) pending |
-| **Documentation**         | ✅ Phase 1 docs optimized (2026-07-28); design blueprints current                          |
-| **CI**                    | 🟢 Green on `feature/v1` (build/test/lint/scan/import-graph/contracts)                     |
+| Gate                      | Status                                                                                        |
+| ------------------------- | --------------------------------------------------------------------------------------------- |
+| **Architecture approval** | ✅ Phase 1 blueprint approved (2026-07-28) · P1-1 code ⏳ PENDING Architect review            |
+| **Implementation**        | 🟢 P1-1 complete: `@vip/contracts` (tenant/org), `@vip/tenancy`, `@vip/service-tenant`        |
+| **Testing**               | 🟢 62 TS tests (guard units + HTTP isolation gate + 3 real-Mongo integration, validated live) |
+| **Documentation**         | 🟢 tenant/tenancy READMEs, TENANT_ARCH, API_INVENTORY, DEPENDENCIES, slice-006 scenario       |
+| **CI**                    | 🟢 Green on `feature/v1` (format/lint/typecheck/test/build/import-graph 0-viol/contracts 9)   |
 
 ## Standing gates (never regress)
 

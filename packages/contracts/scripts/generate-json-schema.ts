@@ -17,6 +17,7 @@ import { CapabilityDescriptor, CapabilityRegistryRecord } from '../src/capabilit
 import { TenantContext } from '../src/common/tenant-context.js';
 import { ApiError } from '../src/common/api-envelope.js';
 import { ConfigNode } from '../src/config/hierarchy.js';
+import { Tenant, OrgNode } from '../src/tenant/tenant.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, '..', 'generated');
@@ -29,6 +30,8 @@ const schemas: Record<string, z.ZodType> = {
   'tenant-context': TenantContext,
   'api-error': ApiError,
   'config-node': ConfigNode,
+  tenant: Tenant,
+  'org-node': OrgNode,
 };
 
 mkdirSync(outDir, { recursive: true });

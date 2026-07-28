@@ -32,12 +32,15 @@
 
 Introduced by `@vip/service-identity` (P0-7); the reference stack every TS service uses.
 
-| Package         | Pinned  | Registry latest stable | Notes                                          |
-| --------------- | ------- | ---------------------- | ---------------------------------------------- |
-| fastify         | ^5.10.0 | 5.10.0                 | service framework (ADR-0017)                   |
-| @fastify/helmet | ^13.1.0 | 13.1.0                 | security headers; peer fastify ^5              |
-| prom-client     | ^15.1.3 | 15.1.3                 | Prometheus `/metrics` (per-instance registry)  |
-| pino-pretty     | ^13.1.3 | 13.1.3                 | dev-only pretty logs (pino ships with fastify) |
+| Package         | Pinned  | Registry latest stable | Notes                                                                                          |
+| --------------- | ------- | ---------------------- | ---------------------------------------------------------------------------------------------- |
+| fastify         | ^5.10.0 | 5.10.0                 | service framework (ADR-0017)                                                                   |
+| @fastify/helmet | ^13.1.0 | 13.1.0                 | security headers; peer fastify ^5                                                              |
+| prom-client     | ^15.1.3 | 15.1.3                 | Prometheus `/metrics` (per-instance registry)                                                  |
+| pino-pretty     | ^13.1.3 | 13.1.3                 | dev-only pretty logs (pino ships with fastify)                                                 |
+| mongodb         | ^7.5.0  | 7.5.0                  | official driver (P1-1 tenant store + `@vip/tenancy` `Collection<T>`); bundles its own TS types |
+
+> **Rejected (P1-1):** `@testcontainers/mongodb` for integration tests — it pulls native-build transitive deps (`ssh2`, `cpu-features`, `protobufjs`) that the supply-chain policy blocks and that would need build-script approval. Instead the tenant integration suite runs against the existing **dev-stack Mongo** via `MONGO_URI` and **skips gracefully** when unreachable ([ED-0022](ENGINEERING_DECISION_LOG.md)) — zero new build-script approvals.
 
 ## MLOps registry deps (verified 2026-07-27 · PyPI + Docker Hub)
 

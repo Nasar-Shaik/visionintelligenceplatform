@@ -29,6 +29,37 @@ export type EventCatalogEntry = z.infer<typeof EventCatalogEntry>;
  * Seed catalog. Keep entries alphabetically grouped by domain. Extend, never rename.
  */
 export const EVENT_CATALOG: EventCatalogEntry[] = [
+  // tenant / platform lifecycle (control-plane; no capability producer)
+  {
+    type: 'tenant.created',
+    description: 'A tenant was provisioned (org root + admin seeded downstream).',
+    defaultPriority: 'high',
+    pii: 'none',
+  },
+  {
+    type: 'tenant.activated',
+    description: 'A tenant became active.',
+    defaultPriority: 'low',
+    pii: 'none',
+  },
+  {
+    type: 'tenant.suspended',
+    description: 'A tenant was suspended (access denied; data retained).',
+    defaultPriority: 'high',
+    pii: 'none',
+  },
+  {
+    type: 'tenant.deprovisioned',
+    description: 'A tenant was deprovisioned (data purge + token revocation).',
+    defaultPriority: 'high',
+    pii: 'none',
+  },
+  {
+    type: 'org.node.created',
+    description: 'An organizational-hierarchy node was created under a tenant.',
+    defaultPriority: 'info',
+    pii: 'none',
+  },
   // device / lifecycle
   {
     type: 'device.camera.offline',

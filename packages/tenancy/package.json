@@ -1,0 +1,35 @@
+{
+  "name": "@vip/tenancy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fail-closed multi-tenant data-layer guard (Law 5). Every repository operation requires a TenantContext and injects/enforces tenantId — a forgotten filter cannot leak cross-tenant data. See docs/architecture/phase1/TENANT_ARCHITECTURE.md, ADR-0003.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@vip/contracts": "workspace:*",
+    "mongodb": "^7.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

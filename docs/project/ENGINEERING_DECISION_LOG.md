@@ -186,3 +186,21 @@
 - **Reason:** Architect directive — documentation must stay lightweight, navigable, and low-maintenance; prefer improving/merging existing docs over adding files.
 - **Impact:** 15 markdown files removed (3 phase-1 meta, 8 review, 1 daily, 2 templates, +1 net after 3 tracker files added); all 1236 relative doc links re-verified resolving; canonical live-status pointer moves from `tracking/PROGRESS.md` → `docs/tracker/MASTER_PROGRESS.md`; DoD + DEVELOPMENT_RULES 22 updated to the row-based review flow. Frozen architecture (01–28) untouched. **Follow-up (tracked debt):** finish de-duplicating the `docs/project/` + `docs/ai/` status files into pointers.
 - **Owner:** Repo owner + Claude · **Status:** Accepted · **Future Review:** Yes (complete the `docs/project`/`docs/ai` pointer cleanup)
+
+## ED-0021 — Tenant registry is control-plane; tenant-owned data is guard-scoped
+
+- **Date:** 2026-07-28 · **Slice:** P1-1
+- **Decision:** Model the `tenants` collection as a **control-plane registry** — each tenant document is keyed by its own id (`tenantId == _id`), `slug` is globally unique, and provisioning/reading a specific tenant is a self-scoped operation. Everything a tenant **owns** (`org_nodes` now; cameras/events later) is **tenant-scoped through the `@vip/tenancy` guard**. Tenant-addressed HTTP routes enforce `context.tenantId === path.tenantId` (cross-tenant → 403).
+- **Alternatives Considered:** (a) force the tenant registry itself through the per-tenant guard for _all_ operations — breaks "list all tenants" (an inherently cross-tenant/platform action) and muddles provisioning (no context exists yet); (b) a separate global-scope guard mode now — premature (no platform-admin/global scope until P1-2+).
+- **Reason:** Provisioning necessarily precedes any tenant context; the registry is a platform concern. Keeping tenant-_owned_ data strictly behind the guard preserves the fail-closed isolation invariant where it matters, while the registry stays a clean control-plane surface. A global/platform scope is added with authz in P1-2.
+- **Impact:** `tenant` service has two collections with different scoping rules (documented in its README + STORAGE); the org-node paths are the P1-1 isolation demonstration. No architecture doc changed.
+- **Owner:** Claude · **Status:** Accepted · **Future Review:** Yes (revisit when platform-admin/global scope + "list tenants" land in P1-2)
+
+## ED-0022 — Integration tests run against the dev-stack Mongo, not Testcontainers
+
+- **Date:** 2026-07-28 · **Slice:** P1-1
+- **Decision:** Prove real-driver cross-tenant isolation against the existing **dev-stack MongoDB** via `MONGO_URI`, with the suite **skipping fast when Mongo is unreachable** (short server-selection timeout). Do **not** add `@testcontainers/mongodb`.
+- **Alternatives Considered:** `@testcontainers/mongodb` (the blueprint's suggestion) — pulls native-build transitive deps (`ssh2`, `cpu-features`, `protobufjs`) that pnpm's supply-chain policy blocks; adopting it would require approving those build scripts. An in-process mongo-memory-server — another heavy dep with its own binary download.
+- **Reason:** The dev stack already ships a real Mongo; reusing it keeps the dependency footprint minimal (zero new build-script approvals) and still exercises the real driver. `describe.skipIf` keeps the default `pnpm test` green everywhere (incl. CI without a DB).
+- **Impact:** `services/tenant/test/integration.test.ts` gates on `MONGO_URI`; DEPENDENCIES records the rejection; the standing isolation gate runs wherever a Mongo is provided (dev + a CI job that starts the stack). Blueprint wording ("Testcontainers Mongo") is satisfied in spirit (real-driver integration), not literally.
+- **Owner:** Claude · **Status:** Accepted · **Future Review:** No (revisit only if CI needs ephemeral per-run DBs)

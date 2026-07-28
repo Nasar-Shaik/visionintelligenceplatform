@@ -23,6 +23,19 @@
 - Tenant context (when present) is validated against the `TenantContext` contract via `x-tenant-id` / `x-principal-id` headers — **seam only in Phase 0**, enforced from P1.
 - Security headers set by `@fastify/helmet` (`x-content-type-options: nosniff`, `x-frame-options: SAMEORIGIN`, …).
 
+## @vip/service-tenant (v0.1.0)
+
+> Phase 1 P1-1. Provisions tenants + org hierarchy; enforces fail-closed isolation (`@vip/tenancy`). Auth arrives in P1-2 — until then provisioning is open and tenant context comes from `x-tenant-id`/`x-principal-id` headers. Every tenant-addressed route refuses a path naming a different tenant than the caller's context (**cross-tenant → 403**).
+
+| Method | Endpoint                          | Purpose                               | Auth             | Input                | Output                                          | Dependencies        | Status   | Version |
+| ------ | --------------------------------- | ------------------------------------- | ---------------- | -------------------- | ----------------------------------------------- | ------------------- | -------- | ------- |
+| POST   | `/tenants`                        | Provision a tenant + org root         | None (P1-2 adds) | `CreateTenantInput`  | `201 {success,data:{tenant,orgRoot}}` · `409`   | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| GET    | `/tenants/:tenantId`              | Get the caller's tenant               | tenant context   | —                    | `200 {success,data:Tenant}` · `401/403/404`     | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| PATCH  | `/tenants/:tenantId`              | Update name / lifecycle status        | tenant context   | `UpdateTenantInput`  | `200 {success,data:Tenant}` · `401/403/404`     | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| GET    | `/tenants/:tenantId/org-nodes`    | List the tenant's org nodes           | tenant context   | —                    | `200 {success,data:OrgNode[]}` · `401/403`      | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| POST   | `/tenants/:tenantId/org-nodes`    | Create an org-hierarchy node          | tenant context   | `CreateOrgNodeInput` | `201 {success,data:OrgNode}` · `400/401/403`    | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| GET    | `/health` `/ready` `/metrics` `/` | Liveness / readiness / metrics / info | None             | —                    | as identity (`/ready` includes a `mongo` check) | prom-client         | scaffold | 0.1.0   |
+
 ## Infrastructure services (third-party APIs in the dev stack)
 
 > Not VIP-authored endpoints; listed so integrators know what the stack exposes. Dev only, network-restricted, no auth (R-014).

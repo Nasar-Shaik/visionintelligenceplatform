@@ -23,6 +23,25 @@
 
 ---
 
+## Sprint 0006 — Slice 6 (P1-1 Tenant foundation + fail-closed isolation) · 2026-07-28
+
+| Gate              | Result  | Reason                                                                                                                                                                        |
+| ----------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Architecture      | ✅ PASS | `check:imports` 5 pkgs / 6 edges / 0 violations; new `service→shared` edges (tenant→contracts/config/tenancy); frozen v1.0 unchanged ([ED-0021](ENGINEERING_DECISION_LOG.md)) |
+| Security          | ✅ PASS | Fail-closed isolation is the deliverable — cross-tenant read/write structurally impossible; 403 opaque (no tenant/record leak); no secrets committed                          |
+| Performance       | ➖ N/A  | Tenant-leading indexes created; scale validated later (R-005)                                                                                                                 |
+| Testing           | ✅ PASS | 62 TS tests (29 tenancy guard, 14 contracts, 19 svc incl. 3 real-Mongo integration); **validated live E2E** against dev-stack Mongo                                           |
+| Documentation     | ✅ PASS | tenant + tenancy READMEs, TENANT_ARCHITECTURE grounding, API_INVENTORY, DEPENDENCIES, slice-006 scenario, trackers                                                            |
+| Dependency Review | ✅ PASS | `mongodb ^7.5.0` registry-verified + recorded; `@testcontainers/mongodb` rejected (native build scripts) — [ED-0022](ENGINEERING_DECISION_LOG.md)                             |
+| Lint              | ✅ PASS | `pnpm lint` clean (type-aware, 5 pkgs)                                                                                                                                        |
+| Formatting        | ✅ PASS | `pnpm format:check` clean                                                                                                                                                     |
+| Build             | ✅ PASS | `pnpm build` all packages; `verify:contracts` 9 schemas                                                                                                                       |
+| Docker            | ✅ PASS | dev-stack Mongo launched; service boots (`node dist/index.js`), `/ready` mongo pass, SIGTERM exit 0; torn down                                                                |
+| Maintainability   | ✅ PASS | Strict layering (transport→application→domain, adapters for I/O); domain framework-free; guard is the single choke point                                                      |
+| Extensibility     | ✅ PASS | Event-publisher seam (NATS in P1-5); pooled→siloed abstracted by the guard; authz seam for P1-2                                                                               |
+
+**Overall: PASS** (Architecture Review ⏳ PENDING — see [REVIEW_HISTORY](../tracker/REVIEW_HISTORY.md)).
+
 ## Sprint 0005 — Slice 5 (Secrets & centralized config, P0-6) · 2026-07-27
 
 | Gate                      | Result  | Reason                                                                                                                      |

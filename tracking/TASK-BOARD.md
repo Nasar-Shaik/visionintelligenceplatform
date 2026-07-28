@@ -24,7 +24,7 @@ Format: `- [ ] <id> — <task> · deps: <…> · phase: <Px> · owner: <—>`
 
 > Re-scoped per [ED-0019](../docs/project/ENGINEERING_DECISION_LOG.md); blueprint **approved 2026-07-28**; full detail in [`docs/architecture/phase1/`](../docs/architecture/phase1/README.md) and [ROADMAP](../docs/architecture/phase1/ROADMAP.md). Old horizontal P1 items (RBAC-only module, entitlements, audit, billing) → **Phase 3** (see Later).
 
-- [ ] P1-1 — Tenant foundation + fail-closed isolation guard (`tenant` svc, `@vip/tenancy`). · **in_progress** `[Claude · 2026-07-28]` · deps: P0 · [TENANT_ARCHITECTURE](../docs/architecture/phase1/TENANT_ARCHITECTURE.md)
+- [~] P1-1 — Tenant foundation + fail-closed isolation guard (`tenant` svc, `@vip/tenancy`, contracts). · **code complete — ⏳ Architect review** `[Claude · 2026-07-28]` · deps: P0 · [slice-006](../docs/testing/slice-006.md)
 - [ ] P1-2 — Authentication + authz (OIDC/JWT/refresh, `gateway`, `@vip/permissions`). · deps: P1-1 · [AUTHENTICATION](../docs/architecture/phase1/AUTHENTICATION.md)
 - [ ] P1-3 — Camera registry + org hierarchy (`camera` svc). · deps: P1-1,P1-2 · [CAMERA_ARCHITECTURE](../docs/architecture/phase1/CAMERA_ARCHITECTURE.md)
 - [ ] P1-4 — RTSP ingestion + recording (`media` svc). · deps: P1-3 · [INGESTION_PIPELINE](../docs/architecture/phase1/INGESTION_PIPELINE.md)

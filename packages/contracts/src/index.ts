@@ -12,6 +12,9 @@ export * from './common/primitives.js';
 export * from './common/tenant-context.js';
 export * from './common/api-envelope.js';
 
+// tenant + org hierarchy (P1-1)
+export * from './tenant/tenant.js';
+
 // events
 export * from './events/priority.js';
 export * from './events/envelope.js';
