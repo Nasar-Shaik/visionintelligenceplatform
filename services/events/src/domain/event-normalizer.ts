@@ -11,12 +11,15 @@ import {
   lookupEvent,
   type Detection,
   type DetectionResult,
+  type EventCategory,
   type EventEnvelope,
   type EventSubject,
 } from '@vip/contracts';
 
 /** Schema version of the type-specific payload this normalizer emits (additive within a major). */
 const PAYLOAD_SCHEMA_VERSION = '1.0.0';
+/** Version of the EventEnvelope structure this normalizer emits (contract evolution; P1-5 rec 1). */
+const ENVELOPE_VERSION = '1.0.0';
 
 /**
  * Map a generic detection label to a domain-neutral catalog event type. Unknown labels fall back to
@@ -60,10 +63,14 @@ function toEnvelope(
   deps: NormalizeDeps,
 ): EventEnvelope {
   const type = eventTypeForLabel(detection.label);
-  const priority = lookupEvent(type)?.defaultPriority ?? 'info';
+  const entry = lookupEvent(type);
+  const priority = entry?.defaultPriority ?? 'info';
+  const category: EventCategory = entry?.category ?? 'perception';
   const envelope: EventEnvelope = {
     id: deps.newId(),
     type,
+    envelopeVersion: ENVELOPE_VERSION,
+    category,
     schemaVersion: PAYLOAD_SCHEMA_VERSION,
     tenantId: result.tenantId,
     cameraId: result.cameraId,

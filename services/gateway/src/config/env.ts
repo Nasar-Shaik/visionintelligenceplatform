@@ -28,6 +28,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       CAMERA_URL: z.url().default('http://localhost:8082'),
       MEDIA_URL: z.url().default('http://localhost:8083'),
       EVENTS_URL: z.url().default('http://localhost:8084'),
+      RULES_URL: z.url().default('http://localhost:8086'),
     }),
     env,
     'gateway',
@@ -43,6 +44,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       camera: g.CAMERA_URL,
       media: g.MEDIA_URL,
       events: g.EVENTS_URL,
+      rules: g.RULES_URL,
     },
   };
 }

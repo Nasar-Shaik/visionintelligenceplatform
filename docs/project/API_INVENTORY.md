@@ -97,6 +97,23 @@
 
 > **Consumes** (NATS, not HTTP): `t.*.capability.output.*` (capability outputs). **Publishes:** `t.{tenantId}.event.{type}` (`event.persisted`).
 
+## @vip/service-rules (v0.1.0)
+
+> Phase 1 P1-7. The Rule Context (automation brain): consumes `event.persisted` off NATS and evaluates tenant-defined, **versioned** rules (a pure **sandboxed predicate DSL** over the `EventEnvelope` — never `DetectionResult`) with optional windowed thresholds, emitting `incident.candidate` + `rule.matched`. Rules carry a lifecycle (`draft`→`enabled`→…) + priority; every change is audited. Verifies the identity token itself (`iss=identity`); tenant from the token — a rule in another tenant is a **404**. Distinct from the Policy Engine (ADR-0013).
+
+| Method | Endpoint                          | Purpose                                      | Auth          | Input             | Output                                              | Dependencies        | Status   | Version |
+| ------ | --------------------------------- | -------------------------------------------- | ------------- | ----------------- | --------------------------------------------------- | ------------------- | -------- | ------- |
+| POST   | `/rules`                          | Create a rule (version 1 + audit)            | `rule:create` | `CreateRuleInput` | `201 {success,data:Rule}` · `400/401/403`           | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| GET    | `/rules`                          | List the tenant's rules                      | `rule:read`   | —                 | `200 {success,data:Rule[]}` · `401/403`             | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| GET    | `/rules/:id`                      | Get one rule (own tenant)                    | `rule:read`   | —                 | `200 {success,data:Rule}` · `401/403/404`           | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| GET    | `/rules/:id/versions`             | Rule audit trail (newest first)              | `rule:read`   | —                 | `200 {success,data:RuleVersionRecord[]}` · `404`    | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| POST   | `/rules/:id/dry-run`              | Test vs a sample event (**no side effects**) | `rule:read`   | `RuleDryRunInput` | `200 {success,data:RuleDryRunResult}` · `400/404`   | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| PATCH  | `/rules/:id`                      | Update (version bump + audit)                | `rule:update` | `UpdateRuleInput` | `200 {success,data:Rule}` · `400/401/403/404`       | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| DELETE | `/rules/:id`                      | Remove (final `deleted` audit snapshot)      | `rule:delete` | —                 | `204` · `401/403/404`                               | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| GET    | `/health` `/ready` `/metrics` `/` | liveness / readiness / Prometheus / info     | None          | —                 | infra (`/ready` = Mongo; `/metrics` = eval metrics) | prom-client, Mongo  | scaffold | 0.1.0   |
+
+> **Consumes** (NATS, not HTTP): `t.*.event.*` (`event.persisted`). **Publishes:** `t.{tenantId}.incident.candidate`, `t.{tenantId}.rule.matched`.
+
 ## inference (ai/inference, Python — v0.1.0)
 
 > Phase 1 P1-6. The AI capability runtime (Perception context). Manifest-driven capabilities, model-agnostic (selector→registry via the adapter layer), staged pipeline, lifecycle states, metrics, version-stamped results. Internal (called by the pipeline, not user-facing); `/infer` is `x-internal-key` gated and fail-closed on missing tenant. Stdlib `http.server` transport.

@@ -29,9 +29,13 @@ export * from './perception/perception.js';
 
 // events
 export * from './events/priority.js';
+export * from './events/category.js';
 export * from './events/envelope.js';
 export * from './events/catalog.js';
 export * from './events/query.js';
+
+// rules + incidents (P1-7)
+export * from './rules/rules.js';
 
 // capability
 export * from './capability/descriptor.js';

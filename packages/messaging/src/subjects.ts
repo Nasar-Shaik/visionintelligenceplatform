@@ -17,11 +17,15 @@ const TENANT_TOKEN = /^[A-Za-z0-9_-]+$/;
 export const TENANT_ROOT = 't';
 export const CAPABILITY_OUTPUT_PREFIX = 'capability.output';
 export const EVENT_PREFIX = 'event';
+export const INCIDENT_PREFIX = 'incident';
+export const RULE_PREFIX = 'rule';
 
 /** JetStream stream capturing every tenant's capability outputs (detections). */
 export const CAPABILITY_OUTPUT_STREAM = 'CAPABILITY_OUTPUT';
 /** JetStream stream capturing every tenant's persisted/domain events. */
 export const EVENTS_STREAM = 'EVENTS';
+/** JetStream stream capturing automation outputs (rule matches + incident candidates). */
+export const AUTOMATION_STREAM = 'AUTOMATION';
 
 /** Validate + return a tenant id safe to embed as a single subject token, else throw (fail-closed). */
 export function assertTenantToken(tenantId: string): string {
@@ -48,10 +52,24 @@ export function eventSubject(tenantId: string, eventType: string): string {
   return `${tenantRoot(tenantId)}.${EVENT_PREFIX}.${eventType}`;
 }
 
+/** Subject a rule-engine incident candidate is published on: `t.{tenantId}.incident.candidate`. */
+export function incidentCandidateSubject(tenantId: string): string {
+  return `${tenantRoot(tenantId)}.${INCIDENT_PREFIX}.candidate`;
+}
+
+/** Subject a rule-match audit signal is published on: `t.{tenantId}.rule.matched`. */
+export function ruleMatchedSubject(tenantId: string): string {
+  return `${tenantRoot(tenantId)}.${RULE_PREFIX}.matched`;
+}
+
 /** Wildcard for consuming ALL tenants' capability outputs: `t.*.capability.output.>`. */
 export const ALL_CAPABILITY_OUTPUTS = `${TENANT_ROOT}.*.${CAPABILITY_OUTPUT_PREFIX}.>`;
 /** Wildcard for consuming ALL tenants' persisted events: `t.*.event.>`. */
 export const ALL_EVENTS = `${TENANT_ROOT}.*.${EVENT_PREFIX}.>`;
+/** Wildcard for consuming ALL tenants' incident candidates: `t.*.incident.>`. */
+export const ALL_INCIDENTS = `${TENANT_ROOT}.*.${INCIDENT_PREFIX}.>`;
+/** Wildcard for consuming ALL tenants' rule-match signals: `t.*.rule.>`. */
+export const ALL_RULE_MATCHES = `${TENANT_ROOT}.*.${RULE_PREFIX}.>`;
 
 /**
  * Extract the tenant id from a `t.{tenantId}.…` subject, or `undefined` if the subject is not

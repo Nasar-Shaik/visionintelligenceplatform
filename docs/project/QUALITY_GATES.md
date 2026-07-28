@@ -23,6 +23,27 @@
 
 ---
 
+## Sprint 0012 — Slice 12 (P1-7 Rule engine) · 2026-07-29
+
+> Architect **approved the P1-7 plan to proceed** with 6 recommendations — all folded in (EventEnvelope-only
+> input, evaluation⊥incident, lifecycle+priority, evaluation metrics, deterministic sandboxed DSL, lean CRUD).
+> Opens **M4 Automation & Response** ([ED-0028](ENGINEERING_DECISION_LOG.md)).
+
+| Gate              | Result  | Reason                                                                                                                                                        |
+| ----------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Architecture      | ✅ PASS | New `@vip/service-rules` inside frozen boundaries — **import-graph 15 pkgs, 0 violations**. Loop-free automation topology. No frozen doc (01–28) edited.      |
+| Security          | ✅ PASS | **Sandboxed DSL** — data-only predicate tree, no eval/regex (ReDoS-safe), prototype-pollution-safe field access; tenant-scoped rules+state; dry-run inert     |
+| Testing           | ✅ PASS | 35 rules TS (incl. 2 real-Mongo) + 4 contract; **full P1-6→P1-5→P1-7 chain live-validated** (detection → event → match → `incident.candidate` critical)       |
+| Documentation     | ✅ PASS | rules README, RULE_ENGINE blueprint, API_INVENTORY, DEPENDENCIES, slice-012, trackers, ROADMAP; ED-0028; TD-7 opened                                          |
+| Dependency Review | ✅ PASS | **Zero new dependencies** — hand-written pure interpreter (no CEL/JS-sandbox lib); in-proc rule state (Redis deferred, TD-7)                                  |
+| Lint / Formatting | ✅ PASS | ESLint type-aware clean; Prettier clean                                                                                                                       |
+| Build             | ✅ PASS | All 15 packages build; contracts codegen **25 schemas**                                                                                                       |
+| Docker            | ➖ N/A  | No new image (rules runs on the shared template; NATS/Mongo already in the dev stack)                                                                         |
+| Maintainability   | ✅ PASS | Layered; evaluation/incident/factory as small pure domain modules; in-memory bus/store/state for CI                                                           |
+| Extensibility     | ✅ PASS | `RuleStore`/`RuleStateStore` ports (Redis swap-in); operator set + `EventCategory` + rule actions all extend additively; automation subject root future-proof |
+
+**Overall: PASS** (Architecture Review ⏳ PENDING).
+
 ## Sprint 0011 — Slice 11 (P1-5 Event pipeline) · 2026-07-28
 
 > Architect **approved the P1-5 plan to proceed** (concise plan + slice breakdown + risks + order);

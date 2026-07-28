@@ -4,6 +4,7 @@ import { EventEnvelope } from '../src/events/envelope.js';
 const validBase = {
   id: '11111111-1111-4111-8111-111111111111',
   type: 'spatial.line.crossed',
+  category: 'perception',
   schemaVersion: '1.0.0',
   tenantId: 't_123',
   occurredAt: '2026-07-27T10:00:00.000Z',
@@ -18,6 +19,9 @@ describe('EventEnvelope', () => {
     expect(parsed.subjects).toEqual([]);
     expect(parsed.evidenceRefs).toEqual([]);
     expect(parsed.payload).toEqual({});
+    // contract evolution (P1-5 recs): envelopeVersion defaults, category is explicit
+    expect(parsed.envelopeVersion).toBe('1.0.0');
+    expect(parsed.category).toBe('perception');
   });
 
   it('rejects an invalid event type (not <domain>.<subject>.<predicate>)', () => {

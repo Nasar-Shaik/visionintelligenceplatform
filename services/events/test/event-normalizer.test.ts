@@ -23,6 +23,8 @@ describe('normalizeDetectionResult', () => {
     expect(rest).toHaveLength(0);
     expect(env).toMatchObject({
       type: 'perception.person.detected',
+      envelopeVersion: '1.0.0',
+      category: 'perception',
       tenantId: 'tnt_a',
       cameraId: 'cam_1',
       occurredAt: '2026-07-28T00:00:00.000Z',

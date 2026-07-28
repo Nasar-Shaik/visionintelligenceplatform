@@ -15,6 +15,7 @@ import {
   Uuid,
 } from '../common/primitives.js';
 import { EventPriority } from './priority.js';
+import { EventCategory } from './category.js';
 
 /** The capability (and optional model) that produced the event. */
 export const EventProducer = z.object({
@@ -38,6 +39,18 @@ export type EventSubject = z.infer<typeof EventSubject>;
 export const EventEnvelope = z.object({
   id: Uuid,
   type: EventType,
+  /**
+   * Version of the **EventEnvelope structure itself** — the contract every consumer (rules,
+   * analytics, connectors) binds to. Distinct from `schemaVersion` (the type-specific payload).
+   * Additive changes bump the minor; a breaking envelope change bumps the major (+ ADR). Lets
+   * long-lived consumers evolve safely (Constitution §7). Defaults to the current envelope version.
+   */
+  envelopeVersion: SemVer.default('1.0.0'),
+  /**
+   * Coarse, domain-neutral classification for fast filtering + routing (rules/analytics) without
+   * decoding the payload. Set from the event catalog. Extend the enum additively, never repurpose.
+   */
+  category: EventCategory,
   /** Schema version of the type-specific `payload` (additive-only within a major). */
   schemaVersion: SemVer,
 

@@ -110,7 +110,7 @@ flowchart TD
 - **Objective:** Evaluate rules over events and raise incident candidates.
 - **Dependencies:** P1-5 (events to evaluate), Redis (tenant-scoped rule state).
 - **Acceptance:** a rule matches an event and emits `incident.candidate`; **dry-run** evaluates without side effects; rule changes are versioned + audited; evaluation is tenant-scoped; replay is deterministic. Rules stay distinct from policy ([ADR-0013](../../adr/ADR-0013-policy-engine.md)).
-- **Status:** ⬜ Not started.
+- **Status:** 🟢 Code complete — ⏳ Architect review. **`@vip/service-rules`**: pure **sandboxed predicate DSL** over the `EventEnvelope` (never `DetectionResult`), evaluation ⊥ incident-creation, rule **lifecycle + priority**, versioned+audited CRUD + dry-run, windowed thresholds, evaluation metrics; publishes `incident.candidate`/`rule.matched` on a distinct automation subject root (loop-free) ([ED-0028](../../project/ENGINEERING_DECISION_LOG.md); in-proc state [TD-7](../../../tracking/TECH-DEBT.md)). Live-validated the full P1-6→P1-5→P1-7 chain.
 
 ### P1-8 — Alert engine · **L** · [ALERT_ENGINE](ALERT_ENGINE.md)
 
