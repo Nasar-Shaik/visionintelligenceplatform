@@ -1,6 +1,6 @@
 # Definition of Done
 
-> The canonical checklist. **Every slice must satisfy every applicable item before it is considered Done.** If any item is incomplete, the slice is **NOT Done**. Each per-sprint review ([docs/review/](../review/)) reproduces this checklist with the slice's actual status.
+> The canonical checklist. **Every slice must satisfy every applicable item before it is considered Done.** If any item is incomplete, the slice is **NOT Done**. Each slice's review row ([REVIEW_HISTORY](../tracker/REVIEW_HISTORY.md)) records its actual status against this checklist.
 >
 > Items marked _(when applicable)_ are skipped only when structurally impossible for the slice (e.g. Docker validation for a docs-only slice) — and the skip is stated explicitly with a reason.
 
@@ -31,8 +31,7 @@
 - [ ] [QUALITY_GATES](QUALITY_GATES.md) — this sprint's PASS/FAIL recorded
 - [ ] [API_INVENTORY](API_INVENTORY.md) — any new/changed endpoints
 - [ ] [docs/testing/slice-NNN.md](../testing/) — scenario doc created
-- [ ] [docs/review/SPRINT-NNNN.md](../review/) — review created, Architect section PENDING
-- [ ] `tracking/PROGRESS.md`, `tracking/TASK-BOARD.md`, `docs/daily/…` — updated
-- [ ] `docs/ai/*` + `docs/project/CURRENT_SPRINT.md` pointers — updated
+- [ ] [REVIEW_HISTORY](../tracker/REVIEW_HISTORY.md) — slice review row added, Architect column PENDING
+- [ ] [MASTER_PROGRESS](../tracker/MASTER_PROGRESS.md) + [DAILY_LOG](../tracker/DAILY_LOG.md) + [TASK-BOARD](../../tracking/TASK-BOARD.md) — updated
 
-**Rule:** if any answer to the [end-of-sprint validation](../review/) is "No", the sprint is not complete.
+**Rule:** if any item above is "No", the slice is not complete. The Architect column in [REVIEW_HISTORY](../tracker/REVIEW_HISTORY.md) stays PENDING until the Architect signs off — never self-approved.

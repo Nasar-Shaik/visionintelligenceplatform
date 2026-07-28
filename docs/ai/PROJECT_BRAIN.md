@@ -35,5 +35,5 @@ Read [`HOW_TO_CONTINUE.md`](HOW_TO_CONTINUE.md) → [`tracking/AGENT-ONBOARDING.
 
 - `docs/ai/` — this brain, [PROJECT_STATE](PROJECT_STATE.md), [CURRENT_CONTEXT](CURRENT_CONTEXT.md), [CURRENT_PRIORITIES](CURRENT_PRIORITIES.md), [CURRENT_ARCHITECTURE](CURRENT_ARCHITECTURE.md), [HOW_TO_CONTINUE](HOW_TO_CONTINUE.md), [IMPLEMENTATION_GUIDE](IMPLEMENTATION_GUIDE.md), [PROMPT_GUIDE](PROMPT_GUIDE.md), [COMMON_COMMANDS](COMMON_COMMANDS.md), [DEVELOPMENT_RULES](DEVELOPMENT_RULES.md).
 - `docs/project/` — program status/backlog/decisions/timeline (see [index](../project/README.md)).
-- `docs/daily/` — append-only engineering logs.
+- `docs/tracker/DAILY_LOG.md` — rolling engineering log; `docs/tracker/REVIEW_HISTORY.md` — per-slice reviews.
 - `tracking/` — canonical roadmap/progress/task-board/milestones/tech-debt.

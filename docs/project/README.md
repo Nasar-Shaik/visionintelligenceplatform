@@ -23,16 +23,16 @@ Human-facing program status, backlog, decisions, and timeline. Where `tracking/`
 
 > Permanent engineering policy. Every slice updates the applicable files before it is [Done](DEFINITION_OF_DONE.md). See also the reusable [templates](../templates/).
 
-| File                                                       | Purpose                                        |
-| ---------------------------------------------------------- | ---------------------------------------------- |
-| [ENGINEERING_DECISION_LOG.md](ENGINEERING_DECISION_LOG.md) | All engineering decisions (append-only)        |
-| [RISK_REGISTER.md](RISK_REGISTER.md)                       | Risks: impact/probability/severity/mitigation  |
-| [ASSUMPTIONS.md](ASSUMPTIONS.md)                           | Working assumptions + validation method        |
-| [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)                     | Surfaced uncertainty awaiting decision         |
-| [CONSTRAINTS.md](CONSTRAINTS.md)                           | Hard rules future engineers must never violate |
-| [DEFINITION_OF_DONE.md](DEFINITION_OF_DONE.md)             | The per-slice DoD checklist                    |
-| [QUALITY_GATES.md](QUALITY_GATES.md)                       | Per-sprint PASS/FAIL scorecard                 |
-| [API_INVENTORY.md](API_INVENTORY.md)                       | Every API endpoint across services             |
-| [../testing/](../testing/)                                 | Per-slice PO-executable test scenarios         |
-| [../review/](../review/)                                   | Per-sprint review + Architect handoff          |
-| [../templates/](../templates/)                             | Reusable documentation templates               |
+| File                                                         | Purpose                                        |
+| ------------------------------------------------------------ | ---------------------------------------------- |
+| [ENGINEERING_DECISION_LOG.md](ENGINEERING_DECISION_LOG.md)   | All engineering decisions (append-only)        |
+| [RISK_REGISTER.md](RISK_REGISTER.md)                         | Risks: impact/probability/severity/mitigation  |
+| [ASSUMPTIONS.md](ASSUMPTIONS.md)                             | Working assumptions + validation method        |
+| [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)                       | Surfaced uncertainty awaiting decision         |
+| [CONSTRAINTS.md](CONSTRAINTS.md)                             | Hard rules future engineers must never violate |
+| [DEFINITION_OF_DONE.md](DEFINITION_OF_DONE.md)               | The per-slice DoD checklist                    |
+| [QUALITY_GATES.md](QUALITY_GATES.md)                         | Per-sprint PASS/FAIL scorecard                 |
+| [API_INVENTORY.md](API_INVENTORY.md)                         | Every API endpoint across services             |
+| [../testing/](../testing/)                                   | Per-slice PO-executable test scenarios         |
+| [../tracker/REVIEW_HISTORY.md](../tracker/REVIEW_HISTORY.md) | Per-slice review + Architect handoff           |
+| [../templates/](../templates/)                               | Reusable documentation templates               |

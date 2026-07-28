@@ -20,11 +20,11 @@ Format: `- [ ] <id> — <task> · deps: <…> · phase: <Px> · owner: <—>`
 - [x] P0-6 — Secrets & config: `.env`-only secrets (no external manager) + centralized typed fail-fast `@vip/config` (ADR-0018); identity refactored onto it. `[Claude · 2026-07-27]` (Vault/KMS = documented future extension point only)
 - [x] P0-7 — First empty service scaffold (`services/identity`) proving the Fastify service template (transport→application→domain→adapters, /health,/ready,/metrics, tenant-context seam, ApiError envelope, graceful shutdown). `[Claude · 2026-07-27]` (auth/users/data = P1)
 
-## Next (Phase 1 — Core Platform · camera→alert vertical) — BLUEPRINT UNDER ARCHITECT REVIEW
+## Now (Phase 1 — Core Platform · camera→alert vertical) — BLUEPRINT APPROVED
 
-> Re-scoped per [ED-0019](../docs/project/ENGINEERING_DECISION_LOG.md); full blueprint in [`docs/architecture/phase1/`](../docs/architecture/phase1/README.md). Pull only after the blueprint is approved. Old horizontal P1 items (RBAC-only module, entitlements, audit, billing) → **Phase 3** (see Later).
+> Re-scoped per [ED-0019](../docs/project/ENGINEERING_DECISION_LOG.md); blueprint **approved 2026-07-28**; full detail in [`docs/architecture/phase1/`](../docs/architecture/phase1/README.md) and [ROADMAP](../docs/architecture/phase1/ROADMAP.md). Old horizontal P1 items (RBAC-only module, entitlements, audit, billing) → **Phase 3** (see Later).
 
-- [ ] P1-1 — Tenant foundation + fail-closed isolation guard (`tenant` svc, `@vip/tenancy`). · deps: P0 · [TENANT_ARCHITECTURE](../docs/architecture/phase1/TENANT_ARCHITECTURE.md)
+- [ ] P1-1 — Tenant foundation + fail-closed isolation guard (`tenant` svc, `@vip/tenancy`). · **in_progress** `[Claude · 2026-07-28]` · deps: P0 · [TENANT_ARCHITECTURE](../docs/architecture/phase1/TENANT_ARCHITECTURE.md)
 - [ ] P1-2 — Authentication + authz (OIDC/JWT/refresh, `gateway`, `@vip/permissions`). · deps: P1-1 · [AUTHENTICATION](../docs/architecture/phase1/AUTHENTICATION.md)
 - [ ] P1-3 — Camera registry + org hierarchy (`camera` svc). · deps: P1-1,P1-2 · [CAMERA_ARCHITECTURE](../docs/architecture/phase1/CAMERA_ARCHITECTURE.md)
 - [ ] P1-4 — RTSP ingestion + recording (`media` svc). · deps: P1-3 · [INGESTION_PIPELINE](../docs/architecture/phase1/INGESTION_PIPELINE.md)

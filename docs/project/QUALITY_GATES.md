@@ -38,7 +38,7 @@
 | Maintainability           | ✅ PASS | One typed config surface; grouped by concern; no abstraction without value                                                  |
 | Extensibility             | ✅ PASS | Future secret stores are a single documented extension point; group loaders unchanged                                       |
 
-**Overall: PASS** (Architecture Review ⏳ PENDING — see [docs/review/SPRINT-0005.md](../review/SPRINT-0005.md)).
+**Overall: PASS** (Architecture Review ⏳ PENDING — see [REVIEW_HISTORY](../tracker/REVIEW_HISTORY.md)).
 
 ## Sprint 0004 — Slice 4 (Registry bootstrap, P0-5) · 2026-07-27
 
@@ -57,7 +57,7 @@
 | Maintainability   | ✅ PASS | Config in one place (compose/env); stdlib-testable config module                                                         |
 | Extensibility     | ✅ PASS | Registry selectors + model-card/CT hooks documented for P3/P9                                                            |
 
-**Overall: PASS** (Architecture Review ⏳ PENDING — see [docs/review/SPRINT-0004.md](../review/SPRINT-0004.md)).
+**Overall: PASS** (Architecture Review ⏳ PENDING — see [REVIEW_HISTORY](../tracker/REVIEW_HISTORY.md)).
 
 ## Sprint 0003 — Slice 3 (Identity service, P0-7) + Governance framework · 2026-07-27
 
@@ -76,7 +76,7 @@
 | Maintainability   | ✅ PASS                 | Strict layering; domain framework-free; self-documenting README                                                                          |
 | Extensibility     | ✅ PASS                 | Adapter/readiness/tenant seams in place; no vertical logic                                                                               |
 
-**Overall: PASS** (Architecture Review ⏳ PENDING — see [docs/review/SPRINT-0003.md](../review/SPRINT-0003.md)).
+**Overall: PASS** (Architecture Review ⏳ PENDING — see [REVIEW_HISTORY](../tracker/REVIEW_HISTORY.md)).
 
 ## Sprint 0002 — Slice 2 (CI quality gate, P0-3) · 2026-07-27
 
