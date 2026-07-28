@@ -1,18 +1,28 @@
 # @vip/service-identity
 
-The **Identity context** service and the repository's **reference Fastify service
-template**. New TS services are scaffolded by copying this shape.
+The **Identity context** service (also the repository's **reference Fastify service template**).
+Owns users, credentials, and refresh-token lineage; authenticates principals and mints the access
+tokens whose claims become the platform's `TenantContext`.
 
-> **Phase 0 status:** infrastructure skeleton only — **no authentication, users, or
-> business logic yet**. It proves the template (layering, health/ready/metrics,
-> tenant-context seam, error envelope, graceful shutdown). The real Identity
-> responsibilities land in Phase 1.
+> **Phase 1 (P1-2):** real authentication + authorization. Users are tenant-scoped
+> ([@vip/tenancy](../../packages/tenancy/README.md)); passwords hashed with scrypt and tokens signed
+> with jose ([@vip/auth](../../packages/auth/README.md)); routes gated by
+> [@vip/permissions](../../packages/permissions/README.md). MFA / SSO / API keys are later.
 
-## Responsibilities (target — docs/architecture/23 › identity)
+## Auth model
 
-Authenticate principals; sessions / MFA / SSO / API keys. Owns users, credentials,
-sessions, refresh tokens, MFA, API keys. Publishes `identity.user.*`,
-`identity.session.*`; consumes `tenant.created`. Internal dep: Tenant.
+- **Login** is tenant-scoped: the `x-tenant-id` header names the tenant (the gateway/subdomain
+  supplies it), the user is looked up within that tenant, and a short-lived **access token** +
+  rotating **refresh token** are issued.
+- **Refresh** rotates within a token _family_ and **detects reuse**: replaying an already-rotated
+  token revokes the whole family (compromise response).
+- **Authorization** is deny-by-default: protected routes call `auth.authorize('user:read')`.
+
+## Responsibilities (docs/architecture/23 › identity)
+
+Owns users, credentials, sessions, refresh tokens; MFA/SSO/API keys (later). Publishes
+`user.created`, `auth.login.succeeded`, `auth.token.refreshed`, `auth.refresh.reused`, `auth.logout`
+(via a publisher seam; NATS wiring in P1-5). Consumes `tenant.created`. Internal dep: Tenant.
 
 ## Layering (domain never imports transport)
 
@@ -34,15 +44,18 @@ inner layers. Enforced repo-wide by `pnpm check:imports`.
 
 ## Endpoints
 
-| Method | Path       | Purpose                                                       |
-| ------ | ---------- | ------------------------------------------------------------- |
-| GET    | `/health`  | Liveness — always `200 {"status":"ok"}`                       |
-| GET    | `/ready`   | Readiness — `200` when all dependency checks pass, else `503` |
-| GET    | `/metrics` | Prometheus exposition (per-instance registry)                 |
-| GET    | `/`        | Service-info snapshot in the `{success,data}` envelope        |
+| Method | Path                              | Purpose                                       | Auth          |
+| ------ | --------------------------------- | --------------------------------------------- | ------------- |
+| POST   | `/auth/login`                     | Authenticate within a tenant → access+refresh | `x-tenant-id` |
+| POST   | `/auth/refresh`                   | Rotate the token pair (reuse-detection)       | refresh token |
+| POST   | `/auth/logout`                    | Revoke the refresh-token family               | refresh token |
+| GET    | `/auth/me`                        | Principal resolved from the access token      | Bearer        |
+| POST   | `/users`                          | Create a user (tenant-scoped)                 | `user:create` |
+| GET    | `/users`                          | List the tenant's users                       | `user:read`   |
+| GET    | `/health` `/ready` `/metrics` `/` | liveness / readiness / metrics / info         | —             |
 
-Every response carries a correlation id (`x-request-id` if supplied, else generated);
-errors use the `@vip/contracts` `ApiError` envelope.
+Every response carries a correlation id; errors use the `@vip/contracts` `ApiError` envelope
+(auth failure → 401, missing permission → 403, both opaque).
 
 ## Configuration (env)
 
@@ -54,6 +67,10 @@ errors use the `@vip/contracts` `ApiError` envelope.
 | `HOST`            | `0.0.0.0`     |                                         |
 | `PORT`            | `8080`        |                                         |
 | `LOG_LEVEL`       | `info`        | pino level (`silent`…`trace`)           |
+| `MONGO_URI`       | —             | **required**; users + refresh tokens    |
+| `JWT_SECRET`      | —             | **required** (≥16 chars); signs tokens  |
+| `JWT_ACCESS_TTL`  | `15m`         | access-token lifetime                   |
+| `JWT_REFRESH_TTL` | `7d`          | refresh-token lifetime                  |
 
 Invalid config aborts startup (no half-configured instance serves traffic).
 

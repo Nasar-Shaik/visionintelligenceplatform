@@ -15,6 +15,9 @@ export * from './common/api-envelope.js';
 // tenant + org hierarchy (P1-1)
 export * from './tenant/tenant.js';
 
+// auth: users, tokens, principal (P1-2)
+export * from './auth/auth.js';
+
 // events
 export * from './events/priority.js';
 export * from './events/envelope.js';

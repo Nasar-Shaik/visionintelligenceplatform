@@ -5,6 +5,8 @@
  * leaks internal 5xx details to the client (they're logged server-side instead).
  */
 import type { ApiError } from '@vip/contracts';
+import { AuthError } from '@vip/auth';
+import { TenancyError } from '@vip/tenancy';
 import type { FastifyError, FastifyInstance } from 'fastify';
 
 interface ErrorEnvelope {
@@ -18,8 +20,22 @@ function envelope(error: ApiError): ErrorEnvelope {
 
 export function registerErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((error: FastifyError, request, reply) => {
-    const statusCode = error.statusCode ?? 500;
     const correlationId = request.id;
+
+    // Auth failures → 401; tenancy violations → 403. Opaque messages (no enumeration / no leak).
+    if (error instanceof AuthError) {
+      reply
+        .status(401)
+        .send(envelope({ code: 'unauthenticated', message: 'Unauthorized', correlationId }));
+      return;
+    }
+    if (error instanceof TenancyError) {
+      request.log.warn({ correlationId, code: error.code }, 'tenancy violation refused');
+      reply.status(403).send(envelope({ code: 'forbidden', message: 'Forbidden', correlationId }));
+      return;
+    }
+
+    const statusCode = error.statusCode ?? 500;
 
     if (statusCode >= 500) {
       // Log the real cause; return an opaque message.

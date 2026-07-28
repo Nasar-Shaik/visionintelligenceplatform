@@ -13,5 +13,6 @@ do not replace the manual sign-off.
 | 4     | [slice-004.md](slice-004.md) | Registry bootstrap — MLflow + DVC                 |
 | 5     | [slice-005.md](slice-005.md) | Secrets & centralized config — `@vip/config`      |
 | 6     | [slice-006.md](slice-006.md) | P1-1 Tenant foundation + fail-closed isolation    |
+| 7     | [slice-007.md](slice-007.md) | P1-2 Authentication + authorization               |
 
 New slices copy [docs/templates/test-scenario.md](../templates/test-scenario.md).

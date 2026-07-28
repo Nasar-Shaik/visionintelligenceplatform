@@ -3,15 +3,26 @@
  * re-implements env parsing; no code reads `process.env` directly, ADR-0018) and layers
  * on the service version. Fail-fast validation happens inside `@vip/config`.
  */
-import { loadAppConfig, type AppConfig } from '@vip/config';
+import {
+  loadAppConfig,
+  loadDatabaseConfig,
+  loadJwtConfig,
+  type AppConfig,
+  type DatabaseConfig,
+  type JwtConfig,
+} from '@vip/config';
 
 export interface ServiceConfig extends AppConfig {
   /** Semantic version, injected by the package manager at runtime when present. */
   serviceVersion: string;
+  database: DatabaseConfig;
+  jwt: JwtConfig;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
   const app = loadAppConfig(env, { serviceName: 'identity', port: 8080 });
+  const database = loadDatabaseConfig(env);
+  const jwt = loadJwtConfig(env);
   const serviceVersion = env.SERVICE_VERSION ?? env.npm_package_version ?? '0.1.0';
-  return { ...app, serviceVersion };
+  return { ...app, serviceVersion, database, jwt };
 }

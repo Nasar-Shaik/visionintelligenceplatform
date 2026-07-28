@@ -7,14 +7,27 @@
 
 ## @vip/service-identity (v0.1.0)
 
-> Phase 0 scaffold — infrastructure endpoints only. Business APIs (`/auth/*`, `/users`, `/api-keys`) arrive in P1 (see [docs/architecture/23](../architecture/23-SERVICE-OWNERSHIP.md) › identity).
+> Phase 1 P1-2. Authentication + authorization. Users tenant-scoped (`@vip/tenancy`); tokens via `@vip/auth`; routes gated by `@vip/permissions`. Infra endpoints (`/health` `/ready` `/metrics` `/`) as the template. `/ready` includes a `mongo` check.
 
-| Method | Endpoint   | Purpose                                  | Auth                      | Input | Output                                                      | Dependencies                    | Status   | Version |
-| ------ | ---------- | ---------------------------------------- | ------------------------- | ----- | ----------------------------------------------------------- | ------------------------------- | -------- | ------- |
-| GET    | `/health`  | Liveness probe (process is up)           | None                      | —     | `200 {"status":"ok"}`                                       | none                            | scaffold | 0.1.0   |
-| GET    | `/ready`   | Readiness probe (dependencies reachable) | None                      | —     | `200 {"status":"pass","checks":[]}` / `503` on fail         | ReadinessRegistry (empty in P0) | scaffold | 0.1.0   |
-| GET    | `/metrics` | Prometheus exposition                    | None (network-restricted) | —     | `200` text/plain; per-instance registry, `service` label    | prom-client                     | scaffold | 0.1.0   |
-| GET    | `/`        | Service-info snapshot                    | None                      | —     | `200 {success,data:{name,version,startedAt,uptimeSeconds}}` | —                               | scaffold | 0.1.0   |
+| Method | Endpoint                          | Purpose                             | Auth          | Input             | Output                                         | Dependencies                    | Status   | Version |
+| ------ | --------------------------------- | ----------------------------------- | ------------- | ----------------- | ---------------------------------------------- | ------------------------------- | -------- | ------- |
+| POST   | `/auth/login`                     | Authenticate within a tenant        | `x-tenant-id` | `LoginInput`      | `200 {success,data:TokenPair}` · `401` · `400` | Mongo, @vip/auth                | beta     | 0.1.0   |
+| POST   | `/auth/refresh`                   | Rotate token pair (reuse-detection) | refresh token | `RefreshInput`    | `200 {success,data:TokenPair}` · `401`         | Mongo, @vip/auth                | beta     | 0.1.0   |
+| POST   | `/auth/logout`                    | Revoke the refresh-token family     | refresh token | `RefreshInput`    | `204`                                          | Mongo                           | beta     | 0.1.0   |
+| GET    | `/auth/me`                        | Principal from the access token     | Bearer        | —                 | `200 {success,data:Principal}` · `401`         | @vip/auth                       | beta     | 0.1.0   |
+| POST   | `/users`                          | Create a user (tenant-scoped)       | `user:create` | `CreateUserInput` | `201 {success,data:User}` · `401/403/409`      | Mongo, @vip/tenancy/permissions | beta     | 0.1.0   |
+| GET    | `/users`                          | List the tenant's users             | `user:read`   | —                 | `200 {success,data:User[]}` · `401/403`        | Mongo, @vip/tenancy             | beta     | 0.1.0   |
+| GET    | `/health` `/ready` `/metrics` `/` | liveness/readiness/metrics/info     | None          | —                 | infra (as template)                            | prom-client                     | scaffold | 0.1.0   |
+
+## @vip/service-gateway (v0.1.0)
+
+> Phase 1 P1-2. The trust boundary: edge token validation + context-forwarding reverse proxy. Injects trusted `x-tenant-id`/`x-principal-id`/`x-roles` from the token and strips client-supplied ones.
+
+| Method | Endpoint                          | Purpose                                           | Auth   | Output                                                  | Dependencies         | Status   | Version |
+| ------ | --------------------------------- | ------------------------------------------------- | ------ | ------------------------------------------------------- | -------------------- | -------- | ------- |
+| GET    | `/whoami`                         | Resolve + return the caller's context             | Bearer | `200 {success,data:{principalId,tenantId,...}}` · `401` | @vip/auth            | beta     | 0.1.0   |
+| ALL    | `/api/:service/*`                 | Reverse-proxy to an upstream with trusted context | Bearer | upstream response · `401` · `404` · `502`               | @vip/auth, upstreams | beta     | 0.1.0   |
+| GET    | `/health` `/ready` `/metrics` `/` | liveness/readiness/metrics/info                   | None   | infra (as template)                                     | prom-client          | scaffold | 0.1.0   |
 
 **Conventions (all services):**
 

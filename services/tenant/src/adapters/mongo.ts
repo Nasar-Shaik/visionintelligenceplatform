@@ -27,7 +27,8 @@ export async function connectMongo(opts: ConnectMongoOptions): Promise<MongoAdap
     serverSelectionTimeoutMS: opts.serverSelectionTimeoutMS ?? 5000,
   });
   await client.connect();
-  const db = client.db(opts.dbName ?? 'vip_tenant');
+  // Honor the database in the connection string; `dbName` overrides (used by tests for isolation).
+  const db = opts.dbName ? client.db(opts.dbName) : client.db();
   const tenants = db.collection<TenantDoc>('tenants');
   const orgNodes = db.collection<OrgNodeDoc>('org_nodes');
   await ensureIndexes(tenants, orgNodes);

@@ -23,6 +23,25 @@
 
 ---
 
+## Sprint 0007 — Slice 7 (P1-2 Authentication + authorization) · 2026-07-28
+
+| Gate              | Result  | Reason                                                                                                                                                                                                              |
+| ----------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Architecture      | ✅ PASS | `check:imports` 8 pkgs / 0 violations; new `service→shared` edges only; frozen v1.0 unchanged; full Policy Engine seam preserved ([ED-0023](ENGINEERING_DECISION_LOG.md))                                           |
+| Security          | ✅ PASS | scrypt password hashing; short-TTL HS256 access + rotating refresh with **reuse-detection** (family revocation); deny-by-default authz; gateway strips client-spoofed context; 401/403 opaque; no secrets committed |
+| Performance       | ➖ N/A  | scrypt cost tuned (N=2^14); token verify is CPU-only; scale validated later (R-005)                                                                                                                                 |
+| Testing           | ✅ PASS | 154 TS tests (160 w/ Mongo): auth units, RBAC PDP, identity auth vertical + reuse-detection, gateway trust boundary, real-Mongo integration; **live-validated**                                                     |
+| Documentation     | ✅ PASS | auth/permissions/gateway + identity READMEs, AUTHENTICATION grounding, API_INVENTORY, DEPENDENCIES, slice-007, trackers                                                                                             |
+| Dependency Review | ✅ PASS | `jose ^6.2.4` (pure-JS, no build) registry-verified; scrypt over argon2 (no native build) — [ED-0023](ENGINEERING_DECISION_LOG.md)                                                                                  |
+| Lint              | ✅ PASS | `pnpm lint` clean (type-aware, 8 pkgs)                                                                                                                                                                              |
+| Formatting        | ✅ PASS | `pnpm format:check` clean                                                                                                                                                                                           |
+| Build             | ✅ PASS | `pnpm build` all packages; `verify:contracts` 12 schemas                                                                                                                                                            |
+| Docker            | ✅ PASS | identity boots against dev-stack Mongo; `/ready` mongo pass; login issues a valid JWT; SIGTERM exit 0                                                                                                               |
+| Maintainability   | ✅ PASS | strict layering; build-free crypto; explicit DI (auth preHandlers injected); domain framework-free                                                                                                                  |
+| Extensibility     | ✅ PASS | RS256/JWKS, MFA/SSO, full Policy Engine documented as extension points; publisher seam for auth events (NATS in P1-5)                                                                                               |
+
+**Overall: PASS** (Architecture Review ⏳ PENDING — see [REVIEW_HISTORY](../tracker/REVIEW_HISTORY.md)).
+
 ## Sprint 0006 — Slice 6 (P1-1 Tenant foundation + fail-closed isolation) · 2026-07-28
 
 | Gate              | Result  | Reason                                                                                                                                                                        |

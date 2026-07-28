@@ -6,11 +6,11 @@ _Last updated: 2026-07-28 · Claude_
 
 ## Snapshot
 
-- **Phase:** Phase 1 — Core Platform (camera → alert vertical). Architecture **FROZEN v1.0**; blueprint **approved**; documentation optimized.
-- **Current slice:** P1-1 — Tenant foundation + fail-closed isolation — **code complete, awaiting Architect review**.
-- **Next recommended slice:** P1-2 Authentication + authorization (per [Phase 1 ROADMAP](../architecture/phase1/ROADMAP.md)).
+- **Phase:** Phase 1 — Core Platform (camera → alert vertical). Architecture **FROZEN v1.0**; blueprint **approved**.
+- **Current slice:** P1-2 — Authentication + authorization — **code complete, awaiting Architect review**. (P1-1 also code-complete, ⏳ review.)
+- **Next recommended slice:** P1-3 Camera registry + org hierarchy (per [Phase 1 ROADMAP](../architecture/phase1/ROADMAP.md)).
 - **Blockers:** none.
-- **Overall completion:** Phase 0 **100%** · Phase 1 **~12%** (P1-1 code complete, 0 / 8 approved) · Program ≈ **9%** (of Phases 0–4).
+- **Overall completion:** Phase 0 **100%** · Phase 1 **~25%** (P1-1, P1-2 code complete; M1 done pending review) · Program ≈ **10%** (of Phases 0–4).
 
 ## Phase status
 
@@ -29,7 +29,7 @@ Legend: ✅ done · 🟢 on track · 🟡 in progress · 🔴 blocked · ⚪ not
 | Milestone         | Slice | Subject                                   | Status           | Review     |
 | ----------------- | ----- | ----------------------------------------- | ---------------- | ---------- |
 | **M1** Access     | P1-1  | Tenant foundation + fail-closed isolation | 🟢 Code complete | ⏳ PENDING |
-|                   | P1-2  | Authentication + authorization            | ⚪ Not started   | —          |
+|                   | P1-2  | Authentication + authorization            | 🟢 Code complete | ⏳ PENDING |
 | **M2** Ingestion  | P1-3  | Camera registry + org hierarchy           | ⚪ Not started   | —          |
 |                   | P1-4  | RTSP ingestion + recording                | ⚪ Not started   | —          |
 | **M3** Perception | P1-6  | AI inference (capability runtime)         | ⚪ Not started   | —          |
@@ -40,15 +40,15 @@ Legend: ✅ done · 🟢 on track · 🟡 in progress · 🔴 blocked · ⚪ not
 - **Completed slices:** none yet.
 - **Remaining slices:** P1-1 … P1-8 (8).
 
-## Gate status (current focus: P1-1)
+## Gate status (M1 code complete: P1-1 + P1-2)
 
-| Gate                      | Status                                                                                        |
-| ------------------------- | --------------------------------------------------------------------------------------------- |
-| **Architecture approval** | ✅ Phase 1 blueprint approved (2026-07-28) · P1-1 code ⏳ PENDING Architect review            |
-| **Implementation**        | 🟢 P1-1 complete: `@vip/contracts` (tenant/org), `@vip/tenancy`, `@vip/service-tenant`        |
-| **Testing**               | 🟢 62 TS tests (guard units + HTTP isolation gate + 3 real-Mongo integration, validated live) |
-| **Documentation**         | 🟢 tenant/tenancy READMEs, TENANT_ARCH, API_INVENTORY, DEPENDENCIES, slice-006 scenario       |
-| **CI**                    | 🟢 Green on `feature/v1` (format/lint/typecheck/test/build/import-graph 0-viol/contracts 9)   |
+| Gate                      | Status                                                                                                                                                     |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Architecture approval** | ✅ Phase 1 blueprint approved (2026-07-28) · P1-1 + P1-2 code ⏳ PENDING Architect review                                                                  |
+| **Implementation**        | 🟢 P1-1 (tenant + `@vip/tenancy`) · P1-2 (`@vip/auth`, `@vip/permissions`, identity auth, gateway)                                                         |
+| **Testing**               | 🟢 154 TS tests (160 with real Mongo): guards, auth vertical incl. refresh reuse-detection, gateway trust boundary, real-Mongo integration; live-validated |
+| **Documentation**         | 🟢 8 package/service READMEs, AUTH/TENANT arch, API_INVENTORY, DEPENDENCIES, slice-006/007                                                                 |
+| **CI**                    | 🟢 Green on `feature/v1` (format/lint/typecheck/test/build/import-graph 8pkg 0-viol/contracts 12)                                                          |
 
 ## Standing gates (never regress)
 

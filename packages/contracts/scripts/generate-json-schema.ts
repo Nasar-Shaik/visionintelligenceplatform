@@ -18,6 +18,7 @@ import { TenantContext } from '../src/common/tenant-context.js';
 import { ApiError } from '../src/common/api-envelope.js';
 import { ConfigNode } from '../src/config/hierarchy.js';
 import { Tenant, OrgNode } from '../src/tenant/tenant.js';
+import { User, Principal, TokenPair } from '../src/auth/auth.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, '..', 'generated');
@@ -32,6 +33,9 @@ const schemas: Record<string, z.ZodType> = {
   'config-node': ConfigNode,
   tenant: Tenant,
   'org-node': OrgNode,
+  user: User,
+  principal: Principal,
+  'token-pair': TokenPair,
 };
 
 mkdirSync(outDir, { recursive: true });

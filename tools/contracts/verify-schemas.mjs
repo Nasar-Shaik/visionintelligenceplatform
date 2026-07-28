@@ -29,6 +29,9 @@ const REQUIRED = [
   'config-node',
   'tenant',
   'org-node',
+  'user',
+  'principal',
+  'token-pair',
 ];
 
 const errors = [];

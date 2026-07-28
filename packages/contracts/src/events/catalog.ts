@@ -60,6 +60,37 @@ export const EVENT_CATALOG: EventCatalogEntry[] = [
     defaultPriority: 'info',
     pii: 'none',
   },
+  // identity / auth (control-plane)
+  {
+    type: 'user.created',
+    description: 'A user was created under a tenant.',
+    defaultPriority: 'low',
+    pii: 'low',
+  },
+  {
+    type: 'auth.login.succeeded',
+    description: 'A principal authenticated successfully.',
+    defaultPriority: 'info',
+    pii: 'low',
+  },
+  {
+    type: 'auth.token.refreshed',
+    description: 'A refresh token was rotated for a new access token.',
+    defaultPriority: 'info',
+    pii: 'none',
+  },
+  {
+    type: 'auth.refresh.reused',
+    description: 'A used/rotated refresh token was replayed — token family revoked (compromise).',
+    defaultPriority: 'high',
+    pii: 'none',
+  },
+  {
+    type: 'auth.logout',
+    description: 'A principal logged out (refresh token/family revoked).',
+    defaultPriority: 'low',
+    pii: 'none',
+  },
   // device / lifecycle
   {
     type: 'device.camera.offline',
