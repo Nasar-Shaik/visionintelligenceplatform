@@ -35,6 +35,8 @@ const REQUIRED = [
   'camera',
   'capture-profile',
   'camera-health',
+  'stream-status',
+  'recording-segment',
 ];
 
 const errors = [];

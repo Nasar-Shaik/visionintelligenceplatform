@@ -94,6 +94,7 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change_me_dev_only}
       MLFLOW_ARTIFACTS_BUCKET: ${MLFLOW_ARTIFACTS_BUCKET:-mlflow-artifacts}
       DVC_REMOTE_BUCKET: ${DVC_REMOTE_BUCKET:-vip-datasets}
+      S3_RECORDINGS_BUCKET: ${S3_RECORDINGS_BUCKET:-vip-recordings}
     entrypoint:
       - /bin/sh
       - -c
@@ -101,7 +102,8 @@ services:
         mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
         mc mb --ignore-existing "local/$$MLFLOW_ARTIFACTS_BUCKET" &&
         mc mb --ignore-existing "local/$$DVC_REMOTE_BUCKET" &&
-        echo "buckets ready: $$MLFLOW_ARTIFACTS_BUCKET, $$DVC_REMOTE_BUCKET"
+        mc mb --ignore-existing "local/$$S3_RECORDINGS_BUCKET" &&
+        echo "buckets ready: $$MLFLOW_ARTIFACTS_BUCKET, $$DVC_REMOTE_BUCKET, $$S3_RECORDINGS_BUCKET"
     restart: 'no'
 
   # ---- MLOps: Model Registry backend store — Postgres (docs/architecture/08 §2) ----
@@ -166,6 +168,47 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  # ---- Media ingestion test source (P1-4) — opt-in `media` profile ---------
+  # Not started by the default stack. Bring up with:
+  #   docker compose -f infra/docker/docker-compose.dev.yml --profile media up -d
+  # Provides a synthetic RTSP stream at rtsp://localhost:${RTSP_PORT:-8554}/test so the media
+  # service + ffmpeg decoder can be validated end-to-end without a physical camera.
+  rtsp-server:
+    image: bluenviron/mediamtx:latest
+    profiles: ['media']
+    restart: unless-stopped
+    ports:
+      - '${RTSP_PORT:-8554}:8554' # RTSP
+    environment:
+      MTX_PROTOCOLS: tcp
+
+  # Publishes a looping test pattern (H.264) into the RTSP server above.
+  rtsp-test-source:
+    image: jrottenberg/ffmpeg:6-alpine
+    profiles: ['media']
+    restart: unless-stopped
+    depends_on:
+      - rtsp-server
+    command:
+      - -re
+      - -f
+      - lavfi
+      - -i
+      - testsrc=size=640x480:rate=15
+      - -c:v
+      - libx264
+      - -profile:v
+      - baseline
+      - -pix_fmt
+      - yuv420p
+      - -tune
+      - zerolatency
+      - -f
+      - rtsp
+      - -rtsp_transport
+      - tcp
+      - rtsp://rtsp-server:8554/test
 
 volumes:
   mongo_data:

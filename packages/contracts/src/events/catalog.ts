@@ -116,6 +116,25 @@ export const EVENT_CATALOG: EventCatalogEntry[] = [
     defaultPriority: 'medium',
     pii: 'none',
   },
+  // media / ingestion (P1-4)
+  {
+    type: 'media.stream.connected',
+    description: 'A camera stream connected and is producing frames.',
+    defaultPriority: 'low',
+    pii: 'none',
+  },
+  {
+    type: 'media.stream.lost',
+    description: 'A camera stream was lost; the worker is reconnecting with backoff.',
+    defaultPriority: 'high',
+    pii: 'none',
+  },
+  {
+    type: 'media.recording.segment',
+    description: 'A media segment was recorded to tenant-scoped object storage.',
+    defaultPriority: 'info',
+    pii: 'none',
+  },
   // device / lifecycle
   {
     type: 'device.camera.offline',

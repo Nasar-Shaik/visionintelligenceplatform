@@ -20,6 +20,9 @@ export const STRIPPED_CLIENT_HEADERS = [
   'x-tenant-id',
   'x-principal-id',
   'x-roles',
+  // Internal service-to-service key — clients must never be able to inject it through the gateway
+  // (it authenticates trusted internal callers only, e.g. media → camera credential resolve).
+  'x-internal-key',
   // hop-by-hop
   'host',
   'connection',

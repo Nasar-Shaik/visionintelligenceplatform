@@ -7,6 +7,7 @@ import { loadStorageConfig } from '../src/storage.js';
 import { loadAiConfig } from '../src/ai.js';
 import { loadJwtConfig } from '../src/jwt.js';
 import { loadCryptoConfig } from '../src/crypto.js';
+import { loadInternalConfig } from '../src/internal.js';
 
 describe('infrastructure config groups', () => {
   it('database: maps MONGO_URI → uri', () => {
@@ -21,13 +22,25 @@ describe('infrastructure config groups', () => {
     expect(loadNatsConfig({ NATS_URL: 'nats://h:4222' }).url).toBe('nats://h:4222');
   });
 
-  it('storage: maps S3 endpoint + credentials', () => {
+  it('storage: maps S3 endpoint + credentials, defaults region/bucket/path-style', () => {
     const c = loadStorageConfig({
       S3_ENDPOINT: 'http://h:9000',
       AWS_ACCESS_KEY_ID: 'k',
       AWS_SECRET_ACCESS_KEY: 's',
     });
-    expect(c).toEqual({ endpoint: 'http://h:9000', accessKeyId: 'k', secretAccessKey: 's' });
+    expect(c).toEqual({
+      endpoint: 'http://h:9000',
+      accessKeyId: 'k',
+      secretAccessKey: 's',
+      region: 'us-east-1',
+      recordingsBucket: 'vip-recordings',
+      forcePathStyle: true,
+    });
+  });
+
+  it('internal: maps INTERNAL_API_KEY → apiKey (min length enforced)', () => {
+    expect(loadInternalConfig({ INTERNAL_API_KEY: 'x'.repeat(16) }).apiKey).toBe('x'.repeat(16));
+    expect(() => loadInternalConfig({ INTERNAL_API_KEY: 'short' })).toThrow(ConfigError);
   });
 
   it('ai: MLflow tracking uri + default artifacts bucket', () => {

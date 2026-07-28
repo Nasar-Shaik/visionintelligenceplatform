@@ -85,7 +85,7 @@ flowchart TD
 - **Objective:** Connect to a camera's RTSP stream, decode it, extract frames, and record to object storage.
 - **Dependencies:** P1-3 (a camera to connect to), Storage. A local **RTSP test source** is added to the dev stack.
 - **Acceptance:** the stream connects and frames are produced (H.264 first); a recording lands in MinIO under `{tenantId}/{cameraId}/…`; connection loss triggers reconnect + `media.stream.lost`; storage prefixes are tenant-isolated.
-- **Status:** ⬜ Not started.
+- **Status:** 🟢 Code complete — ⏳ Architect review. Storage isolation via **`@vip/storage`**; ffmpeg-binary decoder; creds resolved from camera's internal endpoint ([ED-0025](../../project/ENGINEERING_DECISION_LOG.md); perception handoff/shared-key [TD-4](../../../tracking/TECH-DEBT.md)).
 
 ## M3 — Perception & Event Backbone
 

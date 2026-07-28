@@ -20,6 +20,7 @@ import { registerHealthRoutes } from './routes/health.js';
 import { registerMetricsRoute } from './routes/metrics.js';
 import { registerRootRoute } from './routes/root.js';
 import { registerCameraRoutes } from './routes/cameras.js';
+import { registerInternalRoutes } from './routes/internal.js';
 
 export interface BuildServerOptions {
   config: ServiceConfig;
@@ -70,6 +71,7 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
   registerMetricsRoute(app, registry);
   registerRootRoute(app, { name: config.serviceName, version: config.serviceVersion, startedAt });
   registerCameraRoutes(app, { service: opts.service, auth });
+  registerInternalRoutes(app, { service: opts.service, internalKey: config.internal.apiKey });
 
   return { app, readiness };
 }

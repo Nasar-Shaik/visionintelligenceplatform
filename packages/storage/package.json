@@ -1,0 +1,35 @@
+{
+  "name": "@vip/storage",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tenant-isolated object storage (Phase 1, P1-4): an S3/MinIO wrapper that requires a TenantContext and enforces the `{tenantId}/{cameraId}/…` object-prefix (fail-closed), plus short-lived signed URLs. The MinIO counterpart of @vip/tenancy's fail-closed Mongo guard. See docs/architecture/phase1/STORAGE_ARCHITECTURE.md, 18-DATA-ARCHITECTURE.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1096.0",
+    "@aws-sdk/s3-request-presigner": "^3.1096.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

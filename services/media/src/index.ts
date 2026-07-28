@@ -1,0 +1,86 @@
+/**
+ * Bootstrap / composition root: load & validate config, wire the real adapters (S3 object store,
+ * HTTP camera source, ffmpeg decoder, null perception sink) into the stream supervisor, build the
+ * server, listen, and shut down gracefully (stop all workers, drain requests). The only file that
+ * touches the process/network and constructs concrete adapters.
+ */
+import type { FastifyBaseLogger } from 'fastify';
+import { loadDotEnv } from '@vip/config';
+import { S3ObjectStore } from '@vip/storage';
+import { loadConfig } from './config/env.js';
+import { ReadinessRegistry } from './application/readiness.js';
+import { LoggingEventPublisher } from './application/events.js';
+import { StreamSupervisor } from './application/stream-supervisor.js';
+import { HttpCameraSource } from './adapters/http-camera-source.js';
+import { FfmpegDecoder } from './adapters/ffmpeg-decoder.js';
+import { NullFrameSink } from './adapters/null-frame-sink.js';
+import { buildServer } from './transport/server.js';
+
+async function main(): Promise<void> {
+  loadDotEnv();
+  const config = loadConfig();
+
+  const objectStore = new S3ObjectStore({
+    endpoint: config.storage.endpoint,
+    accessKeyId: config.storage.accessKeyId,
+    secretAccessKey: config.storage.secretAccessKey,
+    region: config.storage.region,
+    bucket: config.storage.recordingsBucket,
+    forcePathStyle: config.storage.forcePathStyle,
+  });
+
+  const readiness = new ReadinessRegistry();
+  readiness.register('storage', async () => {
+    try {
+      await objectStore.ping();
+      return { status: 'pass' };
+    } catch (err) {
+      return { status: 'fail', detail: err instanceof Error ? err.message : 'ping failed' };
+    }
+  });
+
+  const loggerRef: { current?: FastifyBaseLogger } = {};
+  const publisher = new LoggingEventPublisher((event) =>
+    loggerRef.current?.info({ event }, 'domain event published'),
+  );
+
+  const supervisor = new StreamSupervisor({
+    cameraSource: new HttpCameraSource({
+      baseUrl: config.ingestion.cameraUrl,
+      internalKey: config.internal.apiKey,
+    }),
+    decoder: new FfmpegDecoder({ binary: config.ingestion.ffmpegBinary }),
+    objectStore,
+    frameSink: new NullFrameSink(),
+    clock: { now: () => new Date() },
+    options: {
+      frameRate: config.ingestion.frameRate,
+      segmentSeconds: config.ingestion.segmentSeconds,
+    },
+    publisher,
+    onLog: (level, msg, fields) => loggerRef.current?.[level]({ ...fields }, msg),
+  });
+
+  const { app } = await buildServer({ config, supervisor, readiness });
+  loggerRef.current = app.log;
+
+  const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
+    app.log.info({ signal }, 'shutdown signal received, draining');
+    await supervisor.stopAll();
+    await app.close();
+    app.log.info('shutdown complete');
+    process.exit(0);
+  };
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.once(signal, () => void shutdown(signal));
+  }
+  process.on('unhandledRejection', (reason) => app.log.error({ reason }, 'unhandledRejection'));
+
+  await app.listen({ host: config.host, port: config.port });
+}
+
+main().catch((err: unknown) => {
+  // eslint-disable-next-line no-console
+  console.error('fatal: media service failed to start', err);
+  process.exit(1);
+});

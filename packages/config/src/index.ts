@@ -38,5 +38,8 @@ export type { JwtConfig } from './jwt.js';
 export { loadCryptoConfig } from './crypto.js';
 export type { CryptoConfig } from './crypto.js';
 
+export { loadInternalConfig } from './internal.js';
+export type { InternalConfig } from './internal.js';
+
 /** Package version — bump per Constitution §7. */
 export const CONFIG_VERSION = '0.1.0';

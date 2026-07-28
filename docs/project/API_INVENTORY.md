@@ -64,6 +64,27 @@
 | POST   | `/cameras/discover`               | ONVIF/network discovery (stub)          | `camera:create` | `DiscoverCamerasInput` | `501 not_implemented`                           | —                                | stub     | 0.1.0   |
 | GET    | `/health` `/ready` `/metrics` `/` | Liveness / readiness / metrics / info   | None            | —                      | as identity (`/ready` includes a `mongo` check) | prom-client                      | scaffold | 0.1.0   |
 
+### Internal (service-to-service, not gateway-exposed)
+
+| Method | Endpoint                       | Purpose                                                        | Auth                             | Output                                                |
+| ------ | ------------------------------ | -------------------------------------------------------------- | -------------------------------- | ----------------------------------------------------- |
+| GET    | `/internal/cameras/:id/stream` | Resolve a camera's connection **with decrypted creds** (media) | `x-internal-key` + `x-tenant-id` | `200 {success,data:StreamConnection}` · `401/400/404` |
+
+> Camera context, P1-4. The single sanctioned credential-decryption point; the gateway **strips**
+> client `x-internal-key`, so only trusted internal services reach it ([ED-0025](ENGINEERING_DECISION_LOG.md)).
+
+## @vip/service-media (v0.1.0)
+
+> Phase 1 P1-4. Per-camera ingestion workers: connect RTSP/RTMP (creds from camera), decode (ffmpeg), extract frames, record segments to tenant-scoped MinIO (`{tenantId}/{cameraId}/recordings/…`, @vip/storage). Auto-reconnect with backoff; emits `media.stream.*` + `media.recording.segment`. Verifies the identity token itself (`iss=identity`); tenant from the token — another tenant's stream is a **404**.
+
+| Method | Endpoint                          | Purpose                               | Auth             | Output                                            | Dependencies                 | Status   | Version |
+| ------ | --------------------------------- | ------------------------------------- | ---------------- | ------------------------------------------------- | ---------------------------- | -------- | ------- |
+| POST   | `/streams/:cameraId/start`        | Start a camera's ingestion worker     | `stream:control` | `202 {success,data:StreamStatus}` · `401/403`     | @vip/storage, camera, ffmpeg | beta     | 0.1.0   |
+| POST   | `/streams/:cameraId/stop`         | Stop the worker (no reconnect)        | `stream:control` | `200 {success,data:StreamStatus}` · `401/403/404` | —                            | beta     | 0.1.0   |
+| GET    | `/streams/:cameraId/status`       | Worker status                         | `stream:read`    | `200 {success,data:StreamStatus}` · `401/403/404` | —                            | beta     | 0.1.0   |
+| GET    | `/streams`                        | List the tenant's workers             | `stream:read`    | `200 {success,data:StreamStatus[]}` · `401/403`   | —                            | beta     | 0.1.0   |
+| GET    | `/health` `/ready` `/metrics` `/` | Liveness / readiness / metrics / info | None             | as template (`/ready` includes a `storage` check) | prom-client, @vip/storage    | scaffold | 0.1.0   |
+
 ## Infrastructure services (third-party APIs in the dev stack)
 
 > Not VIP-authored endpoints; listed so integrators know what the stack exposes. Dev only, network-restricted, no auth (R-014).

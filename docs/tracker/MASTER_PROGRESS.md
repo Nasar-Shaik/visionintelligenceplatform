@@ -7,17 +7,17 @@ _Last updated: 2026-07-28 · Claude_
 ## Snapshot
 
 - **Phase:** Phase 1 — Core Platform (camera → alert vertical). Architecture **FROZEN v1.0**; blueprint **approved**.
-- **Current slice:** P1-3 — Camera registry + org hierarchy — **code complete, awaiting Architect review**. (P1-1, P1-2 also code-complete, ⏳ review.)
-- **Next recommended slice:** P1-4 RTSP ingestion + recording (opens the data plane; per [Phase 1 ROADMAP](../architecture/phase1/ROADMAP.md)).
+- **Current slice:** P1-4 — RTSP ingestion + recording — **code complete, awaiting Architect review**. (P1-1…P1-3 also code-complete, ⏳ review.)
+- **Next recommended slice:** P1-6 AI inference (capability runtime) — opens M3 Perception; consumes media frames (per [Phase 1 ROADMAP](../architecture/phase1/ROADMAP.md)).
 - **Blockers:** none.
-- **Overall completion:** Phase 0 **100%** · Phase 1 **~38%** (P1-1, P1-2, P1-3 code complete; M1 done + M2 half, pending review) · Program ≈ **13%** (of Phases 0–4).
+- **Overall completion:** Phase 0 **100%** · Phase 1 **~50%** (P1-1…P1-4 code complete; **M1 + M2 done**, pending review) · Program ≈ **16%** (of Phases 0–4).
 
 ## Phase status
 
 | Phase | Name                 | Status         | Detail                                                                |
 | ----- | -------------------- | -------------- | --------------------------------------------------------------------- |
 | 0     | Foundation           | ✅ Complete    | P0-1…P0-7 done; frozen v1.0; exit review passed                       |
-| 1     | Core Platform        | 🟡 In progress | Blueprint approved; P1-1/P1-2/P1-3 code complete. 3 / 8 slices        |
+| 1     | Core Platform        | 🟡 In progress | Blueprint approved; P1-1…P1-4 code complete (M1+M2). 4 / 8 slices     |
 | 2     | Analytics            | ⚪ Not started | read models, dashboards, search, reports                              |
 | 3     | Enterprise Features  | ⚪ Not started | entitlements/billing, audit, connectors, industry packs, digital twin |
 | 4     | Production & Scaling | ⚪ Not started | multi-region, edge fleet, HA/DR, GA                                   |
@@ -31,24 +31,24 @@ Legend: ✅ done · 🟢 on track · 🟡 in progress · 🔴 blocked · ⚪ not
 | **M1** Access     | P1-1  | Tenant foundation + fail-closed isolation | 🟢 Code complete | ⏳ PENDING |
 |                   | P1-2  | Authentication + authorization            | 🟢 Code complete | ⏳ PENDING |
 | **M2** Ingestion  | P1-3  | Camera registry + org hierarchy           | 🟢 Code complete | ⏳ PENDING |
-|                   | P1-4  | RTSP ingestion + recording                | ⚪ Not started   | —          |
+|                   | P1-4  | RTSP ingestion + recording                | 🟢 Code complete | ⏳ PENDING |
 | **M3** Perception | P1-6  | AI inference (capability runtime)         | ⚪ Not started   | —          |
 |                   | P1-5  | Event pipeline                            | ⚪ Not started   | —          |
 | **M4** Response   | P1-7  | Rule engine                               | ⚪ Not started   | —          |
 |                   | P1-8  | Alert engine                              | ⚪ Not started   | —          |
 
-- **Completed slices (code, ⏳ review):** P1-1, P1-2, P1-3 (3).
-- **Remaining slices:** P1-4 … P1-8 (5).
+- **Completed slices (code, ⏳ review):** P1-1, P1-2, P1-3, P1-4 (4).
+- **Remaining slices:** P1-5 … P1-8 (4).
 
-## Gate status (P1-1 + P1-2 + P1-3 code complete)
+## Gate status (P1-1 … P1-4 code complete — M1 + M2)
 
-| Gate                      | Status                                                                                                                                                                                                 |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Architecture approval** | ✅ Phase 1 blueprint approved (2026-07-28) · P1-1 + P1-2 + P1-3 code ⏳ PENDING Architect review                                                                                                       |
-| **Implementation**        | 🟢 P1-1 (tenant + `@vip/tenancy`) · P1-2 (`@vip/auth`, `@vip/permissions`, identity auth, gateway) · P1-3 (`@vip/crypto`, `@vip/service-camera`, gateway camera upstream)                              |
-| **Testing**               | 🟢 200 TS tests (210 with real Mongo): guards, auth vertical incl. refresh reuse-detection, gateway trust boundary, **camera credential vaulting + isolation**, real-Mongo integration; live-validated |
-| **Documentation**         | 🟢 10 package/service READMEs, AUTH/TENANT/CAMERA arch, API_INVENTORY, DEPENDENCIES, slice-006/007/008                                                                                                 |
-| **CI**                    | 🟢 Green on `feature/v1` (format/lint/typecheck/test/build/import-graph 10pkg 0-viol/contracts 15)                                                                                                     |
+| Gate                      | Status                                                                                                                                                                                                                           |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Architecture approval** | ✅ Phase 1 blueprint approved (2026-07-28) · P1-1 … P1-4 code ⏳ PENDING Architect review                                                                                                                                        |
+| **Implementation**        | 🟢 P1-1 (tenant + `@vip/tenancy`) · P1-2 (`@vip/auth`, `@vip/permissions`, identity, gateway) · P1-3 (`@vip/crypto`, camera) · P1-4 (`@vip/storage`, `@vip/service-media`, ffmpeg decode, gateway media upstream)                |
+| **Testing**               | 🟢 238 TS tests (252 with real Mongo/MinIO): guards, auth vertical, gateway trust boundary, camera credential vaulting, **media supervisor lifecycle + tenant-prefixed recording**, real-Mongo/MinIO integration; live-validated |
+| **Documentation**         | 🟢 12 package/service READMEs, AUTH/TENANT/CAMERA/INGESTION/STORAGE arch, API_INVENTORY, DEPENDENCIES, slice-006/007/008/009                                                                                                     |
+| **CI**                    | 🟢 Green on `feature/v1` (format/lint/typecheck/test/build/import-graph 12pkg 0-viol/contracts 17)                                                                                                                               |
 
 ## Standing gates (never regress)
 

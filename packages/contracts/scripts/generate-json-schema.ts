@@ -20,6 +20,7 @@ import { ConfigNode } from '../src/config/hierarchy.js';
 import { Tenant, OrgNode } from '../src/tenant/tenant.js';
 import { User, Principal, TokenPair } from '../src/auth/auth.js';
 import { Camera, CaptureProfile, CameraHealth } from '../src/camera/camera.js';
+import { StreamStatus, RecordingSegment } from '../src/media/media.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, '..', 'generated');
@@ -40,6 +41,8 @@ const schemas: Record<string, z.ZodType> = {
   camera: Camera,
   'capture-profile': CaptureProfile,
   'camera-health': CameraHealth,
+  'stream-status': StreamStatus,
+  'recording-segment': RecordingSegment,
 };
 
 mkdirSync(outDir, { recursive: true });

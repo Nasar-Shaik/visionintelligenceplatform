@@ -17,6 +17,7 @@ import type { CameraDoc } from '../src/domain/camera.js';
 import { buildServer } from '../src/transport/server.js';
 
 const SECRET = 'test-secret-at-least-16-chars';
+const INTERNAL_KEY = 'internal-key-at-least-16-chars';
 
 function matches(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
   return Object.entries(filter).every(([k, v]) => doc[k] === v);
@@ -79,6 +80,7 @@ beforeEach(async () => {
     MONGO_URI: 'mongodb://localhost:47017/vip_camera',
     JWT_SECRET: SECRET,
     CREDENTIAL_ENCRYPTION_KEY: SECRET,
+    INTERNAL_API_KEY: INTERNAL_KEY,
   });
   let n = 0;
   const service = new CameraService({
@@ -236,6 +238,50 @@ describe('cross-tenant isolation (fail-closed)', () => {
       (await app.inject({ method: 'GET', url: `/cameras/${id}`, headers: auth(tA) })).json().data
         .name,
     ).toBe('Lobby');
+  });
+});
+
+describe('internal stream-resolve endpoint (service-to-service)', () => {
+  const resolve = (id: string, headers: Record<string, string>) =>
+    app.inject({ method: 'GET', url: `/internal/cameras/${id}/stream`, headers });
+
+  it('returns the connection descriptor WITH decrypted credentials for a valid internal key', async () => {
+    const id = (await create(await token(TENANT, ['admin']))).json().data.id;
+    const res = await resolve(id, { 'x-internal-key': INTERNAL_KEY, 'x-tenant-id': TENANT });
+    expect(res.statusCode).toBe(200);
+    const conn = res.json().data;
+    expect(conn).toMatchObject({
+      cameraId: id,
+      protocol: 'rtsp',
+      streamUrl: 'rtsp://cam.local:554/stream',
+      username: 'admin',
+      password: 's3cr3t',
+    });
+  });
+
+  it('rejects a missing/wrong internal key with 401', async () => {
+    const id = (await create(await token(TENANT, ['admin']))).json().data.id;
+    expect((await resolve(id, { 'x-tenant-id': TENANT })).statusCode).toBe(401);
+    expect(
+      (await resolve(id, { 'x-internal-key': 'wrong-key-16-characters', 'x-tenant-id': TENANT }))
+        .statusCode,
+    ).toBe(401);
+  });
+
+  it('requires the x-tenant-id header (400) and isolates across tenants (404)', async () => {
+    const id = (await create(await token(TENANT, ['admin']))).json().data.id;
+    expect((await resolve(id, { 'x-internal-key': INTERNAL_KEY })).statusCode).toBe(400);
+    // A different tenant cannot resolve tenant A's camera.
+    expect(
+      (await resolve(id, { 'x-internal-key': INTERNAL_KEY, 'x-tenant-id': OTHER })).statusCode,
+    ).toBe(404);
+  });
+
+  it('never leaks a JWT user into the credential path — a user Bearer token cannot resolve', async () => {
+    const id = (await create(await token(TENANT, ['admin']))).json().data.id;
+    // No internal key, only a user token → 401 (this endpoint is internal-key gated).
+    const res = await resolve(id, { authorization: `Bearer ${await token(TENANT, ['admin'])}` });
+    expect(res.statusCode).toBe(401);
   });
 });
 

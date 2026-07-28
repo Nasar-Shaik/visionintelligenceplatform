@@ -13,6 +13,7 @@ import type {
   Camera,
   CameraHealthReport,
   CreateCameraInput,
+  StreamConnection,
   UpdateCameraInput,
 } from '@vip/contracts';
 import type { TenantScope, TenantRepository } from '@vip/tenancy';
@@ -133,6 +134,27 @@ export class CameraService {
   async health(scope: TenantScope, cameraId: string): Promise<CameraHealthReport> {
     const doc = await this.require(scope, cameraId);
     return { cameraId, ...doc.health };
+  }
+
+  /**
+   * Resolve a camera's stream connection descriptor, **decrypting its vaulted credentials** — the
+   * single sanctioned decryption point. For internal service-to-service use only (media, P1-4);
+   * never exposed on a user-facing route. The plaintext is returned transiently and never stored.
+   */
+  async resolveConnection(scope: TenantScope, cameraId: string): Promise<StreamConnection> {
+    const doc = await this.require(scope, cameraId);
+    const creds = doc.credentialCipher
+      ? (JSON.parse(this.vault.open(doc.credentialCipher)) as {
+          username: string;
+          password: string;
+        })
+      : null;
+    return {
+      cameraId: doc._id,
+      protocol: doc.protocol,
+      streamUrl: doc.streamUrl,
+      ...(creds ? { username: creds.username, password: creds.password } : {}),
+    };
   }
 
   /** Fetch a camera within scope or throw 404 (shared by get/update/remove/health). */

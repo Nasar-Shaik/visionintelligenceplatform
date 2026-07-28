@@ -55,8 +55,9 @@ describe('config', () => {
       LOG_LEVEL: 'silent',
       JWT_SECRET: SECRET,
     });
-    expect(Object.keys(c.upstreams).sort()).toEqual(['camera', 'identity', 'tenant']);
+    expect(Object.keys(c.upstreams).sort()).toEqual(['camera', 'identity', 'media', 'tenant']);
     expect(c.upstreams.camera).toBe('http://localhost:8082');
+    expect(c.upstreams.media).toBe('http://localhost:8083');
   });
 });
 
@@ -77,6 +78,14 @@ describe('context helpers', () => {
     expect(out['x-tenant-id']).toBe('tnt_a');
     expect(out['x-principal-id']).toBe('usr_1');
     expect(out['accept']).toBe('application/json');
+  });
+
+  it('strips a client-supplied x-internal-key (cannot reach internal endpoints via the gateway)', () => {
+    const out = buildUpstreamHeaders(
+      { 'x-internal-key': 'stolen', accept: 'application/json' },
+      claims,
+    );
+    expect(out['x-internal-key']).toBeUndefined();
   });
 });
 

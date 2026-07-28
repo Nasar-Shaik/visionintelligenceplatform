@@ -55,6 +55,14 @@ describe('roles', () => {
     expect(can(permissionsForRoles(['admin']), 'user:create')).toBe(true);
   });
 
+  it('stream control: admin + operator can control; viewer only reads', () => {
+    expect(can(permissionsForRoles(['admin']), 'stream:control')).toBe(true);
+    expect(can(permissionsForRoles(['operator']), 'stream:control')).toBe(true);
+    expect(can(permissionsForRoles(['operator']), 'stream:read')).toBe(true);
+    expect(can(permissionsForRoles(['viewer']), 'stream:read')).toBe(true);
+    expect(can(permissionsForRoles(['viewer']), 'stream:control')).toBe(false);
+  });
+
   it('unknown roles contribute nothing', () => {
     expect(permissionsForRoles(['wizard'])).toEqual([]);
   });

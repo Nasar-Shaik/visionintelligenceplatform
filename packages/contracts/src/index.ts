@@ -21,6 +21,9 @@ export * from './auth/auth.js';
 // camera inventory (P1-3)
 export * from './camera/camera.js';
 
+// media / ingestion (P1-4)
+export * from './media/media.js';
+
 // events
 export * from './events/priority.js';
 export * from './events/envelope.js';

@@ -23,6 +23,25 @@
 
 ---
 
+## Sprint 0009 — Slice 9 (P1-4 RTSP ingestion + recording) · 2026-07-28
+
+| Gate              | Result  | Reason                                                                                                                                                                                                                                                                              |
+| ----------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Architecture      | ✅ PASS | `check:imports` 12 pkgs / 0 violations; only `service→shared` edges; new `@vip/storage` isolation wrapper mirrors `@vip/tenancy`; media↔camera via internal API (no cross-service imports); frozen v1.0 unchanged ([ED-0025](ENGINEERING_DECISION_LOG.md))                          |
+| Security          | ✅ PASS | Recordings tenant-prefixed + fail-closed (`{tenantId}/…`, key-escape refused); signed-URL access only; camera creds decrypted at one internal endpoint, `x-internal-key` constant-time + **stripped at the gateway**; creds never logged; deny-by-default authz; cross-tenant → 404 |
+| Performance       | ➖ N/A  | Per-camera workers; recording independent of perception; drop-to-latest + scale-by-camera deferred (R-005); backoff caps reconnect storms                                                                                                                                           |
+| Testing           | ✅ PASS | 42 slice TS tests (9 storage, 6 media contracts, 20 media service incl. 12 supervisor + 2 real-MinIO, +4 camera internal, +3 perms/config/gateway); recording under tenant prefix + isolation live-validated (repo total 238, 252 with real Mongo+MinIO)                            |
+| Documentation     | ✅ PASS | storage + media READMEs, INGESTION/STORAGE arch grounding, API_INVENTORY (media + internal), DEPENDENCIES, slice-009, trackers; TD-4 recorded                                                                                                                                       |
+| Dependency Review | ✅ PASS | `@aws-sdk/client-s3` + `s3-request-presigner` 3.1096.0 (pure-JS, no install scripts) registry-verified; **ffmpeg is a system binary, not an npm dep** — [ED-0025](ENGINEERING_DECISION_LOG.md)                                                                                      |
+| Lint              | ✅ PASS | `pnpm lint` clean (type-aware, 12 pkgs)                                                                                                                                                                                                                                             |
+| Formatting        | ✅ PASS | `pnpm format:check` clean                                                                                                                                                                                                                                                           |
+| Build             | ✅ PASS | `pnpm build` all packages; `verify:contracts` 17 schemas                                                                                                                                                                                                                            |
+| Docker            | ✅ PASS | compose validates; recordings bucket bootstrapped; opt-in `media` profile adds a synthetic RTSP source; real-MinIO recording suite green                                                                                                                                            |
+| Maintainability   | ✅ PASS | supervisor lifecycle behind ports (fully fake-tested); storage isolation in one wrapper; strict layering; credentials handled transiently                                                                                                                                           |
+| Extensibility     | ✅ PASS | Decoder/CameraSource/FrameSink ports; null perception sink is the P1-6 seam; publisher seam for `media.*` (NATS P1-5); HLS/live-view + drop-to-latest documented as future                                                                                                          |
+
+**Overall: PASS** (Architecture Review ⏳ PENDING — see [REVIEW_HISTORY](../tracker/REVIEW_HISTORY.md)).
+
 ## Sprint 0008 — Slice 8 (P1-3 Camera registry + org hierarchy) · 2026-07-28
 
 | Gate              | Result  | Reason                                                                                                                                                                                                                                                                            |
