@@ -7,17 +7,17 @@ _Last updated: 2026-07-28 · Claude_
 ## Snapshot
 
 - **Phase:** Phase 1 — Core Platform (camera → alert vertical). Architecture **FROZEN v1.0**; blueprint **approved**.
-- **Current slice:** P1-6 — AI inference (capability runtime) — **code complete, awaiting Architect review** (Architect-approved 8 platform improvements folded in). (P1-1…P1-4 also code-complete, ⏳ review.)
-- **Next recommended slice:** P1-5 Event pipeline — turns detections into persisted, deduplicated events on the NATS backbone; wires media→inference→events (per [Phase 1 ROADMAP](../architecture/phase1/ROADMAP.md), sequencing P1-6→P1-5).
+- **Current slice:** P1-5 — Event pipeline — **code complete, awaiting Architect review**. Completes **M3 Perception & Event Backbone** (a detection → a persisted, deduplicated `EventEnvelope` → `event.persisted`). (P1-1…P1-4 + P1-6 also code-complete, ⏳ review.)
+- **Next recommended slice:** P1-7 Rule engine (opens **M4 Automation & Response**) — evaluate rules over `event.persisted` and emit `incident.candidate` (per [Phase 1 ROADMAP](../architecture/phase1/ROADMAP.md)).
 - **Blockers:** none.
-- **Overall completion:** Phase 0 **100%** · Phase 1 **~62%** (P1-1…P1-4 + P1-6 code complete; **M1 + M2 done, M3 half**, pending review) · Program ≈ **20%** (of Phases 0–4).
+- **Overall completion:** Phase 0 **100%** · Phase 1 **~75%** (P1-1…P1-6 code complete; **M1 + M2 + M3 done**, pending review) · Program ≈ **25%** (of Phases 0–4).
 
 ## Phase status
 
 | Phase | Name                 | Status         | Detail                                                                |
 | ----- | -------------------- | -------------- | --------------------------------------------------------------------- |
 | 0     | Foundation           | ✅ Complete    | P0-1…P0-7 done; frozen v1.0; exit review passed                       |
-| 1     | Core Platform        | 🟡 In progress | P1-1…P1-4 + P1-6 code complete (M1+M2 done, M3 half). 5 / 8 slices    |
+| 1     | Core Platform        | 🟡 In progress | P1-1…P1-6 code complete (M1+M2+M3 done). 6 / 8 slices                 |
 | 2     | Analytics            | ⚪ Not started | read models, dashboards, search, reports                              |
 | 3     | Enterprise Features  | ⚪ Not started | entitlements/billing, audit, connectors, industry packs, digital twin |
 | 4     | Production & Scaling | ⚪ Not started | multi-region, edge fleet, HA/DR, GA                                   |
@@ -33,22 +33,22 @@ Legend: ✅ done · 🟢 on track · 🟡 in progress · 🔴 blocked · ⚪ not
 | **M2** Ingestion  | P1-3  | Camera registry + org hierarchy           | 🟢 Code complete | ⏳ PENDING |
 |                   | P1-4  | RTSP ingestion + recording                | 🟢 Code complete | ⏳ PENDING |
 | **M3** Perception | P1-6  | AI inference (capability runtime)         | 🟢 Code complete | ⏳ PENDING |
-|                   | P1-5  | Event pipeline                            | ⚪ Not started   | —          |
+|                   | P1-5  | Event pipeline                            | 🟢 Code complete | ⏳ PENDING |
 | **M4** Response   | P1-7  | Rule engine                               | ⚪ Not started   | —          |
 |                   | P1-8  | Alert engine                              | ⚪ Not started   | —          |
 
-- **Completed slices (code, ⏳ review):** P1-1, P1-2, P1-3, P1-4, P1-6 (5).
-- **Remaining slices:** P1-5, P1-7, P1-8 (3).
+- **Completed slices (code, ⏳ review):** P1-1, P1-2, P1-3, P1-4, P1-6, P1-5 (6).
+- **Remaining slices:** P1-7, P1-8 (2).
 
-## Gate status (P1-1 … P1-4 + P1-6 code complete — M1 + M2 done, M3 half)
+## Gate status (P1-1 … P1-6 code complete — M1 + M2 + M3 done)
 
-| Gate                      | Status                                                                                                                                                                                                                                                  |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Architecture approval** | ✅ Phase 1 blueprint approved · P1-6 platform improvements approved (2026-07-28) · P1-1 … P1-4 + P1-6 code ⏳ PENDING Architect review                                                                                                                  |
-| **Implementation**        | 🟢 P1-1 (tenant + `@vip/tenancy`) · P1-2 (`@vip/auth`, `@vip/permissions`, identity, gateway) · P1-3 (`@vip/crypto`, camera) · P1-4 (`@vip/storage`, media, ffmpeg) · P1-6 (`ai/inference` AI runtime — manifests/adapters/pipeline)                    |
-| **Testing**               | 🟢 240 TS (254 w/ real Mongo/MinIO) + **38 Python** (inference runtime, stdlib): guards, auth, gateway trust boundary, credential vaulting, media recording, **capability lifecycle + fail-closed inference**, real-backend integration; live-validated |
-| **Documentation**         | 🟢 13 package/service/runtime READMEs, AUTH/TENANT/CAMERA/INGESTION/STORAGE/AI_PIPELINE arch, API_INVENTORY, DEPENDENCIES, slice-006…010                                                                                                                |
-| **CI**                    | 🟢 Green on `feature/v1` (format/lint/typecheck/test/build/import-graph 12pkg 0-viol/contracts 20/mlops+inference python)                                                                                                                               |
+| Gate                      | Status                                                                                                                                                                                                                                                                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Architecture approval** | ✅ Phase 1 blueprint approved · P1-6 platform improvements approved · P1-5 plan approved to proceed (2026-07-28) · P1-1 … P1-6 code ⏳ PENDING Architect review                                                                                                                                   |
+| **Implementation**        | 🟢 P1-1 (tenant + `@vip/tenancy`) · P1-2 (`@vip/auth`, `@vip/permissions`, identity, gateway) · P1-3 (`@vip/crypto`, camera) · P1-4 (`@vip/storage`, media, ffmpeg) · P1-6 (`ai/inference` AI runtime) · P1-5 (`@vip/messaging`, `@vip/service-events`)                                           |
+| **Testing**               | 🟢 288 TS (292 w/ real Mongo+MinIO) + **40 Python** (inference runtime, stdlib): guards, auth, gateway trust boundary, credential vaulting, media recording, capability lifecycle + fail-closed inference, **event normalize/dedup/persist + backbone**, real-backend integration; live-validated |
+| **Documentation**         | 🟢 15 package/service/runtime READMEs, AUTH/TENANT/CAMERA/INGESTION/STORAGE/AI_PIPELINE/EVENT_PIPELINE arch, API_INVENTORY, DEPENDENCIES, slice-006…011                                                                                                                                           |
+| **CI**                    | 🟢 Green on `feature/v1` (format/lint/typecheck/test/build/import-graph 14pkg 0-viol/contracts 21/mlops+inference python)                                                                                                                                                                         |
 
 ## Standing gates (never regress)
 

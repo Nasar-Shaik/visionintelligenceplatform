@@ -55,9 +55,16 @@ describe('config', () => {
       LOG_LEVEL: 'silent',
       JWT_SECRET: SECRET,
     });
-    expect(Object.keys(c.upstreams).sort()).toEqual(['camera', 'identity', 'media', 'tenant']);
+    expect(Object.keys(c.upstreams).sort()).toEqual([
+      'camera',
+      'events',
+      'identity',
+      'media',
+      'tenant',
+    ]);
     expect(c.upstreams.camera).toBe('http://localhost:8082');
     expect(c.upstreams.media).toBe('http://localhost:8083');
+    expect(c.upstreams.events).toBe('http://localhost:8084');
   });
 });
 

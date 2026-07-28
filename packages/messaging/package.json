@@ -1,0 +1,35 @@
+{
+  "name": "@vip/messaging",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The event backbone client (Phase 1, P1-5): a thin, fail-closed wrapper over NATS JetStream (ADR-0016). Provides tenant-partitioned subjects `t.{tenantId}.…` with structural validation, an `EventBus` port (durable publish + pull-consume with ack/nak/term→DLQ), an in-memory bus for tests/local, and a `JetStreamEventPublisher` that backs each service's domain-event seam. Pure-JS `@nats-io` v3 client (no native addon). See docs/architecture/09-EVENT-PLATFORM.md, docs/architecture/phase1/EVENT_PIPELINE.md.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@nats-io/jetstream": "^3.4.0",
+    "@nats-io/transport-node": "^3.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

@@ -9,3 +9,6 @@ pillow==11.3.0
 # Model Registry client — resolves + downloads model artifacts (aligned with ai/mlops).
 mlflow==3.14.0
 boto3==1.43.56
+# Event backbone client — only for the `nats` event sink (INFERENCE_EVENT_SINK=nats). Pure-Python
+# asyncio client; publishes detections onto NATS JetStream (docs/architecture/09, ADR-0016).
+nats-py==2.15.0

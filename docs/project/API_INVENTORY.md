@@ -85,6 +85,18 @@
 | GET    | `/streams`                        | List the tenant's workers             | `stream:read`    | `200 {success,data:StreamStatus[]}` · `401/403`   | —                            | beta     | 0.1.0   |
 | GET    | `/health` `/ready` `/metrics` `/` | Liveness / readiness / metrics / info | None             | as template (`/ready` includes a `storage` check) | prom-client, @vip/storage    | scaffold | 0.1.0   |
 
+## @vip/service-events (v0.1.0)
+
+> Phase 1 P1-5. The Event context: consumes capability outputs off NATS JetStream (`t.*.capability.output.*`), normalizes each `DetectionResult` → `EventEnvelope` (label → catalog type), deduplicates + persists tenant-scoped to Mongo (unique `{tenantId,dedupKey}` index), and re-publishes on `t.{tenant}.event.*` (the `event.persisted` signal). Fail-closed dead-lettering on missing/invalid tenant. Verifies the identity token itself (`iss=identity`); tenant from the token — a query never widens across tenants.
+
+| Method | Endpoint                          | Purpose                                       | Auth           | Input                | Output                                                 | Dependencies          | Status   | Version |
+| ------ | --------------------------------- | --------------------------------------------- | -------------- | -------------------- | ------------------------------------------------------ | --------------------- | -------- | ------- |
+| GET    | `/events`                         | Tenant-scoped, cursor-paged, filtered query   | `event:read`   | `EventQuery` (query) | `200 {success,data:EventPage}` · `400/401/403`         | Mongo, @vip/tenancy   | beta     | 0.1.0   |
+| POST   | `/events/replay`                  | Re-publish a bounded window onto the backbone | `event:replay` | `EventReplayRequest` | `200 {success,data:EventReplayResult}` · `400/401/403` | @vip/messaging, Mongo | beta     | 0.1.0   |
+| GET    | `/health` `/ready` `/metrics` `/` | liveness / readiness / Prometheus / info      | None           | —                    | infra (`/ready` includes a `mongo` check)              | prom-client, Mongo    | scaffold | 0.1.0   |
+
+> **Consumes** (NATS, not HTTP): `t.*.capability.output.*` (capability outputs). **Publishes:** `t.{tenantId}.event.{type}` (`event.persisted`).
+
 ## inference (ai/inference, Python — v0.1.0)
 
 > Phase 1 P1-6. The AI capability runtime (Perception context). Manifest-driven capabilities, model-agnostic (selector→registry via the adapter layer), staged pipeline, lifecycle states, metrics, version-stamped results. Internal (called by the pipeline, not user-facing); `/infer` is `x-internal-key` gated and fail-closed on missing tenant. Stdlib `http.server` transport.

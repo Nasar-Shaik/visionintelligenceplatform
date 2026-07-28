@@ -22,6 +22,7 @@ const TARGET_DRAFT = '2020-12';
 const REQUIRED = [
   'event-envelope',
   'event-catalog-entry',
+  'event-query',
   'capability-descriptor',
   'capability-registry-record',
   'tenant-context',

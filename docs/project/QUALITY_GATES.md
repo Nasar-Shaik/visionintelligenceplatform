@@ -23,6 +23,26 @@
 
 ---
 
+## Sprint 0011 — Slice 11 (P1-5 Event pipeline) · 2026-07-28
+
+> Architect **approved the P1-5 plan to proceed** (concise plan + slice breakdown + risks + order);
+> implementation ⏳ pending review. Completes **M3 Perception & Event Backbone** ([ED-0027](ENGINEERING_DECISION_LOG.md)).
+
+| Gate              | Result  | Reason                                                                                                                                                          |
+| ----------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Architecture      | ✅ PASS | New `@vip/messaging` + `@vip/service-events` inside frozen boundaries — **import-graph 14 pkgs, 0 violations**. No frozen doc (01–28) edited (implements 09).   |
+| Security          | ✅ PASS | Fail-closed tenant-token subject validation + fail-closed dead-lettering; tenant-scoped store/reads (`@vip/tenancy`); `.env`-only; deps have no install scripts |
+| Testing           | ✅ PASS | 29 new TS (10 messaging + 19 events, incl. 2 real-Mongo) + 2 Python; **live-validated E2E** on NATS+Mongo (persist, dedup, isolation, republish, replay)        |
+| Documentation     | ✅ PASS | messaging + events READMEs, API_INVENTORY, DEPENDENCIES, slice-011, trackers, ROADMAP; ED-0027; TD-5 (half) resolved + TD-6 opened                              |
+| Dependency Review | ✅ PASS | `@nats-io/jetstream` + `@nats-io/transport-node` 3.4.0 (pure-JS, no install scripts; over deprecated `nats` v2); `nats-py` 2.15.0 (sink only) — all recorded    |
+| Lint / Formatting | ✅ PASS | ESLint type-aware clean; Prettier clean                                                                                                                         |
+| Build             | ✅ PASS | All 14 packages build; contracts codegen **21 schemas**                                                                                                         |
+| Docker            | ➖ N/A  | No new service image this slice (events runs on the shared template; NATS already in the dev stack)                                                             |
+| Maintainability   | ✅ PASS | Layered (transport→application→domain→adapters); heavy NATS client confined to `NatsEventBus`; in-memory bus/store for CI                                       |
+| Extensibility     | ✅ PASS | `EventBus` port (Nats + in-memory); `JetStreamEventPublisher` backs the existing seam; Python sink isolated + lazy; subject taxonomy open                       |
+
+**Overall: PASS** (Architecture Review ⏳ PENDING).
+
 ## Sprint 0010 — Slice 10 (P1-6 AI inference / capability runtime) · 2026-07-28
 
 > Principal-Architect P1-6 review **approved** with 8 platform improvements (manifests, adapter

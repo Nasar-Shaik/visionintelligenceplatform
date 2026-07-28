@@ -25,6 +25,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'rule:*',
     'incident:*',
     'event:read',
+    'event:replay',
     'tenant:read',
     'tenant:update',
   ],

@@ -11,13 +11,16 @@ from typing import Callable, Dict, List
 
 from capability import Capability
 from manifest import CapabilityManifest, load_manifests
-from pipeline import ModelAdapter
+from pipeline import EventSink, ModelAdapter, NullEventSink
 from resolver import ModelResolver
 
 
 class CapabilityRegistry:
-    def __init__(self, runtime_version: str) -> None:
+    def __init__(self, runtime_version: str, event_sink: EventSink | None = None) -> None:
         self._runtime_version = runtime_version
+        # Shared across capabilities: the result carries its own tenant/capability, so one sink
+        # routes every capability's outputs to the right tenant-partitioned subject. Default = null.
+        self._event_sink: EventSink = event_sink or NullEventSink()
         self._by_id: Dict[str, Capability] = {}
         self._default_id: str | None = None
 
@@ -27,7 +30,9 @@ class CapabilityRegistry:
         resolver: ModelResolver,
         adapter: ModelAdapter,
     ) -> Capability:
-        capability = Capability(manifest, resolver, adapter, self._runtime_version)
+        capability = Capability(
+            manifest, resolver, adapter, self._runtime_version, event_sink=self._event_sink
+        )
         self._by_id[manifest.capability_id] = capability
         if self._default_id is None and manifest.enabled:
             self._default_id = manifest.capability_id

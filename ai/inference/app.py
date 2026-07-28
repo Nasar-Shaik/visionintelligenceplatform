@@ -14,11 +14,21 @@ import sys
 
 from config import InferenceConfig, load_config
 from manifest import CapabilityManifest
-from pipeline import ModelAdapter
+from pipeline import EventSink, ModelAdapter, NullEventSink
 from registry import CapabilityRegistry
 from resolver import FakeModelResolver, ModelResolver
 
 _RUNTIME_VERSION = "0.1.0"
+
+
+def _build_event_sink(config: InferenceConfig) -> EventSink:
+    """Pick the event sink for the configured backbone wiring. `null` is dependency-free (default);
+    `nats` lazily imports nats-py (integration-only) and publishes detections onto the backbone."""
+    if config.event_sink == "nats":
+        from adapters.nats_sink import NatsEventSink  # noqa: WPS433 - HEAVY, integration-only
+
+        return NatsEventSink(config.nats_url)
+    return NullEventSink()
 
 
 def _factories(config: InferenceConfig):
@@ -48,7 +58,7 @@ def _factories(config: InferenceConfig):
 
 
 def build_registry(config: InferenceConfig) -> CapabilityRegistry:
-    registry = CapabilityRegistry(_RUNTIME_VERSION)
+    registry = CapabilityRegistry(_RUNTIME_VERSION, event_sink=_build_event_sink(config))
     resolver_factory, adapter_factory = _factories(config)
     registry.load_from_dir(config.manifests_dir, resolver_factory, adapter_factory)
     return registry

@@ -13,6 +13,7 @@ import { z } from 'zod';
 
 import { EventEnvelope } from '../src/events/envelope.js';
 import { EventCatalogEntry } from '../src/events/catalog.js';
+import { EventQuery } from '../src/events/query.js';
 import { CapabilityDescriptor, CapabilityRegistryRecord } from '../src/capability/descriptor.js';
 import { TenantContext } from '../src/common/tenant-context.js';
 import { ApiError } from '../src/common/api-envelope.js';
@@ -29,6 +30,7 @@ const outDir = join(here, '..', 'generated');
 const schemas: Record<string, z.ZodType> = {
   'event-envelope': EventEnvelope,
   'event-catalog-entry': EventCatalogEntry,
+  'event-query': EventQuery,
   'capability-descriptor': CapabilityDescriptor,
   'capability-registry-record': CapabilityRegistryRecord,
   'tenant-context': TenantContext,

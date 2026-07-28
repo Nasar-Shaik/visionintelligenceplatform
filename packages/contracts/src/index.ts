@@ -31,6 +31,7 @@ export * from './perception/perception.js';
 export * from './events/priority.js';
 export * from './events/envelope.js';
 export * from './events/catalog.js';
+export * from './events/query.js';
 
 // capability
 export * from './capability/descriptor.js';

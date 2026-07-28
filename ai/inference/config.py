@@ -28,6 +28,10 @@ class InferenceConfig:
     # Model Registry (MLflow) — only used by the "onnx" backend.
     mlflow_tracking_uri: str
     s3_endpoint_url: str
+    # Event sink: "null" (default, dependency-free) or "nats" (publish detections to the backbone).
+    event_sink: str
+    # NATS backbone URL — only used by the "nats" event sink.
+    nats_url: str
 
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -42,6 +46,8 @@ _DEFAULTS: Mapping[str, str] = {
     "INFERENCE_MANIFESTS_DIR": os.path.join(_HERE, "manifests"),
     "MLFLOW_TRACKING_URI": "http://localhost:45000",
     "MLFLOW_S3_ENDPOINT_URL": "http://localhost:49000",
+    "INFERENCE_EVENT_SINK": "null",
+    "NATS_URL": "nats://localhost:44222",
 }
 
 _REQUIRED_NONBLANK = ("INTERNAL_API_KEY", "INFERENCE_MANIFESTS_DIR")
@@ -69,6 +75,10 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> InferenceConfig:
     if backend not in ("stub", "onnx"):
         raise ValueError(f"INFERENCE_BACKEND must be 'stub' or 'onnx', got '{backend}'")
 
+    event_sink = value("INFERENCE_EVENT_SINK")
+    if event_sink not in ("null", "nats"):
+        raise ValueError(f"INFERENCE_EVENT_SINK must be 'null' or 'nats', got '{event_sink}'")
+
     return InferenceConfig(
         host=value("HOST"),
         port=int(value("PORT")),
@@ -78,4 +88,6 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> InferenceConfig:
         manifests_dir=value("INFERENCE_MANIFESTS_DIR"),
         mlflow_tracking_uri=value("MLFLOW_TRACKING_URI"),
         s3_endpoint_url=value("MLFLOW_S3_ENDPOINT_URL"),
+        event_sink=event_sink,
+        nats_url=value("NATS_URL"),
     )

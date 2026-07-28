@@ -15,6 +15,18 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(cfg.port, 8085)
         self.assertEqual(cfg.backend, "stub")
         self.assertTrue(cfg.manifests_dir.endswith("manifests"))
+        # Event publishing defaults to the dependency-free null sink (P1-5).
+        self.assertEqual(cfg.event_sink, "null")
+        self.assertTrue(cfg.nats_url.startswith("nats://"))
+
+    def test_event_sink_override(self) -> None:
+        cfg = load_config({"INFERENCE_EVENT_SINK": "nats", "NATS_URL": "nats://broker:4222"})
+        self.assertEqual(cfg.event_sink, "nats")
+        self.assertEqual(cfg.nats_url, "nats://broker:4222")
+
+    def test_rejects_unknown_event_sink(self) -> None:
+        with self.assertRaises(ValueError):
+            load_config({"INFERENCE_EVENT_SINK": "kafka"})
 
     def test_overrides(self) -> None:
         cfg = load_config({"PORT": "9000", "INFERENCE_BACKEND": "onnx", "LOG_LEVEL": "debug"})

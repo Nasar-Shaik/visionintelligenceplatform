@@ -101,7 +101,7 @@ flowchart TD
 - **Objective:** Turn capability outputs into normalized, correlated, deduplicated, persisted events on the backbone.
 - **Dependencies:** P1-6 (produces outputs), P1-1 (tenant subjects/records), Phase 0 NATS + Mongo.
 - **Acceptance:** a detection becomes a persisted `EventEnvelope` with `tenantId`; duplicates collapse (idempotent consumers); `event.persisted` published on `t.{tenantId}.event.*`; replay reproduces state; no cross-tenant subject/read.
-- **Status:** ⬜ Not started.
+- **Status:** 🟢 Code complete — ⏳ Architect review. **`@vip/messaging`** (fail-closed NATS-JetStream `EventBus` — tenant-partitioned subjects, ack/nak/term→DLQ) + **`@vip/service-events`** (consume `capability.output.*` → normalize → dedup+persist behind a unique `{tenantId,dedupKey}` index → re-publish `event.persisted`; `GET /events` + bounded replay). Capability→events over NATS subjects; inference gains an integration-only `NatsEventSink` ([ED-0027](../../project/ENGINEERING_DECISION_LOG.md)). Live-validated E2E on NATS+Mongo. **Completes M3.** Lifecycle-publisher retrofit deferred ([TD-6](../../../tracking/TECH-DEBT.md)); media→inference frame bus remains ([TD-4](../../../tracking/TECH-DEBT.md)).
 
 ## M4 — Automation & Response
 

@@ -150,6 +150,13 @@ export const EVENT_CATALOG: EventCatalogEntry[] = [
   },
   // perception
   {
+    type: 'perception.object.detected',
+    description:
+      'A generic object of some class was detected in a frame (domain-neutral fallback when a label has no dedicated event type).',
+    defaultPriority: 'info',
+    pii: 'low',
+  },
+  {
     type: 'perception.person.detected',
     description: 'A person was detected in a frame.',
     producer: 'perception.person-detection',
@@ -242,6 +249,13 @@ export const EVENT_CATALOG: EventCatalogEntry[] = [
     pii: 'low',
   },
   // lifecycle (platform)
+  {
+    type: 'event.persisted',
+    description:
+      'A normalized event was persisted to the event store and published on the backbone (the signal rules/analytics react to). Emitted by the events context (P1-5).',
+    defaultPriority: 'info',
+    pii: 'none',
+  },
   {
     type: 'incident.raised',
     description: 'A workflow incident was raised from a rule match.',
