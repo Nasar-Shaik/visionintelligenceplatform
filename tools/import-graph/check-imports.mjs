@@ -184,6 +184,28 @@ function main() {
             message: `service "${pkg.name}" imports service "${target.name}" — cross-service calls go via API/events`,
           });
         }
+
+        // noAppToBackend: a frontend app may import shared libs only, never services/plugins.
+        const r3 = POLICY.rules.noAppToBackend;
+        if (r3?.enabled && r3.from.includes(pkg.layer) && r3.to.includes(target.layer)) {
+          violations.push({
+            rule: 'noAppToBackend',
+            file: relFile,
+            spec,
+            message: `app "${pkg.name}" imports ${target.layer} "${target.name}" — a UI app is a gateway client; use @vip/contracts for types, call the gateway API for data`,
+          });
+        }
+
+        // noImportApp: nothing may import a frontend app (apps are dependency-graph leaves).
+        const r4 = POLICY.rules.noImportApp;
+        if (r4?.enabled && r4.from.includes(pkg.layer) && r4.to.includes(target.layer)) {
+          violations.push({
+            rule: 'noImportApp',
+            file: relFile,
+            spec,
+            message: `${pkg.layer} "${pkg.name}" imports app "${target.name}" — apps are leaves; the core must never depend on the UI`,
+          });
+        }
       }
     }
   }

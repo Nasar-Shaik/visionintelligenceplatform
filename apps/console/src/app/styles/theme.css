@@ -1,0 +1,154 @@
+/*
+ * VIP Operations Console — Design System tokens (single source of visual truth).
+ * Transcribed from docs/architecture/phase2/DESIGN_SYSTEM.md. Dark-first, operator-grade.
+ * Tailwind v4 `@theme`: every colour/space/radius/type/screen token lives here — no page
+ * hardcodes a hex, size, or radius (ESLint-enforced). A future light theme is a variable
+ * swap under `:root[data-theme="light"]` with zero component changes.
+ */
+@import 'tailwindcss';
+
+/* Dark is the shipped theme for P2-1; `dark:` variants key off the data-theme attribute. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@theme {
+  /* ---- Widescreen breakpoints (operator monitors; §5) ------------------ */
+  --breakpoint-3xl: 1920px; /* 1920×1080 primary   */
+  --breakpoint-4xl: 2560px; /* 1440p ops wall      */
+  --breakpoint-5xl: 3200px; /* 4K (density up)     */
+
+  /* ---- Typography (§3) ------------------------------------------------- */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Menlo', monospace;
+
+  --text-2xs: 0.6875rem; /* 11px */
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem; /* 12px */
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem; /* 13px — operator body default */
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem; /* 14px */
+  --text-base--line-height: 1.25rem;
+  --text-lg: 1rem; /* 16px */
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.25rem; /* 20px */
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem; /* 24px */
+  --text-2xl--line-height: 2rem;
+  --text-3xl: 1.875rem; /* 30px — big metric numerals */
+  --text-3xl--line-height: 2.25rem;
+
+  /* ---- Radius (§4) ----------------------------------------------------- */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* ---- Motion (§4) ----------------------------------------------------- */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+
+  /* ---- Neutral / graphite ramp (§2) ------------------------------------ */
+  --color-bg: oklch(0.17 0.01 260);
+  --color-surface-1: oklch(0.21 0.012 260);
+  --color-surface-2: oklch(0.25 0.014 260);
+  --color-surface-3: oklch(0.29 0.016 260);
+  --color-border: oklch(0.32 0.015 260);
+  --color-border-strong: oklch(0.4 0.017 260);
+  --color-text: oklch(0.96 0.005 260);
+  --color-text-muted: oklch(0.74 0.008 260);
+  --color-text-subtle: oklch(0.58 0.01 260);
+
+  /* ---- Brand + semantic (each base / muted-bg / border) (§2) ----------- */
+  --color-brand: oklch(0.62 0.16 250);
+  --color-brand-muted: oklch(0.3 0.06 250);
+  --color-brand-border: oklch(0.45 0.1 250);
+  --color-success: oklch(0.7 0.17 150);
+  --color-success-muted: oklch(0.3 0.06 150);
+  --color-success-border: oklch(0.45 0.1 150);
+  --color-warning: oklch(0.78 0.16 80);
+  --color-warning-muted: oklch(0.32 0.06 80);
+  --color-warning-border: oklch(0.5 0.1 80);
+  --color-critical: oklch(0.63 0.22 25);
+  --color-critical-muted: oklch(0.3 0.09 25);
+  --color-critical-border: oklch(0.48 0.14 25);
+
+  /* ---- Severity scale (maps 1:1 to EventPriority) (§2) ----------------- */
+  --color-sev-critical: oklch(0.63 0.22 25);
+  --color-sev-high: oklch(0.7 0.19 45);
+  --color-sev-medium: oklch(0.8 0.15 85);
+  --color-sev-low: oklch(0.66 0.12 240);
+  --color-sev-info: oklch(0.7 0.03 260);
+
+  /* ---- Status colours (camera / runtime / delivery / connection) (§2) -- */
+  --color-status-ok: oklch(0.7 0.17 150);
+  --color-status-warn: oklch(0.78 0.16 80);
+  --color-status-error: oklch(0.63 0.22 25);
+  --color-status-idle: oklch(0.58 0.01 260);
+
+  /* ---- shadcn/ui semantic aliases (Radix primitives theme off these) --- */
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-text);
+  --color-card: var(--color-surface-1);
+  --color-card-foreground: var(--color-text);
+  --color-popover: var(--color-surface-2);
+  --color-popover-foreground: var(--color-text);
+  --color-primary: var(--color-brand);
+  --color-primary-foreground: oklch(0.98 0.01 250);
+  --color-secondary: var(--color-surface-2);
+  --color-secondary-foreground: var(--color-text);
+  --color-muted: var(--color-surface-2);
+  --color-muted-foreground: var(--color-text-muted);
+  --color-accent: var(--color-surface-3);
+  --color-accent-foreground: var(--color-text);
+  --color-destructive: var(--color-critical);
+  --color-destructive-foreground: oklch(0.98 0.01 25);
+  --color-input: var(--color-border);
+  --color-ring: var(--color-brand);
+  --radius: var(--radius-md);
+}
+
+@layer base {
+  *,
+  ::after,
+  ::before {
+    border-color: var(--color-border);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Numeric readouts (FPS, latency, counts, IDs) never jitter. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+
+  /* Respect reduced-motion: disable all non-essential transitions/animations. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::after,
+    ::before {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

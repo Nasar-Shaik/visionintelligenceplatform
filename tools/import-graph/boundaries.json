@@ -13,6 +13,10 @@
       "match": "plugins/",
       "description": "Industry packs, connectors, model providers. May import shared libs (and their own SDK). The core must never import a plugin."
     },
+    "app": {
+      "match": "apps/",
+      "description": "Frontend applications (e.g. apps/console — the Operations Console). A pure client of the gateway: may import shared libs (packages/*, notably @vip/contracts for types) but MUST NOT import services or plugins, and nothing may import an app. Introduced by ADR-0019 / ED-0030."
+    },
     "tool": {
       "match": "tools/",
       "description": "Repo tooling. Not part of the runtime dependency graph."
@@ -34,6 +38,18 @@
       "from": ["service"],
       "to": ["service"],
       "description": "A service must not import another service's code. Cross-context communication is API/events only, so contexts stay independently deployable (22 golden rule, 23 no-shared-code)."
+    },
+    "noAppToBackend": {
+      "enabled": true,
+      "from": ["app"],
+      "to": ["service", "plugin"],
+      "description": "A frontend app must not import services or plugins — it is a pure client of the gateway and may depend on shared libs (packages/*) only. Types come from @vip/contracts, never from a service's internals (ADR-0019)."
+    },
+    "noImportApp": {
+      "enabled": true,
+      "from": ["shared", "service", "plugin", "app"],
+      "to": ["app"],
+      "description": "Nothing may import a frontend app: apps are leaves of the dependency graph (the core never depends on the UI). Enforces the one-way app -> shared direction (ADR-0019)."
     },
     "noCycles": {
       "enabled": true,

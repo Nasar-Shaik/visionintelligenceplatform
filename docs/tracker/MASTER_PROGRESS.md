@@ -6,22 +6,22 @@ _Last updated: 2026-07-29 · Claude_
 
 ## Snapshot
 
-- **Phase:** **Phase 2 — Productization** (SOC Operations Console). Phase 1 **Architecturally Complete** (Architect-approved, all 8 slices). Architecture **FROZEN v1.0**.
-- **Current slice:** **P2-1 — Operations Console — planning ⏳ Architect Review Pending.** Full plan produced ([OPERATIONS_CONSOLE](../architecture/phase2/OPERATIONS_CONSOLE.md) + [DESIGN_SYSTEM](../architecture/phase2/DESIGN_SYSTEM.md)); **Phase-1 Exit Review** issued with a **🟢 GO (conditional)** recommendation ([PHASE1_EXIT_REVIEW](../project/PHASE1_EXIT_REVIEW.md)). **No implementation** until the Architect approves the plan + [ED-0030](../project/ENGINEERING_DECISION_LOG.md) (`apps/*` layer + mandated stack).
+- **Phase:** **Phase 2 — Productization** (SOC Operations Console). Phase 1 **CLOSED**. Architecture **v1.0 APPROVED + FROZEN** (Architect decision 2026-07-29). Implementation phase — implementation now takes priority over documentation.
+- **Current slice:** **P2-1 — Operations Console — ✅ APPROVED, in implementation.** Architect decision (2026-07-29): Architecture v1.0 APPROVED, Phase 1 CLOSED, **Phase 2 AUTHORIZED**; frontend stack + `apps/` layer frozen as the platform standard ([ED-0030](../project/ENGINEERING_DECISION_LOG.md) ✅ Approved, [ADR-0019](../adr/ADR-0019-operations-console-and-apps-layer.md) Accepted). Building slice-by-slice per [OPERATIONS_CONSOLE](../architecture/phase2/OPERATIONS_CONSOLE.md) §14: **P2-1.0 Foundation** in progress (`apps/console` scaffold + `apps/*`/`app` import-graph layer + `@theme` tokens + store/query/router/API client). Design-system-first ([DESIGN_SYSTEM](../architecture/phase2/DESIGN_SYSTEM.md)).
 - **Architecture Enhancement Review (documentation-only):** future enterprise capabilities documented under [`docs/architecture/future/`](../architecture/future/README.md) (AI Capability Registry, Analysis Profiles, AI Packs, Evidence Package, Human Review loop, Benchmark framework, Inference Scheduler, demonstration workflows) + 4 Proposed ADRs (0019–0022). No code / no frozen-doc change ([ED-0031](../project/ENGINEERING_DECISION_LOG.md)). ⏳ recommendations pending.
-- **Next step:** Architect review of the P2-1 plan + ED-0030 (+ the enhancement recommendations); then P2-1.0 (foundation) → design system → auth → …
-- **Blockers:** P2-1 implementation gated on Architect approval. Demo criteria gated on backend enablers **G-1…G-6** (service extensions, not new services — Exit Review §11).
-- **Overall completion:** Phase 0 **100%** · Phase 1 **100% ✅ Architecturally Complete** · Phase 2 **planning** · Program ≈ **32%** (of Phases 0–4).
+- **Next step:** **P2-1.1 Design System** — build the shadcn/ui primitives + SOC composites + `/design` gallery (Tailwind MCP), then auth → shell → dashboard → … (OPERATIONS_CONSOLE §14).
+- **Blockers:** none for P2-1.0/P2-1.1. Demo criteria gated on backend enablers **G-1…G-6** (service extensions, not new services — Exit Review §11), each sequenced before its consumer module.
+- **Overall completion:** Phase 0 **100%** · Phase 1 **100% ✅ Complete** · Phase 2 **in implementation** (P2-1.0 foundation done) · Program ≈ **33%** (of Phases 0–4).
 
 ## Phase status
 
-| Phase | Name                 | Status         | Detail                                                                              |
-| ----- | -------------------- | -------------- | ----------------------------------------------------------------------------------- |
-| 0     | Foundation           | ✅ Complete    | P0-1…P0-7 done; frozen v1.0; exit review passed                                     |
-| 1     | Core Platform        | ✅ Complete    | P1-1…P1-8 ✅ Architect-approved (M1+M2+M3+M4). Camera→alert vertical live-validated |
-| 2     | Productization       | 🟡 In progress | P2-1 Operations Console — plan ⏳ review. SOC console + backend enablers G-1…G-6    |
-| 3     | Enterprise Features  | ⚪ Not started | entitlements/billing, audit, connectors, industry packs, digital twin               |
-| 4     | Production & Scaling | ⚪ Not started | multi-region, edge fleet, HA/DR, GA                                                 |
+| Phase | Name                 | Status         | Detail                                                                                                                 |
+| ----- | -------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 0     | Foundation           | ✅ Complete    | P0-1…P0-7 done; frozen v1.0; exit review passed                                                                        |
+| 1     | Core Platform        | ✅ Complete    | P1-1…P1-8 ✅ Architect-approved (M1+M2+M3+M4). Camera→alert vertical live-validated                                    |
+| 2     | Productization       | 🟡 In progress | P2-1 Operations Console ✅ approved, **in implementation** (P2-1.0 foundation). SOC console + backend enablers G-1…G-6 |
+| 3     | Enterprise Features  | ⚪ Not started | entitlements/billing, audit, connectors, industry packs, digital twin                                                  |
+| 4     | Production & Scaling | ⚪ Not started | multi-region, edge fleet, HA/DR, GA                                                                                    |
 
 Legend: ✅ done · 🟢 on track · 🟡 in progress · 🔴 blocked · ⚪ not started
 
@@ -39,7 +39,7 @@ Legend: ✅ done · 🟢 on track · 🟡 in progress · 🔴 blocked · ⚪ not
 |                   | P1-8  | Incident lifecycle + Alert engine         | ✅ Done | ✅ Approved |
 
 - **Phase 1:** all 8 slices ✅ **Architect-approved** (directive 2026-07-29) — camera→alert vertical complete + live-validated.
-- **Phase 2 (P2-1 Operations Console):** plan + design system + exit review produced; ⏳ **Architect Review Pending** before implementation.
+- **Phase 2 (P2-1 Operations Console):** ✅ **Approved** (Architect decision 2026-07-29); **in implementation** — **P2-1.0 Foundation complete** (`apps/console` scaffold, `apps/*`/`app` import-graph layer, design-system tokens, RTK store, Query client, Router, typed gateway API client; typecheck/lint/test/build/import-graph all green). Next: P2-1.1 design system.
 
 ## Gate status (P1-1 … P1-8 code complete — M1 + M2 + M3 + M4 done; camera→alert vertical closed)
 

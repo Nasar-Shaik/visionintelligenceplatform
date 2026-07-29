@@ -1,7 +1,7 @@
 # ADR-0019 — Operations Console & `apps/` workspace layer
 
-- **Status:** Proposed
-- **Date:** 2026-07-29
+- **Status:** Accepted
+- **Date:** 2026-07-29 · **Accepted:** 2026-07-29 (Architect decision — Architecture v1.0 APPROVED, Phase 1 CLOSED, Phase 2 AUTHORIZED; stack + `apps/` layer frozen as the platform standard)
 - **Deciders:** Principal Architect (productization directive) + development
 - **Touches:** workspace layout (`pnpm-workspace.yaml`); import-graph boundary policy (`tools/import-graph/boundaries.json`, codifies [22]/[23]); frontend technology (new to [reference/TECH-STACK]); relates to [ED-0030]. Detailed plan: [phase2/OPERATIONS_CONSOLE](../architecture/phase2/OPERATIONS_CONSOLE.md), [phase2/DESIGN_SYSTEM](../architecture/phase2/DESIGN_SYSTEM.md).
 
@@ -44,5 +44,6 @@ of a UI application, so introducing one is an architecturally-significant bounda
 ## Compliance
 
 Upholds bounded contexts, loose coupling, API-first (thin gateway client), and Law 1 (UI carries no
-industry logic). **No frozen architecture doc (01–28) changes.** Proposed — implementation blocked until
-ratified.
+industry logic). **No frozen architecture doc (01–28) changes.** **Accepted** by the Architect decision
+of 2026-07-29 (stack frozen as the official platform standard; `apps/*` + `app` import-graph layer
+authorized) — implementation begins at P2-1.0.
