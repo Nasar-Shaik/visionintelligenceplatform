@@ -77,6 +77,7 @@ src/
 **P2-1.0 Foundation** ✅ · **P2-1.1 Design System** ✅ · **P2-1.2 Authentication** ✅ · **P2-1.3 App
 Shell & Navigation** ✅ · **P2-1.4 Dashboard** ✅ · **P2-1.8 Events** ✅ · **P2-1.9 Rules** ✅ (authoring
 + dry-run + version history over `/api/rules`) · **P2-1.10 Incidents** ✅ (operator queue + detail
-drawer with lifecycle timeline and ack/resolve/close over `/api/workflow/incidents`). Next:
-**P2-1.11 Alerts** (enabler-free); the Cameras/Live/Analysis/Evidence slices wait on backend enablers
-G-1…G-6, per [OPERATIONS_CONSOLE §13–14](../../docs/architecture/phase2/OPERATIONS_CONSOLE.md).
+drawer with lifecycle timeline and ack/resolve/close over `/api/workflow/incidents`) · **P2-1.11
+Alerts** ✅ (notification delivery log + ack over `/api/notify/notifications`). All **enabler-free**
+slices done; the Cameras/Live/Analysis/Evidence slices wait on backend enablers G-1…G-6, per
+[OPERATIONS_CONSOLE §13–14](../../docs/architecture/phase2/OPERATIONS_CONSOLE.md).
