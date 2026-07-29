@@ -6,6 +6,7 @@ import { DashboardPage } from '@/routes/DashboardPage';
 import { EventsPage } from '@/features/events/EventsPage';
 import { RulesListPage } from '@/features/rules/RulesListPage';
 import { RuleEditorPage } from '@/features/rules/RuleEditorPage';
+import { IncidentsPage } from '@/features/incidents/IncidentsPage';
 import { PlaceholderPage } from '@/routes/PlaceholderPage';
 import { DesignSystem } from '@/routes/DesignSystem';
 import { NotFound } from '@/routes/NotFound';
@@ -27,7 +28,7 @@ export const router = createBrowserRouter([
           { path: 'live', element: <PlaceholderPage title="Live Monitoring" slice="P2-1.6" /> },
           { path: 'cameras', element: <PlaceholderPage title="Cameras" slice="P2-1.5" /> },
           { path: 'events', element: <EventsPage /> },
-          { path: 'incidents', element: <PlaceholderPage title="Incidents" slice="P2-1.10" /> },
+          { path: 'incidents', element: <IncidentsPage /> },
           { path: 'alerts', element: <PlaceholderPage title="Alerts" slice="P2-1.11" /> },
           { path: 'rules', element: <RulesListPage /> },
           { path: 'rules/new', element: <RuleEditorPage /> },
