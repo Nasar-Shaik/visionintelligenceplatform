@@ -8,7 +8,8 @@ _Last updated: 2026-07-29 · Claude_
 
 - **Phase:** **Phase 2 — Productization** (SOC Operations Console). Phase 1 **Architecturally Complete** (Architect-approved, all 8 slices). Architecture **FROZEN v1.0**.
 - **Current slice:** **P2-1 — Operations Console — planning ⏳ Architect Review Pending.** Full plan produced ([OPERATIONS_CONSOLE](../architecture/phase2/OPERATIONS_CONSOLE.md) + [DESIGN_SYSTEM](../architecture/phase2/DESIGN_SYSTEM.md)); **Phase-1 Exit Review** issued with a **🟢 GO (conditional)** recommendation ([PHASE1_EXIT_REVIEW](../project/PHASE1_EXIT_REVIEW.md)). **No implementation** until the Architect approves the plan + [ED-0030](../project/ENGINEERING_DECISION_LOG.md) (`apps/*` layer + mandated stack).
-- **Next step:** Architect review of the P2-1 plan + ED-0030; then P2-1.0 (foundation) → design system → auth → …
+- **Architecture Enhancement Review (documentation-only):** future enterprise capabilities documented under [`docs/architecture/future/`](../architecture/future/README.md) (AI Capability Registry, Analysis Profiles, AI Packs, Evidence Package, Human Review loop, Benchmark framework, Inference Scheduler, demonstration workflows) + 4 Proposed ADRs (0019–0022). No code / no frozen-doc change ([ED-0031](../project/ENGINEERING_DECISION_LOG.md)). ⏳ recommendations pending.
+- **Next step:** Architect review of the P2-1 plan + ED-0030 (+ the enhancement recommendations); then P2-1.0 (foundation) → design system → auth → …
 - **Blockers:** P2-1 implementation gated on Architect approval. Demo criteria gated on backend enablers **G-1…G-6** (service extensions, not new services — Exit Review §11).
 - **Overall completion:** Phase 0 **100%** · Phase 1 **100% ✅ Architecturally Complete** · Phase 2 **planning** · Program ≈ **32%** (of Phases 0–4).
 

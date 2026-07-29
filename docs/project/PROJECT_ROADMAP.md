@@ -45,3 +45,5 @@ VisionIntelligencePlatform
 ## Note on phasing
 
 This roadmap re-scopes delivery so **Phase 1 is a thin, end-to-end vertical** (camera → alert) rather than a horizontal "all of SaaS foundation" phase — the fastest path to a demonstrable, testable product spine ([ED-0019](ENGINEERING_DECISION_LOG.md)). Enterprise breadth (billing, audit, compliance, connectors, packs) moves to Phase 3. The **frozen architecture is unchanged**; only the build order is.
+
+**Future enterprise capabilities** (AI Capability Registry, Analysis Profiles, AI Packs, Evidence Package, Human-Review loop, AI Benchmark framework, Inference Scheduler) are documented — recommendations only, sequenced by product need — under [`docs/architecture/future/`](../architecture/future/README.md) ([ED-0031](ENGINEERING_DECISION_LOG.md); Proposed ADRs [0019–0022](../adr/README.md)). Nothing there is built until its phase gate.

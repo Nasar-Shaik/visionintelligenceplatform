@@ -39,6 +39,10 @@ Any decision that changes: a **contract**, a **boundary/dependency rule**, a **t
 | [0016](ADR-0016-nats-jetstream-event-backbone.md)                 | NATS JetStream as the event backbone & messaging (resolves ND-1) | Accepted |
 | [0017](ADR-0017-fastify-control-plane.md)                         | Fastify for Control-Plane / TypeScript services                  | Accepted |
 | [0018](ADR-0018-env-only-secrets-and-centralized-config.md)       | `.env`-only secrets & centralized configuration                  | Accepted |
+| [0019](ADR-0019-operations-console-and-apps-layer.md)             | Operations Console & `apps/` workspace layer                     | Proposed |
+| [0020](ADR-0020-immutable-evidence-package.md)                    | Immutable Evidence Package                                       | Proposed |
+| [0021](ADR-0021-analysis-profiles.md)                             | Analysis Profiles                                                | Proposed |
+| [0022](ADR-0022-ai-capability-registry.md)                        | AI Capability Registry (enterprise catalog)                      | Proposed |
 
 _Add new rows as ADRs are created. Never renumber; never delete._
 
