@@ -3,6 +3,7 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireAuth } from '@/features/auth/RequireAuth';
 import { AppShell } from '@/features/shell/AppShell';
 import { DashboardPage } from '@/routes/DashboardPage';
+import { EventsPage } from '@/features/events/EventsPage';
 import { PlaceholderPage } from '@/routes/PlaceholderPage';
 import { DesignSystem } from '@/routes/DesignSystem';
 import { NotFound } from '@/routes/NotFound';
@@ -23,7 +24,7 @@ export const router = createBrowserRouter([
           { index: true, element: <DashboardPage /> },
           { path: 'live', element: <PlaceholderPage title="Live Monitoring" slice="P2-1.6" /> },
           { path: 'cameras', element: <PlaceholderPage title="Cameras" slice="P2-1.5" /> },
-          { path: 'events', element: <PlaceholderPage title="Events" slice="P2-1.8" /> },
+          { path: 'events', element: <EventsPage /> },
           { path: 'incidents', element: <PlaceholderPage title="Incidents" slice="P2-1.10" /> },
           { path: 'alerts', element: <PlaceholderPage title="Alerts" slice="P2-1.11" /> },
           { path: 'rules', element: <PlaceholderPage title="Rules" slice="P2-1.9" /> },
