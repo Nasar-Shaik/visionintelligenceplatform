@@ -23,6 +23,22 @@ export function getAccessToken(): string | null {
   return accessToken;
 }
 
+/**
+ * Unauthorized (401) handler seam. The auth feature registers a single-flight token refresh
+ * here; on a 401 the client invokes it once and, if it resolves true (token refreshed),
+ * retries the original request once. Keeps http free of a hard dependency on the auth layer.
+ */
+type UnauthorizedHandler = () => Promise<boolean>;
+let onUnauthorized: UnauthorizedHandler | null = null;
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  onUnauthorized = handler;
+}
+
+/** Paths that must never trigger the refresh-and-retry loop (they ARE the auth flow). */
+function isAuthEndpoint(path: string): boolean {
+  return path.startsWith('/identity/auth/');
+}
+
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly code: string;
@@ -75,6 +91,7 @@ async function request<T>(
   path: string,
   body?: unknown,
   options: RequestOptions = {},
+  retried = false,
 ): Promise<T> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
@@ -111,6 +128,12 @@ async function request<T>(
         message: `Unexpected non-JSON response (${response.status})`,
       });
     }
+  }
+
+  // 401 → attempt a one-time silent refresh, then retry the original request once.
+  if (response.status === 401 && !retried && onUnauthorized && !isAuthEndpoint(path)) {
+    const refreshed = await onUnauthorized();
+    if (refreshed) return request<T>(method, path, body, options, true);
   }
 
   if (!response.ok || (payload && payload.success === false)) {

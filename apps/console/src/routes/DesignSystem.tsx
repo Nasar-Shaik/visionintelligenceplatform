@@ -60,7 +60,6 @@ import {
   TableSkeleton,
   Textarea,
   Timeline,
-  Toaster,
   toast,
   Tooltip,
   TooltipContent,
@@ -99,7 +98,6 @@ const COLOR_TOKENS: ReadonlyArray<readonly [string, string]> = [
 export function DesignSystem() {
   return (
     <TooltipProvider delayDuration={200}>
-      <Toaster />
       <div className="mx-auto max-w-5xl space-y-10 px-6 py-10">
         <PageHeader
           title="Design System"
