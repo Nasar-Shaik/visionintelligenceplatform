@@ -14,7 +14,6 @@ import { authClient } from './authClient';
 import { tokenStore } from './tokenStore';
 import { LoginPage } from './LoginPage';
 import { RequireAuth } from './RequireAuth';
-import { AuthedHome } from '@/routes/AuthedHome';
 
 const TOKENS = {
   tokenType: 'Bearer' as const,
@@ -124,21 +123,5 @@ describe('RequireAuth', () => {
     );
     render(tree);
     expect(screen.getByText('protected content')).toBeInTheDocument();
-  });
-});
-
-describe('permission gating (AuthedHome)', () => {
-  it('shows granted vs denied UI affordances by role', () => {
-    store.dispatch(
-      authenticated({
-        user: { id: 'usr_1', email: 'ops@tenant', roles: ['operator'] },
-        tenantId: 'tnt_1',
-        permissions: permissionsForRoles(['operator']),
-      }),
-    );
-    renderWithProviders(<AuthedHome />, { store });
-    // operator has incident:ack (granted, success) but not rule:create (denied, neutral).
-    expect(screen.getByText('incident:ack').className).toContain('text-success');
-    expect(screen.getByText('rule:create').className).toContain('text-muted-foreground');
   });
 });

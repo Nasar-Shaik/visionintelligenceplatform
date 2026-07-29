@@ -34,9 +34,22 @@ src/
   store/       RTK slices: session · ui · live · filters
   routes/      route components (foundation splash for P2-1.0)
   ui/          design-system primitives + composites (P2-1.1)
-  features/    per-feature modules: components · hooks (Query) · <Feature>Page (later slices)
+  features/
+    auth/      login, session (authClient), silent refresh, RequireAuth guard, permission gating
+    shell/     AppShell, Sidebar (permission-gated nav), Topbar, navModel
+    …          per-feature modules land here: components · hooks (Query) · <Feature>Page
+  routes/      route components (Dashboard, PlaceholderPage stubs, DesignSystem, NotFound)
   test/        setup, MSW server/handlers, renderWithProviders
 ```
+
+## Auth & session
+
+- **Login** (`/login`) → `/api/identity/auth/login` (tenant via `x-tenant-id`). Access token is
+  **in-memory only**; the rotating **refresh token** persists (localStorage) for silent re-auth.
+- **Silent refresh:** single-flight `refreshSession()`; the http client refreshes once on a 401 and
+  retries the original request. `AuthBootstrap` hydrates on load behind a splash.
+- **Gating:** roles from `/auth/me` expand to permission patterns via `@vip/permissions`; nav +
+  actions are deny-by-default (`usePermission` / `can`). The gateway is the real authz boundary.
 
 ## Boundaries
 
@@ -61,6 +74,6 @@ src/
 
 ## Status
 
-**P2-1.0 Foundation** ✅ + **P2-1.1 Design System** ✅ (19 primitives + 13 SOC composites + `/design`
-gallery). Feature slices (auth → shell → dashboard → …) follow per
-[OPERATIONS_CONSOLE §14](../../docs/architecture/phase2/OPERATIONS_CONSOLE.md).
+**P2-1.0 Foundation** ✅ · **P2-1.1 Design System** ✅ · **P2-1.2 Authentication** ✅ · **P2-1.3 App
+Shell & Navigation** ✅. Next: **P2-1.4 Dashboard** (wire live data), then cameras → live → analyze →
+… per [OPERATIONS_CONSOLE §14](../../docs/architecture/phase2/OPERATIONS_CONSOLE.md).

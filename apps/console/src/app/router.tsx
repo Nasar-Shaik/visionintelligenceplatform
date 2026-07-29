@@ -1,21 +1,37 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireAuth } from '@/features/auth/RequireAuth';
-import { AuthedHome } from '@/routes/AuthedHome';
+import { AppShell } from '@/features/shell/AppShell';
+import { DashboardPage } from '@/routes/DashboardPage';
+import { PlaceholderPage } from '@/routes/PlaceholderPage';
 import { DesignSystem } from '@/routes/DesignSystem';
 import { NotFound } from '@/routes/NotFound';
 
 /**
- * Route tree (data router). Public `/login`; everything else is behind the RequireAuth guard.
- * P2-1.3 introduces the AppShell as the guarded layout route and adds the feature pages
- * (dashboard/cameras/live/analyze/events/rules/incidents/alerts/evidence/health/settings);
- * see OPERATIONS_CONSOLE.md §2.
+ * Route tree (data router). Public `/login`; everything else is behind RequireAuth and the
+ * AppShell layout. Feature slices (P2-1.4+) replace each PlaceholderPage with the real page
+ * (see OPERATIONS_CONSOLE.md §2 for the target tree).
  */
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   {
     element: <RequireAuth />,
-    children: [{ path: '/', element: <AuthedHome /> }],
+    children: [
+      {
+        element: <AppShell />,
+        children: [
+          { index: true, element: <DashboardPage /> },
+          { path: 'live', element: <PlaceholderPage title="Live Monitoring" slice="P2-1.6" /> },
+          { path: 'cameras', element: <PlaceholderPage title="Cameras" slice="P2-1.5" /> },
+          { path: 'events', element: <PlaceholderPage title="Events" slice="P2-1.8" /> },
+          { path: 'incidents', element: <PlaceholderPage title="Incidents" slice="P2-1.10" /> },
+          { path: 'alerts', element: <PlaceholderPage title="Alerts" slice="P2-1.11" /> },
+          { path: 'rules', element: <PlaceholderPage title="Rules" slice="P2-1.9" /> },
+          { path: 'health', element: <PlaceholderPage title="System Health" slice="P2-1.13" /> },
+          { path: 'settings', element: <PlaceholderPage title="Settings" slice="P2-1.13" /> },
+        ],
+      },
+    ],
   },
   // Living design-system gallery (dev reference; every primitive + variant + state).
   { path: '/design', element: <DesignSystem /> },
