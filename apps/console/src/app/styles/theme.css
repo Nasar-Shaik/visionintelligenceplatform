@@ -92,7 +92,11 @@
   --color-card-foreground: var(--color-text);
   --color-popover: var(--color-surface-2);
   --color-popover-foreground: var(--color-text);
-  --color-primary: var(--color-brand);
+  /* Primary action surface is a touch darker than --color-brand so white labels
+     clear WCAG AA (4.59:1 vs 3.43:1 at brand L); --color-brand (0.62) stays the
+     accent for text/borders/rings on dark surfaces. Verified in P2-1.1 a11y pass. */
+  --color-primary: oklch(0.55 0.15 250);
+  --color-primary-hover: oklch(0.5 0.15 250);
   --color-primary-foreground: oklch(0.98 0.01 250);
   --color-secondary: var(--color-surface-2);
   --color-secondary-foreground: var(--color-text);
@@ -105,6 +109,19 @@
   --color-input: var(--color-border);
   --color-ring: var(--color-brand);
   --radius: var(--radius-md);
+}
+
+/* Single source for keyboard focus affordance — an offset ring in the brand colour.
+   Replaces a repeated 5-class focus-visible chain across inputs/buttons/triggers so
+   focus styling is defined once (consistency; a11y §8). */
+@utility focus-ring {
+  &:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    box-shadow:
+      0 0 0 2px var(--color-bg),
+      0 0 0 4px var(--color-ring);
+  }
 }
 
 @layer base {
@@ -150,5 +167,74 @@
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
+  }
+}
+
+/* Functional enter/exit animations for Radix overlays (keyed off data-state in
+   components). Deliberately minimal — no decorative motion (DESIGN_SYSTEM §4). */
+@keyframes vip-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes vip-overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes vip-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes vip-pop-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes vip-slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes vip-slide-out-right {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes vip-pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+@keyframes vip-shimmer {
+  100% {
+    transform: translateX(100%);
   }
 }

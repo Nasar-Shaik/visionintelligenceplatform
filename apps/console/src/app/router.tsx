@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { FoundationReady } from '@/routes/FoundationReady';
+import { DesignSystem } from '@/routes/DesignSystem';
 import { NotFound } from '@/routes/NotFound';
 
 /**
@@ -10,5 +11,7 @@ import { NotFound } from '@/routes/NotFound';
  */
 export const router = createBrowserRouter([
   { path: '/', element: <FoundationReady /> },
+  // Living design-system gallery (dev reference; every primitive + variant + state).
+  { path: '/design', element: <DesignSystem /> },
   { path: '*', element: <NotFound /> },
 ]);

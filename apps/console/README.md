@@ -47,7 +47,20 @@ src/
   `className` (ESLint-enforced).
 - **Import graph:** `app` → shared (`packages/*`) only; never services/plugins; nothing imports the app.
 
+## Design system (`src/ui`)
+
+- **Primitives** (shadcn/ui, Radix + cva, themed to tokens): Button, Card, Badge, Alert, Input,
+  Textarea, Label, Select, Switch, Tabs, Dialog, Sheet (drawer), DropdownMenu, Tooltip, Skeleton,
+  Separator, ScrollArea, Table (density-aware), Toast (sonner).
+- **SOC composites** (`src/ui/soc`): StatusIndicator, SeverityBadge, MetricCard, CameraTile,
+  VideoPlayerContainer, DetectionOverlay, IncidentCard, NotificationCard, Timeline, EmptyState,
+  LoadingSkeletons, PageHeader, FilterBar. Import all from `@/ui`.
+- **Gallery:** run `pnpm dev` and open **`/design`** — every primitive + variant + severity/status state.
+- **A11y:** WCAG AA contrast verified over the oklch tokens; keyboard focus via the `focus-ring`
+  utility; severity/status never colour-only; `prefers-reduced-motion` honoured.
+
 ## Status
 
-**P2-1.0 Foundation** — scaffold, design-system tokens, store/query/router/API client wired.
-Design system primitives (P2-1.1) and feature pages follow per [OPERATIONS_CONSOLE §14](../../docs/architecture/phase2/OPERATIONS_CONSOLE.md).
+**P2-1.0 Foundation** ✅ + **P2-1.1 Design System** ✅ (19 primitives + 13 SOC composites + `/design`
+gallery). Feature slices (auth → shell → dashboard → …) follow per
+[OPERATIONS_CONSOLE §14](../../docs/architecture/phase2/OPERATIONS_CONSOLE.md).

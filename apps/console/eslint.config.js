@@ -23,6 +23,15 @@ export default [
     rules: {
       ...reactHooks.configs.recommended.rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
+  },
+  {
+    // Design-system primitives legitimately co-export cva variant maps + helper
+    // constants alongside their component (standard shadcn pattern); fast-refresh
+    // granularity is irrelevant for a token library.
+    files: ['src/ui/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
       // Design-system guardrail: no hardcoded colours/sizes in className — use tokens.
       'no-restricted-syntax': [
         'error',
