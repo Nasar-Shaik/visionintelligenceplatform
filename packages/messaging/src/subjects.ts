@@ -19,13 +19,21 @@ export const CAPABILITY_OUTPUT_PREFIX = 'capability.output';
 export const EVENT_PREFIX = 'event';
 export const INCIDENT_PREFIX = 'incident';
 export const RULE_PREFIX = 'rule';
+export const NOTIFICATION_PREFIX = 'notification';
 
 /** JetStream stream capturing every tenant's capability outputs (detections). */
 export const CAPABILITY_OUTPUT_STREAM = 'CAPABILITY_OUTPUT';
 /** JetStream stream capturing every tenant's persisted/domain events. */
 export const EVENTS_STREAM = 'EVENTS';
-/** JetStream stream capturing automation outputs (rule matches + incident candidates). */
+/**
+ * JetStream stream capturing automation outputs — rule matches (`t.*.rule.>`) AND the full incident
+ * lifecycle (`t.*.incident.>`: `candidate` from the rule engine + `raised|acknowledged|resolved|
+ * closed` from the workflow context). Consumers filter to the exact subject they own, so a producer
+ * never re-consumes its own output (e.g. workflow filters `incident.candidate`, publishes the rest).
+ */
 export const AUTOMATION_STREAM = 'AUTOMATION';
+/** JetStream stream capturing every tenant's notification deliveries (`t.*.notification.>`). */
+export const NOTIFICATIONS_STREAM = 'NOTIFICATIONS';
 
 /** Validate + return a tenant id safe to embed as a single subject token, else throw (fail-closed). */
 export function assertTenantToken(tenantId: string): string {
@@ -57,6 +65,25 @@ export function incidentCandidateSubject(tenantId: string): string {
   return `${tenantRoot(tenantId)}.${INCIDENT_PREFIX}.candidate`;
 }
 
+/**
+ * Subject an incident lifecycle transition is published on: `t.{tenantId}.incident.{status}`
+ * (`raised` | `acknowledged` | `resolved` | `closed`). The workflow context publishes these; the
+ * Alert Engine consumes only `incident.raised` (P1-8 Architect rec 3).
+ */
+export function incidentLifecycleSubject(tenantId: string, status: string): string {
+  return `${tenantRoot(tenantId)}.${INCIDENT_PREFIX}.${assertTenantToken(status)}`;
+}
+
+/** Subject a raised incident is published on: `t.{tenantId}.incident.raised`. */
+export function incidentRaisedSubject(tenantId: string): string {
+  return incidentLifecycleSubject(tenantId, 'raised');
+}
+
+/** Subject a notification delivery signal is published on: `t.{tenantId}.notification.{kind}`. */
+export function notificationSubject(tenantId: string, kind: string): string {
+  return `${tenantRoot(tenantId)}.${NOTIFICATION_PREFIX}.${assertTenantToken(kind)}`;
+}
+
 /** Subject a rule-match audit signal is published on: `t.{tenantId}.rule.matched`. */
 export function ruleMatchedSubject(tenantId: string): string {
   return `${tenantRoot(tenantId)}.${RULE_PREFIX}.matched`;
@@ -66,10 +93,16 @@ export function ruleMatchedSubject(tenantId: string): string {
 export const ALL_CAPABILITY_OUTPUTS = `${TENANT_ROOT}.*.${CAPABILITY_OUTPUT_PREFIX}.>`;
 /** Wildcard for consuming ALL tenants' persisted events: `t.*.event.>`. */
 export const ALL_EVENTS = `${TENANT_ROOT}.*.${EVENT_PREFIX}.>`;
-/** Wildcard for consuming ALL tenants' incident candidates: `t.*.incident.>`. */
+/** Wildcard capturing ALL tenants' incident subjects (candidate + lifecycle): `t.*.incident.>`. */
 export const ALL_INCIDENTS = `${TENANT_ROOT}.*.${INCIDENT_PREFIX}.>`;
+/** Filter for consuming ONLY incident candidates (the workflow promoter): `t.*.incident.candidate`. */
+export const ALL_INCIDENT_CANDIDATES = `${TENANT_ROOT}.*.${INCIDENT_PREFIX}.candidate`;
+/** Filter for consuming ONLY raised incidents (the Alert Engine): `t.*.incident.raised`. */
+export const ALL_INCIDENTS_RAISED = `${TENANT_ROOT}.*.${INCIDENT_PREFIX}.raised`;
 /** Wildcard for consuming ALL tenants' rule-match signals: `t.*.rule.>`. */
 export const ALL_RULE_MATCHES = `${TENANT_ROOT}.*.${RULE_PREFIX}.>`;
+/** Wildcard for consuming ALL tenants' notification signals: `t.*.notification.>`. */
+export const ALL_NOTIFICATIONS = `${TENANT_ROOT}.*.${NOTIFICATION_PREFIX}.>`;
 
 /**
  * Extract the tenant id from a `t.{tenantId}.…` subject, or `undefined` if the subject is not

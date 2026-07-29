@@ -58,3 +58,25 @@ Stateful workflow instances horizontal by tenant; `notify` workers per channel; 
 ## Future extension points
 
 - Full multi-channel (SMS/WhatsApp/voice/Slack/Teams via the Connector Platform, [25](../25-CONNECTOR-PLATFORM.md)), case management, SLA/escalation policies, command center UI ([11](../11-WORKFLOW-ENGINE.md)), evidence export + chain-of-custody ([12](../12-EVIDENCE-MANAGEMENT.md)).
+
+## Implemented (P1-8)
+
+Realized as **two services** matching the frozen bounded contexts (22/23) — merging them would
+violate service ownership. See [`@vip/service-workflow`](../../../services/workflow/README.md) +
+[INCIDENT_LIFECYCLE](INCIDENT_LIFECYCLE.md) (lifecycle) and
+[`@vip/service-notify`](../../../services/notify/README.md) (the Alert Engine), and
+[ED-0029](../../project/ENGINEERING_DECISION_LOG.md).
+
+- **workflow** — consumes `incident.candidate`, idempotently promotes to a `raised` Incident (unique
+  `(tenant, dedupKey)`), drives `raised→acknowledged→resolved→closed` (illegal moves 409; versioned +
+  `history[]` audited), publishes `incident.raised|acknowledged|resolved|closed`. Required
+  end-to-end `correlationId` (rec 1).
+- **notify** (the Alert Engine) — consumes **`incident.raised`** (Incident contracts only, rec 3),
+  selects enabled channels meeting the incident's severity floor, delivers per channel via a
+  `ChannelSender` (**`in-app` + `webhook`** in Phase 1), records a delivery log, publishes
+  `notification.sent|delivered|failed`, and supports recipient **ack** (`notification.acked`).
+  Idempotent per `(tenant, incident, channel)`; loop-free (publishes onto the `NOTIFICATIONS` stream
+  it never consumes).
+- **Deferred** (→ [TD-8](../../../tracking/TECH-DEBT.md)): escalation/on-call/cases + hash-chained
+  audit; the workflow↔notify ack feedback loop; email/SMS/push senders; delivery retry/backoff/DLQ +
+  per-tenant rate limits; evidence-ref linking from `media`.

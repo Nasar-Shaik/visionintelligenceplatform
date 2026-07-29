@@ -114,6 +114,39 @@
 
 > **Consumes** (NATS, not HTTP): `t.*.event.*` (`event.persisted`). **Publishes:** `t.{tenantId}.incident.candidate`, `t.{tenantId}.rule.matched`.
 
+## @vip/service-workflow (v0.1.0)
+
+> Phase 1 P1-8. The Workflow Context: owns the **incident lifecycle**. Consumes `incident.candidate` off NATS and idempotently promotes it to a persisted `raised` Incident, then drives operator transitions (`acknowledged → resolved → closed`). Incidents are **never created via the API** (only promoted). Verifies the identity token (`iss=identity`); tenant from the token — another tenant's incident is a **404**; an illegal lifecycle move is a **409**.
+
+| Method | Endpoint                          | Purpose                                   | Auth               | Input                      | Output                                           | Dependencies        | Status   | Version |
+| ------ | --------------------------------- | ----------------------------------------- | ------------------ | -------------------------- | ------------------------------------------------ | ------------------- | -------- | ------- |
+| GET    | `/incidents`                      | List incidents (status/severity, paged)   | `incident:read`    | query                      | `200 {success,data:IncidentPage}` · `401/403`    | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| GET    | `/incidents/:id`                  | Get one incident (own tenant)             | `incident:read`    | —                          | `200 {success,data:Incident}` · `401/403/404`    | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| POST   | `/incidents/:id/ack`              | Acknowledge (raised → acknowledged)       | `incident:ack`     | `AcknowledgeIncidentInput` | `200 {success,data:Incident}` · `403/404/409`    | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| POST   | `/incidents/:id/resolve`          | Resolve (raised\|acknowledged → resolved) | `incident:resolve` | `ResolveIncidentInput`     | `200 {success,data:Incident}` · `403/404/409`    | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| POST   | `/incidents/:id/close`            | Close (resolved → closed)                 | `incident:resolve` | `CloseIncidentInput`       | `200 {success,data:Incident}` · `403/404/409`    | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| GET    | `/health` `/ready` `/metrics` `/` | liveness / readiness / Prometheus / info  | None               | —                          | infra (`/ready` = Mongo; `/metrics` = lifecycle) | prom-client, Mongo  | scaffold | 0.1.0   |
+
+> **Consumes** (NATS): `t.*.incident.candidate`. **Publishes:** `t.{tenantId}.incident.raised|acknowledged|resolved|closed`.
+
+## @vip/service-notify (v0.1.0)
+
+> Phase 1 P1-8. The Notification Context (**Alert Engine**): consumes `incident.raised` off NATS (Incident contracts only) and fans out to the tenant's channels (`in-app`/`webhook`), recording a delivery log and publishing `notification.*`. Channel CRUD + delivery-log read + recipient ack via a permission-gated API. Another tenant's channel/notification is a **404**; acking a non-ackable notification is a **409**.
+
+| Method | Endpoint                          | Purpose                                      | Auth                  | Input                  | Output                                                 | Dependencies        | Status   | Version |
+| ------ | --------------------------------- | -------------------------------------------- | --------------------- | ---------------------- | ------------------------------------------------------ | ------------------- | -------- | ------- |
+| POST   | `/notification-channels`          | Create a channel (per-type config validated) | `notification:create` | `CreateChannelInput`   | `201 {success,data:NotificationChannel}` · `400/403`   | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| GET    | `/notification-channels`          | List the tenant's channels                   | `notification:read`   | —                      | `200 {success,data:NotificationChannel[]}` · `401/403` | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| GET    | `/notification-channels/:id`      | Get one channel (own tenant)                 | `notification:read`   | —                      | `200 {success,data:NotificationChannel}` · `404`       | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| PATCH  | `/notification-channels/:id`      | Update a channel                             | `notification:update` | `UpdateChannelInput`   | `200 {success,data:NotificationChannel}` · `400/404`   | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| DELETE | `/notification-channels/:id`      | Remove a channel                             | `notification:delete` | —                      | `204` · `401/403/404`                                  | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| GET    | `/notifications`                  | Delivery log (incident/status, paged)        | `notification:read`   | query                  | `200 {success,data:NotificationPage}` · `401/403`      | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| GET    | `/notifications/:id`              | Get one delivery record                      | `notification:read`   | —                      | `200 {success,data:Notification}` · `404`              | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| POST   | `/notifications/:id/ack`          | Recipient acknowledges a delivered alert     | `notification:ack`    | `AckNotificationInput` | `200 {success,data:Notification}` · `403/404/409`      | Mongo, @vip/tenancy | beta     | 0.1.0   |
+| GET    | `/health` `/ready` `/metrics` `/` | liveness / readiness / Prometheus / info     | None                  | —                      | infra (`/ready` = Mongo; `/metrics` = delivery)        | prom-client, Mongo  | scaffold | 0.1.0   |
+
+> **Consumes** (NATS): `t.*.incident.raised`. **Publishes:** `t.{tenantId}.notification.sent|delivered|failed|acked`.
+
 ## inference (ai/inference, Python — v0.1.0)
 
 > Phase 1 P1-6. The AI capability runtime (Perception context). Manifest-driven capabilities, model-agnostic (selector→registry via the adapter layer), staged pipeline, lifecycle states, metrics, version-stamped results. Internal (called by the pipeline, not user-facing); `/infer` is `x-internal-key` gated and fail-closed on missing tenant. Stdlib `http.server` transport.

@@ -34,8 +34,14 @@ export * from './events/envelope.js';
 export * from './events/catalog.js';
 export * from './events/query.js';
 
-// rules + incidents (P1-7)
+// rules + incident candidates (P1-7)
 export * from './rules/rules.js';
+
+// incidents — workflow lifecycle (P1-8)
+export * from './incidents/incident.js';
+
+// notifications — alert engine (P1-8)
+export * from './notifications/notification.js';
 
 // capability
 export * from './capability/descriptor.js';

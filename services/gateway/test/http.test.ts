@@ -60,13 +60,17 @@ describe('config', () => {
       'events',
       'identity',
       'media',
+      'notify',
       'rules',
       'tenant',
+      'workflow',
     ]);
     expect(c.upstreams.camera).toBe('http://localhost:8082');
     expect(c.upstreams.media).toBe('http://localhost:8083');
     expect(c.upstreams.events).toBe('http://localhost:8084');
     expect(c.upstreams.rules).toBe('http://localhost:8086');
+    expect(c.upstreams.workflow).toBe('http://localhost:8087');
+    expect(c.upstreams.notify).toBe('http://localhost:8088');
   });
 });
 

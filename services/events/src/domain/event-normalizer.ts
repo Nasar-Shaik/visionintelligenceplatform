@@ -91,7 +91,10 @@ function toEnvelope(
     evidenceRefs: [],
     priority,
   };
-  if (result.correlationId) envelope.correlationId = result.correlationId;
+  // Correlation is threaded end-to-end (P1-8 Architect rec 1): use the detection's correlation id
+  // when present, else anchor the chain to this event's own id so every downstream artifact
+  // (candidate → incident → notification) shares a correlation key.
+  envelope.correlationId = result.correlationId ?? envelope.id;
   return envelope;
 }
 

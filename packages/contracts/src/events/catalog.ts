@@ -312,9 +312,60 @@ export const EVENT_CATALOG: EventCatalogEntry[] = [
   {
     type: 'incident.raised',
     category: 'system',
-    description: 'A workflow incident was raised from a rule match.',
+    description:
+      'A workflow incident was raised (promoted from a rule candidate) — the signal the Alert Engine reacts to (P1-8).',
     defaultPriority: 'high',
     pii: 'none',
+  },
+  {
+    type: 'incident.acknowledged',
+    category: 'system',
+    description: 'An operator acknowledged and took ownership of an incident (P1-8).',
+    defaultPriority: 'info',
+    pii: 'none',
+  },
+  {
+    type: 'incident.resolved',
+    category: 'system',
+    description: 'An incident was resolved with a resolution note (P1-8).',
+    defaultPriority: 'info',
+    pii: 'none',
+  },
+  {
+    type: 'incident.closed',
+    category: 'system',
+    description: 'An incident was closed (terminal; retained for audit) (P1-8).',
+    defaultPriority: 'info',
+    pii: 'none',
+  },
+  // notifications (Alert Engine — Notification context, P1-8)
+  {
+    type: 'notification.sent',
+    category: 'system',
+    description: 'A notification was handed to a delivery channel transport (P1-8).',
+    defaultPriority: 'info',
+    pii: 'low',
+  },
+  {
+    type: 'notification.delivered',
+    category: 'system',
+    description: 'A channel transport confirmed delivery of a notification (P1-8).',
+    defaultPriority: 'info',
+    pii: 'low',
+  },
+  {
+    type: 'notification.failed',
+    category: 'system',
+    description: 'A notification exhausted its delivery attempts without success (P1-8).',
+    defaultPriority: 'medium',
+    pii: 'low',
+  },
+  {
+    type: 'notification.acked',
+    category: 'system',
+    description: 'A recipient acknowledged a delivered notification (P1-8).',
+    defaultPriority: 'info',
+    pii: 'low',
   },
 ];
 

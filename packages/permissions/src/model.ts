@@ -24,12 +24,13 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'stream:*',
     'rule:*',
     'incident:*',
+    'notification:*',
     'event:read',
     'event:replay',
     'tenant:read',
     'tenant:update',
   ],
-  operator: ['*:read', 'stream:control', 'incident:ack', 'incident:resolve'],
+  operator: ['*:read', 'stream:control', 'incident:ack', 'incident:resolve', 'notification:ack'],
   viewer: ['*:read'],
 };
 

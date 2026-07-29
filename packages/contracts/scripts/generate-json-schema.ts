@@ -15,6 +15,12 @@ import { EventEnvelope } from '../src/events/envelope.js';
 import { EventCatalogEntry } from '../src/events/catalog.js';
 import { EventQuery } from '../src/events/query.js';
 import { Rule, CreateRuleInput, IncidentCandidate, RuleDryRunResult } from '../src/rules/rules.js';
+import { Incident, IncidentQuery } from '../src/incidents/incident.js';
+import {
+  Notification,
+  NotificationChannel,
+  CreateChannelInput,
+} from '../src/notifications/notification.js';
 import { CapabilityDescriptor, CapabilityRegistryRecord } from '../src/capability/descriptor.js';
 import { TenantContext } from '../src/common/tenant-context.js';
 import { ApiError } from '../src/common/api-envelope.js';
@@ -36,6 +42,11 @@ const schemas: Record<string, z.ZodType> = {
   'create-rule-input': CreateRuleInput,
   'incident-candidate': IncidentCandidate,
   'rule-dry-run-result': RuleDryRunResult,
+  incident: Incident,
+  'incident-query': IncidentQuery,
+  notification: Notification,
+  'notification-channel': NotificationChannel,
+  'create-channel-input': CreateChannelInput,
   'capability-descriptor': CapabilityDescriptor,
   'capability-registry-record': CapabilityRegistryRecord,
   'tenant-context': TenantContext,
