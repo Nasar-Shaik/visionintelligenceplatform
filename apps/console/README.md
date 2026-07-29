@@ -75,5 +75,7 @@ src/
 ## Status
 
 **P2-1.0 Foundation** ✅ · **P2-1.1 Design System** ✅ · **P2-1.2 Authentication** ✅ · **P2-1.3 App
-Shell & Navigation** ✅. Next: **P2-1.4 Dashboard** (wire live data), then cameras → live → analyze →
-… per [OPERATIONS_CONSOLE §14](../../docs/architecture/phase2/OPERATIONS_CONSOLE.md).
+Shell & Navigation** ✅ · **P2-1.4 Dashboard** ✅ · **P2-1.8 Events** ✅ · **P2-1.9 Rules** ✅ (first
+write slice — authoring + dry-run + version history over `/api/rules`). Next: **P2-1.10 Incidents** →
+**P2-1.11 Alerts** (enabler-free); the Cameras/Live/Analysis/Evidence slices wait on backend enablers
+G-1…G-6, per [OPERATIONS_CONSOLE §13–14](../../docs/architecture/phase2/OPERATIONS_CONSOLE.md).

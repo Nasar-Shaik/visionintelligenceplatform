@@ -4,6 +4,8 @@ import { RequireAuth } from '@/features/auth/RequireAuth';
 import { AppShell } from '@/features/shell/AppShell';
 import { DashboardPage } from '@/routes/DashboardPage';
 import { EventsPage } from '@/features/events/EventsPage';
+import { RulesListPage } from '@/features/rules/RulesListPage';
+import { RuleEditorPage } from '@/features/rules/RuleEditorPage';
 import { PlaceholderPage } from '@/routes/PlaceholderPage';
 import { DesignSystem } from '@/routes/DesignSystem';
 import { NotFound } from '@/routes/NotFound';
@@ -27,7 +29,9 @@ export const router = createBrowserRouter([
           { path: 'events', element: <EventsPage /> },
           { path: 'incidents', element: <PlaceholderPage title="Incidents" slice="P2-1.10" /> },
           { path: 'alerts', element: <PlaceholderPage title="Alerts" slice="P2-1.11" /> },
-          { path: 'rules', element: <PlaceholderPage title="Rules" slice="P2-1.9" /> },
+          { path: 'rules', element: <RulesListPage /> },
+          { path: 'rules/new', element: <RuleEditorPage /> },
+          { path: 'rules/:id', element: <RuleEditorPage /> },
           { path: 'health', element: <PlaceholderPage title="System Health" slice="P2-1.13" /> },
           { path: 'settings', element: <PlaceholderPage title="Settings" slice="P2-1.13" /> },
         ],

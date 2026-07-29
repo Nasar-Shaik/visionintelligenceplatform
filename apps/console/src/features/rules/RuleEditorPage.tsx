@@ -1,0 +1,493 @@
+import { useEffect } from 'react';
+import type { ReactNode } from 'react';
+import { Controller, useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, ShieldAlert } from 'lucide-react';
+import { EventCategory } from '@vip/contracts';
+import { usePermission } from '@/app/hooks';
+import { ApiRequestError } from '@/lib/api/http';
+import { SEVERITY_ORDER, severityTokens } from '@/lib/severity';
+import {
+  Alert,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  EmptyState,
+  Input,
+  Label,
+  PageHeader,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Skeleton,
+  Switch,
+  Textarea,
+  toast,
+} from '@/ui';
+import { RuleDryRunPanel } from './RuleDryRunPanel';
+import { RuleVersionsSheet } from './RuleVersionsSheet';
+import { RULE_LIFECYCLES, lifecyclePresentation } from './lifecycle';
+import {
+  DEFAULT_RULE_FORM,
+  type RuleFormValues,
+  ruleFormSchema,
+  ruleToFormValues,
+  toRuleInput,
+} from './ruleForm';
+import { useCreateRule, useRule, useUpdateRule } from './useRules';
+
+/** A labelled form control with optional help + error text. */
+function Field({
+  label,
+  htmlFor,
+  error,
+  hint,
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  error?: string | undefined;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      {children}
+      {hint && !error ? <p className="text-xs text-text-subtle">{hint}</p> : null}
+      {error ? <p className="text-xs text-critical">{error}</p> : null}
+    </div>
+  );
+}
+
+/** Create / edit a rule (RHF + Zod). Maps the flat form to the strict CreateRuleInput on submit. */
+export function RuleEditorPage() {
+  const { id } = useParams<{ id: string }>();
+  const isEdit = Boolean(id);
+  const navigate = useNavigate();
+
+  const canCreate = usePermission('rule:create');
+  const canUpdate = usePermission('rule:update');
+  const authorized = isEdit ? canUpdate : canCreate;
+
+  const ruleQuery = useRule(id);
+  const createRule = useCreateRule();
+  const updateRule = useUpdateRule(id ?? '');
+
+  const {
+    register,
+    control,
+    handleSubmit,
+    reset,
+    watch,
+    formState: { errors, isDirty },
+  } = useForm<RuleFormValues>({
+    resolver: zodResolver(ruleFormSchema),
+    defaultValues: DEFAULT_RULE_FORM,
+  });
+
+  // Hydrate the form once the rule loads (edit mode).
+  useEffect(() => {
+    if (ruleQuery.data) reset(ruleToFormValues(ruleQuery.data));
+  }, [ruleQuery.data, reset]);
+
+  const actionType = watch('actionType');
+  const windowEnabled = watch('windowEnabled');
+  const saving = createRule.isPending || updateRule.isPending;
+  const saveError = createRule.error ?? updateRule.error;
+
+  const onSubmit = handleSubmit((values) => {
+    const input = toRuleInput(values);
+    if (isEdit) {
+      updateRule.mutate(input, { onSuccess: () => toast.success('Rule saved') });
+    } else {
+      createRule.mutate(input, {
+        onSuccess: (rule) => {
+          toast.success('Rule created');
+          navigate(`/rules/${rule.id}`, { replace: true });
+        },
+      });
+    }
+  });
+
+  if (!authorized) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 py-6">
+        <EmptyState
+          icon={ShieldAlert}
+          title="Not authorized"
+          description={`You don't have permission to ${isEdit ? 'edit' : 'create'} rules.`}
+          action={
+            <Button asChild variant="outline" size="sm">
+              <Link to="/rules">Back to rules</Link>
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
+  if (isEdit && ruleQuery.isPending) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-4 px-6 py-6">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (isEdit && ruleQuery.isError) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 py-6">
+        <Alert variant="critical">
+          {ruleQuery.error instanceof ApiRequestError && ruleQuery.error.status === 404
+            ? 'This rule no longer exists.'
+            : 'Could not load the rule.'}
+        </Alert>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-5xl px-6 py-6">
+      <PageHeader
+        breadcrumbs={[
+          { label: 'Rules' },
+          { label: isEdit ? (ruleQuery.data?.name ?? 'Rule') : 'New rule' },
+        ]}
+        title={isEdit ? 'Edit rule' : 'New rule'}
+        description="IF an event matches the triggers and condition, THEN run the action."
+        actions={
+          <div className="flex items-center gap-2">
+            {isEdit && id ? <RuleVersionsSheet ruleId={id} /> : null}
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/rules">
+                <ArrowLeft />
+                Cancel
+              </Link>
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <form onSubmit={onSubmit} noValidate className="space-y-6 lg:col-span-2">
+          {saveError ? (
+            <Alert variant="critical">
+              {saveError instanceof ApiRequestError
+                ? saveError.message
+                : 'Could not save the rule.'}
+            </Alert>
+          ) : null}
+
+          {/* Details */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Field label="Name" htmlFor="name" error={errors.name?.message}>
+                <Input id="name" aria-invalid={!!errors.name} {...register('name')} />
+              </Field>
+              <Field label="Description" htmlFor="description" error={errors.description?.message}>
+                <Textarea id="description" rows={2} {...register('description')} />
+              </Field>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Field label="Lifecycle" error={errors.lifecycle?.message}>
+                  <Controller
+                    control={control}
+                    name="lifecycle"
+                    render={({ field }) => (
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {RULE_LIFECYCLES.map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {lifecyclePresentation(s).label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </Field>
+                <Field label="Severity" error={errors.severity?.message}>
+                  <Controller
+                    control={control}
+                    name="severity"
+                    render={({ field }) => (
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SEVERITY_ORDER.map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {severityTokens(s).label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </Field>
+                <Field
+                  label="Priority"
+                  htmlFor="priority"
+                  error={errors.priority?.message}
+                  hint="0–1000, higher first"
+                >
+                  <Input
+                    id="priority"
+                    type="number"
+                    min={0}
+                    max={1000}
+                    aria-invalid={!!errors.priority}
+                    {...register('priority', { valueAsNumber: true })}
+                  />
+                </Field>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Matching */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Matching</CardTitle>
+              <CardDescription>
+                Which events this rule considers, and the condition.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Field
+                label="Event types"
+                htmlFor="eventTypesText"
+                error={errors.eventTypesText?.message}
+                hint="One dotted type per line (e.g. perception.person.detected). Empty = any type."
+              >
+                <Textarea
+                  id="eventTypesText"
+                  rows={3}
+                  spellCheck={false}
+                  className="font-mono text-xs"
+                  placeholder="perception.person.detected"
+                  {...register('eventTypesText')}
+                />
+              </Field>
+
+              <Field
+                label="Categories"
+                error={errors.categories?.message}
+                hint="Empty = any category."
+              >
+                <Controller
+                  control={control}
+                  name="categories"
+                  render={({ field }) => (
+                    <div className="flex flex-wrap gap-3">
+                      {EventCategory.options.map((cat) => {
+                        const checked = field.value.includes(cat);
+                        return (
+                          <label
+                            key={cat}
+                            className="flex cursor-pointer items-center gap-2 text-sm text-foreground"
+                          >
+                            <input
+                              type="checkbox"
+                              className="size-4 accent-primary focus-ring rounded"
+                              checked={checked}
+                              onChange={(e) =>
+                                field.onChange(
+                                  e.target.checked
+                                    ? [...field.value, cat]
+                                    : field.value.filter((c: string) => c !== cat),
+                                )
+                              }
+                            />
+                            {cat}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                />
+              </Field>
+
+              <Field
+                label="Condition (optional)"
+                htmlFor="conditionText"
+                error={errors.conditionText?.message}
+                hint='JSON predicate tree, e.g. {"all":[{"field":"confidence","op":"gte","value":0.8}]}'
+              >
+                <Textarea
+                  id="conditionText"
+                  rows={5}
+                  spellCheck={false}
+                  className="font-mono text-xs"
+                  {...register('conditionText')}
+                />
+              </Field>
+
+              <div className="rounded-md border border-border p-3">
+                <Controller
+                  control={control}
+                  name="windowEnabled"
+                  render={({ field }) => (
+                    <label className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-medium text-foreground">
+                        Windowed threshold
+                        <span className="ml-2 font-normal text-text-subtle">
+                          Fire only after N matches within a time window
+                        </span>
+                      </span>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </label>
+                  )}
+                />
+                {windowEnabled ? (
+                  <div className="mt-3 grid gap-4 sm:grid-cols-3">
+                    <Field
+                      label="Within (seconds)"
+                      htmlFor="windowWithinSeconds"
+                      error={errors.windowWithinSeconds?.message}
+                    >
+                      <Input
+                        id="windowWithinSeconds"
+                        type="number"
+                        min={1}
+                        {...register('windowWithinSeconds', { valueAsNumber: true })}
+                      />
+                    </Field>
+                    <Field label="Count" htmlFor="windowCount" error={errors.windowCount?.message}>
+                      <Input
+                        id="windowCount"
+                        type="number"
+                        min={1}
+                        {...register('windowCount', { valueAsNumber: true })}
+                      />
+                    </Field>
+                    <Field label="Group by" error={errors.windowGroupBy?.message}>
+                      <Controller
+                        control={control}
+                        name="windowGroupBy"
+                        render={({ field }) => (
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">None</SelectItem>
+                              <SelectItem value="camera">Camera</SelectItem>
+                              <SelectItem value="zone">Zone</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                    </Field>
+                  </div>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Action */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Action</CardTitle>
+              <CardDescription>What happens when the rule matches.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Field label="Action type" error={errors.actionType?.message}>
+                <Controller
+                  control={control}
+                  name="actionType"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="raise-incident">Raise incident</SelectItem>
+                        <SelectItem value="emit-event">Emit event</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </Field>
+
+              {actionType === 'raise-incident' ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field
+                    label="Title override (optional)"
+                    htmlFor="actionTitle"
+                    error={errors.actionTitle?.message}
+                    hint="Defaults to the rule name + triggering event."
+                  >
+                    <Input id="actionTitle" {...register('actionTitle')} />
+                  </Field>
+                  <Field label="Severity override" error={errors.actionSeverity?.message}>
+                    <Controller
+                      control={control}
+                      name="actionSeverity"
+                      render={({ field }) => (
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="inherit">Inherit rule severity</SelectItem>
+                            {SEVERITY_ORDER.map((s) => (
+                              <SelectItem key={s} value={s}>
+                                {severityTokens(s).label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                  </Field>
+                </div>
+              ) : (
+                <Field
+                  label="Emitted event type"
+                  htmlFor="actionEventType"
+                  error={errors.actionEventType?.message}
+                  hint="Dotted type, e.g. analytics.occupancy.exceeded"
+                >
+                  <Input
+                    id="actionEventType"
+                    className="font-mono text-xs"
+                    {...register('actionEventType')}
+                  />
+                </Field>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="flex items-center justify-end gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link to="/rules">Cancel</Link>
+            </Button>
+            <Button type="submit" size="sm" loading={saving} disabled={isEdit && !isDirty}>
+              {isEdit ? 'Save changes' : 'Create rule'}
+            </Button>
+          </div>
+        </form>
+
+        {isEdit && id ? (
+          <aside className="space-y-6">
+            <RuleDryRunPanel ruleId={id} />
+          </aside>
+        ) : null}
+      </div>
+    </div>
+  );
+}
