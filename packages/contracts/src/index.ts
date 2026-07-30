@@ -24,6 +24,9 @@ export * from './camera/camera.js';
 // media / ingestion (P1-4)
 export * from './media/media.js';
 
+// evidence (P2-2 G-4)
+export * from './evidence/evidence.js';
+
 // perception / inference (P1-6)
 export * from './perception/perception.js';
 

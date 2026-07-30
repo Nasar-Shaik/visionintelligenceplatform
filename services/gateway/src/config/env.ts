@@ -34,6 +34,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       RULES_URL: z.url().default('http://localhost:8086'),
       WORKFLOW_URL: z.url().default('http://localhost:8087'),
       NOTIFY_URL: z.url().default('http://localhost:8088'),
+      EVIDENCE_URL: z.url().default('http://localhost:8090'),
     }),
     env,
     'gateway',
@@ -52,6 +53,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       rules: g.RULES_URL,
       workflow: g.WORKFLOW_URL,
       notify: g.NOTIFY_URL,
+      evidence: g.EVIDENCE_URL,
     },
   };
 }

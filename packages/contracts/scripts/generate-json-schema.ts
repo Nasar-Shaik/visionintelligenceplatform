@@ -39,6 +39,18 @@ import {
 } from '../src/media/media.js';
 import { Detection, DetectionResult, InferenceRequest } from '../src/perception/perception.js';
 import {
+  Evidence,
+  EvidenceManifest,
+  RegisterEvidenceInput,
+  UpdateEvidenceMetadataInput,
+  SetRetentionInput,
+  EvidenceQuery,
+  EvidencePage,
+  EvidenceDownloadTarget,
+  EvidenceCustodyEntry,
+  EvidenceCustodyPage,
+} from '../src/evidence/evidence.js';
+import {
   ModelRegistration,
   RegisterModelInput,
   ModelVersion,
@@ -96,6 +108,16 @@ const schemas: Record<string, z.ZodType> = {
   'start-inference-session-input': StartInferenceSessionInput,
   'runtime-metrics': RuntimeMetrics,
   'pipeline-definition': PipelineDefinition,
+  evidence: Evidence,
+  'evidence-manifest': EvidenceManifest,
+  'register-evidence-input': RegisterEvidenceInput,
+  'update-evidence-metadata-input': UpdateEvidenceMetadataInput,
+  'set-retention-input': SetRetentionInput,
+  'evidence-query': EvidenceQuery,
+  'evidence-page': EvidencePage,
+  'evidence-download-target': EvidenceDownloadTarget,
+  'evidence-custody-entry': EvidenceCustodyEntry,
+  'evidence-custody-page': EvidenceCustodyPage,
 };
 
 mkdirSync(outDir, { recursive: true });

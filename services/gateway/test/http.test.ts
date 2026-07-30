@@ -59,6 +59,7 @@ describe('config', () => {
     expect(Object.keys(c.upstreams).sort()).toEqual([
       'camera',
       'events',
+      'evidence',
       'identity',
       'media',
       'notify',
@@ -70,6 +71,7 @@ describe('config', () => {
     expect(c.upstreams.media).toBe('http://localhost:8083');
     expect(c.upstreams.events).toBe('http://localhost:8084');
     expect(c.upstreams.rules).toBe('http://localhost:8086');
+    expect(c.upstreams.evidence).toBe('http://localhost:8090');
     expect(c.upstreams.workflow).toBe('http://localhost:8087');
     expect(c.upstreams.notify).toBe('http://localhost:8088');
   });

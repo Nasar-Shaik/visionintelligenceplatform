@@ -63,6 +63,16 @@ const REQUIRED = [
   'start-inference-session-input',
   'runtime-metrics',
   'pipeline-definition',
+  'evidence',
+  'evidence-manifest',
+  'register-evidence-input',
+  'update-evidence-metadata-input',
+  'set-retention-input',
+  'evidence-query',
+  'evidence-page',
+  'evidence-download-target',
+  'evidence-custody-entry',
+  'evidence-custody-page',
 ];
 
 const errors = [];
