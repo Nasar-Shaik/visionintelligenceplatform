@@ -7,8 +7,9 @@
  *
  * The document shapes mirror each service's persistence layer (collections `tenants`, `org_nodes`,
  * `users`, `cameras`, `rules`, `rule_versions`, `events`, `incidents`, `notifications`) and the
- * `@vip/contracts` schemas. The admin password is hashed with the same `@vip/auth` KDF the identity
- * service uses, so login verifies correctly.
+ * `@vip/contracts` schemas. It seeds one user per role (owner/admin/operator/viewer) so every
+ * permission tier can be exercised; each password is hashed with the same `@vip/auth` KDF the
+ * identity service uses, so login verifies correctly.
  *
  * Idempotent: every document is upserted on a stable key, so re-running is safe.
  *
@@ -32,12 +33,25 @@ const MONGO_URI =
 // --- default dev credentials (documented in docs/setup/DEMO.md) ---
 const TENANT_ID = 'tnt_dev';
 const TENANT_SLUG = 'dev';
-const ADMIN_EMAIL = 'admin@vip.dev';
-const ADMIN_PASSWORD = 'DevPassw0rd!';
+
+// One simple password for every seeded dev account (DEV ONLY — never use anything like this in a
+// real environment). Login accepts it because LoginInput only requires a non-empty password; the
+// stronger min-length rule applies to user *creation* via the API, which the seed bypasses.
+const DEV_PASSWORD = '123456';
+
+// One account per role, so you can log in and exercise each permission tier (deny-by-default gating).
+const USERS = [
+  { id: 'usr_dev_owner', email: 'owner@vip.dev', roles: ['owner'] },
+  { id: 'usr_dev_admin', email: 'admin@vip.dev', roles: ['admin'] },
+  { id: 'usr_dev_operator', email: 'operator@vip.dev', roles: ['operator'] },
+  { id: 'usr_dev_viewer', email: 'viewer@vip.dev', roles: ['viewer'] },
+];
+
+// The admin user id — used as the author of the seeded rule.
+const ADMIN_ID = 'usr_dev_admin';
 
 // Stable ids so re-seeding replaces rather than duplicates.
 const ORG_ID = 'org_dev_root';
-const USER_ID = 'usr_dev_admin';
 const CAMERA_ID = 'cam_dev_1';
 const RULE_ID = 'rule_dev_1';
 const EVENT_ID = '00000000-0000-4000-8000-0000000000e1';
@@ -59,7 +73,6 @@ async function main(): Promise<void> {
     const db = client.db();
     console.log(`→ seeding database "${db.databaseName}" via ${redact(MONGO_URI)}\n`);
 
-    const passwordHash = await hashPassword(ADMIN_PASSWORD);
     const now = iso(NOW);
 
     // 1) Tenant (active) ------------------------------------------------------
@@ -95,22 +108,24 @@ async function main(): Promise<void> {
       },
     );
 
-    // 3) Admin user (login target) -------------------------------------------
-    await upsert(
-      db,
-      'users',
-      { _id: USER_ID },
-      {
-        _id: USER_ID,
-        tenantId: TENANT_ID,
-        email: ADMIN_EMAIL.toLowerCase(),
-        passwordHash,
-        roles: ['admin'],
-        status: 'active',
-        createdAt: now,
-        updatedAt: now,
-      },
-    );
+    // 3) Users — one per role (all share DEV_PASSWORD) ------------------------
+    for (const user of USERS) {
+      await upsert(
+        db,
+        'users',
+        { _id: user.id },
+        {
+          _id: user.id,
+          tenantId: TENANT_ID,
+          email: user.email.toLowerCase(),
+          passwordHash: await hashPassword(DEV_PASSWORD),
+          roles: user.roles,
+          status: 'active',
+          createdAt: now,
+          updatedAt: now,
+        },
+      );
+    }
 
     // 4) Sample camera --------------------------------------------------------
     await upsert(
@@ -149,7 +164,7 @@ async function main(): Promise<void> {
       actions: [{ type: 'raise-incident' }],
       createdAt: now,
       updatedAt: now,
-      createdBy: USER_ID,
+      createdBy: ADMIN_ID,
     };
     await upsert(db, 'rules', { id: RULE_ID, tenantId: TENANT_ID }, rule);
     await upsert(
@@ -161,7 +176,7 @@ async function main(): Promise<void> {
         ruleId: RULE_ID,
         version: 1,
         changeKind: 'created',
-        changedBy: USER_ID,
+        changedBy: ADMIN_ID,
         changedAt: now,
         snapshot: rule,
       },
@@ -275,10 +290,12 @@ async function main(): Promise<void> {
     console.log('✔ Seed complete.\n');
     console.log('  Log in to the Operations Console (http://localhost:5173):');
     console.log(`    Tenant:   ${TENANT_ID}`);
-    console.log(`    Email:    ${ADMIN_EMAIL}`);
-    console.log(`    Password: ${ADMIN_PASSWORD}\n`);
+    console.log(`    Password: ${DEV_PASSWORD}   (same for every account below)`);
+    for (const u of USERS) {
+      console.log(`    ${u.roles[0]?.padEnd(9)} ${u.email}`);
+    }
     console.log(
-      '  Seeded: 1 tenant · 1 org · 1 admin · 1 camera · 1 rule · 1 event · 1 incident · 1 alert',
+      `\n  Seeded: 1 tenant · 1 org · ${USERS.length} users · 1 camera · 1 rule · 1 event · 1 incident · 1 alert`,
     );
   } finally {
     await client.close();

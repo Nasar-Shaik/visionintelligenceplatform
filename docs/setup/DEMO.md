@@ -15,12 +15,15 @@ before `pnpm dev:all`.
 
 ## Default credentials
 
-| Field        | Value                                                    |
-| ------------ | -------------------------------------------------------- |
-| **Tenant**   | `tnt_dev`                                                |
-| **Email**    | `admin@vip.dev`                                          |
-| **Password** | `DevPassw0rd!`                                           |
-| Role         | `admin` (sees every console surface, including Settings) |
+Tenant **`tnt_dev`** · password **`123456`** for every account (dev only). One account per role so you
+can exercise each permission tier:
+
+| Email              | Role       | Can do                                            |
+| ------------------ | ---------- | ------------------------------------------------- |
+| `owner@vip.dev`    | `owner`    | everything                                        |
+| `admin@vip.dev`    | `admin`    | everything incl. rule authoring/delete + Settings |
+| `operator@vip.dev` | `operator` | read all; ack/resolve/close incidents; ack alerts |
+| `viewer@vip.dev`   | `viewer`   | read-only (no action buttons)                     |
 
 ## What it creates
 
@@ -49,9 +52,9 @@ Start everything (`pnpm dev:all`), open **http://localhost:5173**, and log in.
 
 ### Permission behaviour
 
-The admin sees and can do everything. To see deny-by-default gating, create a `viewer`/`operator`
-user (via the identity API or another seeded user) — a viewer gets read-only surfaces with no action
-buttons; an operator can ack/resolve incidents and ack alerts but not author rules.
+To see deny-by-default gating, log in as different seeded roles: `viewer@vip.dev` gets read-only
+surfaces with no action buttons; `operator@vip.dev` can ack/resolve incidents and ack alerts but not
+author rules; `admin@vip.dev` / `owner@vip.dev` can do everything. (All use password `123456`.)
 
 ## Reset
 

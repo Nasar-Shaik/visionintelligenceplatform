@@ -17,13 +17,14 @@ Open the console: **http://localhost:5173** · Log in with the seeded admin (see
 pnpm seed          # tenant + admin + sample camera/rule/event/incident/alert
 ```
 
-Default login:
+Default login — tenant `tnt_dev`, password `123456` (one account per role):
 
-| Field    | Value           |
-| -------- | --------------- |
-| Tenant   | `tnt_dev`       |
-| Email    | `admin@vip.dev` |
-| Password | `DevPassw0rd!`  |
+| Email              | Role       |
+| ------------------ | ---------- |
+| `admin@vip.dev`    | `admin`    |
+| `operator@vip.dev` | `operator` |
+| `viewer@vip.dev`   | `viewer`   |
+| `owner@vip.dev`    | `owner`    |
 
 ## Check your work (before committing)
 

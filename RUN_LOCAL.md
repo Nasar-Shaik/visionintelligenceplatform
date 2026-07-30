@@ -20,11 +20,14 @@ pnpm seed             # 2. dev tenant + admin + sample data (idempotent)
 pnpm dev:all          # 3. all backend services + the Operations Console
 ```
 
-Then open **http://localhost:5173** and log in:
+Then open **http://localhost:5173** and log in — tenant **`tnt_dev`**, password **`123456`**:
 
-| Tenant    | Email           | Password       |
-| --------- | --------------- | -------------- |
-| `tnt_dev` | `admin@vip.dev` | `DevPassw0rd!` |
+| Email              | Role                     |
+| ------------------ | ------------------------ |
+| `admin@vip.dev`    | `admin` (everything)     |
+| `operator@vip.dev` | `operator` (ack/resolve) |
+| `viewer@vip.dev`   | `viewer` (read-only)     |
+| `owner@vip.dev`    | `owner`                  |
 
 That's it — the dashboard, events, rules, incidents, and alerts are all populated by the seed.
 
