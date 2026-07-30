@@ -29,6 +29,10 @@ _Status: ⏳ Architect Review Pending · Author: Claude · Date: 2026-07-29 · D
 | 10  | Future Inference Scheduler        | [INFERENCE_SCHEDULER](INFERENCE_SCHEDULER.md)                                                     | [05 §4](../05-CAPABILITY-ARCHITECTURE.md), [19](../19-PERFORMANCE-AND-SCALE.md) | —                    |
 | 11  | Product Demonstration Workflows   | [DEMONSTRATION_WORKFLOWS](DEMONSTRATION_WORKFLOWS.md)                                             | P2-1 acceptance                                                                 | —                    |
 | 12  | Risks & Recommendations           | **this doc §Risks**                                                                               | —                                                                               | —                    |
+| 13  | Event Spine Semantics             | [EVENT_SPINE_SEMANTICS](EVENT_SPINE_SEMANTICS.md)                                                 | [09](../09-EVENT-PLATFORM.md), ADR-0005/0016                                    | —                    |
+| 14  | Future AI Processing Pipeline     | [AI_PROCESSING_PIPELINE](AI_PROCESSING_PIPELINE.md)                                               | [05](../05-CAPABILITY-ARCHITECTURE.md), [08](../08-AI-ML-PLATFORM.md)           | ADR-0002/0012        |
+
+> **Rows 13–14 are G-3.5-closeout additions (2026-07-30, [ED-0033](../../project/ENGINEERING_DECISION_LOG.md)):** documentation-only architecture notes commissioned by the Architect before formally closing G-3.5 — event-spine versioning/dedup/ordering semantics, and the future AI processing pipeline (Inference Adapter boundary + long-running behaviour workflows). Tracked as [TD-10…TD-14](../../../tracking/TECH-DEBT.md).
 
 ## Reconciliation with the existing ADR system
 

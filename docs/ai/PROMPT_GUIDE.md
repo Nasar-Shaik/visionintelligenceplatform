@@ -4,7 +4,7 @@
 
 ## The minimal effective prompt
 
-> "Read `docs/ai/PROJECT_BRAIN.md`, `docs/project/CURRENT_SPRINT.md`, and `tracking/TASK-BOARD.md`. Continue the current sprint's next slice only. Follow `docs/ai/DEVELOPMENT_RULES.md`. Explain your plan, implement one slice production-ready with tests + docs, update the trackers and a daily log, then stop and report."
+> "Read `docs/ai/PROJECT_BRAIN.md`, `docs/tracker/MASTER_PROGRESS.md`, and `tracking/TASK-BOARD.md`. Continue the current sprint's next slice only. Follow `docs/ai/DEVELOPMENT_RULES.md`. Explain your plan, implement one slice production-ready with tests + docs, update the trackers and a daily log, then stop and report."
 
 ## Always tell the assistant to
 

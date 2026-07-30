@@ -1,0 +1,24 @@
+{
+  "name": "@vip/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "G-3.5 End-to-End Pipeline Validation: a deterministic, broker-free harness that wires the real events → rules → workflow → notify application spine onto one in-memory event bus and proves the whole backend chain (contracts, routing, tenant isolation, traceability, correlationId, replay, rule-conflict, dedup, performance) with no camera, no Mongo, no NATS. Lives under tools/ (outside the runtime dependency graph) so it may compose multiple services for validation.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src test",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@vip/contracts": "workspace:*",
+    "@vip/messaging": "workspace:*",
+    "@vip/tenancy": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

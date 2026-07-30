@@ -5,11 +5,10 @@
 ## 1. Acquire context (5 minutes, every time)
 
 1. [`docs/ai/PROJECT_BRAIN.md`](PROJECT_BRAIN.md) — the whole system in one page.
-2. [`docs/project/CURRENT_SPRINT.md`](../project/CURRENT_SPRINT.md) — what sprint we're in and its slice.
-3. [`tracking/PROGRESS.md`](../../tracking/PROGRESS.md) — where we are.
-4. [`tracking/TASK-BOARD.md`](../../tracking/TASK-BOARD.md) → **Now** — the next actionable slice.
-5. [`docs/ai/DEVELOPMENT_RULES.md`](DEVELOPMENT_RULES.md) — the rules you must not break.
-6. The latest file in [`docs/tracker/DAILY_LOG.md`](../tracker/DAILY_LOG.md) — what the last session did and the "Next Task".
+2. [`docs/tracker/MASTER_PROGRESS.md`](../tracker/MASTER_PROGRESS.md) — where we are: current phase, slice, next step, blockers.
+3. [`tracking/TASK-BOARD.md`](../../tracking/TASK-BOARD.md) → **Now** — the next actionable slice.
+4. [`docs/ai/DEVELOPMENT_RULES.md`](DEVELOPMENT_RULES.md) — the rules you must not break.
+5. The latest entry in [`docs/tracker/DAILY_LOG.md`](../tracker/DAILY_LOG.md) — what the last session did and the "Next Task".
 
 ## 2. Do exactly one slice
 

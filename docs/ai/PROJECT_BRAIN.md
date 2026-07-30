@@ -25,7 +25,7 @@ TypeScript + **Fastify** (control/data plane), Python + **FastAPI** (vision), Re
 ## Where we are right now
 
 - **Phase 0 — Program Setup.** First industry target: **Retail/Supermarket** (as plugins, never core).
-- Live status: [`tracking/PROGRESS.md`](../../tracking/PROGRESS.md) · Active sprint: [`docs/project/CURRENT_SPRINT.md`](../project/CURRENT_SPRINT.md) · Next work: [`tracking/TASK-BOARD.md`](../../tracking/TASK-BOARD.md).
+- Live status / current slice / next step: [`docs/tracker/MASTER_PROGRESS.md`](../tracker/MASTER_PROGRESS.md) · Next work: [`tracking/TASK-BOARD.md`](../../tracking/TASK-BOARD.md).
 
 ## How to continue (any AI)
 
