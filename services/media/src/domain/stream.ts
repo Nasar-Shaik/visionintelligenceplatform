@@ -3,7 +3,12 @@
  * and I/O-free (the clock is injected). The supervisor drives these; keeping them pure makes the
  * lifecycle (connecting → connected → lost → … → stopped) and backoff deterministically testable.
  */
-import type { StreamState, StreamStatus } from '@vip/contracts';
+import type {
+  StreamHealthReport,
+  StreamHealthState,
+  StreamState,
+  StreamStatus,
+} from '@vip/contracts';
 
 export interface Clock {
   now(): Date;
@@ -54,6 +59,39 @@ export function toStatus(w: StreamWorkerState): StreamStatus {
     reconnectAttempts: w.reconnectAttempts,
     framesReceived: w.framesReceived,
     ...(w.lastSegmentAt !== undefined ? { lastSegmentAt: w.lastSegmentAt } : {}),
+    ...(w.lastError !== undefined ? { lastError: w.lastError } : {}),
+  };
+}
+
+/**
+ * Derive operational health from a worker's lifecycle state (P2-2 G-2):
+ *   connected → healthy · connecting/lost → degraded · stopped → down · idle → unknown.
+ */
+export function streamHealthState(state: StreamState): StreamHealthState {
+  switch (state) {
+    case 'connected':
+      return 'healthy';
+    case 'connecting':
+    case 'lost':
+      return 'degraded';
+    case 'stopped':
+      return 'down';
+    case 'idle':
+      return 'unknown';
+  }
+}
+
+/** Project a worker into a `StreamHealthReport` (health = derived from state). */
+export function toHealthReport(w: StreamWorkerState): StreamHealthReport {
+  return {
+    cameraId: w.cameraId,
+    tenantId: w.tenantId,
+    health: streamHealthState(w.state),
+    state: w.state,
+    since: w.since,
+    recording: w.recording,
+    reconnectAttempts: w.reconnectAttempts,
+    framesReceived: w.framesReceived,
     ...(w.lastError !== undefined ? { lastError: w.lastError } : {}),
   };
 }

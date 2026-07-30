@@ -4,7 +4,10 @@
  * substitute fakes. This is what keeps the ingestion lifecycle fully unit-testable without ffmpeg,
  * a camera, or a network.
  */
-import type { StreamConnection } from '@vip/contracts';
+import type { ClipQuery, RecordingQuery, RecordingSegment, StreamConnection } from '@vip/contracts';
+import type { TenantScope } from '@vip/tenancy';
+import type { RecordingDoc } from '../domain/recording.js';
+import type { ClipDoc } from '../domain/clip.js';
 
 /** Resolves a camera's connection descriptor (with decrypted credentials) from the Camera context. */
 export interface CameraSource {
@@ -60,6 +63,53 @@ export interface Decoder {
 /** Where extracted frames go for perception. P1-4 ships a null sink; P1-6 wires the pipeline. */
 export interface FrameSink {
   push(tenantId: string, cameraId: string, frame: Frame): void;
+}
+
+/**
+ * Where finalized recording segments are indexed for later retrieval (P2-2 G-2). The supervisor
+ * calls this after a successful storage write so the segment becomes queryable/playable. The default
+ * is a no-op sink (P1-4 behaviour); the composition root wires the Mongo-backed catalog. Indexing
+ * failures degrade (logged) and never block the live path — same posture as the storage write.
+ */
+export interface RecordingSink {
+  record(segment: RecordingSegment): Promise<void>;
+}
+
+/** Default recording sink: indexes nothing (pre-G-2 behaviour / tests that don't assert indexing). */
+export const nullRecordingSink: RecordingSink = {
+  async record() {
+    /* intentionally empty */
+  },
+};
+
+/**
+ * Persistence port for the media catalog (P2-2 G-2): recording + clip metadata, tenant-scoped. A
+ * Mongo adapter backs production; an in-memory adapter backs unit tests. All reads/writes require a
+ * `TenantScope` so isolation is structural (Law 5). Recording upserts are idempotent on the derived
+ * recording id, so re-indexing the same segment is a no-op.
+ */
+export interface MediaCatalogStore {
+  /** Idempotent upsert of a recording (on `_id`). */
+  putRecording(scope: TenantScope, doc: RecordingDoc): Promise<void>;
+  /** Newest-first, keyset-paginated recording listing. */
+  listRecordings(
+    scope: TenantScope,
+    q: RecordingQuery,
+  ): Promise<{ items: RecordingDoc[]; nextCursor?: string }>;
+  getRecording(scope: TenantScope, id: string): Promise<RecordingDoc | null>;
+  /** Recordings whose time range overlaps [from, to), oldest-first (for clip playback/coverage). */
+  recordingsCovering(
+    scope: TenantScope,
+    cameraId: string,
+    from: string,
+    to: string,
+  ): Promise<RecordingDoc[]>;
+
+  putClip(scope: TenantScope, doc: ClipDoc): Promise<void>;
+  listClips(scope: TenantScope, q: ClipQuery): Promise<{ items: ClipDoc[]; nextCursor?: string }>;
+  getClip(scope: TenantScope, id: string): Promise<ClipDoc | null>;
+  /** Delete a clip within scope; returns whether a document was removed. */
+  deleteClip(scope: TenantScope, id: string): Promise<boolean>;
 }
 
 /** Deferred timer, injectable so reconnect scheduling is deterministic under test. */

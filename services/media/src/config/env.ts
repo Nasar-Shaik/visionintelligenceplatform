@@ -7,11 +7,13 @@
  */
 import {
   loadAppConfig,
+  loadDatabaseConfig,
   loadInternalConfig,
   loadJwtConfig,
   loadStorageConfig,
   parseEnv,
   type AppConfig,
+  type DatabaseConfig,
   type InternalConfig,
   type JwtConfig,
   type StorageConfig,
@@ -33,14 +35,18 @@ export interface ServiceConfig extends AppConfig {
   serviceVersion: string;
   jwt: JwtConfig;
   storage: StorageConfig;
+  database: DatabaseConfig;
   internal: InternalConfig;
   ingestion: IngestionConfig;
+  /** Signed playback-URL lifetime (seconds). */
+  playbackTtlSeconds: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
   const app = loadAppConfig(env, { serviceName: 'media', port: 8083 });
   const jwt = loadJwtConfig(env);
   const storage = loadStorageConfig(env);
+  const database = loadDatabaseConfig(env);
   const internal = loadInternalConfig(env);
   const ing = parseEnv(
     z.object({
@@ -48,6 +54,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       MEDIA_FRAME_RATE: z.coerce.number().int().min(1).max(60).default(2),
       MEDIA_SEGMENT_SECONDS: z.coerce.number().int().min(1).max(3600).default(6),
       FFMPEG_BINARY: z.string().min(1).default('ffmpeg'),
+      MEDIA_PLAYBACK_TTL_SECONDS: z.coerce.number().int().min(30).max(86_400).default(900),
     }),
     env,
     'ingestion',
@@ -58,6 +65,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
     serviceVersion,
     jwt,
     storage,
+    database,
     internal,
     ingestion: {
       cameraUrl: ing.CAMERA_URL,
@@ -65,5 +73,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       segmentSeconds: ing.MEDIA_SEGMENT_SECONDS,
       ffmpegBinary: ing.FFMPEG_BINARY,
     },
+    playbackTtlSeconds: ing.MEDIA_PLAYBACK_TTL_SECONDS,
   };
 }

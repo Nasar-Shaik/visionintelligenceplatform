@@ -27,6 +27,15 @@ export function registerStreamRoutes(app: FastifyInstance, deps: StreamRoutesDep
     return reply.send(success(supervisor.list(tenantOf(request))));
   });
 
+  // Aggregate stream health (P2-2 G-2). Static path — declared before `/streams/:cameraId/*`.
+  app.get(
+    '/streams/health',
+    { preHandler: auth.authorize('stream:read') },
+    async (request, reply) => {
+      return reply.send(success(supervisor.healthSummary(tenantOf(request))));
+    },
+  );
+
   app.post<{ Params: CameraParams }>(
     '/streams/:cameraId/start',
     { preHandler: auth.authorize('stream:control') },
@@ -50,6 +59,17 @@ export function registerStreamRoutes(app: FastifyInstance, deps: StreamRoutesDep
     { preHandler: auth.authorize('stream:read') },
     async (request, reply) => {
       return reply.send(success(supervisor.status(tenantOf(request), request.params.cameraId)));
+    },
+  );
+
+  // Per-stream health view (P2-2 G-2).
+  app.get<{ Params: CameraParams }>(
+    '/streams/:cameraId/health',
+    { preHandler: auth.authorize('stream:read') },
+    async (request, reply) => {
+      return reply.send(
+        success(supervisor.streamHealth(tenantOf(request), request.params.cameraId)),
+      );
     },
   );
 }

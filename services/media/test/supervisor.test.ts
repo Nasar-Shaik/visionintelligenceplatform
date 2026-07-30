@@ -111,6 +111,75 @@ describe('frames + recording', () => {
     // The worker is still alive and connected.
     expect(t.supervisor.status('tnt_a', 'cam_1').state).toBe('connected');
   });
+
+  it('indexes the segment into the recording sink after a successful store write (G-2)', async () => {
+    const indexed: string[] = [];
+    const decoder = new FakeDecoder();
+    const supervisor = new StreamSupervisor({
+      cameraSource: new FakeCameraSource(),
+      decoder,
+      objectStore: memoryObjectStore(),
+      frameSink: { push: () => {} },
+      clock,
+      options: { frameRate: 2, segmentSeconds: 6 },
+      recordingSink: {
+        record: async (segment) => {
+          indexed.push(segment.key);
+        },
+      },
+    });
+    supervisor.start('tnt_a', 'cam_1');
+    await flush();
+    decoder.connected();
+    await decoder.segment(new Uint8Array([1, 2]));
+    expect(indexed).toHaveLength(1);
+    // The catalog is fed the tenant-RELATIVE key (playback re-adds the prefix via TenantObjectStore).
+    expect(indexed[0]).toMatch(/^cam_1\/recordings\/seg-.*\.mp4$/);
+  });
+
+  it('a recording-index failure degrades and never blocks the live path (G-2)', async () => {
+    const t0 = build();
+    const decoder = new FakeDecoder();
+    const supervisor = new StreamSupervisor({
+      cameraSource: new FakeCameraSource(),
+      decoder,
+      objectStore: memoryObjectStore(),
+      frameSink: { push: () => {} },
+      clock,
+      options: { frameRate: 2, segmentSeconds: 6 },
+      recordingSink: {
+        record: async () => {
+          throw new Error('catalog down');
+        },
+      },
+      onLog: (level, msg) => t0.logs.push({ level, msg }),
+    });
+    supervisor.start('tnt_a', 'cam_1');
+    await flush();
+    decoder.connected();
+    await decoder.segment();
+    expect(supervisor.status('tnt_a', 'cam_1').state).toBe('connected');
+    expect(t0.logs.some((l) => l.level === 'error')).toBe(true);
+  });
+});
+
+describe('stream health (G-2)', () => {
+  it('reports per-stream and aggregate health derived from worker state', async () => {
+    const t = build();
+    t.supervisor.start('tnt_a', 'cam_1');
+    await flush();
+    t.decoder.connected();
+
+    expect(t.supervisor.streamHealth('tnt_a', 'cam_1').health).toBe('healthy');
+    const summary = t.supervisor.healthSummary('tnt_a');
+    expect(summary).toMatchObject({ tenantId: 'tnt_a', total: 1, healthy: 1 });
+    expect(summary.streams).toHaveLength(1);
+  });
+
+  it('404s health for an unknown camera', () => {
+    const t = build();
+    expect(() => t.supervisor.streamHealth('tnt_a', 'ghost')).toThrow();
+  });
 });
 
 describe('loss + reconnect (backoff)', () => {
