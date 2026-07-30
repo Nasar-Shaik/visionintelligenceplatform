@@ -22,8 +22,8 @@
     "dev:stack": "docker compose -f infra/docker/docker-compose.dev.yml up -d",
     "dev:stack:down": "docker compose -f infra/docker/docker-compose.dev.yml down",
     "dev:stack:logs": "docker compose -f infra/docker/docker-compose.dev.yml logs -f",
-    "dev:all": "turbo run dev",
-    "dev:services": "turbo run dev --filter=./services/*",
+    "dev:all": "turbo run dev --concurrency=15",
+    "dev:services": "turbo run dev --filter=./services/* --concurrency=12",
     "dev:web": "pnpm --filter @vip/console dev",
     "seed": "pnpm --filter @vip/seed start"
   },
