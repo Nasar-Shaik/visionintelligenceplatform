@@ -12,7 +12,9 @@ import { connectMongo, type MongoAdapter } from '../src/adapters/mongo.js';
 import { CameraService } from '../src/application/camera-service.js';
 import type { CameraDoc } from '../src/domain/camera.js';
 
-const URI = process.env.MONGO_URI ?? 'mongodb://localhost:47017/vip_camera_test';
+const URI =
+  process.env.MONGO_URI ??
+  'mongodb://vip_dev:change_me_dev_only@localhost:47017/vip_camera_test?authSource=admin';
 const DB = `vip_camera_it_${Date.now()}`;
 const SECRET = 'integration-secret-16chars-min';
 

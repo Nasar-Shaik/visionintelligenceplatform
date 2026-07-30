@@ -10,7 +10,9 @@ import { connectMongo, type MongoAdapter } from '../src/adapters/mongo.js';
 import { MongoRuleStore } from '../src/adapters/mongo-rule-store.js';
 import { personRuleInput } from './helpers.js';
 
-const URI = process.env.MONGO_URI ?? 'mongodb://localhost:47017/vip_rules_test';
+const URI =
+  process.env.MONGO_URI ??
+  'mongodb://vip_dev:change_me_dev_only@localhost:47017/vip_rules_test?authSource=admin';
 const DB = 'vip_rules_test';
 
 async function reachable(): Promise<boolean> {

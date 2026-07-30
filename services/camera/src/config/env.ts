@@ -27,7 +27,7 @@ export interface ServiceConfig extends AppConfig {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
-  const app = loadAppConfig(env, { serviceName: 'camera', port: 8080 });
+  const app = loadAppConfig(env, { serviceName: 'camera', port: 8082 });
   const database = loadDatabaseConfig(env);
   const jwt = loadJwtConfig(env);
   const crypto = loadCryptoConfig(env);

@@ -21,9 +21,12 @@ export interface ServiceConfig extends AppConfig {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
   const app = loadAppConfig(env, { serviceName: 'gateway', port: 8080 });
   const jwt = loadJwtConfig(env);
+  // Upstream defaults MUST match each service's default `PORT` (see services/*/src/config/env.ts)
+  // so `pnpm dev:all` works with zero env config. The gateway itself owns 8080; identity is on
+  // 8089 to avoid colliding with it (8085 is reserved for the Python inference runtime).
   const g = parseEnv(
     z.object({
-      IDENTITY_URL: z.url().default('http://localhost:8080'),
+      IDENTITY_URL: z.url().default('http://localhost:8089'),
       TENANT_URL: z.url().default('http://localhost:8081'),
       CAMERA_URL: z.url().default('http://localhost:8082'),
       MEDIA_URL: z.url().default('http://localhost:8083'),

@@ -10,14 +10,16 @@ This repository is the **single source of truth** for the platform. It is design
 
 ## Start here
 
-| If you are…                                 | Read this first                                                                                                   |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| **A human engineer, new to the repo**       | [`docs/README.md`](docs/README.md) → [`docs/00-ENGINEERING-CONSTITUTION.md`](docs/00-ENGINEERING-CONSTITUTION.md) |
-| **An AI coding agent picking up work**      | [`tracking/AGENT-ONBOARDING.md`](tracking/AGENT-ONBOARDING.md) — the mandatory entry protocol                     |
-| **A product / business stakeholder**        | [`docs/architecture/01-EXECUTIVE-SUMMARY.md`](docs/architecture/01-EXECUTIVE-SUMMARY.md)                          |
-| **Looking for "what's done / what's next"** | [`tracking/PROGRESS.md`](tracking/PROGRESS.md) and [`tracking/ROADMAP.md`](tracking/ROADMAP.md)                   |
-| **Making a significant technical decision** | [`docs/adr/`](docs/adr/) (Architecture Decision Records)                                                          |
-| **Committing / branching / opening a PR**   | [`CONTRIBUTING.md`](CONTRIBUTING.md) (git workflow & Definition of Done)                                          |
+| If you are…                                 | Read this first                                                                                                             |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **Running it locally for the first time**   | [`RUN_LOCAL.md`](RUN_LOCAL.md) — clean-clone quickstart (install → dev:stack → seed → dev:all)                              |
+| **Developing day-to-day**                   | [`docs/setup/DAILY_DEVELOPMENT.md`](docs/setup/DAILY_DEVELOPMENT.md) · full guides in [`docs/setup/`](docs/setup/README.md) |
+| **A human engineer, new to the repo**       | [`docs/README.md`](docs/README.md) → [`docs/00-ENGINEERING-CONSTITUTION.md`](docs/00-ENGINEERING-CONSTITUTION.md)           |
+| **An AI coding agent picking up work**      | [`tracking/AGENT-ONBOARDING.md`](tracking/AGENT-ONBOARDING.md) — the mandatory entry protocol                               |
+| **A product / business stakeholder**        | [`docs/architecture/01-EXECUTIVE-SUMMARY.md`](docs/architecture/01-EXECUTIVE-SUMMARY.md)                                    |
+| **Looking for "what's done / what's next"** | [`tracking/PROGRESS.md`](tracking/PROGRESS.md) and [`tracking/ROADMAP.md`](tracking/ROADMAP.md)                             |
+| **Making a significant technical decision** | [`docs/adr/`](docs/adr/) (Architecture Decision Records)                                                                    |
+| **Committing / branching / opening a PR**   | [`CONTRIBUTING.md`](CONTRIBUTING.md) (git workflow & Definition of Done)                                                    |
 
 ---
 

@@ -12,7 +12,9 @@ import { connectMongo, type MongoAdapter } from '../src/adapters/mongo.js';
 import { MongoIncidentStore } from '../src/adapters/mongo-incident-store.js';
 import { personCandidate } from './helpers.js';
 
-const URI = process.env.MONGO_URI ?? 'mongodb://localhost:47017/vip_workflow_test';
+const URI =
+  process.env.MONGO_URI ??
+  'mongodb://vip_dev:change_me_dev_only@localhost:47017/vip_workflow_test?authSource=admin';
 const DB = 'vip_workflow_test';
 
 async function reachable(): Promise<boolean> {

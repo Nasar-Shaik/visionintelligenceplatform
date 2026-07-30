@@ -18,10 +18,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --exclude '**/*integration.test.ts'",
     "test:watch": "vitest",
     "lint": "eslint src",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test:integration": "vitest run integration"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1096.0",

@@ -11,7 +11,7 @@ describe('loadConfig (identity, via @vip/config)', () => {
   it('applies identity defaults + loads db/jwt groups', () => {
     const cfg = loadConfig(base);
     expect(cfg.serviceName).toBe('identity');
-    expect(cfg.port).toBe(8080);
+    expect(cfg.port).toBe(8089);
     expect(cfg.database.uri).toBe('mongodb://localhost:47017/vip_identity');
     expect(cfg.jwt.secret).toBe('test-secret-at-least-16-chars');
     expect(cfg.jwt.accessTtl).toBe('15m');

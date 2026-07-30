@@ -13,7 +13,9 @@ import { MongoChannelStore } from '../src/adapters/mongo-channel-store.js';
 import { MongoNotificationStore } from '../src/adapters/mongo-notification-store.js';
 import { inAppChannelInput } from './helpers.js';
 
-const URI = process.env.MONGO_URI ?? 'mongodb://localhost:47017/vip_notify_test';
+const URI =
+  process.env.MONGO_URI ??
+  'mongodb://vip_dev:change_me_dev_only@localhost:47017/vip_notify_test?authSource=admin';
 const DB = 'vip_notify_test';
 
 async function reachable(): Promise<boolean> {

@@ -10,7 +10,9 @@ import { connectMongo, type MongoAdapter } from '../src/adapters/mongo.js';
 import { AuthService } from '../src/application/auth-service.js';
 import { UserService } from '../src/application/user-service.js';
 
-const URI = process.env.MONGO_URI ?? 'mongodb://localhost:47017/vip_identity_test';
+const URI =
+  process.env.MONGO_URI ??
+  'mongodb://vip_dev:change_me_dev_only@localhost:47017/vip_identity_test?authSource=admin';
 const DB = `vip_identity_it_${Date.now()}`;
 
 let mongo: MongoAdapter | undefined;

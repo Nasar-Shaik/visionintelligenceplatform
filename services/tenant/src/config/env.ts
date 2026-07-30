@@ -17,7 +17,7 @@ export interface ServiceConfig extends AppConfig {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
-  const app = loadAppConfig(env, { serviceName: 'tenant', port: 8080 });
+  const app = loadAppConfig(env, { serviceName: 'tenant', port: 8081 });
   const database = loadDatabaseConfig(env);
   const serviceVersion = env.SERVICE_VERSION ?? env.npm_package_version ?? '0.1.0';
   return { ...app, serviceVersion, database };

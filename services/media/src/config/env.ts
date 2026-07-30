@@ -38,7 +38,7 @@ export interface ServiceConfig extends AppConfig {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
-  const app = loadAppConfig(env, { serviceName: 'media', port: 8080 });
+  const app = loadAppConfig(env, { serviceName: 'media', port: 8083 });
   const jwt = loadJwtConfig(env);
   const storage = loadStorageConfig(env);
   const internal = loadInternalConfig(env);

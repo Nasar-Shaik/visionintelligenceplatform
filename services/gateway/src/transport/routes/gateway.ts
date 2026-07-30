@@ -7,12 +7,26 @@
 import type { FastifyInstance } from 'fastify';
 import type { JwtOptions } from '@vip/auth';
 import { authenticateRequest } from '../edge-auth.js';
-import { buildUpstreamHeaders } from '../context.js';
+import { buildPublicUpstreamHeaders, buildUpstreamHeaders } from '../context.js';
 import { badGateway, notFound } from '../../application/errors.js';
 
 export interface GatewayRoutesDeps {
   jwt: JwtOptions;
   upstreams: Record<string, string>;
+}
+
+/**
+ * Public authentication bootstrap endpoints — proxied WITHOUT an access token, because they are how
+ * a client obtains one. Restricted to identity's login/refresh/logout POSTs. Credentials (login) and
+ * the opaque refresh token (refresh/logout) are still verified by the identity service; the gateway
+ * only relaxes the edge token check and forwards `x-tenant-id` (a lookup scope) for these paths.
+ */
+const PUBLIC_AUTH_PATHS = new Set(['/auth/login', '/auth/refresh', '/auth/logout']);
+
+function isPublicAuthPath(service: string, rest: string, method: string): boolean {
+  if (service !== 'identity' || method !== 'POST') return false;
+  const path = rest.split('?')[0] ?? rest;
+  return PUBLIC_AUTH_PATHS.has(path);
 }
 
 export function registerGatewayRoutes(app: FastifyInstance, deps: GatewayRoutesDeps): void {
@@ -30,7 +44,6 @@ export function registerGatewayRoutes(app: FastifyInstance, deps: GatewayRoutesD
   });
 
   app.all('/api/:service/*', async (request, reply) => {
-    const claims = await authenticateRequest(request, deps.jwt);
     const { service } = request.params as { service: string };
     const base = deps.upstreams[service];
     if (!base) throw notFound(`unknown upstream service: ${service}`);
@@ -39,7 +52,11 @@ export function registerGatewayRoutes(app: FastifyInstance, deps: GatewayRoutesD
     const rest = request.url.slice(`/api/${service}`.length) || '/';
     const target = base.replace(/\/$/, '') + rest;
 
-    const headers = buildUpstreamHeaders(request.headers, claims);
+    // Public auth bootstrap (login/refresh/logout) is proxied without a token; everything else
+    // requires a valid access token, whose claims become the trusted upstream context.
+    const headers = isPublicAuthPath(service, rest, request.method)
+      ? buildPublicUpstreamHeaders(request.headers)
+      : buildUpstreamHeaders(request.headers, await authenticateRequest(request, deps.jwt));
     const hasBody = request.method !== 'GET' && request.method !== 'HEAD' && request.body != null;
     const init: RequestInit = { method: request.method, headers };
     if (hasBody) {

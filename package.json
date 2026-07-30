@@ -12,6 +12,7 @@
   "scripts": {
     "build": "turbo run build",
     "test": "turbo run test",
+    "test:integration": "turbo run test:integration",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "check:imports": "node tools/import-graph/check-imports.mjs",
@@ -20,7 +21,11 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
     "dev:stack": "docker compose -f infra/docker/docker-compose.dev.yml up -d",
     "dev:stack:down": "docker compose -f infra/docker/docker-compose.dev.yml down",
-    "dev:stack:logs": "docker compose -f infra/docker/docker-compose.dev.yml logs -f"
+    "dev:stack:logs": "docker compose -f infra/docker/docker-compose.dev.yml logs -f",
+    "dev:all": "turbo run dev",
+    "dev:services": "turbo run dev --filter=./services/*",
+    "dev:web": "pnpm --filter @vip/console dev",
+    "seed": "pnpm --filter @vip/seed start"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -11,8 +11,16 @@
     },
     "lint": {},
     "test": {
+      "dependsOn": ["^build"]
+    },
+    "test:integration": {
       "dependsOn": ["^build"],
-      "outputs": ["coverage/**"]
+      "cache": false
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
     }
   }
 }

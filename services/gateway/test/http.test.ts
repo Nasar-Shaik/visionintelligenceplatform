@@ -22,6 +22,7 @@ beforeAll(async () => {
   // Stub upstream that echoes the headers it received.
   upstream = Fastify({ logger: false });
   upstream.all('/echo/*', async (request) => ({ headers: request.headers, url: request.url }));
+  upstream.all('/auth/*', async (request) => ({ headers: request.headers, url: request.url }));
   await upstream.listen({ host: '127.0.0.1', port: 0 });
   const addr = upstream.server.address();
   const port = typeof addr === 'object' && addr ? addr.port : 0;
@@ -165,5 +166,56 @@ describe('reverse proxy (trust boundary)', () => {
     expect(echoed['x-roles']).toBe('admin');
     // The `/api/identity` prefix was stripped.
     expect(res.json().url).toBe('/echo/thing?q=1');
+  });
+});
+
+describe('public auth passthrough (login/refresh/logout)', () => {
+  it('proxies POST /api/identity/auth/login WITHOUT a token, forwarding x-tenant-id', async () => {
+    const res = await gateway.inject({
+      method: 'POST',
+      url: '/api/identity/auth/login',
+      headers: { 'content-type': 'application/json', 'x-tenant-id': 'tnt_dev' },
+      payload: { email: 'a@b.com', password: 'secret' },
+    });
+    expect(res.statusCode).toBe(200);
+    const echoed = res.json().headers;
+    // x-tenant-id is a lookup scope on login (no token to derive it from) — it passes through.
+    expect(echoed['x-tenant-id']).toBe('tnt_dev');
+    expect(res.json().url).toBe('/auth/login');
+  });
+
+  it('strips privilege + internal headers on the public path (no identity spoofing)', async () => {
+    const res = await gateway.inject({
+      method: 'POST',
+      url: '/api/identity/auth/refresh',
+      headers: {
+        'x-tenant-id': 'tnt_dev',
+        'x-principal-id': 'evil',
+        'x-roles': 'admin',
+        'x-internal-key': 'stolen',
+      },
+      payload: { refreshToken: 'x' },
+    });
+    expect(res.statusCode).toBe(200);
+    const echoed = res.json().headers;
+    expect(echoed['x-principal-id']).toBeUndefined();
+    expect(echoed['x-roles']).toBeUndefined();
+    expect(echoed['x-internal-key']).toBeUndefined();
+    expect(echoed['x-tenant-id']).toBe('tnt_dev');
+  });
+
+  it('keeps auth on non-public identity paths and non-POST methods', async () => {
+    // A non-auth identity path still requires a token.
+    expect((await gateway.inject({ method: 'GET', url: '/api/identity/echo/x' })).statusCode).toBe(
+      401,
+    );
+    // GET to an auth path is not in the public allowlist (only POST login/refresh/logout).
+    expect(
+      (await gateway.inject({ method: 'GET', url: '/api/identity/auth/login' })).statusCode,
+    ).toBe(401);
+    // Another service's `/auth/login` is not public — only identity is.
+    expect(
+      (await gateway.inject({ method: 'POST', url: '/api/camera/auth/login' })).statusCode,
+    ).toBe(401);
   });
 });

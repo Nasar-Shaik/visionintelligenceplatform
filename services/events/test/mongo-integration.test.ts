@@ -13,7 +13,9 @@ import { EventIngestService } from '../src/application/event-ingest-service.js';
 import { InMemoryEventBus } from '@vip/messaging';
 import { detectionResult } from './helpers.js';
 
-const URI = process.env.MONGO_URI ?? 'mongodb://localhost:47017/vip_events_test';
+const URI =
+  process.env.MONGO_URI ??
+  'mongodb://vip_dev:change_me_dev_only@localhost:47017/vip_events_test?authSource=admin';
 const DB = 'vip_events_test';
 
 async function reachable(): Promise<boolean> {

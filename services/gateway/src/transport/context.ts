@@ -42,3 +42,32 @@ export function buildUpstreamHeaders(
   }
   return { ...out, ...forwardHeaders(claims) };
 }
+
+/**
+ * Trust headers stripped on the PUBLIC auth passthrough (login/refresh/logout — no token yet).
+ * `x-tenant-id` is deliberately NOT stripped here: on login it is the tenant the caller wants to
+ * authenticate against — a lookup scope, not a privilege claim (credentials are still verified by
+ * identity). The privilege headers (`x-principal-id`, `x-roles`) and the internal key are stripped
+ * so a client can never forge an identity or an internal caller on a public route.
+ */
+export const PUBLIC_STRIPPED_HEADERS = [
+  'x-principal-id',
+  'x-roles',
+  'x-internal-key',
+  'host',
+  'connection',
+  'content-length',
+] as const;
+
+/** Build headers for the public auth passthrough: incoming minus trust headers, no injected context. */
+export function buildPublicUpstreamHeaders(
+  incoming: Record<string, string | string[] | undefined>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const strip = new Set<string>(PUBLIC_STRIPPED_HEADERS);
+  for (const [k, v] of Object.entries(incoming)) {
+    if (v === undefined || strip.has(k.toLowerCase())) continue;
+    out[k] = Array.isArray(v) ? v.join(',') : v;
+  }
+  return out;
+}
