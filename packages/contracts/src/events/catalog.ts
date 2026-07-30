@@ -1,35 +1,22 @@
 /**
- * Event catalog — the machine-readable registry of event types (docs/architecture/09 §2).
- * Rule/workflow authors and plugins discover event types here. Adding an event type = adding
- * a versioned catalog entry (additive; never repurpose a field). All types are DOMAIN-NEUTRAL.
+ * Event catalog data (docs/architecture/09 §2) — the machine-readable registry binding each event
+ * `type` to its metadata (category, priority, PII, producer). The **single source of truth** for the
+ * Inference Runtime, Rule Engine, Dashboard, Alerts, Incidents, and future clients.
  *
- * This seed set covers the foundational perception/spatial/lifecycle events. Compositions,
- * connectors, and plugins register additional types (docs 24, 25, 20).
+ * Modular by concern (P2-2 G-3):
+ *   - [event-types.ts](event-types.ts)  — the canonical type-string constants, grouped by domain.
+ *   - [schema.ts](schema.ts)            — the `EventCatalogEntry` / `PiiClass` shapes.
+ *   - [validation.ts](validation.ts)    — `assertKnownEventType` / format helpers.
+ *   - this file                          — the assembled entries + `lookupEvent`/`isKnownEventType`.
+ *
+ * Adding an event type = a constant in event-types.ts + an entry here (additive; never rename).
  */
-import { z } from 'zod';
-import { EventType, CapabilityId } from '../common/primitives.js';
-import { EventPriority } from './priority.js';
-import { EventCategory } from './category.js';
+import type { EventCatalogEntry } from './schema.js';
 
-/** PII classification for governance/policy handling (docs/architecture/15, 28). */
-export const PiiClass = z.enum(['none', 'low', 'high']);
-export type PiiClass = z.infer<typeof PiiClass>;
-
-/** A catalog entry describing one event type. */
-export const EventCatalogEntry = z.object({
-  type: EventType,
-  description: z.string(),
-  /** Coarse classification for filtering/routing (rules, analytics) — stamped onto every envelope. */
-  category: EventCategory,
-  /** Capability family that typically produces it (informational). */
-  producer: CapabilityId.optional(),
-  defaultPriority: EventPriority,
-  pii: PiiClass.default('none'),
-});
-export type EventCatalogEntry = z.infer<typeof EventCatalogEntry>;
+export { PiiClass, EventCatalogEntry } from './schema.js';
 
 /**
- * Seed catalog. Keep entries alphabetically grouped by domain. Extend, never rename.
+ * Seed catalog. Keep entries grouped by domain. Extend, never rename.
  */
 export const EVENT_CATALOG: EventCatalogEntry[] = [
   // tenant / platform lifecycle (control-plane; no capability producer)
@@ -170,6 +157,103 @@ export const EVENT_CATALOG: EventCatalogEntry[] = [
     defaultPriority: 'low',
     pii: 'none',
   },
+  // inference runtime health (P2-2 G-3). The runtime emits an EventEnvelope on model failure — it
+  // NEVER creates an incident directly; rules/workflow decide what a failure means.
+  {
+    type: 'system.model.failed',
+    category: 'system',
+    description:
+      'An inference model/capability failed to load or errored during execution (self-healing/rollback signal).',
+    defaultPriority: 'high',
+    pii: 'none',
+  },
+  // operational lifecycle events (P2-2 G-3) — for monitoring/troubleshooting. These are EventEnvelopes
+  // like any other; rules decide what they mean. Distinct from the domain-specific media/device
+  // events above (kept for back-compat) — the `system.*` namespace is the canonical monitoring set.
+  {
+    type: 'system.camera.connected',
+    category: 'system',
+    description: 'A camera device connected / came online (operational).',
+    defaultPriority: 'low',
+    pii: 'none',
+  },
+  {
+    type: 'system.camera.disconnected',
+    category: 'system',
+    description: 'A camera device disconnected / went offline (operational).',
+    defaultPriority: 'high',
+    pii: 'none',
+  },
+  {
+    type: 'system.stream.started',
+    category: 'system',
+    description: 'A media stream ingestion worker started producing frames.',
+    defaultPriority: 'low',
+    pii: 'none',
+  },
+  {
+    type: 'system.stream.stopped',
+    category: 'system',
+    description: 'A media stream ingestion worker stopped.',
+    defaultPriority: 'low',
+    pii: 'none',
+  },
+  {
+    type: 'system.stream.reconnected',
+    category: 'system',
+    description: 'A lost media stream reconnected after backoff.',
+    defaultPriority: 'low',
+    pii: 'none',
+  },
+  {
+    type: 'system.stream.timeout',
+    category: 'system',
+    description: 'A media stream timed out awaiting frames.',
+    defaultPriority: 'medium',
+    pii: 'none',
+  },
+  {
+    type: 'system.recording.started',
+    category: 'system',
+    description: 'Recording began for a camera stream.',
+    defaultPriority: 'info',
+    pii: 'none',
+  },
+  {
+    type: 'system.recording.stopped',
+    category: 'system',
+    description: 'Recording stopped for a camera stream.',
+    defaultPriority: 'info',
+    pii: 'none',
+  },
+  {
+    type: 'system.model.loaded',
+    category: 'system',
+    description: 'An inference model/capability finished loading and is READY.',
+    defaultPriority: 'info',
+    pii: 'none',
+  },
+  {
+    type: 'system.model.unloaded',
+    category: 'system',
+    description: 'An inference model/capability was unloaded/disposed.',
+    defaultPriority: 'info',
+    pii: 'none',
+  },
+  {
+    type: 'system.pipeline.started',
+    category: 'system',
+    description: 'An inference session/pipeline started running for a camera.',
+    defaultPriority: 'low',
+    pii: 'none',
+  },
+  {
+    type: 'system.pipeline.stopped',
+    category: 'system',
+    description: 'An inference session/pipeline stopped running.',
+    defaultPriority: 'low',
+    pii: 'none',
+  },
   // perception
   {
     type: 'perception.object.detected',
@@ -210,6 +294,41 @@ export const EVENT_CATALOG: EventCatalogEntry[] = [
     producer: 'perception.fire-smoke',
     defaultPriority: 'critical',
     pii: 'none',
+  },
+  {
+    type: 'perception.weapon.detected',
+    category: 'security',
+    description: 'A weapon (firearm/knife) was detected (security-critical).',
+    producer: 'perception.weapon-detection',
+    defaultPriority: 'critical',
+    pii: 'none',
+  },
+  {
+    type: 'perception.face.detected',
+    category: 'perception',
+    description:
+      'A face was detected in a frame (detection only — identity matching is recognition.face.matched).',
+    producer: 'perception.face-detection',
+    defaultPriority: 'info',
+    pii: 'high',
+  },
+  {
+    type: 'perception.pose.detected',
+    category: 'perception',
+    description:
+      'A human body pose/skeleton was estimated (drives fall/fight/behaviour analytics).',
+    producer: 'perception.pose-detection',
+    defaultPriority: 'info',
+    pii: 'low',
+  },
+  {
+    type: 'safety.ppe.violation',
+    category: 'safety',
+    description:
+      'A PPE (personal protective equipment) violation was observed — required gear missing (hard-hat/vest/mask).',
+    producer: 'perception.ppe-detection',
+    defaultPriority: 'high',
+    pii: 'low',
   },
   {
     type: 'recognition.plate.read',
@@ -274,6 +393,66 @@ export const EVENT_CATALOG: EventCatalogEntry[] = [
     producer: 'object.removed',
     defaultPriority: 'medium',
     pii: 'none',
+  },
+  // behaviour analytics (higher-order events derived from detections + tracking + pose).
+  // Note: `behaviour` is a naming domain, not an event CATEGORY — these map onto the frozen
+  // category set (security / safety) so routing/filtering stays stable (see category.ts).
+  {
+    type: 'behavior.theft.suspected',
+    category: 'security',
+    description: 'A behaviour pattern consistent with theft/shoplifting was observed (advisory).',
+    producer: 'behavior.theft-detection',
+    defaultPriority: 'high',
+    pii: 'low',
+  },
+  {
+    type: 'behavior.fight.detected',
+    category: 'security',
+    description: 'A physical altercation / aggressive interaction was detected.',
+    producer: 'behavior.fight-detection',
+    defaultPriority: 'high',
+    pii: 'low',
+  },
+  {
+    type: 'behavior.fall.detected',
+    category: 'safety',
+    description: 'A person fall was detected (life-safety).',
+    producer: 'behavior.fall-detection',
+    defaultPriority: 'high',
+    pii: 'low',
+  },
+  {
+    type: 'behavior.loitering.detected',
+    category: 'security',
+    description: 'A subject loitered in an area beyond a behavioural threshold.',
+    producer: 'behavior.loitering-detection',
+    defaultPriority: 'medium',
+    pii: 'low',
+  },
+  // analytics (derived aggregates/insights over a window; not a single detection)
+  {
+    type: 'analytics.people.count',
+    category: 'analytics',
+    description: 'A people-count for a camera/zone over an interval.',
+    producer: 'analytics.people-counting',
+    defaultPriority: 'info',
+    pii: 'low',
+  },
+  {
+    type: 'analytics.queue.length',
+    category: 'analytics',
+    description: 'The measured length of a queue/line at a monitored point.',
+    producer: 'analytics.queue-analytics',
+    defaultPriority: 'info',
+    pii: 'low',
+  },
+  {
+    type: 'analytics.occupancy.changed',
+    category: 'analytics',
+    description: 'The occupancy of a zone crossed a level/threshold.',
+    producer: 'analytics.occupancy',
+    defaultPriority: 'low',
+    pii: 'low',
   },
   // tracking
   {

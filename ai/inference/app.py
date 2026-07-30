@@ -68,10 +68,25 @@ def main() -> None:
     config = load_config()
     registry = build_registry(config)  # initializes enabled capabilities (binds models by selector)
 
+    # Control plane (P2-2 G-3): the managed model registry + inference-session manager. In-memory for
+    # now (deterministic + persistence is a later concern); wired into the same HTTP surface.
+    from model_registry import ModelRegistry  # noqa: WPS433
+    from sessions import SessionManager  # noqa: WPS433
+
+    model_registry = ModelRegistry()
+    sessions = SessionManager()
+
     from server import build_server  # noqa: WPS433 - after registry so /ready is meaningful
 
     httpd = build_server(
-        config.host, config.port, registry, config.internal_api_key, "inference", _RUNTIME_VERSION
+        config.host,
+        config.port,
+        registry,
+        config.internal_api_key,
+        "inference",
+        _RUNTIME_VERSION,
+        model_registry=model_registry,
+        sessions=sessions,
     )
 
     def shutdown(_signum, _frame) -> None:  # noqa: ANN001

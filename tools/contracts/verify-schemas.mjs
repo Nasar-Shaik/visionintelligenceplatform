@@ -55,6 +55,14 @@ const REQUIRED = [
   'detection',
   'detection-result',
   'inference-request',
+  'model-registration',
+  'register-model-input',
+  'model-version',
+  'model-capability-profile',
+  'inference-session',
+  'start-inference-session-input',
+  'runtime-metrics',
+  'pipeline-definition',
 ];
 
 const errors = [];

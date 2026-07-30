@@ -38,6 +38,16 @@ import {
   StreamHealthSummary,
 } from '../src/media/media.js';
 import { Detection, DetectionResult, InferenceRequest } from '../src/perception/perception.js';
+import {
+  ModelRegistration,
+  RegisterModelInput,
+  ModelVersion,
+  ModelCapabilityProfile,
+  InferenceSession,
+  StartInferenceSessionInput,
+  RuntimeMetrics,
+  PipelineDefinition,
+} from '../src/inference/inference.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, '..', 'generated');
@@ -78,6 +88,14 @@ const schemas: Record<string, z.ZodType> = {
   detection: Detection,
   'detection-result': DetectionResult,
   'inference-request': InferenceRequest,
+  'model-registration': ModelRegistration,
+  'register-model-input': RegisterModelInput,
+  'model-version': ModelVersion,
+  'model-capability-profile': ModelCapabilityProfile,
+  'inference-session': InferenceSession,
+  'start-inference-session-input': StartInferenceSessionInput,
+  'runtime-metrics': RuntimeMetrics,
+  'pipeline-definition': PipelineDefinition,
 };
 
 mkdirSync(outDir, { recursive: true });

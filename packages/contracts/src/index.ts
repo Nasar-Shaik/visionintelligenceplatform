@@ -27,11 +27,17 @@ export * from './media/media.js';
 // perception / inference (P1-6)
 export * from './perception/perception.js';
 
+// inference platform: model registry, jobs, runtime metrics, pipeline (P2-2 G-3)
+export * from './inference/inference.js';
+
 // events
 export * from './events/priority.js';
 export * from './events/category.js';
 export * from './events/envelope.js';
+export * from './events/event-types.js';
+export * from './events/schema.js';
 export * from './events/catalog.js';
+export * from './events/validation.js';
 export * from './events/query.js';
 
 // rules + incident candidates (P1-7)

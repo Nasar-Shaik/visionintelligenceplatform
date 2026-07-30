@@ -18,3 +18,15 @@ class SelectorUnresolved(LookupError):
 
 class CapabilityLoadError(RuntimeError):
     """A capability could not be initialized (manifest/model load) — capability FAILED."""
+
+
+class NotFound(LookupError):
+    """A requested registry/job entity does not exist within the tenant scope. → 404."""
+
+
+class Conflict(ValueError):
+    """A registry/job operation conflicts with current state (duplicate, illegal transition). → 409."""
+
+
+class ValidationError(ValueError):
+    """An input failed validation before it reached the domain. → 400."""

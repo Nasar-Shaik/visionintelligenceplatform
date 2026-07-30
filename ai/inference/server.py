@@ -19,15 +19,26 @@ from __future__ import annotations
 import hmac
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Optional
+from urllib.parse import parse_qs, urlsplit
 
 from contracts import FrameContext
-from errors import ContextRequired, InferenceError
+from errors import Conflict, ContextRequired, InferenceError, NotFound, ValidationError
 from registry import CapabilityRegistry
 
 _MAX_BODY = 32 * 1024 * 1024  # 32 MiB (a base64 frame)
 
+_SESSION_ACTIONS = ("stop", "pause", "resume", "restart")
 
-def make_handler(registry: CapabilityRegistry, internal_key: str, service_name: str, version: str):
+
+def make_handler(
+    registry: CapabilityRegistry,
+    internal_key: str,
+    service_name: str,
+    version: str,
+    model_registry=None,
+    sessions=None,
+):
     class Handler(BaseHTTPRequestHandler):
         server_version = f"{service_name}/{version}"
 
@@ -53,28 +64,44 @@ def make_handler(registry: CapabilityRegistry, internal_key: str, service_name: 
 
         # --- routing ---------------------------------------------------------------
         def do_GET(self) -> None:  # noqa: N802
-            if self.path == "/health":
+            path, _ = _split(self.path)
+            segs = _segments(path)
+            if path == "/health":
                 self._ok({"status": "ok"})
-            elif self.path == "/ready":
+            elif path == "/ready":
                 self._ready()
-            elif self.path == "/":
+            elif path == "/":
                 self._ok({"name": service_name, "version": version, "runtimeVersion": version})
-            elif self.path == "/capabilities":
+            elif path == "/capabilities":
                 self._ok(registry.descriptors())
-            elif self.path == "/status":
+            elif path == "/status":
                 self._ok(registry.health())
-            elif self.path == "/metrics":
+            elif path == "/metrics":
                 self._metrics()
+            elif segs[:1] == ["models"]:
+                self._get_models(segs)
+            elif segs[:1] == ["sessions"]:
+                self._get_sessions(segs)
             else:
                 self._err(404, "not_found", f"no route for GET {self.path}")
 
         def do_POST(self) -> None:  # noqa: N802
-            if self.path != "/infer":
-                self._err(404, "not_found", f"no route for POST {self.path}")
-                return
             if not hmac.compare_digest(self.headers.get("x-internal-key", ""), internal_key):
                 self._err(401, "unauthenticated", "invalid internal credentials")
                 return
+            path, _ = _split(self.path)
+            segs = _segments(path)
+            if path == "/infer":
+                self._infer()
+            elif segs[:1] == ["models"]:
+                self._post_models(segs)
+            elif segs[:1] == ["sessions"]:
+                self._post_sessions(segs)
+            else:
+                self._err(404, "not_found", f"no route for POST {self.path}")
+
+        # --- /infer ----------------------------------------------------------------
+        def _infer(self) -> None:
             body, err = self._read_json()
             if err is not None:
                 self._err(400, "bad_request", err)
@@ -99,6 +126,146 @@ def make_handler(registry: CapabilityRegistry, internal_key: str, service_name: 
                 self._err(500, "inference_error", str(exc))
                 return
             self._ok(result)
+
+        # --- model registry (control plane; x-internal-key + x-tenant-id) ----------
+        def _tenant(self) -> Optional[str]:
+            tid = self.headers.get("x-tenant-id", "")
+            return tid if tid.strip() else None
+
+        def _get_models(self, segs) -> None:
+            if model_registry is None:
+                self._err(404, "not_found", "model registry not available")
+                return
+            tenant = self._tenant()
+            if tenant is None:
+                self._err(400, "bad_request", "x-tenant-id header is required")
+                return
+            _, query = _split(self.path)
+            q = parse_qs(query)
+            try:
+                if len(segs) == 1:  # GET /models
+                    models = model_registry.list(
+                        tenant,
+                        capability=_first(q.get("capability")),
+                        status=_first(q.get("status")),
+                    )
+                    self._ok([m.to_dict() for m in models])
+                elif len(segs) == 2:  # GET /models/{id}
+                    self._ok(model_registry.require(tenant, segs[1]).to_dict())
+                else:
+                    self._err(404, "not_found", f"no route for GET {self.path}")
+            except NotFound as exc:
+                self._err(404, "not_found", str(exc))
+
+        def _post_models(self, segs) -> None:
+            if model_registry is None:
+                self._err(404, "not_found", "model registry not available")
+                return
+            tenant = self._tenant()
+            if tenant is None:
+                self._err(400, "bad_request", "x-tenant-id header is required")
+                return
+            body, err = self._read_json()
+            if err is not None:
+                self._err(400, "bad_request", err)
+                return
+            try:
+                if len(segs) == 1:  # POST /models — register
+                    model = model_registry.register(
+                        tenant,
+                        name=str(body.get("name", "")),
+                        task=str(body.get("task", "")),
+                        engine=str(body.get("engine", "")),
+                        capabilities=body.get("capabilities"),
+                        capability_profile=body.get("capabilityProfile"),
+                        metadata=body.get("metadata"),
+                    )
+                    self._ok(model.to_dict(), status=201)
+                elif len(segs) == 3 and segs[2] == "versions":  # POST /models/{id}/versions
+                    model = model_registry.add_version(
+                        tenant,
+                        segs[1],
+                        version=str(body.get("version", "")),
+                        format=str(body.get("format", "")),
+                        artifact_uri=str(body.get("artifactUri", "")),
+                        engine=body.get("engine"),
+                        classes=body.get("classes"),
+                        input_shape=body.get("inputShape"),
+                        accelerator=body.get("accelerator", "cpu"),
+                        checksum=body.get("checksum"),
+                        metrics=body.get("metrics"),
+                        activate=bool(body.get("activate", False)),
+                    )
+                    self._ok(model.to_dict())
+                elif len(segs) == 3 and segs[2] == "activate":  # POST /models/{id}/activate
+                    self._ok(model_registry.activate(tenant, segs[1], str(body.get("version", ""))).to_dict())
+                elif len(segs) == 3 and segs[2] in ("enable", "disable"):
+                    fn = model_registry.enable if segs[2] == "enable" else model_registry.disable
+                    self._ok(fn(tenant, segs[1]).to_dict())
+                else:
+                    self._err(404, "not_found", f"no route for POST {self.path}")
+            except ValidationError as exc:
+                self._err(400, "bad_request", str(exc))
+            except NotFound as exc:
+                self._err(404, "not_found", str(exc))
+            except Conflict as exc:
+                self._err(409, "conflict", str(exc))
+
+        # --- inference sessions ----------------------------------------------------
+        def _get_sessions(self, segs) -> None:
+            if sessions is None:
+                self._err(404, "not_found", "sessions not available")
+                return
+            tenant = self._tenant()
+            if tenant is None:
+                self._err(400, "bad_request", "x-tenant-id header is required")
+                return
+            _, query = _split(self.path)
+            q = parse_qs(query)
+            try:
+                if len(segs) == 1:  # GET /sessions
+                    found = sessions.list(tenant, camera_id=_first(q.get("cameraId")), state=_first(q.get("state")))
+                    self._ok([s.to_dict() for s in found])
+                elif len(segs) == 2:  # GET /sessions/{id}
+                    self._ok(sessions.require(tenant, segs[1]).to_dict())
+                else:
+                    self._err(404, "not_found", f"no route for GET {self.path}")
+            except NotFound as exc:
+                self._err(404, "not_found", str(exc))
+
+        def _post_sessions(self, segs) -> None:
+            if sessions is None:
+                self._err(404, "not_found", "sessions not available")
+                return
+            tenant = self._tenant()
+            if tenant is None:
+                self._err(400, "bad_request", "x-tenant-id header is required")
+                return
+            body, err = self._read_json()
+            if err is not None and len(segs) == 1:
+                self._err(400, "bad_request", err)
+                return
+            try:
+                if len(segs) == 1:  # POST /sessions — start
+                    session = sessions.start(
+                        tenant,
+                        camera_id=str(body.get("cameraId", "")),
+                        capability_id=str(body.get("capabilityId", "")),
+                        model_id=body.get("modelId"),
+                        model_version=body.get("modelVersion"),
+                        engine=body.get("engine"),
+                    )
+                    self._ok(session.to_dict(), status=201)
+                elif len(segs) == 3 and segs[2] in _SESSION_ACTIONS:  # POST /sessions/{id}/{action}
+                    self._ok(sessions.transition(tenant, segs[1], segs[2]).to_dict())
+                else:
+                    self._err(404, "not_found", f"no route for POST {self.path}")
+            except ValidationError as exc:
+                self._err(400, "bad_request", str(exc))
+            except NotFound as exc:
+                self._err(404, "not_found", str(exc))
+            except Conflict as exc:
+                self._err(409, "conflict", str(exc))
 
         def _ready(self) -> None:
             try:
@@ -137,7 +304,32 @@ def make_handler(registry: CapabilityRegistry, internal_key: str, service_name: 
     return Handler
 
 
+def _split(path: str):
+    """Return (path_without_query, query_string)."""
+    parts = urlsplit(path)
+    return parts.path, parts.query
+
+
+def _segments(path: str):
+    """Path segments with no empties, e.g. '/models/mdl_1/versions' → ['models','mdl_1','versions']."""
+    return [s for s in path.split("/") if s]
+
+
+def _first(values):
+    return values[0] if values else None
+
+
 def build_server(
-    host: str, port: int, registry: CapabilityRegistry, internal_key: str, service_name: str, version: str
+    host: str,
+    port: int,
+    registry: CapabilityRegistry,
+    internal_key: str,
+    service_name: str,
+    version: str,
+    model_registry=None,
+    sessions=None,
 ) -> ThreadingHTTPServer:
-    return ThreadingHTTPServer((host, port), make_handler(registry, internal_key, service_name, version))
+    return ThreadingHTTPServer(
+        (host, port),
+        make_handler(registry, internal_key, service_name, version, model_registry, sessions),
+    )
