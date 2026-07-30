@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   Camera,
+  CameraCapabilities,
+  CameraMetadata,
   CameraProtocol,
+  CameraValidationInput,
+  CameraValidationResult,
   CaptureProfile,
   CreateCameraInput,
   StreamUrl,
@@ -83,6 +87,15 @@ describe('Camera (returned shape)', () => {
       status: 'enabled',
       capture: { ptz: false },
       health: { status: 'unknown' },
+      capabilities: {
+        ptz: false,
+        audio: false,
+        snapshot: true,
+        codecs: [],
+        resolutions: [],
+        protocols: ['rtsp'],
+      },
+      metadata: { tags: [] },
       hasCredentials: true,
       createdAt: now,
       updatedAt: now,
@@ -97,6 +110,53 @@ describe('Camera (returned shape)', () => {
 describe('CaptureProfile', () => {
   it('defaults ptz to false', () => {
     expect(CaptureProfile.parse({}).ptz).toBe(false);
+  });
+});
+
+describe('CameraCapabilities (G-1)', () => {
+  it('applies sensible defaults', () => {
+    const caps = CameraCapabilities.parse({});
+    expect(caps).toEqual({
+      ptz: false,
+      audio: false,
+      snapshot: true,
+      codecs: [],
+      resolutions: [],
+      protocols: [],
+    });
+  });
+
+  it('rejects a malformed resolution', () => {
+    expect(CameraCapabilities.safeParse({ resolutions: ['huge'] }).success).toBe(false);
+  });
+});
+
+describe('CameraMetadata (G-1)', () => {
+  it('defaults tags to an empty array', () => {
+    expect(CameraMetadata.parse({}).tags).toEqual([]);
+  });
+
+  it('accepts descriptive fields', () => {
+    const m = CameraMetadata.parse({ manufacturer: 'Axis', model: 'P3245', tags: ['lobby'] });
+    expect(m.manufacturer).toBe('Axis');
+    expect(m.tags).toEqual(['lobby']);
+  });
+});
+
+describe('CameraValidation (G-1)', () => {
+  it('CameraValidationInput is lenient (accepts a non-stream URL for reporting)', () => {
+    // Unlike StreamUrl, the validation input does not reject — it lets the service report checks.
+    expect(
+      CameraValidationInput.safeParse({ protocol: 'rtsp', streamUrl: 'http://x/y' }).success,
+    ).toBe(true);
+  });
+
+  it('CameraValidationResult carries checks with an informational flag defaulting false', () => {
+    const r = CameraValidationResult.parse({
+      valid: true,
+      checks: [{ name: 'stream-url-scheme', passed: true }],
+    });
+    expect(r.checks[0]?.informational).toBe(false);
   });
 });
 

@@ -31,19 +31,33 @@ headers). Every route is **permission-gated** (deny-by-default via
 
 ## Endpoints
 
-| Method | Path                              | Purpose                                  | Auth            |
-| ------ | --------------------------------- | ---------------------------------------- | --------------- |
-| POST   | `/cameras`                        | Onboard a camera (vault credentials)     | `camera:create` |
-| GET    | `/cameras`                        | List the tenant's cameras                | `camera:read`   |
-| GET    | `/cameras/:id`                    | Get one camera                           | `camera:read`   |
-| PATCH  | `/cameras/:id`                    | Update / re-vault credentials            | `camera:update` |
-| DELETE | `/cameras/:id`                    | Remove from inventory                    | `camera:delete` |
-| GET    | `/cameras/:id/health`             | Observed health (`unknown` until P1-4)   | `camera:read`   |
-| POST   | `/cameras/discover`               | ONVIF/network discovery — **stub (501)** | `camera:create` |
-| GET    | `/health` `/ready` `/metrics` `/` | liveness / readiness / metrics / info    | —               |
+| Method | Path                              | Purpose                                              | Auth            |
+| ------ | --------------------------------- | ---------------------------------------------------- | --------------- |
+| POST   | `/cameras`                        | Onboard a camera (vault credentials)                 | `camera:create` |
+| GET    | `/cameras`                        | List the tenant's cameras                            | `camera:read`   |
+| GET    | `/cameras/:id`                    | Get one camera                                       | `camera:read`   |
+| PATCH  | `/cameras/:id`                    | Update / re-vault credentials / metadata / caps      | `camera:update` |
+| DELETE | `/cameras/:id`                    | Remove from inventory                                | `camera:delete` |
+| GET    | `/cameras/:id/health`             | Observed health (`unknown` until probed)             | `camera:read`   |
+| POST   | `/cameras/discover`               | ONVIF/network discovery — **stub (501)**             | `camera:create` |
+| POST   | `/cameras/validate`               | **G-1** Test-connection: validate a candidate config | `camera:read`   |
+| POST   | `/cameras/:id/validate`           | **G-1** Validate an existing camera's config         | `camera:read`   |
+| GET    | `/cameras/:id/capabilities`       | **G-1** Declared capabilities (ptz/audio/codecs/…)   | `camera:read`   |
+| POST   | `/cameras/:id/health/check`       | **G-1** Active re-check → records a health snapshot  | `camera:update` |
+| POST   | `/cameras/:id/enable`             | **G-1** Set status `enabled`                         | `camera:update` |
+| POST   | `/cameras/:id/disable`            | **G-1** Set status `disabled`                        | `camera:update` |
+| GET    | `/health` `/ready` `/metrics` `/` | liveness / readiness / metrics / info                | —               |
 
-Publishes `camera.registered`, `camera.updated`, `camera.removed`, `camera.health.changed` via a
+Publishes `camera.registered`, `camera.updated`, `camera.removed`, `camera.health.checked` via a
 publisher seam (NATS wiring in P1-5). Payloads carry ids/metadata only — **never** credentials.
+
+**P2-2 G-1 (enhancements).** A camera now carries **`capabilities`** (what it supports — ptz, audio,
+snapshot, codecs, resolutions, protocols; derived from protocol + capture at onboarding, or declared)
+and **`metadata`** (operator/device fields — manufacturer, model, firmware, serial, location, tags,
+notes). **Validation** (`/cameras/validate`) is a deterministic, no-persistence "test connection"
+that reports structured checks (scheme, no-embedded-credentials, protocol match, resolution format);
+active network reachability is intentionally _not_ proven here — that is the ingestion path's job
+(Media enabler **G-2**), reported as an informational check only.
 
 ## Configuration (env)
 

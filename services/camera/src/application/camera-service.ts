@@ -11,7 +11,12 @@
  */
 import type {
   Camera,
+  CameraCapabilities,
+  CameraHealth,
   CameraHealthReport,
+  CameraStatus,
+  CameraValidationInput,
+  CameraValidationResult,
   CreateCameraInput,
   StreamConnection,
   UpdateCameraInput,
@@ -21,8 +26,11 @@ import type { SecretBox } from '@vip/crypto';
 import { MongoServerError } from 'mongodb';
 import {
   applyCameraUpdate,
+  defaultCapabilities,
+  defaultMetadata,
   newCamera,
   toCamera,
+  validateCameraConfig,
   type Clock,
   type IdGen,
   type CameraDoc,
@@ -106,6 +114,10 @@ export class CameraService {
           streamUrl: updated.streamUrl,
           status: updated.status,
           capture: updated.capture,
+          // Backfill defaults so a pre-G-1 camera gains these fields on its next write.
+          capabilities:
+            updated.capabilities ?? defaultCapabilities(updated.protocol, updated.capture),
+          metadata: updated.metadata ?? defaultMetadata(),
           credentialCipher: updated.credentialCipher,
           updatedAt: updated.updatedAt,
         },
@@ -134,6 +146,76 @@ export class CameraService {
   async health(scope: TenantScope, cameraId: string): Promise<CameraHealthReport> {
     const doc = await this.require(scope, cameraId);
     return { cameraId, ...doc.health };
+  }
+
+  /** A camera's declared capabilities (P2-2 G-1), defaulting for pre-G-1 documents. */
+  async capabilities(scope: TenantScope, cameraId: string): Promise<CameraCapabilities> {
+    const doc = await this.require(scope, cameraId);
+    return doc.capabilities ?? defaultCapabilities(doc.protocol, doc.capture);
+  }
+
+  /** Validate a candidate configuration before onboarding (P2-2 G-1) — pure, no persistence. */
+  validateConfig(input: CameraValidationInput): CameraValidationResult {
+    return validateCameraConfig(input);
+  }
+
+  /** Validate an existing camera's stored configuration (P2-2 G-1). */
+  async validateExisting(scope: TenantScope, cameraId: string): Promise<CameraValidationResult> {
+    const doc = await this.require(scope, cameraId);
+    return validateCameraConfig({
+      protocol: doc.protocol,
+      streamUrl: doc.streamUrl,
+      capture: doc.capture,
+      ...(doc.credentialCipher
+        ? { credentials: { username: 'vaulted', password: 'vaulted' } }
+        : {}),
+    });
+  }
+
+  /**
+   * Actively re-check a camera's health (P2-2 G-1) and record the snapshot. Deterministic: it runs
+   * the configuration validation (no network). An invalid config → `unhealthy`; a valid config keeps
+   * its current observed status (live connectivity is proven by ingestion, Media enabler G-2) but
+   * refreshes `lastCheckedAt`. Returns the recorded report.
+   */
+  async checkHealth(scope: TenantScope, cameraId: string): Promise<CameraHealthReport> {
+    const doc = await this.require(scope, cameraId);
+    const result = validateCameraConfig({
+      protocol: doc.protocol,
+      streamUrl: doc.streamUrl,
+      capture: doc.capture,
+    });
+    const at = this.clock.now().toISOString();
+    const health: CameraHealth = result.valid
+      ? { status: doc.health.status, lastCheckedAt: at }
+      : {
+          status: 'unhealthy',
+          lastCheckedAt: at,
+          detail: `configuration invalid: ${result.checks
+            .filter((c) => !c.passed && !c.informational)
+            .map((c) => c.name)
+            .join(', ')}`,
+        };
+    await this.cameras.updateOne(scope, { _id: cameraId }, { $set: { health, updatedAt: at } });
+    await this.publisher.publish({
+      type: 'camera.health.checked',
+      tenantId: scope.tenantId,
+      payload: { cameraId, status: health.status },
+    });
+    return { cameraId, ...health };
+  }
+
+  /** Set a camera's administrative status (P2-2 G-1 enable/disable convenience). */
+  async setStatus(scope: TenantScope, cameraId: string, status: CameraStatus): Promise<Camera> {
+    const doc = await this.require(scope, cameraId);
+    const at = this.clock.now().toISOString();
+    await this.cameras.updateOne(scope, { _id: cameraId }, { $set: { status, updatedAt: at } });
+    await this.publisher.publish({
+      type: 'camera.updated',
+      tenantId: scope.tenantId,
+      payload: { cameraId, credentialsRotated: false },
+    });
+    return toCamera({ ...doc, status, updatedAt: at });
   }
 
   /**

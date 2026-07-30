@@ -296,3 +296,136 @@ describe('discovery stub', () => {
     expect(res.statusCode).toBe(501);
   });
 });
+
+describe('G-1 enhancements: metadata + capabilities', () => {
+  it('round-trips metadata and derives capabilities on create', async () => {
+    const t = await token(TENANT, ['admin']);
+    const res = await create(t, {
+      ...validCamera,
+      capture: { codec: 'h264', resolution: '1920x1080', ptz: true },
+      metadata: { manufacturer: 'Axis', tags: ['lobby', 'exterior'] },
+    });
+    expect(res.statusCode).toBe(201);
+    const cam = res.json().data;
+    expect(cam.metadata).toEqual({ manufacturer: 'Axis', tags: ['lobby', 'exterior'] });
+    expect(cam.capabilities).toMatchObject({
+      ptz: true,
+      codecs: ['h264'],
+      resolutions: ['1920x1080'],
+      protocols: ['rtsp'],
+    });
+  });
+
+  it('updates metadata via PATCH and exposes GET /cameras/:id/capabilities', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = (await create(t)).json().data.id;
+
+    const patched = await app.inject({
+      method: 'PATCH',
+      url: `/cameras/${id}`,
+      headers: auth(t),
+      payload: { metadata: { location: 'North wing', tags: ['x'] } },
+    });
+    expect(patched.json().data.metadata).toEqual({ location: 'North wing', tags: ['x'] });
+
+    const caps = await app.inject({
+      method: 'GET',
+      url: `/cameras/${id}/capabilities`,
+      headers: auth(t),
+    });
+    expect(caps.statusCode).toBe(200);
+    expect(caps.json().data.protocols).toEqual(['rtsp']);
+  });
+});
+
+describe('G-1 enhancements: validation (test-connection)', () => {
+  it('validates a candidate config without persisting (valid)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/cameras/validate',
+      headers: auth(await token(TENANT, ['viewer'])), // read-only diagnostic
+      payload: { protocol: 'rtsp', streamUrl: 'rtsp://cam.local:554/s' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.valid).toBe(true);
+    // Nothing persisted.
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/cameras',
+          headers: auth(await token(TENANT, ['admin'])),
+        })
+      ).json().data.length,
+    ).toBe(0);
+  });
+
+  it('reports structured failures for a bad config (protocol mismatch)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/cameras/validate',
+      headers: auth(await token(TENANT, ['admin'])),
+      payload: { protocol: 'rtsp', streamUrl: 'rtmp://cam.local/live' },
+    });
+    expect(res.json().data.valid).toBe(false);
+    const failed = res
+      .json()
+      .data.checks.filter((c: { passed: boolean; informational: boolean }) => !c.passed);
+    expect(failed.map((c: { name: string }) => c.name)).toContain('protocol-matches-url');
+  });
+
+  it('validates an existing camera via POST /cameras/:id/validate', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = (await create(t)).json().data.id;
+    const res = await app.inject({
+      method: 'POST',
+      url: `/cameras/${id}/validate`,
+      headers: auth(t),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.valid).toBe(true);
+  });
+});
+
+describe('G-1 enhancements: status + active health-check', () => {
+  it('enable/disable convenience endpoints flip status (camera:update gated)', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = (await create(t)).json().data.id;
+
+    const disabled = await app.inject({
+      method: 'POST',
+      url: `/cameras/${id}/disable`,
+      headers: auth(t),
+    });
+    expect(disabled.json().data.status).toBe('disabled');
+
+    const enabled = await app.inject({
+      method: 'POST',
+      url: `/cameras/${id}/enable`,
+      headers: auth(t),
+    });
+    expect(enabled.json().data.status).toBe('enabled');
+
+    // A viewer cannot flip status.
+    const viewer = await token(TENANT, ['viewer']);
+    expect(
+      (await app.inject({ method: 'POST', url: `/cameras/${id}/disable`, headers: auth(viewer) }))
+        .statusCode,
+    ).toBe(403);
+  });
+
+  it('active health-check records a snapshot with lastCheckedAt', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = (await create(t)).json().data.id;
+    const res = await app.inject({
+      method: 'POST',
+      url: `/cameras/${id}/health/check`,
+      headers: auth(t),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toMatchObject({ cameraId: id });
+    expect(res.json().data.lastCheckedAt).toBeTruthy();
+    // Config is valid → status stays observed 'unknown' (live connectivity proven by ingestion/G-2).
+    expect(res.json().data.status).toBe('unknown');
+  });
+});

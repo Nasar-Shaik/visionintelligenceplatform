@@ -6,7 +6,15 @@
 import { describe, expect, it } from 'vitest';
 import { SecretBox } from '@vip/crypto';
 import type { CreateCameraInput } from '@vip/contracts';
-import { applyCameraUpdate, newCamera, toCamera, type CameraDoc } from '../src/domain/camera.js';
+import {
+  applyCameraUpdate,
+  defaultCapabilities,
+  defaultMetadata,
+  newCamera,
+  toCamera,
+  validateCameraConfig,
+  type CameraDoc,
+} from '../src/domain/camera.js';
 
 const at = new Date('2026-07-28T00:00:00.000Z');
 const vault = SecretBox.fromSecret('test-secret-at-least-16-chars');
@@ -78,5 +86,106 @@ describe('applyCameraUpdate', () => {
     const next = vault.seal('new');
     const updated = applyCameraUpdate(base(), { name: 'Front' }, next, at);
     expect(updated.credentialCipher).toBe(next);
+  });
+});
+
+// --- P2-2 G-1 ---
+
+describe('capabilities & metadata (G-1)', () => {
+  it('derives default capabilities from protocol + capture', () => {
+    const caps = defaultCapabilities('rtsp', { codec: 'h264', resolution: '1920x1080', ptz: true });
+    expect(caps).toEqual({
+      ptz: true,
+      audio: false,
+      snapshot: true,
+      codecs: ['h264'],
+      resolutions: ['1920x1080'],
+      protocols: ['rtsp'],
+    });
+  });
+
+  it('newCamera derives capabilities and empty metadata by default', () => {
+    const doc = newCamera('tnt_a', 'cam_1', input, null, at);
+    expect(doc.capabilities).toEqual(defaultCapabilities('rtsp', doc.capture));
+    expect(doc.metadata).toEqual({ tags: [] });
+    expect(toCamera(doc).capabilities?.protocols).toEqual(['rtsp']);
+  });
+
+  it('newCamera honours an operator capabilities/metadata declaration', () => {
+    const doc = newCamera(
+      'tnt_a',
+      'cam_1',
+      {
+        ...input,
+        capabilities: {
+          ptz: true,
+          audio: true,
+          snapshot: false,
+          codecs: ['h265'],
+          resolutions: [],
+          protocols: ['rtsp'],
+        },
+        metadata: { manufacturer: 'Axis', tags: ['lobby'] },
+      },
+      null,
+      at,
+    );
+    expect(doc.capabilities?.audio).toBe(true);
+    expect(doc.metadata?.manufacturer).toBe('Axis');
+  });
+
+  it('applyCameraUpdate replaces metadata/capabilities only when provided', () => {
+    const doc = newCamera('tnt_a', 'cam_1', input, null, at);
+    const updated = applyCameraUpdate(doc, { metadata: { tags: ['exterior'] } }, undefined, at);
+    expect(updated.metadata).toEqual({ tags: ['exterior'] });
+    expect(updated.capabilities).toEqual(doc.capabilities); // untouched
+  });
+
+  it('toCamera backfills defaults for a pre-G-1 document', () => {
+    const legacy = newCamera('tnt_a', 'cam_1', input, null, at);
+    delete legacy.capabilities;
+    delete legacy.metadata;
+    const pub = toCamera(legacy);
+    expect(pub.capabilities).toEqual(defaultCapabilities('rtsp', legacy.capture));
+    expect(pub.metadata).toEqual(defaultMetadata());
+  });
+});
+
+describe('validateCameraConfig (G-1)', () => {
+  it('passes a well-formed rtsp config; reachability is informational only', () => {
+    const result = validateCameraConfig({
+      protocol: 'rtsp',
+      streamUrl: 'rtsp://cam.local:554/stream',
+      capture: { resolution: '1920x1080', ptz: false },
+    });
+    expect(result.valid).toBe(true);
+    const reach = result.checks.find((c) => c.name === 'reachability');
+    expect(reach?.informational).toBe(true);
+    expect(reach?.passed).toBe(true);
+  });
+
+  it('fails when the URL scheme does not match the protocol', () => {
+    const result = validateCameraConfig({ protocol: 'rtsp', streamUrl: 'rtmp://cam.local/live' });
+    expect(result.valid).toBe(false);
+    expect(result.checks.find((c) => c.name === 'protocol-matches-url')?.passed).toBe(false);
+  });
+
+  it('fails when credentials are embedded in the URL', () => {
+    const result = validateCameraConfig({
+      protocol: 'rtsp',
+      streamUrl: 'rtsp://admin:secret@cam.local:554/stream',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.checks.find((c) => c.name === 'no-embedded-credentials')?.passed).toBe(false);
+  });
+
+  it('fails on a malformed resolution', () => {
+    const result = validateCameraConfig({
+      protocol: 'rtsp',
+      streamUrl: 'rtsp://cam.local/s',
+      capture: { resolution: 'huge', ptz: false },
+    });
+    expect(result.valid).toBe(false);
+    expect(result.checks.find((c) => c.name === 'capture-resolution-format')?.passed).toBe(false);
   });
 });

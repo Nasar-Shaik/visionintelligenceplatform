@@ -73,6 +73,47 @@ export const CameraHealth = z.object({
 export type CameraHealth = z.infer<typeof CameraHealth>;
 
 /**
+ * What a camera/stream supports (P2-2 G-1). Declared at onboarding — defaults are derived from the
+ * protocol + capture profile — and editable by an operator; later populated by discovery/ONVIF.
+ * Drives the console's Live Monitoring / PTZ affordances without decoding the stream.
+ */
+export const CameraCapabilities = z.object({
+  /** Pan / tilt / zoom controllable. */
+  ptz: z.boolean().default(false),
+  /** The stream carries an audio track. */
+  audio: z.boolean().default(false),
+  /** A still snapshot can be pulled. */
+  snapshot: z.boolean().default(true),
+  /** Codecs the source is known to emit. */
+  codecs: z.array(CameraCodec).default([]),
+  /** Resolutions the source is known to emit (WIDTHxHEIGHT). */
+  resolutions: z
+    .array(z.string().regex(/^\d{2,5}x\d{2,5}$/, 'must be WIDTHxHEIGHT'))
+    .max(20)
+    .default([]),
+  /** Transports the camera can be reached on. */
+  protocols: z.array(CameraProtocol).default([]),
+});
+export type CameraCapabilities = z.infer<typeof CameraCapabilities>;
+
+/**
+ * Operator / device metadata (P2-2 G-1) — descriptive, non-connection fields for grouping, search,
+ * and audit. Distinct from the capture/connection config; never affects ingestion.
+ */
+export const CameraMetadata = z.object({
+  manufacturer: z.string().max(200).optional(),
+  model: z.string().max(200).optional(),
+  firmware: z.string().max(100).optional(),
+  serialNumber: z.string().max(200).optional(),
+  /** Human location description (the structural location is `zoneId`). */
+  location: z.string().max(500).optional(),
+  /** Free-form operator tags for grouping/filtering. */
+  tags: z.array(z.string().min(1).max(50)).max(50).default([]),
+  notes: z.string().max(2000).optional(),
+});
+export type CameraMetadata = z.infer<typeof CameraMetadata>;
+
+/**
  * A camera as persisted/returned. Tenant + zone scoped. Credentials are NOT present — only
  * `hasCredentials` reveals whether any are vaulted (Law 5 isolation + secret-safety).
  */
@@ -87,6 +128,10 @@ export const Camera = z.object({
   status: CameraStatus,
   capture: CaptureProfile,
   health: CameraHealth,
+  /** What the camera supports (P2-2 G-1). Derived at onboarding; operator- and discovery-editable. */
+  capabilities: CameraCapabilities,
+  /** Operator/device metadata (P2-2 G-1). */
+  metadata: CameraMetadata,
   hasCredentials: z.boolean(),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -102,6 +147,10 @@ export const CreateCameraInput = z
     streamUrl: StreamUrl,
     credentials: StreamCredentials.optional(),
     capture: CaptureProfile.optional(),
+    /** Operator/device metadata (P2-2 G-1). */
+    metadata: CameraMetadata.optional(),
+    /** Declared capabilities (P2-2 G-1). Omit to derive defaults from protocol + capture. */
+    capabilities: CameraCapabilities.optional(),
   })
   .refine((c) => c.streamUrl.toLowerCase().startsWith(c.protocol), {
     message: 'streamUrl scheme must match protocol',
@@ -122,6 +171,10 @@ export const UpdateCameraInput = z
     status: CameraStatus.optional(),
     credentials: StreamCredentials.optional(),
     capture: CaptureProfile.optional(),
+    /** Replace operator/device metadata (P2-2 G-1). */
+    metadata: CameraMetadata.optional(),
+    /** Replace declared capabilities (P2-2 G-1). */
+    capabilities: CameraCapabilities.optional(),
   })
   .refine((v) => Object.values(v).some((x) => x !== undefined), {
     message: 'at least one field is required',
@@ -140,3 +193,41 @@ export const DiscoverCamerasInput = z.object({
   subnet: z.string().max(64).optional(),
 });
 export type DiscoverCamerasInput = z.infer<typeof DiscoverCamerasInput>;
+
+/**
+ * Candidate camera configuration to validate before onboarding (P2-2 G-1, "test connection").
+ * Deliberately **lenient** (no schema-level refinements) so the validator can *report* problems as
+ * structured checks instead of rejecting the request — the console uses it to pre-flight a config.
+ */
+export const CameraValidationInput = z.object({
+  protocol: CameraProtocol,
+  streamUrl: z.string().min(1).max(2048),
+  credentials: StreamCredentials.optional(),
+  capture: CaptureProfile.optional(),
+});
+export type CameraValidationInput = z.infer<typeof CameraValidationInput>;
+
+/** One deterministic validation check (P2-2 G-1). */
+export const CameraValidationCheck = z.object({
+  /** Stable machine name, e.g. `stream-url-scheme`, `protocol-matches-url`, `reachability`. */
+  name: z.string().min(1),
+  passed: z.boolean(),
+  /** Human explanation when a check fails, or an informational note. */
+  message: z.string().max(500).optional(),
+  /**
+   * Informational checks (e.g. `reachability`, deferred to ingestion in G-2) do not affect `valid`.
+   */
+  informational: z.boolean().default(false),
+});
+export type CameraValidationCheck = z.infer<typeof CameraValidationCheck>;
+
+/**
+ * Result of validating a camera configuration or an existing camera (P2-2 G-1). `valid` is the AND
+ * of all non-informational checks — active network reachability is intentionally NOT proven here
+ * (that is the ingestion path's job, arriving with the Media enabler G-2).
+ */
+export const CameraValidationResult = z.object({
+  valid: z.boolean(),
+  checks: z.array(CameraValidationCheck),
+});
+export type CameraValidationResult = z.infer<typeof CameraValidationResult>;

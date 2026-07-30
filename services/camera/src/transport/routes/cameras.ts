@@ -6,7 +6,12 @@
  * discovery is stubbed (501) — the route contract exists ahead of the implementation (P1-4+).
  */
 import type { FastifyInstance } from 'fastify';
-import { CreateCameraInput, DiscoverCamerasInput, UpdateCameraInput } from '@vip/contracts';
+import {
+  CameraValidationInput,
+  CreateCameraInput,
+  DiscoverCamerasInput,
+  UpdateCameraInput,
+} from '@vip/contracts';
 import { TenantScope } from '@vip/tenancy';
 import type { CameraService } from '../../application/camera-service.js';
 import type { Auth } from '../plugins/auth.js';
@@ -47,6 +52,13 @@ export function registerCameraRoutes(app: FastifyInstance, deps: CameraRoutesDep
     },
   );
 
+  // Validate a candidate configuration before onboarding (P2-2 G-1, "test connection"). No
+  // persistence; reports issues as structured checks. Static path — before `/cameras/:id`.
+  app.post('/cameras/validate', { preHandler: auth.authorize('camera:read') }, async (request) => {
+    const input = parseBody(CameraValidationInput, request.body);
+    return success(service.validateConfig(input));
+  });
+
   app.get<{ Params: CameraParams }>(
     '/cameras/:id',
     { preHandler: auth.authorize('camera:read') },
@@ -82,6 +94,54 @@ export function registerCameraRoutes(app: FastifyInstance, deps: CameraRoutesDep
     async (request, reply) => {
       const scope = scopeOf(request.principal!.tenantId);
       return reply.send(success(await service.health(scope, request.params.id)));
+    },
+  );
+
+  // --- P2-2 G-1 camera-service enhancements ---
+
+  app.get<{ Params: CameraParams }>(
+    '/cameras/:id/capabilities',
+    { preHandler: auth.authorize('camera:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      return reply.send(success(await service.capabilities(scope, request.params.id)));
+    },
+  );
+
+  app.post<{ Params: CameraParams }>(
+    '/cameras/:id/validate',
+    { preHandler: auth.authorize('camera:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      return reply.send(success(await service.validateExisting(scope, request.params.id)));
+    },
+  );
+
+  // Active health re-check — deterministic config validation, persists the snapshot (mutates).
+  app.post<{ Params: CameraParams }>(
+    '/cameras/:id/health/check',
+    { preHandler: auth.authorize('camera:update') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      return reply.send(success(await service.checkHealth(scope, request.params.id)));
+    },
+  );
+
+  app.post<{ Params: CameraParams }>(
+    '/cameras/:id/enable',
+    { preHandler: auth.authorize('camera:update') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      return reply.send(success(await service.setStatus(scope, request.params.id, 'enabled')));
+    },
+  );
+
+  app.post<{ Params: CameraParams }>(
+    '/cameras/:id/disable',
+    { preHandler: auth.authorize('camera:update') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      return reply.send(success(await service.setStatus(scope, request.params.id, 'disabled')));
     },
   );
 }
