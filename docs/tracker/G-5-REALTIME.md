@@ -1,6 +1,6 @@
 # G-5 — Real-Time Event Delivery Layer
 
-> **Milestone:** P2-2 **G-5** · **Status:** ✅ code + tests complete · ⏳ **Architect review pending**
+> **Milestone:** P2-2 **G-5** · **Status:** ✅ **ACCEPTED** (Architect review 2026-07-31)
 > **Scope:** the platform's production-grade real-time communication layer — SSE at the gateway edge
 > streaming live incidents/alerts/events/system status, over the tenant-partitioned backbone.
 > No new service (the gateway gains an event-fan-out edge). **Author:** Claude · _2026-07-31_
@@ -73,4 +73,4 @@ All additive behind the shipped `ConnectionSink` + ring-buffer + priority seams.
 - [x] Contract-first (+2 → 55); StreamHub transport-agnostic; tenant-isolated; permission-gated.
 - [x] Deterministic tests (gateway 42, console 41, contracts 128); all gates green.
 - [x] All 7 Architect refinements incorporated; validation matrix documented.
-- [ ] **Architect review of G-5** ⏳ — then AI ingestion / RTSP / CV runtime.
+- [x] **Architect review of G-5** ✅ **APPROVED** (2026-07-31) — foundational platform (G-1…G-5) complete; AI Processing Phase authorized.
