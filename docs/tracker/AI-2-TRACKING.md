@@ -1,6 +1,6 @@
 # AI-2 — Object Tracking + Zones + Entry/Exit Counting
 
-> **Milestone:** AI Processing Phase **AI-2** · **Status:** ✅ code + tests complete · ⏳ **Architect review pending**
+> **Milestone:** AI Processing Phase **AI-2** · **Status:** ✅ **ACCEPTED** (Architect review 2026-07-31) — AI-3 authorized
 > **Scope:** add continuous object identity (**Tracks**), generic **Zones**, and business-neutral
 > **entry/exit + occupancy counting** to the AI-1 pipeline — **in `ai/inference`, no new service**.
 > **North star (Architect):** _optimize for the Track contract, not the tracker._
@@ -95,4 +95,4 @@ central zone at frame 2 → 1 transition + 1 occupancy event; 8 events total; tr
 - [x] Zone Engine geometry-only; Counting Engine business-neutral, confirmed-tracks-only; coordinate seam.
 - [x] Playground tracks.json + diagnostics overlays + tracking options; runtime boundary held (events only).
 - [x] Deterministic tests green; CLI smoke verified; no frozen doc (01–28) change; no new service.
-- [ ] **Architect review of AI-2** ⏳ — then behaviour analysis (AI-3).
+- [x] **Architect review of AI-2** ✅ **ACCEPTED** (2026-07-31) — AI-3 (Behavior Analysis) authorized with 12 recommendations.
