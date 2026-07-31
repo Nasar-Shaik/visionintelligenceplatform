@@ -135,6 +135,28 @@ Video Source → Frame Decoder → Frame Sampler → [ preprocess → infer → 
 never incidents/alerts. Deterministic-by-default (stub); real ONNX/YOLO is integration-only behind the
 same `ModelAdapter` seam.
 
+### Tracking + Zones + Counting (AI-2)
+
+Continuous object identity + spatial analytics, added after detection — **optimized for the Track
+contract, not the tracker** (any engine is swappable behind the association boundary):
+
+```
+Detection → [TrackerAdapter: associate] → [TrackManager: lifecycle] → Zone Engine → Counting Engine → EventEnvelope
+```
+
+- **[`tracker`](tracker.py)** — `TrackerAdapter` does **association only** (`Association` = indices +
+  scores); `IouAssociator` default. ByteTrack/BoT-SORT/DeepSORT/OC-SORT/custom drop in here with no
+  downstream change.
+- **[`track_manager`](track_manager.py)** — owns the **Track lifecycle** (created→tentative→confirmed→
+  lost→removed), store/lookup, cleanup, **bounded history**, **trackId policy** (unique per
+  tenant→camera→session, never reused), and observability stats.
+- **[`zones`](zones.py)** — pure geometry (point-in-polygon, line-crossing); **[`counting`](counting.py)**
+  — business-neutral entry/exit + occupancy over **confirmed tracks only**; **[`coordinates`](coordinates.py)**
+  — `CoordinateTransform` seam (identity now; homography/calibration later).
+- Emits `spatial.zone.entered|exited` + `analytics.occupancy.changed` (event confidence from track
+  quality). Playground adds **`tracks.json`** (Track Replay: lifecycle + history + transitions) and
+  `--zones/--session/--diagnostics`. See [AI-2-TRACKING](../../docs/tracker/AI-2-TRACKING.md).
+
 ## Configuration (env, `.env` only — ADR-0018)
 
 `HOST`, `PORT` (8085), `LOG_LEVEL`, `INTERNAL_API_KEY` (≥16), `INFERENCE_BACKEND` (`stub`|`onnx`),

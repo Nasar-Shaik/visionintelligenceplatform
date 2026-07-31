@@ -187,6 +187,30 @@ export const RuntimeMetrics = z.object({
   gpuPercent: z.number().nonnegative().optional(),
   memoryMb: z.number().nonnegative().optional(),
   uptimeSeconds: z.number().nonnegative(),
+  /**
+   * AI-2 tracking observability (additive, all optional — reported once a tracking pipeline runs;
+   * absent for pure detection). Feeds capacity planning + production monitoring. Business-neutral.
+   */
+  detectionFps: z.number().nonnegative().optional(),
+  frameDropPercent: z.number().min(0).max(100).optional(),
+  activeTracks: z.number().int().nonnegative().optional(),
+  confirmedTracks: z.number().int().nonnegative().optional(),
+  tentativeTracks: z.number().int().nonnegative().optional(),
+  lostTracks: z.number().int().nonnegative().optional(),
+  /** Tracks that reached the terminal `removed` state over the session. */
+  removedTracks: z.number().int().nonnegative().optional(),
+  /** Average track age in frames (created → now). */
+  averageTrackAgeFrames: z.number().nonnegative().optional(),
+  /** Average total lifetime in frames of removed tracks (created → removed). */
+  averageTrackLifetime: z.number().nonnegative().optional(),
+  /** Average trajectory length (history points) across active tracks. */
+  averageTrackLength: z.number().nonnegative().optional(),
+  /** Average per-frame centroid displacement (normalized units) across active tracks. */
+  averageTrackVelocity: z.number().nonnegative().optional(),
+  /** Total zone entry/exit crossings observed in the window. */
+  zoneCrossings: z.number().int().nonnegative().optional(),
+  /** Counting events emitted per second (windowed). */
+  countingRate: z.number().nonnegative().optional(),
 });
 export type RuntimeMetrics = z.infer<typeof RuntimeMetrics>;
 

@@ -21,6 +21,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import sys
@@ -59,6 +60,14 @@ def run(args: argparse.Namespace) -> int:
     sampler = FrameSampler(source_fps=source_fps, target_fps=args.fps)
     sampled = list(sampler.sample(all_frames))
 
+    zones: List[dict] = []
+    if args.zones:
+        with open(args.zones, encoding="utf-8") as fh:
+            loaded = json.load(fh)
+        zones = loaded.get("zones", loaded) if isinstance(loaded, (dict, list)) else []
+        if isinstance(zones, dict):
+            zones = zones.get("zones", [])
+
     # 2) Analyze the sampled frames (stride-1 over the already-sampled set → 1:1 with result.frames).
     options = AnalyzeOptions(
         tenant_id=args.tenant,
@@ -70,6 +79,11 @@ def run(args: argparse.Namespace) -> int:
         iou_threshold=args.iou,
         target_fps=args.fps,
         source=source_video,
+        session_id=args.session,
+        enable_tracking=not args.no_tracking,
+        zones=tuple(zones),
+        track_min_hits=args.track_min_hits,
+        track_max_age=args.track_max_age,
     )
     analyzer = VideoAnalyzer(
         build_adapter(args.engine),
@@ -93,7 +107,9 @@ def run(args: argparse.Namespace) -> int:
     if args.input:
         shutil.copyfile(args.input, os.path.join(out_dir, "original.mp4"))
     if args.annotate:
-        _write_annotated(os.path.join(out_dir, "annotated.mp4"), sampled, result, source_fps)
+        _write_annotated(
+            os.path.join(out_dir, "annotated.mp4"), sampled, result, source_fps, zones=zones, diagnostics=args.diagnostics
+        )
 
     with open(paths["summary"], encoding="utf-8") as fh:
         print(fh.read())
@@ -101,8 +117,9 @@ def run(args: argparse.Namespace) -> int:
     return 0
 
 
-def _write_annotated(path: str, sampled: List[Frame], result, fps: float) -> None:
-    """Draw normalized [x,y,w,h] boxes on the sampled frames → annotated.mp4 (OpenCV, real path)."""
+def _write_annotated(path, sampled, result, fps, *, zones=None, diagnostics=False) -> None:
+    """Draw the annotated video (OpenCV, real path). With --diagnostics, overlays track IDs +
+    confidence, zone boundaries, and frame#/timestamp/FPS/stage-timings (Architect rec 7/8)."""
     try:
         import cv2  # noqa: WPS433
         import numpy as np  # noqa: WPS433
@@ -114,16 +131,33 @@ def _write_annotated(path: str, sampled: List[Frame], result, fps: float) -> Non
     first = cv2.imdecode(np.frombuffer(sampled[0].image, dtype=np.uint8), cv2.IMREAD_COLOR)
     h, w = first.shape[0], first.shape[1]
     writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"mp4v"), max(1.0, fps), (w, h))
+    stage = result.summary.get("stageTimingsMs", {})
     try:
         for frame, fa in zip(sampled, result.frames):
             img = cv2.imdecode(np.frombuffer(frame.image, dtype=np.uint8), cv2.IMREAD_COLOR)
-            for det in fa.detections:
-                bx = det.get("bbox") or [0, 0, 0, 0]
-                x1, y1 = int(bx[0] * w), int(bx[1] * h)
-                x2, y2 = int((bx[0] + bx[2]) * w), int((bx[1] + bx[3]) * h)
-                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 220, 0), 2)
-                label = f"{det.get('label')} {det.get('confidence'):.2f}"
-                cv2.putText(img, label, (x1, max(0, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 220, 0), 1)
+            if diagnostics:
+                for z in zones or []:
+                    pts = np.array([[int(p[0] * w), int(p[1] * h)] for p in z["geometry"]["points"]], np.int32)
+                    cv2.polylines(img, [pts], z.get("kind") == "area", (0, 180, 255), 2)
+                for tr in fa.tracks:  # track boxes + IDs
+                    bx = tr.get("bbox") or [0, 0, 0, 0]
+                    x1, y1 = int(bx[0] * w), int(bx[1] * h)
+                    x2, y2 = int((bx[0] + bx[2]) * w), int((bx[1] + bx[3]) * h)
+                    cv2.rectangle(img, (x1, y1), (x2, y2), (0, 220, 0), 2)
+                    cv2.putText(img, f"{tr['trackId']} {tr.get('state')} {tr.get('confidence'):.2f}",
+                                (x1, max(0, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 220, 0), 1)
+                cv2.putText(img, f"frame {fa.frame['frameIndex']} t={fa.frame['timestamp']} fps={fps:.1f}",
+                            (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                cv2.putText(img, f"infer={stage.get('inferenceMs')}ms track={stage.get('trackingMs')}ms",
+                            (8, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            else:
+                for det in fa.detections:
+                    bx = det.get("bbox") or [0, 0, 0, 0]
+                    x1, y1 = int(bx[0] * w), int(bx[1] * h)
+                    x2, y2 = int((bx[0] + bx[2]) * w), int((bx[1] + bx[3]) * h)
+                    cv2.rectangle(img, (x1, y1), (x2, y2), (0, 220, 0), 2)
+                    cv2.putText(img, f"{det.get('label')} {det.get('confidence'):.2f}",
+                                (x1, max(0, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 220, 0), 1)
             writer.write(img)
     finally:
         writer.release()
@@ -143,7 +177,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--iou", type=float, default=0.45, help="IoU (NMS) threshold")
     p.add_argument("--fps", type=float, default=None, help="target sampling FPS (default: keep all)")
     p.add_argument("--resize", type=int, default=None, help="resize long side (px) before inference")
+    p.add_argument("--zones", help="path to a JSON file of generic zone configs (geometry + attributes)")
+    p.add_argument("--session", default="sess_playground", help="inference session id (trackId scope)")
+    p.add_argument("--no-tracking", action="store_true", help="disable the tracking/zones/counting stages")
+    p.add_argument("--track-min-hits", type=int, default=3, help="detections before a track is confirmed")
+    p.add_argument("--track-max-age", type=int, default=30, help="frames a lost track survives before removal")
     p.add_argument("--annotate", action="store_true", help="also write annotated.mp4")
+    p.add_argument("--diagnostics", action="store_true", help="richer annotated overlays (track IDs, zones, timings)")
     p.add_argument("--publish", action="store_true", help="publish events to the backbone (NATS)")
     p.add_argument("--nats-url", default=os.environ.get("NATS_URL", "nats://localhost:4222"))
     return p

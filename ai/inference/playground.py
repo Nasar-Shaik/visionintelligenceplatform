@@ -44,6 +44,8 @@ def options_from_body(body: Mapping[str, object], tenant_id: str) -> AnalyzeOpti
         return v if isinstance(v, (int, float)) else default
 
     labels = body.get("labels")
+    zones = body.get("zones")
+    tracking = body.get("tracking") if isinstance(body.get("tracking"), dict) else {}
     return AnalyzeOptions(
         tenant_id=tenant_id,
         camera_id=str(body.get("cameraId", "cam_playground")),
@@ -54,6 +56,13 @@ def options_from_body(body: Mapping[str, object], tenant_id: str) -> AnalyzeOpti
         iou_threshold=float(_f("iouThreshold", 0.45)),
         target_fps=(float(body["targetFps"]) if isinstance(body.get("targetFps"), (int, float)) else None),
         correlation_id=(str(body["correlationId"]) if isinstance(body.get("correlationId"), str) else None),
+        session_id=str(body.get("sessionId", "sess_playground")),
+        enable_tracking=bool(body.get("enableTracking", True)),
+        zones=tuple(zones) if isinstance(zones, list) else (),
+        track_min_iou=float(tracking.get("minIou", 0.3)),
+        track_min_hits=int(tracking.get("minHits", 3)),
+        track_max_age=int(tracking.get("maxAge", 30)),
+        track_history_max=int(tracking.get("historyMax", 50)),
     )
 
 
@@ -80,10 +89,17 @@ def analyze_request(body: Mapping[str, object], tenant_id: str, *, event_sink: O
         "summary": result.summary,
         "detections": result.detections,
         "events": result.events,
+        "tracks": result.tracks,
+        "zoneTransitions": result.zone_transitions,
+        "counting": result.counting,
+        "trackingStats": result.tracking_stats,
         "metrics": result.summary["stageTimingsMs"],
     }
     if include_frames:
-        out["frames"] = [{"frame": fa.frame, "detections": fa.detections, "events": fa.events} for fa in result.frames]
+        out["frames"] = [
+            {"frame": fa.frame, "detections": fa.detections, "events": fa.events, "tracks": fa.tracks}
+            for fa in result.frames
+        ]
     return out
 
 
@@ -101,9 +117,26 @@ def result_to_documents(result: AnalyzeResult) -> dict:
         "framesDropped": result.summary.get("framesDropped"),
         "detections": result.summary.get("detections"),
         "events": result.summary.get("events"),
+        "zoneTransitions": result.summary.get("zoneTransitions"),
+        "countingEvents": result.summary.get("countingEvents"),
+        "tracking": result.summary.get("tracking"),
         "stageTimingsMs": result.summary.get("stageTimingsMs"),
     }
-    return {"detections": detections_doc, "events": events_doc, "metrics": metrics_doc, "summary": _summary_text(result)}
+    # Track Replay artifact (Architect rec 7/8): lifecycle + trajectory + zone transitions + counting.
+    tracks_doc = {
+        "sessionId": result.summary.get("sessionId"),
+        "tracks": result.tracks,  # per-track identity + quality + history + lifecycle transitions
+        "zoneTransitions": result.zone_transitions,  # entry/exit with timestamps
+        "counting": result.counting,
+        "stats": result.tracking_stats,
+    }
+    return {
+        "detections": detections_doc,
+        "events": events_doc,
+        "metrics": metrics_doc,
+        "tracks": tracks_doc,
+        "summary": _summary_text(result),
+    }
 
 
 def write_artifacts(out_dir: str, result: AnalyzeResult) -> dict:
@@ -115,9 +148,10 @@ def write_artifacts(out_dir: str, result: AnalyzeResult) -> dict:
         "detections": os.path.join(out_dir, "detections.json"),
         "events": os.path.join(out_dir, "events.json"),
         "metrics": os.path.join(out_dir, "metrics.json"),
+        "tracks": os.path.join(out_dir, "tracks.json"),
         "summary": os.path.join(out_dir, "summary.txt"),
     }
-    for key in ("detections", "events", "metrics"):
+    for key in ("detections", "events", "metrics", "tracks"):
         with open(paths[key], "w", encoding="utf-8") as fh:
             json.dump(docs[key], fh, indent=2, sort_keys=True)
             fh.write("\n")
@@ -138,9 +172,23 @@ def _summary_text(result: AnalyzeResult) -> str:
         f"frames        : decoded={s.get('framesDecoded')} sampled={s.get('framesSampled')} dropped={s.get('framesDropped')} (stride {s.get('samplingStride')})",
         f"detections    : {s.get('detections')}",
         f"events        : {s.get('events')}",
+        f"tracking      : {_tracking_line(s)}",
+        f"zones         : {s.get('zones')} · transitions={s.get('zoneTransitions')} · counting={s.get('countingEvents')}",
         "stage timings (ms, total):",
         f"  decode={t.get('decodeMs')}  sampling={t.get('samplingMs')}  preprocess={t.get('preprocessMs')}",
-        f"  inference={t.get('inferenceMs')}  postprocess={t.get('postprocessMs')}  eventGen={t.get('eventGenerationMs')}",
+        f"  inference={t.get('inferenceMs')}  postprocess={t.get('postprocessMs')}",
+        f"  tracking={t.get('trackingMs')}  zoneCounting={t.get('zoneCountingMs')}  eventGen={t.get('eventGenerationMs')}",
         "",
     ]
     return "\n".join(lines)
+
+
+def _tracking_line(summary: dict) -> str:
+    if not summary.get("trackingEnabled"):
+        return "disabled"
+    tr = summary.get("tracking", {})
+    return (
+        f"active={tr.get('activeTracks', 0)} confirmed={tr.get('confirmedTracks', 0)} "
+        f"lost={tr.get('lostTracks', 0)} removed={tr.get('removedTracks', 0)} "
+        f"avgAge={tr.get('averageTrackAgeFrames', 0)} avgVel={tr.get('averageTrackVelocity', 0)}"
+    )

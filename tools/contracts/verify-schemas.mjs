@@ -75,6 +75,10 @@ const REQUIRED = [
   'evidence-custody-page',
   'stream-envelope',
   'stream-control',
+  'track',
+  'zone',
+  'zone-transition',
+  'counting-snapshot',
 ];
 
 const errors = [];

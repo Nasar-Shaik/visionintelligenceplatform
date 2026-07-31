@@ -38,6 +38,7 @@ import {
   StreamHealthSummary,
 } from '../src/media/media.js';
 import { Detection, DetectionResult, InferenceRequest } from '../src/perception/perception.js';
+import { Track, Zone, ZoneTransition, CountingSnapshot } from '../src/tracking/tracking.js';
 import {
   Evidence,
   EvidenceManifest,
@@ -121,6 +122,10 @@ const schemas: Record<string, z.ZodType> = {
   'evidence-custody-page': EvidenceCustodyPage,
   'stream-envelope': StreamEnvelope,
   'stream-control': StreamControl,
+  track: Track,
+  zone: Zone,
+  'zone-transition': ZoneTransition,
+  'counting-snapshot': CountingSnapshot,
 };
 
 mkdirSync(outDir, { recursive: true });

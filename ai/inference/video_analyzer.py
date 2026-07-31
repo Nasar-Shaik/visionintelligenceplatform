@@ -20,7 +20,8 @@ from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Sequence
 
 from contracts import FrameContext, ModelBinding
-from events import deterministic_id_gen, detections_to_events
+from counting import CountingEngine
+from events import counting_event, deterministic_id_gen, detections_to_events, zone_transition_event
 from pipeline import (
     ConfidencePostprocessor,
     DefaultResultTranslator,
@@ -32,8 +33,12 @@ from pipeline import (
     ResultTranslator,
     Tracker,
 )
+from tracker import IouAssociator
+from track_manager import TrackManager
+from tracking_contracts import Zone
 from video_decoder import FrameDecoder
 from video_sampler import FrameSampler
+from zones import ZoneEngine
 
 _RUNTIME_VERSION = "0.1.0"
 
@@ -55,6 +60,15 @@ class AnalyzeOptions:
     target_fps: Optional[float] = None
     source: str = "playground"
     correlation_id: Optional[str] = None
+    # --- tracking + zones (AI-2) ---
+    session_id: str = "sess_playground"
+    enable_tracking: bool = True
+    track_min_iou: float = 0.3
+    track_min_hits: int = 3
+    track_max_age: int = 30
+    track_history_max: int = 50
+    track_history_window_seconds: Optional[float] = None
+    zones: Sequence[dict] = ()  # generic Zone configs (geometry + attributes); business meaning in rules
 
 
 @dataclass
@@ -66,6 +80,8 @@ class StageTimings:
     preprocess_ms: float = 0.0
     inference_ms: float = 0.0
     postprocess_ms: float = 0.0
+    tracking_ms: float = 0.0
+    zone_counting_ms: float = 0.0
     event_generation_ms: float = 0.0
 
     def as_dict(self) -> dict:
@@ -75,6 +91,8 @@ class StageTimings:
             "preprocessMs": round(self.preprocess_ms, 3),
             "inferenceMs": round(self.inference_ms, 3),
             "postprocessMs": round(self.postprocess_ms, 3),
+            "trackingMs": round(self.tracking_ms, 3),
+            "zoneCountingMs": round(self.zone_counting_ms, 3),
             "eventGenerationMs": round(self.event_generation_ms, 3),
         }
 
@@ -84,6 +102,7 @@ class FrameAnalysis:
     frame: dict
     detections: List[dict]
     events: List[dict]
+    tracks: List[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -91,6 +110,10 @@ class AnalyzeResult:
     frames: List[FrameAnalysis] = field(default_factory=list)
     detections: List[dict] = field(default_factory=list)
     events: List[dict] = field(default_factory=list)
+    tracks: List[dict] = field(default_factory=list)  # final track diagnostics (active + archived)
+    zone_transitions: List[dict] = field(default_factory=list)
+    counting: List[dict] = field(default_factory=list)
+    tracking_stats: dict = field(default_factory=dict)
     timings: StageTimings = field(default_factory=StageTimings)
     summary: dict = field(default_factory=dict)
 
@@ -130,6 +153,20 @@ class VideoAnalyzer:
             family="*",
             accelerator=options.accelerator,
         )
+        # Tracking (AI-2): TrackManager owns lifecycle; the associator is the only swappable part.
+        self._manager: Optional[TrackManager] = None
+        self._counting: Optional[CountingEngine] = None
+        self._zones: List[Zone] = [Zone.from_dict(z) for z in options.zones]
+        if options.enable_tracking:
+            self._manager = TrackManager(
+                IouAssociator(min_iou=options.track_min_iou),
+                session_id=options.session_id,
+                min_hits=options.track_min_hits,
+                max_age=options.track_max_age,
+                history_max=options.track_history_max,
+                history_window_seconds=options.track_history_window_seconds,
+            )
+            self._counting = CountingEngine(ZoneEngine())
 
     def analyze(self, decoder: FrameDecoder, sampler: Optional[FrameSampler] = None) -> AnalyzeResult:
         opts = self._options
@@ -187,20 +224,57 @@ class VideoAnalyzer:
             )
             result.timings.postprocess_ms += (self._clock() - t) * 1000.0
 
-            # Optional: publish to the backbone (reuses the pipeline EventSink seam) so events flow
-            # through the existing spine → dashboard. Default is a no-op (deterministic).
+            result_dict = det_result.to_dict()
+            frame_at = result_dict["at"]
+
+            # --- Tracking → [Behavior seam, AI-3] → Zones → Counting (all consume TRACKS, not
+            # detections — so a future Behavior Analysis stage inserts here without refactor, rec 3). ---
+            frame_tracks: List[dict] = []
+            frame_events: List[dict] = []
+            if self._manager is not None and self._counting is not None:
+                t = self._clock()
+                tracks = self._manager.update(
+                    dets, tenant_id=opts.tenant_id, camera_id=opts.camera_id, frame_index=frame.index, at=frame.timestamp
+                )
+                result.timings.tracking_ms += (self._clock() - t) * 1000.0
+                # (Behavior Analysis would consume `tracks` here in AI-3 and may enrich them / emit events.)
+                t = self._clock()
+                transitions, snapshots = self._counting.update(
+                    self._zones, tracks, frame_index=frame.index, at=frame.timestamp
+                )
+                result.timings.zone_counting_ms += (self._clock() - t) * 1000.0
+                frame_tracks = [tr.to_dict() for tr in tracks]
+                for tr in transitions:
+                    d = tr.to_dict()
+                    result.zone_transitions.append(d)
+                    frame_events.append(zone_transition_event(d, id_gen=self._id_gen))
+                for s in snapshots:
+                    d = s.to_dict()
+                    result.counting.append(d)
+                    frame_events.append(counting_event(d, id_gen=self._id_gen))
+
+            t = self._clock()
+            events = detections_to_events(result_dict, id_gen=self._id_gen, ingested_at=frame_at)
+            result.timings.event_generation_ms += (self._clock() - t) * 1000.0
+            events = events + frame_events
+
+            # Publish perception + tracking events to the backbone (reuses the EventSink seam).
             self._event_sink.publish(det_result)
 
-            result_dict = det_result.to_dict()
-            t = self._clock()
-            events = detections_to_events(result_dict, id_gen=self._id_gen, ingested_at=result_dict["at"])
-            result.timings.event_generation_ms += (self._clock() - t) * 1000.0
-
             frame_dets = result_dict["detections"]
-            result.frames.append(FrameAnalysis(frame=frame.meta(), detections=frame_dets, events=events))
+            result.frames.append(
+                FrameAnalysis(frame=frame.meta(), detections=frame_dets, events=events, tracks=frame_tracks)
+            )
             result.detections.extend(frame_dets)
             result.events.extend(events)
 
+        if self._manager is not None:
+            result.tracks = self._manager.diagnostics()
+            result.tracking_stats = self._manager.stats(
+                zone_crossings=len(result.zone_transitions),
+                counting_events=len(result.counting),
+                frames=max(1, len(sampled)),
+            )
         result.summary = self._summary(decoder, sampler, decoded, sampled, result)
         return result
 
@@ -219,12 +293,18 @@ class VideoAnalyzer:
                 "targetFps": opts.target_fps,
                 "labels": list(opts.labels),
             },
+            "sessionId": opts.session_id,
             "framesDecoded": len(decoded),
             "framesSampled": len(sampled),
             "framesDropped": sampler.dropped,
             "samplingStride": sampler.stride,
             "detections": len(result.detections),
             "events": len(result.events),
+            "trackingEnabled": opts.enable_tracking,
+            "zones": len(self._zones),
+            "zoneTransitions": len(result.zone_transitions),
+            "countingEvents": len(result.counting),
+            "tracking": result.tracking_stats,
             "stageTimingsMs": result.timings.as_dict(),
         }
 

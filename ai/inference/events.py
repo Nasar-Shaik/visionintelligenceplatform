@@ -55,6 +55,10 @@ CATEGORY_BY_TYPE: Dict[str, str] = {
     "analytics.people.count": "analytics",
     "analytics.queue.length": "analytics",
     "analytics.occupancy.changed": "analytics",
+    # spatial/tracking (AI-2) — mirror the TS catalog (spatial.zone.* is category "perception").
+    "spatial.zone.entered": "perception",
+    "spatial.zone.exited": "perception",
+    "tracking.track.updated": "perception",
     "system.model.failed": "system",
 }
 
@@ -76,6 +80,9 @@ PRIORITY_BY_TYPE: Dict[str, str] = {
     "analytics.people.count": "info",
     "analytics.queue.length": "info",
     "analytics.occupancy.changed": "low",
+    "spatial.zone.entered": "info",
+    "spatial.zone.exited": "info",
+    "tracking.track.updated": "info",
     "system.model.failed": "high",
 }
 
@@ -261,3 +268,82 @@ def deterministic_id_gen(prefix: str = "evt") -> Callable[[], str]:
     """A sequential id generator for deterministic tests."""
     counter = itertools.count(1)
     return lambda: f"{prefix}_{next(counter)}"
+
+
+# --- tracking / spatial events (AI-2) -----------------------------------------------------------
+# Built from platform Track/Zone primitives (never tracker internals). Business-neutral: the runtime
+# emits the geometry/counting fact; the Rule Engine decides what it means. Camera + session identity
+# always retained (multi-camera-ready). `confidence` is derived from track quality (additive).
+
+
+def zone_transition_event(
+    transition: Mapping[str, object],
+    *,
+    id_gen: Optional[Callable[[], str]] = None,
+) -> dict:
+    """A `ZoneTransition` dict → a `spatial.zone.entered|exited` EventEnvelope."""
+    gen = id_gen or _uuid_gen()
+    event_type = "spatial.zone.entered" if transition.get("transition") == "entered" else "spatial.zone.exited"
+    _assert_not_incident(event_type)
+    at = str(transition.get("at"))
+    subject: dict = {"trackId": transition.get("trackId"), "zoneId": transition.get("zoneId")}
+    envelope: dict = {
+        "id": gen(),
+        "type": event_type,
+        "envelopeVersion": _ENVELOPE_VERSION,
+        "category": CATEGORY_BY_TYPE[event_type],
+        "schemaVersion": _SCHEMA_VERSION,
+        "tenantId": str(transition.get("tenantId", "")),
+        "occurredAt": at,
+        "ingestedAt": at,
+        "producer": {"capability": "tracking.zone", "capabilityVersion": "1.0.0"},
+        "subjects": [subject],
+        "payload": {
+            "zoneId": transition.get("zoneId"),
+            "trackId": transition.get("trackId"),
+            "transition": transition.get("transition"),
+            **({"sessionId": transition["sessionId"]} if transition.get("sessionId") else {}),
+        },
+        "evidenceRefs": [],
+        "priority": PRIORITY_BY_TYPE[event_type],
+    }
+    if transition.get("cameraId"):
+        envelope["cameraId"] = transition["cameraId"]
+    if transition.get("confidence") is not None:
+        envelope["confidence"] = transition["confidence"]  # event confidence from track quality
+    return envelope
+
+
+def counting_event(
+    snapshot: Mapping[str, object],
+    *,
+    id_gen: Optional[Callable[[], str]] = None,
+) -> dict:
+    """A `CountingSnapshot` dict → an `analytics.occupancy.changed` EventEnvelope."""
+    gen = id_gen or _uuid_gen()
+    event_type = "analytics.occupancy.changed"
+    _assert_not_incident(event_type)
+    at = str(snapshot.get("at"))
+    envelope: dict = {
+        "id": gen(),
+        "type": event_type,
+        "envelopeVersion": _ENVELOPE_VERSION,
+        "category": CATEGORY_BY_TYPE[event_type],
+        "schemaVersion": _SCHEMA_VERSION,
+        "tenantId": str(snapshot.get("tenantId", "")),
+        "occurredAt": at,
+        "ingestedAt": at,
+        "producer": {"capability": "tracking.counting", "capabilityVersion": "1.0.0"},
+        "subjects": [{"zoneId": snapshot.get("zoneId")}],
+        "payload": {
+            "zoneId": snapshot.get("zoneId"),
+            "entered": snapshot.get("entered"),
+            "exited": snapshot.get("exited"),
+            "occupancy": snapshot.get("occupancy"),
+        },
+        "evidenceRefs": [],
+        "priority": PRIORITY_BY_TYPE[event_type],
+    }
+    if snapshot.get("cameraId"):
+        envelope["cameraId"] = snapshot["cameraId"]
+    return envelope
