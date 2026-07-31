@@ -19,9 +19,14 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Sequence
 
+from behavior import BehaviorContext, BehaviorLifecycleStore, frame_seconds, snapshot_track
+from behavior_registry import BehaviorRegistry
+from behavior_translator import BehaviorResultTranslator
+from behaviors import default_registry
 from contracts import FrameContext, ModelBinding
 from counting import CountingEngine
 from events import counting_event, deterministic_id_gen, detections_to_events, zone_transition_event
+from temporal_window import TemporalWindowStore
 from pipeline import (
     ConfidencePostprocessor,
     DefaultResultTranslator,
@@ -69,6 +74,9 @@ class AnalyzeOptions:
     track_history_max: int = 50
     track_history_window_seconds: Optional[float] = None
     zones: Sequence[dict] = ()  # generic Zone configs (geometry + attributes); business meaning in rules
+    # --- behavior analysis (AI-3) ---
+    enable_behaviors: bool = True
+    behavior_options: dict = field(default_factory=dict)  # per-analyzer knobs for default_registry
 
 
 @dataclass
@@ -82,6 +90,7 @@ class StageTimings:
     postprocess_ms: float = 0.0
     tracking_ms: float = 0.0
     zone_counting_ms: float = 0.0
+    behavior_ms: float = 0.0
     event_generation_ms: float = 0.0
 
     def as_dict(self) -> dict:
@@ -93,6 +102,7 @@ class StageTimings:
             "postprocessMs": round(self.postprocess_ms, 3),
             "trackingMs": round(self.tracking_ms, 3),
             "zoneCountingMs": round(self.zone_counting_ms, 3),
+            "behaviorMs": round(self.behavior_ms, 3),
             "eventGenerationMs": round(self.event_generation_ms, 3),
         }
 
@@ -103,6 +113,7 @@ class FrameAnalysis:
     detections: List[dict]
     events: List[dict]
     tracks: List[dict] = field(default_factory=list)
+    behaviors: List[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -113,7 +124,9 @@ class AnalyzeResult:
     tracks: List[dict] = field(default_factory=list)  # final track diagnostics (active + archived)
     zone_transitions: List[dict] = field(default_factory=list)
     counting: List[dict] = field(default_factory=list)
+    behaviors: List[dict] = field(default_factory=list)  # every BehaviorResult across the video (AI-3)
     tracking_stats: dict = field(default_factory=dict)
+    behavior_stats: dict = field(default_factory=dict)
     timings: StageTimings = field(default_factory=StageTimings)
     summary: dict = field(default_factory=dict)
 
@@ -130,6 +143,7 @@ class VideoAnalyzer:
         tracker: Optional[Tracker] = None,
         translator: Optional[ResultTranslator] = None,
         event_sink: Optional[EventSink] = None,
+        behavior_registry: Optional[BehaviorRegistry] = None,
         runtime_version: str = _RUNTIME_VERSION,
         clock: Callable[[], float] = time.perf_counter,
         now_iso: Optional[Callable[[], str]] = None,
@@ -167,6 +181,20 @@ class VideoAnalyzer:
                 history_window_seconds=options.track_history_window_seconds,
             )
             self._counting = CountingEngine(ZoneEngine())
+        # Behavior analysis (AI-3): registry-driven analyzers over Tracks; the lifecycle store + window
+        # store persist across frames so analyzers stay stateless; one translator bridges to events.
+        self._behaviors: Optional[BehaviorRegistry] = None
+        self._behavior_store: Optional[BehaviorLifecycleStore] = None
+        self._windows: Optional[TemporalWindowStore] = None
+        self._behavior_translator: Optional[BehaviorResultTranslator] = None
+        self._behavior_zone_engine = ZoneEngine()
+        if options.enable_tracking and options.enable_behaviors:
+            self._behaviors = behavior_registry or default_registry(options.behavior_options)
+            self._behavior_store = BehaviorLifecycleStore(
+                camera_id=options.camera_id, session_id=options.session_id, tenant_id=options.tenant_id
+            )
+            self._windows = TemporalWindowStore()
+            self._behavior_translator = BehaviorResultTranslator(id_gen=self._id_gen)
 
     def analyze(self, decoder: FrameDecoder, sampler: Optional[FrameSampler] = None) -> AnalyzeResult:
         opts = self._options
@@ -227,9 +255,11 @@ class VideoAnalyzer:
             result_dict = det_result.to_dict()
             frame_at = result_dict["at"]
 
-            # --- Tracking → [Behavior seam, AI-3] → Zones → Counting (all consume TRACKS, not
-            # detections — so a future Behavior Analysis stage inserts here without refactor, rec 3). ---
+            # --- Tracking → Zones → Counting → Behavior Analysis (all consume TRACKS, not detections;
+            # Architect rec 9: Behavior runs AFTER zone/counting so analyzers see zone membership + counts,
+            # each stage independently replaceable). ---
             frame_tracks: List[dict] = []
+            frame_behaviors: List[dict] = []
             frame_events: List[dict] = []
             if self._manager is not None and self._counting is not None:
                 t = self._clock()
@@ -237,21 +267,52 @@ class VideoAnalyzer:
                     dets, tenant_id=opts.tenant_id, camera_id=opts.camera_id, frame_index=frame.index, at=frame.timestamp
                 )
                 result.timings.tracking_ms += (self._clock() - t) * 1000.0
-                # (Behavior Analysis would consume `tracks` here in AI-3 and may enrich them / emit events.)
                 t = self._clock()
                 transitions, snapshots = self._counting.update(
                     self._zones, tracks, frame_index=frame.index, at=frame.timestamp
                 )
                 result.timings.zone_counting_ms += (self._clock() - t) * 1000.0
                 frame_tracks = [tr.to_dict() for tr in tracks]
+                frame_transitions: List[dict] = []
+                frame_counts: List[dict] = []
                 for tr in transitions:
                     d = tr.to_dict()
                     result.zone_transitions.append(d)
+                    frame_transitions.append(d)
                     frame_events.append(zone_transition_event(d, id_gen=self._id_gen))
                 for s in snapshots:
                     d = s.to_dict()
                     result.counting.append(d)
+                    frame_counts.append(d)
                     frame_events.append(counting_event(d, id_gen=self._id_gen))
+
+                # Behavior stage — analyzers consume immutable snapshots + zone/counting state; the
+                # store assigns lifecycle; the translator bridges each BehaviorResult to an event.
+                if self._behaviors is not None and self._behavior_store is not None and self._windows is not None:
+                    t = self._clock()
+                    ctx_b = BehaviorContext(
+                        tenant_id=opts.tenant_id,
+                        camera_id=opts.camera_id,
+                        frame_index=frame.index,
+                        at=frame.timestamp,
+                        t=frame_seconds(frame.timestamp, frame.index),
+                        snapshots=tuple(snapshot_track(tr, frame.index) for tr in tracks),
+                        zones=tuple(self._zones),
+                        transitions=tuple(frame_transitions),
+                        counting=tuple(frame_counts),
+                        windows=self._windows,
+                        zone_engine=self._behavior_zone_engine,
+                        session_id=opts.session_id,
+                    )
+                    produced = self._behaviors.run(ctx_b, self._behavior_store)
+                    result.timings.behavior_ms += (self._clock() - t) * 1000.0
+                    for br in produced:
+                        d = br.to_dict()
+                        result.behaviors.append(d)
+                        frame_behaviors.append(d)
+                        env = self._behavior_translator.translate(d)
+                        if env is not None:
+                            frame_events.append(env)
 
             t = self._clock()
             events = detections_to_events(result_dict, id_gen=self._id_gen, ingested_at=frame_at)
@@ -263,10 +324,29 @@ class VideoAnalyzer:
 
             frame_dets = result_dict["detections"]
             result.frames.append(
-                FrameAnalysis(frame=frame.meta(), detections=frame_dets, events=events, tracks=frame_tracks)
+                FrameAnalysis(
+                    frame=frame.meta(),
+                    detections=frame_dets,
+                    events=events,
+                    tracks=frame_tracks,
+                    behaviors=frame_behaviors,
+                )
             )
             result.detections.extend(frame_dets)
             result.events.extend(events)
+
+        # Terminal flush (AI-3): behaviors still active at end-of-video close as `expired` (rec 2).
+        if self._behaviors is not None and self._behavior_store is not None and self._behavior_translator is not None and sampled:
+            last = sampled[-1]
+            expired = self._behavior_store.sweep(
+                frame_index=last.index, at=last.timestamp, t=frame_seconds(last.timestamp, last.index)
+            )
+            for br in expired:
+                d = br.to_dict()
+                result.behaviors.append(d)
+                env = self._behavior_translator.translate(d)
+                if env is not None:
+                    result.events.append(env)
 
         if self._manager is not None:
             result.tracks = self._manager.diagnostics()
@@ -275,8 +355,28 @@ class VideoAnalyzer:
                 counting_events=len(result.counting),
                 frames=max(1, len(sampled)),
             )
+        if self._behaviors is not None and self._behavior_store is not None:
+            result.behavior_stats = self._behavior_stats(result, sampled)
         result.summary = self._summary(decoder, sampler, decoded, sampled, result)
         return result
+
+    def _behavior_stats(self, result: AnalyzeResult, sampled) -> dict:
+        """Aggregate behavior observability (Architect rec 8 + refinement 7) — additive RuntimeMetrics
+        fields + a per-analyzer breakdown. Business-neutral counts/durations/latencies only."""
+        assert self._behaviors is not None and self._behavior_store is not None
+        frames = max(1, len(sampled))
+        store = self._behavior_store.stats()
+        agg = self._behaviors.aggregate_metrics(frames=frames, behavior_latency_ms=result.timings.behavior_ms)
+        started = store.get("startedBehaviors", 0)
+        if sampled:
+            elapsed = frame_seconds(sampled[-1].timestamp, sampled[-1].index) - frame_seconds(sampled[0].timestamp, sampled[0].index)
+        else:
+            elapsed = 0.0
+        if elapsed <= 0:
+            elapsed = float(frames)  # frame-index proxy when timestamps aren't seconds
+        stats = {**store, **agg, "behaviorsPerMinute": round(started / (elapsed / 60.0), 6) if elapsed else 0.0}
+        stats["analyzers"] = self._behaviors.analyzer_metrics()
+        return stats
 
     def _summary(self, decoder, sampler, decoded, sampled, result: AnalyzeResult) -> dict:
         opts = self._options
@@ -305,6 +405,9 @@ class VideoAnalyzer:
             "zoneTransitions": len(result.zone_transitions),
             "countingEvents": len(result.counting),
             "tracking": result.tracking_stats,
+            "behaviorsEnabled": opts.enable_tracking and opts.enable_behaviors,
+            "behaviors": len(result.behaviors),
+            "behavior": result.behavior_stats,
             "stageTimingsMs": result.timings.as_dict(),
         }
 

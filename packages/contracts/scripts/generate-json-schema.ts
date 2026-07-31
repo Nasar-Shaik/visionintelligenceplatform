@@ -40,6 +40,12 @@ import {
 import { Detection, DetectionResult, InferenceRequest } from '../src/perception/perception.js';
 import { Track, Zone, ZoneTransition, CountingSnapshot } from '../src/tracking/tracking.js';
 import {
+  BehaviorResult,
+  TrackSnapshot,
+  BehaviorConfig,
+  BehaviorAnalyzerMetrics,
+} from '../src/behavior/behavior.js';
+import {
   Evidence,
   EvidenceManifest,
   RegisterEvidenceInput,
@@ -126,6 +132,10 @@ const schemas: Record<string, z.ZodType> = {
   zone: Zone,
   'zone-transition': ZoneTransition,
   'counting-snapshot': CountingSnapshot,
+  'behavior-result': BehaviorResult,
+  'track-snapshot': TrackSnapshot,
+  'behavior-config': BehaviorConfig,
+  'behavior-analyzer-metrics': BehaviorAnalyzerMetrics,
 };
 
 mkdirSync(outDir, { recursive: true });

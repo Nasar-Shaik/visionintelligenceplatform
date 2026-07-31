@@ -211,6 +211,26 @@ export const RuntimeMetrics = z.object({
   zoneCrossings: z.number().int().nonnegative().optional(),
   /** Counting events emitted per second (windowed). */
   countingRate: z.number().nonnegative().optional(),
+  /**
+   * AI-3 behavior observability (additive, all optional — reported once behavior analyzers run;
+   * absent for pure detection/tracking). Feeds performance tuning + production monitoring.
+   * Business-neutral: counts/durations/latencies of analysis, never a business signal.
+   */
+  activeBehaviors: z.number().int().nonnegative().optional(),
+  /** Behavior instances that reached a terminal state (`ended`/`expired`) over the session. */
+  completedBehaviors: z.number().int().nonnegative().optional(),
+  /** Average lifetime (seconds) of completed behavior instances. */
+  averageBehaviorDuration: z.number().nonnegative().optional(),
+  /** Average confidence across active behavior instances. */
+  averageBehaviorConfidence: z.number().min(0).max(1).optional(),
+  /** Average wall-time (ms) a single analyzer invocation takes. */
+  analyzerExecutionTime: z.number().nonnegative().optional(),
+  /** Total analyzer invocations over the session (analyzers × frames evaluated). */
+  analyzerInvocationCount: z.number().int().nonnegative().optional(),
+  /** End-to-end behavior-stage latency (ms) per frame. */
+  behaviorLatency: z.number().nonnegative().optional(),
+  /** Behavior instances started per minute (windowed). */
+  behaviorsPerMinute: z.number().nonnegative().optional(),
 });
 export type RuntimeMetrics = z.infer<typeof RuntimeMetrics>;
 

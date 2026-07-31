@@ -157,6 +157,30 @@ Detection → [TrackerAdapter: associate] → [TrackManager: lifecycle] → Zone
   quality). Playground adds **`tracks.json`** (Track Replay: lifecycle + history + transitions) and
   `--zones/--session/--diagnostics`. See [AI-2-TRACKING](../../docs/tracker/AI-2-TRACKING.md).
 
+### Behavior Analysis (AI-3)
+
+Behavioral intelligence over the tracks — **optimized for the BehaviorResult contract, not the
+behavior** (any analyzer is swappable; a heuristic today, an ML/LLM reasoner tomorrow):
+
+```
+Track → [BehaviorAnalyzer(s) via Registry] → BehaviorResult → [BehaviorResultTranslator] → EventEnvelope
+```
+
+- **[`behavior`](behavior.py)** — the `BehaviorAnalyzer` seam, the immutable `BehaviorContext` (the ONLY
+  input analyzers see), and the `BehaviorLifecycleStore` (started→updated→ongoing→ended→expired, stable
+  ids, correlation, cooldown). Analyzers are **stateless** and never call one another.
+- **[`temporal_window`](temporal_window.py)** — the ONE reusable timing primitive (dwell, queue average,
+  every future timed behavior); **[`behavior_registry`](behavior_registry.py)** — discover / enable /
+  disable / configure + orchestrate, with per-analyzer metrics.
+- **[`behaviors/`](behaviors/)** — loitering · queue · intrusion · **fire/smoke** (detector-independent,
+  reads labels only). Zone opt-in via generic `attributes` flags; thresholds are detection sensitivity,
+  not business rules.
+- **[`behavior_translator`](behavior_translator.py)** — the single `BehaviorResult → EventEnvelope`
+  bridge; analyzers never emit envelopes. Emits `behavior.loitering.detected`, `analytics.queue.length`,
+  `security.intrusion.detected`, `perception.fire.detected|smoke.detected`. Playground adds
+  **`behaviors_timeline.json`** (Behavior Replay) + `--no-behaviors/--loiter-seconds/--queue-min` and
+  behavior overlays. See [AI-3-BEHAVIOR](../../docs/tracker/AI-3-BEHAVIOR.md).
+
 ## Configuration (env, `.env` only — ADR-0018)
 
 `HOST`, `PORT` (8085), `LOG_LEVEL`, `INTERNAL_API_KEY` (≥16), `INFERENCE_BACKEND` (`stub`|`onnx`),

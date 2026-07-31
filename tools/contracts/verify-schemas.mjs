@@ -79,6 +79,10 @@ const REQUIRED = [
   'zone',
   'zone-transition',
   'counting-snapshot',
+  'behavior-result',
+  'track-snapshot',
+  'behavior-config',
+  'behavior-analyzer-metrics',
 ];
 
 const errors = [];

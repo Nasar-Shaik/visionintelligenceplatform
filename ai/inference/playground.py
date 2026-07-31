@@ -46,6 +46,7 @@ def options_from_body(body: Mapping[str, object], tenant_id: str) -> AnalyzeOpti
     labels = body.get("labels")
     zones = body.get("zones")
     tracking = body.get("tracking") if isinstance(body.get("tracking"), dict) else {}
+    behaviors = body.get("behaviors") if isinstance(body.get("behaviors"), dict) else {}
     return AnalyzeOptions(
         tenant_id=tenant_id,
         camera_id=str(body.get("cameraId", "cam_playground")),
@@ -63,6 +64,8 @@ def options_from_body(body: Mapping[str, object], tenant_id: str) -> AnalyzeOpti
         track_min_hits=int(tracking.get("minHits", 3)),
         track_max_age=int(tracking.get("maxAge", 30)),
         track_history_max=int(tracking.get("historyMax", 50)),
+        enable_behaviors=bool(body.get("enableBehaviors", True)),
+        behavior_options=dict(behaviors) if isinstance(behaviors, dict) else {},
     )
 
 
@@ -92,12 +95,14 @@ def analyze_request(body: Mapping[str, object], tenant_id: str, *, event_sink: O
         "tracks": result.tracks,
         "zoneTransitions": result.zone_transitions,
         "counting": result.counting,
+        "behaviors": result.behaviors,
         "trackingStats": result.tracking_stats,
+        "behaviorStats": result.behavior_stats,
         "metrics": result.summary["stageTimingsMs"],
     }
     if include_frames:
         out["frames"] = [
-            {"frame": fa.frame, "detections": fa.detections, "events": fa.events, "tracks": fa.tracks}
+            {"frame": fa.frame, "detections": fa.detections, "events": fa.events, "tracks": fa.tracks, "behaviors": fa.behaviors}
             for fa in result.frames
         ]
     return out
@@ -120,6 +125,8 @@ def result_to_documents(result: AnalyzeResult) -> dict:
         "zoneTransitions": result.summary.get("zoneTransitions"),
         "countingEvents": result.summary.get("countingEvents"),
         "tracking": result.summary.get("tracking"),
+        "behaviors": result.summary.get("behaviors"),
+        "behavior": result.summary.get("behavior"),
         "stageTimingsMs": result.summary.get("stageTimingsMs"),
     }
     # Track Replay artifact (Architect rec 7/8): lifecycle + trajectory + zone transitions + counting.
@@ -135,7 +142,46 @@ def result_to_documents(result: AnalyzeResult) -> dict:
         "events": events_doc,
         "metrics": metrics_doc,
         "tracks": tracks_doc,
+        "behaviors": _behaviors_doc(result),
         "summary": _summary_text(result),
+    }
+
+
+def _behaviors_doc(result: AnalyzeResult) -> dict:
+    """Behavior Replay artifact (Architect AI-3 rec 7) — `behaviors_timeline.json`: every BehaviorResult
+    with its lifecycle transitions, confidence evolution, associated tracks/zones, and per-analyzer
+    stats. An engineering-only debugging/regression surface (deterministic, replayable)."""
+    # Group lifecycle transitions per behaviorId (started → updated → ended/expired) into a timeline.
+    timeline: dict = {}
+    order: list = []
+    for b in result.behaviors:
+        bid = b.get("behaviorId")
+        if bid not in timeline:
+            timeline[bid] = {
+                "behaviorId": bid,
+                "behaviorType": b.get("behaviorType"),
+                "category": b.get("category"),
+                "zoneId": b.get("zoneId"),
+                "subjects": b.get("subjects"),
+                "correlationId": b.get("correlationId"),
+                "transitions": [],
+            }
+            order.append(bid)
+        timeline[bid]["transitions"].append(
+            {
+                "state": b.get("state"),
+                "frameIndex": b.get("frameIndex"),
+                "at": b.get("lastObserved"),
+                "confidence": b.get("confidence"),
+                "metrics": b.get("metrics"),
+            }
+        )
+    return {
+        "sessionId": result.summary.get("sessionId"),
+        "behaviors": [timeline[bid] for bid in order],
+        "results": result.behaviors,  # the raw BehaviorResult stream (contract-shaped)
+        "stats": result.behavior_stats,
+        "analyzers": result.behavior_stats.get("analyzers", []),
     }
 
 
@@ -149,9 +195,10 @@ def write_artifacts(out_dir: str, result: AnalyzeResult) -> dict:
         "events": os.path.join(out_dir, "events.json"),
         "metrics": os.path.join(out_dir, "metrics.json"),
         "tracks": os.path.join(out_dir, "tracks.json"),
+        "behaviors": os.path.join(out_dir, "behaviors_timeline.json"),
         "summary": os.path.join(out_dir, "summary.txt"),
     }
-    for key in ("detections", "events", "metrics", "tracks"):
+    for key in ("detections", "events", "metrics", "tracks", "behaviors"):
         with open(paths[key], "w", encoding="utf-8") as fh:
             json.dump(docs[key], fh, indent=2, sort_keys=True)
             fh.write("\n")
@@ -174,13 +221,29 @@ def _summary_text(result: AnalyzeResult) -> str:
         f"events        : {s.get('events')}",
         f"tracking      : {_tracking_line(s)}",
         f"zones         : {s.get('zones')} · transitions={s.get('zoneTransitions')} · counting={s.get('countingEvents')}",
+        f"behaviors     : {_behavior_line(s)}",
         "stage timings (ms, total):",
         f"  decode={t.get('decodeMs')}  sampling={t.get('samplingMs')}  preprocess={t.get('preprocessMs')}",
         f"  inference={t.get('inferenceMs')}  postprocess={t.get('postprocessMs')}",
-        f"  tracking={t.get('trackingMs')}  zoneCounting={t.get('zoneCountingMs')}  eventGen={t.get('eventGenerationMs')}",
+        f"  tracking={t.get('trackingMs')}  zoneCounting={t.get('zoneCountingMs')}  behavior={t.get('behaviorMs')}  eventGen={t.get('eventGenerationMs')}",
         "",
     ]
     return "\n".join(lines)
+
+
+def _behavior_line(summary: dict) -> str:
+    if not summary.get("behaviorsEnabled"):
+        return "disabled"
+    b = summary.get("behavior", {})
+    by_type: dict = {}
+    for m in b.get("analyzers", []):
+        if m.get("behaviorsProduced"):
+            by_type[m["analyzer"]] = m["behaviorsProduced"]
+    detail = " ".join(f"{k}={v}" for k, v in by_type.items()) or "none"
+    return (
+        f"results={summary.get('behaviors', 0)} started={b.get('startedBehaviors', 0)} "
+        f"completed={b.get('completedBehaviors', 0)} [{detail}]"
+    )
 
 
 def _tracking_line(summary: dict) -> str:

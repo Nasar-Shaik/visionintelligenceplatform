@@ -55,6 +55,7 @@ CATEGORY_BY_TYPE: Dict[str, str] = {
     "analytics.people.count": "analytics",
     "analytics.queue.length": "analytics",
     "analytics.occupancy.changed": "analytics",
+    "security.intrusion.detected": "security",  # AI-3 (perception primitive; rules decide significance)
     # spatial/tracking (AI-2) — mirror the TS catalog (spatial.zone.* is category "perception").
     "spatial.zone.entered": "perception",
     "spatial.zone.exited": "perception",
@@ -80,6 +81,7 @@ PRIORITY_BY_TYPE: Dict[str, str] = {
     "analytics.people.count": "info",
     "analytics.queue.length": "info",
     "analytics.occupancy.changed": "low",
+    "security.intrusion.detected": "high",  # AI-3
     "spatial.zone.entered": "info",
     "spatial.zone.exited": "info",
     "tracking.track.updated": "info",

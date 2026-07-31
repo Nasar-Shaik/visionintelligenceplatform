@@ -33,6 +33,9 @@ export * from './perception/perception.js';
 // tracking + zones (AI-2)
 export * from './tracking/tracking.js';
 
+// behavior analysis (AI-3)
+export * from './behavior/behavior.js';
+
 // inference platform: model registry, jobs, runtime metrics, pipeline (P2-2 G-3)
 export * from './inference/inference.js';
 

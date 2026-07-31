@@ -40,6 +40,15 @@ export const BEHAVIOR_EVENTS = {
   loiteringDetected: 'behavior.loitering.detected',
 } as const;
 
+/**
+ * Security — access/presence primitives. `intrusion.detected` is a PERCEPTION primitive (a subject in
+ * a restricted-designated zone); business interpretation (after-hours, authorized personnel) is the
+ * Rule Engine's, never the AI runtime's.
+ */
+export const SECURITY_EVENTS = {
+  intrusionDetected: 'security.intrusion.detected',
+} as const;
+
 /** Analytics — derived aggregates/insights over a window (not a single detection). */
 export const ANALYTICS_EVENTS = {
   peopleCount: 'analytics.people.count',
@@ -90,6 +99,7 @@ export const ALL_EVENT_TYPES: readonly string[] = [
   ...Object.values(RECOGNITION_EVENTS),
   ...Object.values(SAFETY_EVENTS),
   ...Object.values(BEHAVIOR_EVENTS),
+  ...Object.values(SECURITY_EVENTS),
   ...Object.values(ANALYTICS_EVENTS),
   ...Object.values(SPATIAL_EVENTS),
   ...Object.values(SYSTEM_EVENTS),

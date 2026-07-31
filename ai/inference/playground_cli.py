@@ -6,6 +6,8 @@
     ├── detections.json
     ├── events.json
     ├── metrics.json
+    ├── tracks.json                (Track Replay — AI-2)
+    ├── behaviors_timeline.json    (Behavior Replay — AI-3)
     └── summary.txt
 
 The 4 JSON/text documents are produced with stdlib only; `original.mp4`/`annotated.mp4` use OpenCV
@@ -41,6 +43,14 @@ def _build_event_sink(publish: bool, nats_url: str) -> EventSink:
     from adapters.nats_sink import NatsEventSink  # noqa: WPS433 - integration-only
 
     return NatsEventSink(nats_url)
+
+
+def _behavior_options(args: argparse.Namespace) -> dict:
+    """Map CLI knobs → per-analyzer options for the behavior registry (all optional)."""
+    return {
+        "loitering": {"dwell_seconds": args.loiter_seconds},
+        "queue": {"min_queue": args.queue_min},
+    }
 
 
 def run(args: argparse.Namespace) -> int:
@@ -84,6 +94,8 @@ def run(args: argparse.Namespace) -> int:
         zones=tuple(zones),
         track_min_hits=args.track_min_hits,
         track_max_age=args.track_max_age,
+        enable_behaviors=not args.no_behaviors,
+        behavior_options=_behavior_options(args),
     )
     analyzer = VideoAnalyzer(
         build_adapter(args.engine),
@@ -146,9 +158,19 @@ def _write_annotated(path, sampled, result, fps, *, zones=None, diagnostics=Fals
                     cv2.rectangle(img, (x1, y1), (x2, y2), (0, 220, 0), 2)
                     cv2.putText(img, f"{tr['trackId']} {tr.get('state')} {tr.get('confidence'):.2f}",
                                 (x1, max(0, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 220, 0), 1)
+                # Behavior overlays (Architect AI-3 rec 7): labels, confidence, loiter/queue timers.
+                for i, bh in enumerate(fa.behaviors):
+                    metrics = bh.get("metrics", {})
+                    timer = ""
+                    if "dwellSeconds" in metrics:
+                        timer = f" {metrics['dwellSeconds']:.1f}s"
+                    elif "queueLength" in metrics:
+                        timer = f" len={int(metrics['queueLength'])}"
+                    label = f"{bh.get('behaviorType')} [{bh.get('state')}]{timer} {bh.get('confidence', 0):.2f}"
+                    cv2.putText(img, label, (8, 60 + i * 18), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 140, 255), 1)
                 cv2.putText(img, f"frame {fa.frame['frameIndex']} t={fa.frame['timestamp']} fps={fps:.1f}",
                             (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-                cv2.putText(img, f"infer={stage.get('inferenceMs')}ms track={stage.get('trackingMs')}ms",
+                cv2.putText(img, f"infer={stage.get('inferenceMs')}ms track={stage.get('trackingMs')}ms behavior={stage.get('behaviorMs')}ms",
                             (8, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             else:
                 for det in fa.detections:
@@ -182,6 +204,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-tracking", action="store_true", help="disable the tracking/zones/counting stages")
     p.add_argument("--track-min-hits", type=int, default=3, help="detections before a track is confirmed")
     p.add_argument("--track-max-age", type=int, default=30, help="frames a lost track survives before removal")
+    p.add_argument("--no-behaviors", action="store_true", help="disable behavior analysis (loiter/queue/intrusion/fire)")
+    p.add_argument("--loiter-seconds", type=float, default=3.0, help="dwell threshold (s) for loitering")
+    p.add_argument("--queue-min", type=int, default=2, help="minimum subjects to count as a queue")
     p.add_argument("--annotate", action="store_true", help="also write annotated.mp4")
     p.add_argument("--diagnostics", action="store_true", help="richer annotated overlays (track IDs, zones, timings)")
     p.add_argument("--publish", action="store_true", help="publish events to the backbone (NATS)")

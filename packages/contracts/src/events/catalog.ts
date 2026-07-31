@@ -429,6 +429,16 @@ export const EVENT_CATALOG: EventCatalogEntry[] = [
     defaultPriority: 'medium',
     pii: 'low',
   },
+  {
+    // A perception primitive — a subject was present in a zone designated restricted. The AI runtime
+    // never decides "after-hours"/"authorized"; time-of-day + personnel policy are the Rule Engine's.
+    type: 'security.intrusion.detected',
+    category: 'security',
+    description: 'A subject was present in a zone designated as restricted (perception primitive).',
+    producer: 'behavior.intrusion-detection',
+    defaultPriority: 'high',
+    pii: 'low',
+  },
   // analytics (derived aggregates/insights over a window; not a single detection)
   {
     type: 'analytics.people.count',
