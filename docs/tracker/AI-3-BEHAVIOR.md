@@ -1,6 +1,6 @@
 # AI-3 — Behavior Analysis (loitering · queue · intrusion · fire/smoke)
 
-> **Milestone:** AI Processing Phase **AI-3** · **Status:** ✅ code + tests complete · ⏳ **Architect review pending**
+> **Milestone:** AI Processing Phase **AI-3** · **Status:** ✅ **ACCEPTED** (Architect review 2026-07-31) — AI-4 authorized
 > **Scope:** add a platform-owned **behavioral intelligence** layer over the AI-2 tracks/zones — a
 > generic `BehaviorAnalyzer` seam + registry, an immutable `BehaviorContext`, a reusable `TemporalWindow`,
 > and four analyzers — **in `ai/inference`, no new service**.
@@ -127,4 +127,4 @@ confidence + loiter/queue timers). Engineering-only.
 - [x] Four analyzers (loitering/queue/intrusion/fire-smoke); generic `TemporalWindow`; single `BehaviorResultTranslator`; `security.intrusion.detected` added.
 - [x] Playground `behaviors_timeline.json` + diagnostics overlays; runtime boundary held (events only, severity reserved not set).
 - [x] Deterministic tests green; no frozen doc (01–28) change; no new service.
-- [ ] **Architect review of AI-3** ⏳ — then AI-4 (advanced behavior analytics + retail pilot).
+- [x] **Architect review of AI-3** ✅ **ACCEPTED** (2026-07-31) — "completes the foundational perception architecture"; AI-4 (Advanced Behavior Analytics & Retail Pilot) authorized with 12 recommendations.
