@@ -1,6 +1,6 @@
 # AI-4 — Advanced Behavior Analytics & Retail Pilot (Composite Behaviors + Profiles)
 
-> **Milestone:** AI Processing Phase **AI-4** · **Status:** ✅ code + tests complete · ⏳ **Architect review pending**
+> **Milestone:** AI Processing Phase **AI-4** · **Status:** ✅ **ACCEPTED** (Architect review 2026-07-31) — AI Runtime Architecture **v1.0** declared; contracts frozen (additive-only); AI-5 = production readiness
 > **Scope:** a **CompositeBehavior** tier (consumes BehaviorResults, produces higher-order
 > BehaviorResults), **BehaviorProfiles** (declarative deployment config), two generic primitives
 > (crowd/occupancy), and the **retail pilot delivered entirely as configuration** — **in `ai/inference`,
@@ -114,4 +114,4 @@ contracts **65**, lint, build, format).
 - [x] Generic Crowd/Occupancy analyzers; `profiles.py` fail-fast validation + portability + cycle rejection; retail pilot as pure config.
 - [x] Composite pass integrated after primitives; playground composite graph + execution order + profile; runtime boundary held (events only, perception only).
 - [x] Deterministic tests green; no frozen doc (01–28) change; no new service.
-- [ ] **Architect review of AI-4** ⏳ — then **AI-5 (production readiness: RTSP/live · multi-camera sessions · scheduling · health/recovery · benchmarking · model lifecycle · edge)** per the Architect's strategic direction.
+- [x] **Architect review of AI-4** ✅ **ACCEPTED** (2026-07-31) — CompositeBehavior confirmed the fifth foundational contract. Closing docs delivered: [Capability Maturity](../architecture/future/CAPABILITY_MATURITY.md), contract **freeze** (additive-only) + **AI Runtime Architecture v1.0** ([ED-0039](../project/ENGINEERING_DECISION_LOG.md)). **AI-5 = production readiness** (architecture is frozen; effort shifts to models/latency/GPU/RTSP/multi-camera/edge/benchmarking/monitoring).

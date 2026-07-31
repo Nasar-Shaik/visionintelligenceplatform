@@ -2,6 +2,9 @@
  * The Event envelope — the normalized, versioned, domain-neutral currency of the platform
  * (docs/architecture/09-EVENT-PLATFORM.md §1). Events carry NO industry meaning; meaning is
  * assigned by rules (Law 1/3). Consumers tolerate unknown additive payload fields (Postel's law).
+ *
+ * FROZEN — AI Runtime Architecture v1.0 (ED-0039): `EventEnvelope` is one of the five frozen AI
+ * contracts. Evolve ADDITIVELY only (optional fields); breaking changes require an ADR + major bump.
  */
 import { z } from 'zod';
 import {

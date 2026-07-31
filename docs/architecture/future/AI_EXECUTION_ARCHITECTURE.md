@@ -1,6 +1,13 @@
 # AI Execution Architecture — the reference for all AI video-intelligence work
 
-_Status: ⏳ Architect Review Pending · Author: Claude · Date: 2026-07-31 · **Reference architecture**_
+_Status: **v1.0 — Declared & Frozen** (Architect, AI-4 acceptance 2026-07-31) · Author: Claude · **Reference architecture**_
+
+> **AI Runtime Architecture v1.0.** With AI-1…AI-4 accepted, the AI runtime's architecture is declared
+> **v1.0** and its five foundational contracts are **frozen to additive-only evolution** (see §11 +
+> [ED-0039](../../project/ENGINEERING_DECISION_LOG.md)). Future work shifts from **expanding the
+> architecture** to **production readiness** (models, latency, GPU, RTSP/live, multi-camera, edge,
+> benchmarking, operational monitoring). Per-capability readiness is tracked in
+> [CAPABILITY_MATURITY](CAPABILITY_MATURITY.md).
 
 > Commissioned at the **AI Processing Phase** kickoff (Architect authorization 2026-07-31, after G-5).
 > With the foundational platform complete (**G-1 Camera · G-2 Media · G-3 Inference · G-4 Evidence ·
@@ -185,6 +192,40 @@ incidents or alerts** — it publishes events and the validated spine does the r
 ## 10. Status
 
 Reference architecture produced as **documentation** for the AI Processing Phase. It records the target
-design, folds in all six Architect recommendations, and defines the incremental milestones AI-1…AI-4. **No
-code, no frozen-doc (01–28) change, no new service.** The **AI-1 first-slice plan** follows for the
-Architect's plan-approval gate before any computer-vision implementation begins.
+design, folds in the Architect recommendations, and defined the incremental milestones AI-1…AI-4 — all
+now **implemented and accepted**. **No frozen-doc (01–28) change, no new service** across the phase.
+
+## 11. AI Runtime Architecture v1.0 — declaration + contract freeze (AI-4 acceptance)
+
+At **AI-4 acceptance** the Architect declared **AI Runtime Architecture v1.0** and recommended freezing
+the runtime's foundational contracts. This section records that decision (governance in
+[ED-0039](../../project/ENGINEERING_DECISION_LOG.md)).
+
+**The five frozen contracts** — the complete perception pipeline, each platform-owned and
+implementation-independent:
+
+```
+DetectionResult → Track → BehaviorResult → CompositeBehavior → EventEnvelope
+```
+
+| Contract            | Source                                                                                  | Frozen at   |
+| ------------------- | --------------------------------------------------------------------------------------- | ----------- |
+| `DetectionResult`   | [`@vip/contracts/perception`](../../../packages/contracts/src/perception/perception.ts) | v1.0 (AI-1) |
+| `Track`             | [`@vip/contracts/tracking`](../../../packages/contracts/src/tracking/tracking.ts)       | v1.0 (AI-2) |
+| `BehaviorResult`    | [`@vip/contracts/behavior`](../../../packages/contracts/src/behavior/behavior.ts)       | v1.0 (AI-3) |
+| `CompositeBehavior` | [`@vip/contracts/behavior`](../../../packages/contracts/src/behavior/behavior.ts)       | v1.0 (AI-4) |
+| `EventEnvelope`     | [`@vip/contracts/events`](../../../packages/contracts/src/events/envelope.ts)           | v1.0 (P1)   |
+
+**Freeze policy (Constitution §7 — additive/backward-compatible).** These contracts evolve **only** by
+**additive, optional** fields. **No** breaking structural change (rename/remove/retype/required-add)
+without an explicit ADR and a major version bump — avoided unless absolutely necessary. New capabilities
+attach through the existing extension seams (`attributes`, `metrics`, `evidence`, reserved fields), never
+by mutating a frozen shape.
+
+**What this means going forward (the Architect's strategic direction).** **Stop expanding the
+architecture.** Effort shifts from adding layers to **proving the platform runs reliably against live
+cameras in production**: better models · better tracking · faster/lower-latency inference · GPU
+optimization · **RTSP/live streams** · multi-camera session management · real customer deployments · edge
+device support · benchmarking · operational monitoring. Per-capability readiness is tracked separately in
+[CAPABILITY_MATURITY](CAPABILITY_MATURITY.md) (metadata only). The next milestone (**AI-5**) is
+**production readiness**, not new architecture.

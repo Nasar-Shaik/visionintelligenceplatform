@@ -4,6 +4,9 @@
  * model-specific shape. These are the outputs the event pipeline (P1-5) turns into `perception.*`
  * events. Grounds: docs/architecture/05-CAPABILITY-ARCHITECTURE.md, 08-AI-ML-PLATFORM.md,
  * docs/architecture/phase1/AI_PIPELINE.md; ADR-0002 (model-agnostic), ADR-0012 (adapter layer).
+ *
+ * FROZEN — AI Runtime Architecture v1.0 (ED-0039): `DetectionResult` is one of the five frozen AI
+ * contracts. Evolve ADDITIVELY only (optional fields); breaking changes require an ADR + major bump.
  */
 import { z } from 'zod';
 import {

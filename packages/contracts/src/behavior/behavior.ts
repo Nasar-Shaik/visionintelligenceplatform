@@ -24,6 +24,10 @@
  * *what to do about it*.
  *
  * Grounds: docs/architecture/future/AI_EXECUTION_ARCHITECTURE.md, 05/08/09; ADR-0002/0012.
+ *
+ * FROZEN — AI Runtime Architecture v1.0 (ED-0039): `BehaviorResult` and `CompositeBehavior` are two of
+ * the five frozen AI contracts. Evolve ADDITIVELY only (optional fields — as AI-4 did with relationships/
+ * evidence/composite); breaking changes require an ADR + major bump.
  */
 import { z } from 'zod';
 import { BBox, Confidence, IsoDateTime, SemVer, TenantId } from '../common/primitives.js';

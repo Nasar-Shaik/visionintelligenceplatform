@@ -29,6 +29,9 @@
  * metadata (business meaning is the Rule Engine's); `attributes` is the extension seam.
  *
  * Grounds: docs/architecture/future/AI_EXECUTION_ARCHITECTURE.md, 05/08/09; ADR-0002/0012.
+ *
+ * FROZEN — AI Runtime Architecture v1.0 (ED-0039): `Track` is one of the five frozen AI contracts.
+ * Evolve ADDITIVELY only (optional fields); breaking changes require an ADR + major bump.
  */
 import { z } from 'zod';
 import { BBox, Confidence, IsoDateTime, TenantId } from '../common/primitives.js';
