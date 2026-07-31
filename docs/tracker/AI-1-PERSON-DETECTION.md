@@ -1,6 +1,6 @@
 # AI-1 — Person Detection Pipeline + AI Playground
 
-> **Milestone:** AI Processing Phase **AI-1** · **Status:** ✅ code + tests complete · ⏳ **Architect review pending**
+> **Milestone:** AI Processing Phase **AI-1** · **Status:** ✅ **ACCEPTED** (Architect review 2026-07-31)
 > **Scope:** prove the **complete AI processing pipeline** end-to-end (MP4 → decode → sample →
 > person detection → bounding boxes → `DetectionResult` → `EventEnvelope` → the existing spine),
 > exercised by the **AI Playground**. Objective is the pipeline, not detection accuracy.
@@ -73,4 +73,4 @@ those additive extensions to **AI-2** (live sessions + tracking). Flagged for th
 - [x] Deterministic-by-default (stub); real ONNX/OpenCV integration-only behind the adapter seam.
 - [x] AI Playground endpoint + CLI + `playground-output/` artifacts; configurable options.
 - [x] Python tests green (92); CLI smoke verified; no frozen doc (01–28) change; no new service.
-- [ ] **Architect review of AI-1** ⏳ — then object tracking + zones (AI-2).
+- [x] **Architect review of AI-1** ✅ **APPROVED** (2026-07-31) — AI runtime confirmed a data-plane-only component; platform architecture preserved; RuntimeMetrics/registry deferral endorsed. **AI-2 authorized** with 10 tracking/zone recommendations (see [AI-2 plan](#) — folded into the AI-2 milestone).
