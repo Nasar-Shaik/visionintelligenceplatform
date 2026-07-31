@@ -4,6 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
+import type { Registry } from 'prom-client';
 import type { ServiceConfig } from '../config/env.js';
 import { ReadinessRegistry } from '../application/readiness.js';
 import { registerSecurity } from './plugins/security.js';
@@ -13,16 +14,26 @@ import { registerHealthRoutes } from './routes/health.js';
 import { registerMetricsRoute } from './routes/metrics.js';
 import { registerRootRoute } from './routes/root.js';
 import { registerGatewayRoutes } from './routes/gateway.js';
+import { registerCors } from './plugins/cors.js';
+import { registerStreamRoutes } from './routes/stream.js';
+import type { StreamHub } from '../application/stream-hub.js';
 
 export interface BuildServerOptions {
   config: ServiceConfig;
   startedAt?: Date;
   readiness?: ReadinessRegistry;
+  /**
+   * Real-time delivery hub (G-5). Injected by the composition root (over NatsEventBus) or a test
+   * (over InMemoryEventBus). When present + `config.stream.enabled`, the SSE + diagnostics routes
+   * and CORS are mounted; when absent, the gateway is a pure proxy (backward compatible).
+   */
+  streamHub?: StreamHub | undefined;
 }
 
 export interface BuiltServer {
   app: FastifyInstance;
   readiness: ReadinessRegistry;
+  registry: Registry;
 }
 
 export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer> {
@@ -50,16 +61,27 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
   });
 
   await registerSecurity(app);
+  if (config.stream.enabled && config.stream.allowedOrigins.length > 0) {
+    registerCors(app, { allowedOrigins: config.stream.allowedOrigins });
+  }
   const registry = registerMetrics(app, { serviceName: config.serviceName });
   registerErrorHandler(app);
 
   registerHealthRoutes(app, { readiness });
   registerMetricsRoute(app, registry);
   registerRootRoute(app, { name: config.serviceName, version: config.serviceVersion, startedAt });
-  registerGatewayRoutes(app, {
-    jwt: { secret: config.jwt.secret, issuer: 'identity', audience: 'vip' },
-    upstreams: config.upstreams,
-  });
 
-  return { app, readiness };
+  const jwt = { secret: config.jwt.secret, issuer: 'identity', audience: 'vip' };
+  if (config.stream.enabled && opts.streamHub) {
+    registerStreamRoutes(app, {
+      jwt,
+      hub: opts.streamHub,
+      reconnectRetryMs: config.stream.reconnectRetryMs,
+    });
+  }
+  // Proxy routes register the catch-all `/api/:service/*`; keep them AFTER the specific
+  // `/api/stream` route so the stream route wins.
+  registerGatewayRoutes(app, { jwt, upstreams: config.upstreams });
+
+  return { app, readiness, registry };
 }

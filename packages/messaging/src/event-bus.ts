@@ -36,6 +36,14 @@ export interface SubscribeOptions {
   filterSubject: string;
   /** Max redeliveries before the bus itself terminates a message to the DLQ (default 5). */
   maxDeliver?: number;
+  /**
+   * Deliver only messages published AFTER the consumer is created, rather than replaying the whole
+   * stream from the start (the default `DeliverPolicy.All`). Used by live fan-out consumers — the
+   * gateway's real-time stream (G-5) wants new events only; historical catch-up is served from its
+   * own bounded ring buffer, never a full-stream replay. No-op for the in-memory bus (which only
+   * ever delivers subsequent publishes).
+   */
+  deliverNew?: boolean;
 }
 
 /** A live subscription; `stop()` drains and detaches the consumer. */

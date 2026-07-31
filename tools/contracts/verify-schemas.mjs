@@ -73,6 +73,8 @@ const REQUIRED = [
   'evidence-download-target',
   'evidence-custody-entry',
   'evidence-custody-page',
+  'stream-envelope',
+  'stream-control',
 ];
 
 const errors = [];

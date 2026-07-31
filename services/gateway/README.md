@@ -23,10 +23,39 @@ Design: [phase1/AUTHENTICATION](../../docs/architecture/phase1/AUTHENTICATION.md
   `camera` → `CAMERA_URL`, `media` → `MEDIA_URL`.
 - P1-2 proxies JSON bodies; streaming/multipart and richer routing are later extensions.
 
+## Real-time delivery — SSE (P2-2 G-5)
+
+Beyond the proxy, the gateway is the platform's **real-time edge**: it subscribes to the tenant-partitioned
+backbone and fans live frames to clients over **Server-Sent Events**. No new service — the gateway is the
+single trust boundary, so "gateway event subscriptions" belong here.
+Full design: [phase2/REALTIME_DELIVERY](../../docs/architecture/phase2/REALTIME_DELIVERY.md).
+
+| Method + path             | Purpose                                                                  | Auth  |
+| ------------------------- | ------------------------------------------------------------------------ | ----- |
+| `GET /api/stream`         | open a multiplexed SSE stream (`?topics=incidents,alerts,events,system`) | req'd |
+| `GET /stream/diagnostics` | per-connection operational snapshot (tenant-scoped)                      | req'd |
+
+- **StreamHub** ([src/application/stream-hub.ts](src/application/stream-hub.ts)) is transport-agnostic
+  (talks to a `ConnectionSink`; the [SSE adapter](src/transport/routes/stream.ts) is the only SSE-aware
+  code — WebSocket/gRPC drop in beside it). It owns per-tenant backbone subscriptions, a bounded reconnect
+  **ring buffer**, per-connection **priority send-queues** (HIGH>MEDIUM>LOW drop order), the connection
+  **lifecycle**, heartbeats, **diagnostics**, and **latency metrics**.
+- **Topics → permission:** `incidents`→`incident:read`, `alerts`→`notification:read`, `events`→`event:read`,
+  `system`→`camera:read`. Granted = requested ∩ permitted; empty ⇒ **403**. Per-tenant subject filter ⇒
+  **cross-tenant isolation** is structural.
+- **Envelope is version-safe:** `StreamEnvelope` carries an **opaque payload**, decoupled from
+  `EventEnvelope` evolution.
+- Enabled by `STREAM_ENABLED` (default on); when off, the gateway is a pure proxy. Metrics on `/metrics`
+  (`stream_*`), including `stream_delivery_latency_seconds`.
+
 ## Configuration
 
 Via [`@vip/config`](../../packages/config/README.md): `HOST`, `PORT`, `LOG_LEVEL`, `JWT_SECRET`
-(edge verification), `IDENTITY_URL`, `TENANT_URL`.
+(edge verification), `IDENTITY_URL`, `TENANT_URL`, and the upstream `*_URL`s. **Real-time (G-5):**
+`STREAM_ENABLED`, `CORS_ALLOWED_ORIGINS`, `NATS_URL`, `STREAM_MAX_CONNECTIONS_PER_TENANT`,
+`STREAM_MAX_QUEUE_DEPTH`, `STREAM_REPLAY_BUFFER_SIZE`, `STREAM_HEARTBEAT_INTERVAL_MS`,
+`STREAM_MAX_CONNECTION_DURATION_MS`, `STREAM_RECONNECT_RETRY_MS`
+([limits table](../../docs/architecture/phase2/REALTIME_DELIVERY.md#9-configurable-operational-limits-architect-rec-4)).
 
 ## Run & test
 

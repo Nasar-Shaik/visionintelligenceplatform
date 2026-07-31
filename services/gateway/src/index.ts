@@ -1,18 +1,47 @@
 /**
  * Bootstrap / composition root: load & validate config, build the server, listen, and shut down
  * gracefully on SIGTERM/SIGINT. The gateway holds no data store — it validates tokens and proxies.
+ * When real-time delivery is enabled (G-5) it also dials the NATS backbone and wires the StreamHub
+ * (over NatsEventBus) + its Prometheus metrics onto the /metrics registry.
  */
 import { loadDotEnv } from '@vip/config';
+import { NatsEventBus, type EventBus } from '@vip/messaging';
 import { loadConfig } from './config/env.js';
 import { buildServer } from './transport/server.js';
+import { StreamHub } from './application/stream-hub.js';
+import { StreamMetrics } from './application/stream-metrics.js';
 
 async function main(): Promise<void> {
   loadDotEnv();
   const config = loadConfig();
-  const { app } = await buildServer({ config });
+
+  // Real-time delivery (G-5): dial the backbone and stand up the StreamHub, or stay a pure proxy.
+  let bus: EventBus | undefined;
+  let hub: StreamHub | undefined;
+  if (config.stream.enabled) {
+    bus = await NatsEventBus.connect({ servers: config.nats.url, name: 'gateway' });
+    hub = new StreamHub({
+      bus,
+      limits: {
+        maxConnectionsPerTenant: config.stream.maxConnectionsPerTenant,
+        maxQueueDepth: config.stream.maxQueueDepth,
+        replayBufferSize: config.stream.replayBufferSize,
+        heartbeatIntervalMs: config.stream.heartbeatIntervalMs,
+        maxConnectionDurationMs: config.stream.maxConnectionDurationMs,
+      },
+    });
+  }
+
+  const { app, registry } = await buildServer({ config, streamHub: hub });
+  if (hub) {
+    hub.useMetrics(new StreamMetrics(registry));
+    app.log.info('real-time delivery (SSE) enabled');
+  }
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     app.log.info({ signal }, 'shutdown signal received, draining');
+    await hub?.close();
+    await bus?.close();
     await app.close();
     app.log.info('shutdown complete');
     process.exit(0);

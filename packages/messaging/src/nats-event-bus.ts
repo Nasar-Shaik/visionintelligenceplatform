@@ -85,7 +85,7 @@ export class NatsEventBus implements EventBus {
     await this.jsm.consumers.add(opts.stream, {
       durable_name: opts.durable,
       ack_policy: AckPolicy.Explicit,
-      deliver_policy: DeliverPolicy.All,
+      deliver_policy: opts.deliverNew ? DeliverPolicy.New : DeliverPolicy.All,
       filter_subject: opts.filterSubject,
       max_deliver: maxDeliver,
     });

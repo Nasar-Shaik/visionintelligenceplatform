@@ -60,6 +60,7 @@ import {
   RuntimeMetrics,
   PipelineDefinition,
 } from '../src/inference/inference.js';
+import { StreamEnvelope, StreamControl } from '../src/stream/stream.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, '..', 'generated');
@@ -118,6 +119,8 @@ const schemas: Record<string, z.ZodType> = {
   'evidence-download-target': EvidenceDownloadTarget,
   'evidence-custody-entry': EvidenceCustodyEntry,
   'evidence-custody-page': EvidenceCustodyPage,
+  'stream-envelope': StreamEnvelope,
+  'stream-control': StreamControl,
 };
 
 mkdirSync(outDir, { recursive: true });

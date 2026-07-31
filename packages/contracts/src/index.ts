@@ -52,6 +52,9 @@ export * from './incidents/incident.js';
 // notifications — alert engine (P1-8)
 export * from './notifications/notification.js';
 
+// real-time delivery — SSE stream frames (P2-2 G-5)
+export * from './stream/stream.js';
+
 // capability
 export * from './capability/descriptor.js';
 

@@ -39,13 +39,13 @@ _Status: ⏳ Architect Review Pending · Author: Claude · Date: 2026-07-29 · D
 Raised by the Architect at **G-4 Evidence** acceptance. **Future evolution, NOT blockers** — the shipped
 evidence model already supports each without a structural change. Sequence strictly by product need.
 
-| #   | Recommendation             | Nature                | Builds on (shipped in G-4)                                              | Home when built                              |
-| --- | -------------------------- | --------------------- | ---------------------------------------------------------------------- | -------------------------------------------- |
-| G4-1 | **Evidence Timeline**      | presentation-only     | evidence model + `source` chain (Event→Rule→Incident→Evidence)         | console / workflow read-projection           |
-| G4-2 | **Evidence Collections**   | grouping abstraction  | `EvidenceSource` + `EvidenceQuery` (N-per-incident already expressible) | contract + evidence query, when investigations demand it |
-| G4-3 | **Storage Health Monitoring** | operational metrics | `ObjectStore` port + `EvidenceMetrics`                                  | evidence service `/metrics` + provider probes |
-| G4-4 | **Advanced Evidence Search** | structured search   | `EvidenceMetadata`/`EvidenceAiMetadata` (storage-independent)          | evidence query layer / search index          |
-| G4-5 | **AI Runtime Integration doc** | documentation-only | [AI_PROCESSING_PIPELINE](AI_PROCESSING_PIPELINE.md) (consolidate)      | `docs/architecture/future/AI_RUNTIME_INTEGRATION.md` |
+| #    | Recommendation                 | Nature               | Builds on (shipped in G-4)                                              | Home when built                                          |
+| ---- | ------------------------------ | -------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------- |
+| G4-1 | **Evidence Timeline**          | presentation-only    | evidence model + `source` chain (Event→Rule→Incident→Evidence)          | console / workflow read-projection                       |
+| G4-2 | **Evidence Collections**       | grouping abstraction | `EvidenceSource` + `EvidenceQuery` (N-per-incident already expressible) | contract + evidence query, when investigations demand it |
+| G4-3 | **Storage Health Monitoring**  | operational metrics  | `ObjectStore` port + `EvidenceMetrics`                                  | evidence service `/metrics` + provider probes            |
+| G4-4 | **Advanced Evidence Search**   | structured search    | `EvidenceMetadata`/`EvidenceAiMetadata` (storage-independent)           | evidence query layer / search index                      |
+| G4-5 | **AI Runtime Integration doc** | documentation-only   | [AI_PROCESSING_PIPELINE](AI_PROCESSING_PIPELINE.md) (consolidate)       | `docs/architecture/future/AI_RUNTIME_INTEGRATION.md`     |
 
 Guiding rule unchanged: **"Is this required today? If no, document the extension point, don't build it."**
 

@@ -14,3 +14,5 @@ export class AppError extends Error {
 export const badGateway = (message = 'Bad Gateway'): AppError =>
   new AppError(502, 'bad_gateway', message);
 export const notFound = (message: string): AppError => new AppError(404, 'not_found', message);
+export const forbidden = (message = 'Forbidden'): AppError =>
+  new AppError(403, 'forbidden', message);
