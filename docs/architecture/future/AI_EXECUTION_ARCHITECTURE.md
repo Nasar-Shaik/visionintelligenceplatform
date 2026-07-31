@@ -1,6 +1,6 @@
 # AI Execution Architecture — the reference for all AI video-intelligence work
 
-_Status: **v1.0 — Declared & Frozen** (Architect, AI-4 acceptance 2026-07-31) · Author: Claude · **Reference architecture**_
+_Status: **v1.0 — Formally APPROVED & Frozen** (Architect, 2026-07-31 — architecture phase concluded) · Author: Claude · **Reference architecture**_
 
 > **AI Runtime Architecture v1.0.** With AI-1…AI-4 accepted, the AI runtime's architecture is declared
 > **v1.0** and its five foundational contracts are **frozen to additive-only evolution** (see §11 +
