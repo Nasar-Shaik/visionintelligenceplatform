@@ -1,6 +1,6 @@
 # AI-5a — Production KPIs + Benchmark Harness
 
-> **Milestone:** Production Readiness **AI-5a** (first slice of AI-5) · **Status:** ✅ code + tests complete · ⏳ **Architect review pending**
+> **Milestone:** Production Readiness **AI-5a** (first slice of AI-5) · **Status:** ✅ **ACCEPTED** (Architect review 2026-07-31)
 > **Scope:** establish the platform's **official performance baseline** + measurable acceptance criteria
 > — a deterministic **benchmark harness**, per-deployment-class **budgets/SLOs**, and the **KPI
 > governance** doc. **In `ai/inference`, no new service; operational only — no perception capability,
@@ -78,4 +78,23 @@ contracts **70**, lint, build, format). CLI verified: 1/4/8-camera suite → PAS
 - [x] Per-deployment-class budgets/SLOs; CLI 5-file bundle; CI-gateable (non-zero on FAIL).
 - [x] KPI/SLO/budget governance doc; reproducibility metadata + environment fingerprint; PASS/WARNING/FAIL.
 - [x] Deterministic tests green; no new service; no frozen-doc (01–28) change; no contract-freeze violation.
-- [ ] **Architect review of AI-5a** ⏳ — the official baseline. Then **AI-5b** (RTSP live ingestion + multi-camera sessions).
+- [x] **Architect review of AI-5a** ✅ **ACCEPTED** (2026-07-31) — the official baseline. **AI-5b** (RTSP live ingestion + multi-camera sessions) authorized.
+
+## 5. Architect acceptance (2026-07-31) + forward recommendations
+
+**Verdict:** ✅ **ACCEPTED.** AI-5a establishes the official production performance baseline for AI Runtime Architecture v1.0 and **remains an operational engineering milestone, not an architectural one** — the five frozen perception contracts (`DetectionResult → Track → BehaviorResult → CompositeBehavior → EventEnvelope`) are unchanged; benchmarking is correctly isolated as an operational capability that does not alter perception behavior. The Architect specifically endorsed the deployment-class budgets, KPI governance, reproducible bundle, deterministic execution, additive `RuntimeMetrics`, and the **frame-sampling (an execution policy) vs dropped-frames (operational degradation)** distinction as a lasting diagnostics improvement.
+
+**10 forward recommendations** (future-facing — recorded here, actioned across AI-5b…e; none are AI-5a blockers):
+
+1. **Benchmark governance loop** — every production optimization follows Baseline → Implementation → Re-benchmark → Regression comparison → Acceptance; improvements are justified by benchmark evidence, not intuition. (Codified in [PRODUCTION_KPIS §5](../architecture/future/PRODUCTION_KPIS.md).)
+2. **Preserve historical benchmark reports** — retain runs rather than overwrite, so results compare across runtime versions / deployment classes / hardware / optimization milestones (long-term trend analysis). _(Bundle already timestamps + fingerprints; a history store is an AI-5b+ concern.)_
+3. **Benchmark identifiers** — each execution carries `benchmarkId` + `baselineId` + `runtimeVersion` + `deploymentClass` + `executionTimestamp`. _(Report already has `id`/`baselineId`/`runtimeVersion`/`deploymentClass`/`recordedAt`.)_
+4. **Document benchmark assumptions** — each scenario states input source · frame rate · resolution · cameras · model backend · sampling config · duration (prevents invalid comparisons). _(`configuration` echo + `workload` + `environment` capture this.)_
+5. **Validate benchmark repeatability** — periodically re-run identical scenarios; document acceptable measurement variance for confidence in stability.
+6. **Expand deployment classes over time** — add reference hardware as deployments grow; architecture stays hardware-neutral.
+7. **Preserve benchmark neutrality** — measure platform performance only; no customer-specific assumptions; reusable across every industry profile.
+8. **Additive-only `RuntimeMetrics`** — keep evolving through additive changes; maintain clear separation between **perception / operational / benchmark** metrics.
+9. **Benchmark production scenarios** — future suites add continuous execution · reconnect · degraded network · multiple resolutions · varying frame rates · long-duration stability (all AI-5b…e, using this framework).
+10. **Preserve architecture freeze** — future AI-5 slices improve reliability/performance/scalability/recoverability/observability **without new perception contracts or architectural layers**.
+
+**Directive:** proceed to **AI-5b (RTSP Live Ingestion + Multi-Camera Session Management)**, measuring every improvement against this AI-5a baseline; **stop after AI-5b** for architectural + operational review before AI-5c.
