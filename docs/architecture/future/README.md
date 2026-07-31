@@ -34,6 +34,21 @@ _Status: ⏳ Architect Review Pending · Author: Claude · Date: 2026-07-29 · D
 
 > **Rows 13–14 are G-3.5-closeout additions (2026-07-30, [ED-0033](../../project/ENGINEERING_DECISION_LOG.md)):** documentation-only architecture notes commissioned by the Architect before formally closing G-3.5 — event-spine versioning/dedup/ordering semantics, and the future AI processing pipeline (Inference Adapter boundary + long-running behaviour workflows). Tracked as [TD-10…TD-14](../../../tracking/TECH-DEBT.md).
 
+## G-4 acceptance — forward recommendations (2026-07-31)
+
+Raised by the Architect at **G-4 Evidence** acceptance. **Future evolution, NOT blockers** — the shipped
+evidence model already supports each without a structural change. Sequence strictly by product need.
+
+| #   | Recommendation             | Nature                | Builds on (shipped in G-4)                                              | Home when built                              |
+| --- | -------------------------- | --------------------- | ---------------------------------------------------------------------- | -------------------------------------------- |
+| G4-1 | **Evidence Timeline**      | presentation-only     | evidence model + `source` chain (Event→Rule→Incident→Evidence)         | console / workflow read-projection           |
+| G4-2 | **Evidence Collections**   | grouping abstraction  | `EvidenceSource` + `EvidenceQuery` (N-per-incident already expressible) | contract + evidence query, when investigations demand it |
+| G4-3 | **Storage Health Monitoring** | operational metrics | `ObjectStore` port + `EvidenceMetrics`                                  | evidence service `/metrics` + provider probes |
+| G4-4 | **Advanced Evidence Search** | structured search   | `EvidenceMetadata`/`EvidenceAiMetadata` (storage-independent)          | evidence query layer / search index          |
+| G4-5 | **AI Runtime Integration doc** | documentation-only | [AI_PROCESSING_PIPELINE](AI_PROCESSING_PIPELINE.md) (consolidate)      | `docs/architecture/future/AI_RUNTIME_INTEGRATION.md` |
+
+Guiding rule unchanged: **"Is this required today? If no, document the extension point, don't build it."**
+
 ## Reconciliation with the existing ADR system
 
 A suggestion arose to create a parallel `docs/architecture/adr/` (three-digit ADRs). **We keep the

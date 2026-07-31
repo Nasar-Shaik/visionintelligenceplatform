@@ -1,6 +1,6 @@
 # G-4 — Evidence APIs
 
-> **Milestone:** P2-2 **G-4** (Evidence subsystem) · **Status:** ✅ code + tests complete · ⏳ **Architect review pending**
+> **Milestone:** P2-2 **G-4** (Evidence subsystem) · **Status:** ✅ **ACCEPTED** (Architect review 2026-07-31)
 > **Scope:** a production-grade Evidence subsystem — snapshots, clips, manifest, metadata, custody,
 > retention, secure retrieval — implementing the frozen **Evidence bounded context** ([22 §11](../architecture/22-BOUNDED-CONTEXTS.md), [23 §evidence](../architecture/23-SERVICE-OWNERSHIP.md), [12](../architecture/12-EVIDENCE-MANAGEMENT.md)).
 > **Author:** Claude · _2026-07-30_
@@ -80,4 +80,16 @@ transitions. All additive behind the shipped model.
 - [x] Architecture consistent with the frozen Evidence context; no frozen doc changed.
 - [x] Type checking, import-graph clean, contracts validated, tests deterministic, all gates green.
 - [x] Documentation complete (README, this review, ED-0034, TD register).
-- [ ] **Architect review of G-4** ⏳ — then the next milestone.
+- [x] **Architect review of G-4** ✅ **APPROVED** (2026-07-31) — implemented as a true bounded context, not a file-storage service; architectural boundaries clean and consistent with the frozen platform. Five forward-architecture recommendations recorded (not blockers) — see §7.
+
+## 7. Architect forward recommendations (G-4 acceptance, 2026-07-31)
+
+Five strategic items raised at acceptance — **future evolution, NOT G-4 blockers**. The current model
+already supports each without a structural change. Logged in the future-architecture index
+([future/README §G-4 recommendations](../architecture/future/README.md)).
+
+1. **Evidence Timeline** — an Investigation Timeline projection (Incident → Evidence → Snapshots → Clips → Operator Notes → Export Packages) over the existing evidence model; presentation-only, no model change.
+2. **Evidence Collections** — group N evidence objects under an Investigation; already expressible via `source`/query, no implementation now.
+3. **Storage Health Monitoring** — operational visibility per provider (availability, capacity, latency, signed-URL failures, retrieval failures); pairs with the `ObjectStore` port + `EvidenceMetrics`.
+4. **Advanced Evidence Search** — structured-metadata search (camera/incident/rule/event/AI-label/confidence/trackId/date/tags) over the manifest, independent of storage implementation.
+5. **AI Runtime Integration doc** — consolidate the full RTSP→…→Evidence→Alert→Dashboard journey into `docs/architecture/future/AI_RUNTIME_INTEGRATION.md`, preserving the existing modular design.
