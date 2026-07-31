@@ -106,6 +106,35 @@ scheduling (accelerator on the version + capability profile) — all additive, n
 - **`onnx`** — real ONNX Runtime + MLflow model resolution. Needs `requirements.txt` and a model
   registered on the dev-stack MLflow. Selected via `INFERENCE_BACKEND=onnx`.
 
+## Video pipeline + AI Playground (AI-1)
+
+The first AI-processing slice: turn a **video** into detections + `EventEnvelope`s through modular,
+independently-testable stages that reuse the per-frame seams above. Reference:
+[AI_EXECUTION_ARCHITECTURE](../../docs/architecture/future/AI_EXECUTION_ARCHITECTURE.md).
+
+```
+Video Source → Frame Decoder → Frame Sampler → [ preprocess → infer → postprocess → track → translate ]
+             → DetectionResult → Event Generator → EventEnvelope → (spine → incident → evidence → G-5 dashboard)
+```
+
+- **Stages** (flat modules, one responsibility each): [`video_frame`](video_frame.py) (immutable frame
+  metadata), [`video_decoder`](video_decoder.py) (`StubFrameDecoder` stdlib-deterministic ·
+  `OpenCvFrameDecoder` real MP4, lazy `cv2` · `IterableFrameDecoder`), [`video_sampler`](video_sampler.py)
+  (target-FPS/stride + dropped-frame count), [`video_analyzer`](video_analyzer.py) (composes the stages,
+  records **per-stage timings**, keeps `DetectionResult` AI-neutral).
+- **AI Playground** — the engineering workbench; validate a model before it enters customer workflows:
+  - `POST /playground/analyze` (internal-key + `x-tenant-id`) — analyze base64 frames → detections +
+    events + stage metrics. Deterministic (stub backend), no OpenCV.
+  - `python playground_cli.py --input clip.mp4 --annotate --output playground-output/` — writes
+    `original.mp4 · annotated.mp4 · detections.json · events.json · metrics.json · summary.txt`. Options
+    (all optional): `--model --engine --labels --confidence --iou --fps --resize --publish`. Real MP4 +
+    annotation need OpenCV (`requirements.txt`); `--synthetic N` runs with no OpenCV. `--publish` routes
+    events onto the backbone so they flow through the existing spine → the G-5 dashboard.
+
+**Boundary held:** the pipeline emits **only `EventEnvelope`s** (person → `perception.person.detected`),
+never incidents/alerts. Deterministic-by-default (stub); real ONNX/YOLO is integration-only behind the
+same `ModelAdapter` seam.
+
 ## Configuration (env, `.env` only — ADR-0018)
 
 `HOST`, `PORT` (8085), `LOG_LEVEL`, `INTERNAL_API_KEY` (≥16), `INFERENCE_BACKEND` (`stub`|`onnx`),

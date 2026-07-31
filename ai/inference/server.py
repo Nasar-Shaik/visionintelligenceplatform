@@ -93,6 +93,8 @@ def make_handler(
             segs = _segments(path)
             if path == "/infer":
                 self._infer()
+            elif path == "/playground/analyze":
+                self._playground_analyze()
             elif segs[:1] == ["models"]:
                 self._post_models(segs)
             elif segs[:1] == ["sessions"]:
@@ -126,6 +128,23 @@ def make_handler(
                 self._err(500, "inference_error", str(exc))
                 return
             self._ok(result)
+
+        # --- AI Playground (AI-1; x-internal-key + x-tenant-id) --------------------
+        def _playground_analyze(self) -> None:
+            tenant = self._tenant()
+            if tenant is None:
+                self._err(400, "bad_request", "x-tenant-id header is required")
+                return
+            body, err = self._read_json()
+            if err is not None:
+                self._err(400, "bad_request", err)
+                return
+            try:
+                from playground import analyze_request  # noqa: WPS433 - keeps import graph lean
+
+                self._ok(analyze_request(body, tenant))
+            except (ValueError, InferenceError) as exc:
+                self._err(400, "bad_request", str(exc))
 
         # --- model registry (control plane; x-internal-key + x-tenant-id) ----------
         def _tenant(self) -> Optional[str]:

@@ -53,3 +53,6 @@ docker-compose.override.yml
 *.log
 tmp/
 .cache/
+
+# AI Playground CLI output (engineering artifacts — never committed)
+playground-output/
