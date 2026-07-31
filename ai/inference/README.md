@@ -205,6 +205,22 @@ BehaviorResult → [CompositeBehaviorAnalyzer(s) via CompositeRegistry] → Comp
   `behaviors_timeline.json`; `--profile <name>` / `--no-composites`. See
   [AI-4-COMPOSITE](../../docs/tracker/AI-4-COMPOSITE.md).
 
+### Benchmark Harness (AI-5a — Production Readiness)
+
+**Operational** measurement of the frozen v1.0 runtime (adds no capability, changes no perception
+contract) — the platform's official performance baseline:
+
+- **[`benchmark`](benchmark.py)** — pure, unit-tested KPI math (`percentile`, `evaluate_budget`,
+  `build_report`) + `run_benchmark` over the real pipeline (stub adapter + synthetic frames,
+  deterministic; real cameras/GPU are AI-5b+). **Warm-up is separated from measurement**; multi-camera
+  workloads (1/4/8) aggregate. Mirrors [`@vip/contracts/benchmark`](../../packages/contracts/src/benchmark/benchmark.ts).
+- **[`benchmarks/budgets.json`](benchmarks/budgets.json)** — per-deployment-class budgets/SLOs
+  (dev-laptop · mini-pc-i5 · rtx-desktop · edge-device). Verdicts are `pass/warning/fail/na`
+  (informational). **[`benchmark_cli.py`](benchmark_cli.py)**: `--deployment <class> --suite` writes the
+  5-file bundle (`benchmark.json · summary.txt · runtime_metrics.json · environment.json ·
+configuration.json`) and exits non-zero on a FAIL. Governance:
+  [PRODUCTION_KPIS](../../docs/architecture/future/PRODUCTION_KPIS.md), [AI-5a-BENCHMARK](../../docs/tracker/AI-5a-BENCHMARK.md).
+
 ## Configuration (env, `.env` only — ADR-0018)
 
 `HOST`, `PORT` (8085), `LOG_LEVEL`, `INTERNAL_API_KEY` (≥16), `INFERENCE_BACKEND` (`stub`|`onnx`),

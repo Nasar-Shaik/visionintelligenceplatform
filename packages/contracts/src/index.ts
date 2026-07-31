@@ -36,6 +36,9 @@ export * from './tracking/tracking.js';
 // behavior analysis (AI-3)
 export * from './behavior/behavior.js';
 
+// benchmarking + performance governance (AI-5a)
+export * from './benchmark/benchmark.js';
+
 // inference platform: model registry, jobs, runtime metrics, pipeline (P2-2 G-3)
 export * from './inference/inference.js';
 

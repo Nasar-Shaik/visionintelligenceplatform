@@ -81,5 +81,6 @@ lives here as documentation. No runtime reads it today.
 
 A capability moves **Experimental → Beta → Production** as AI-5 (production readiness) delivers the
 evidence: real RTSP/live validation, accuracy on representative footage, and **benchmarks** (FPS,
-latency p50/p95, throughput) on reference hardware — reported through the existing additive
-`RuntimeMetrics`. This register is updated as that evidence lands; it never requires a contract change.
+latency p50/p95, throughput) on reference hardware — measured by the AI-5a harness against the documented
+budgets in [PRODUCTION_KPIS](PRODUCTION_KPIS.md) and reported through the additive `RuntimeMetrics`. This
+register is updated as that evidence lands; it never requires a contract change.

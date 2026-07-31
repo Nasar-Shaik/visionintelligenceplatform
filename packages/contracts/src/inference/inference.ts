@@ -257,6 +257,18 @@ export const RuntimeMetrics = z.object({
   activeProfiles: z.number().int().nonnegative().optional(),
   /** Total behavior relationships (parent/follows/related) recorded over the session. */
   behaviorRelationshipCount: z.number().int().nonnegative().optional(),
+  /**
+   * AI-5a production/benchmark observability (additive, all optional — operational, not perception).
+   * More operational fields (reconnectCount/restartCount/streamAvailability/averageRecoveryTime) arrive
+   * with their producing slices (AI-5b/AI-5d) to avoid fields with no producer.
+   */
+  sessionCount: z.number().int().nonnegative().optional(),
+  /** End-to-end latency (ms) from frame capture to emitted EventEnvelope. */
+  eventLatencyMs: z.number().nonnegative().optional(),
+  /** Events emitted per second (windowed). */
+  eventThroughput: z.number().nonnegative().optional(),
+  /** Benchmark runs executed against this runtime (governance bookkeeping). */
+  benchmarkRunCount: z.number().int().nonnegative().optional(),
 });
 export type RuntimeMetrics = z.infer<typeof RuntimeMetrics>;
 

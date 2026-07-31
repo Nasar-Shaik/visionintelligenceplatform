@@ -85,6 +85,11 @@ const REQUIRED = [
   'behavior-analyzer-metrics',
   'composite-behavior',
   'behavior-profile',
+  'benchmark-report',
+  'benchmark-workload',
+  'performance-budget',
+  'benchmark-kpis',
+  'environment-fingerprint',
 ];
 
 const errors = [];

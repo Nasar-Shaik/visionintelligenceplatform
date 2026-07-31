@@ -1,0 +1,44 @@
+{
+  "_comment": "Performance budgets / SLOs per deployment class (AI-5a). These are the documented production ACCEPTANCE CRITERIA a deployment must meet — the Architect's performance-budget addendum. Adjust per real hardware evidence as AI-5b..e land. Governance: docs/architecture/future/PRODUCTION_KPIS.md.",
+  "budgets": {
+    "dev-laptop": {
+      "deploymentClass": "dev-laptop",
+      "minSustainedFps": 10,
+      "maxEventLatencyMs": 150,
+      "maxInferenceLatencyMs": 40,
+      "maxFrameLossPercent": 2,
+      "maxStartupMs": 3000,
+      "maxRecoverySeconds": 5
+    },
+    "mini-pc-i5": {
+      "deploymentClass": "mini-pc-i5",
+      "minSustainedFps": 8,
+      "maxEventLatencyMs": 200,
+      "maxInferenceLatencyMs": 60,
+      "maxFrameLossPercent": 3,
+      "maxStartupMs": 4000,
+      "maxRecoverySeconds": 8
+    },
+    "rtx-desktop": {
+      "deploymentClass": "rtx-desktop",
+      "minSustainedFps": 25,
+      "maxEventLatencyMs": 100,
+      "maxInferenceLatencyMs": 20,
+      "maxFrameLossPercent": 1,
+      "maxStartupMs": 3000,
+      "maxRecoverySeconds": 5,
+      "gpuCeilingPercent": 90
+    },
+    "edge-device": {
+      "deploymentClass": "edge-device",
+      "minSustainedFps": 5,
+      "maxEventLatencyMs": 200,
+      "maxInferenceLatencyMs": 80,
+      "maxFrameLossPercent": 5,
+      "maxStartupMs": 8000,
+      "maxRecoverySeconds": 15,
+      "cpuCeilingPercent": 90,
+      "memoryCeilingMb": 1024
+    }
+  }
+}

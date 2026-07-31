@@ -48,6 +48,13 @@ import {
   BehaviorProfile,
 } from '../src/behavior/behavior.js';
 import {
+  BenchmarkReport,
+  BenchmarkWorkload,
+  PerformanceBudget,
+  BenchmarkKpis,
+  EnvironmentFingerprint,
+} from '../src/benchmark/benchmark.js';
+import {
   Evidence,
   EvidenceManifest,
   RegisterEvidenceInput,
@@ -140,6 +147,11 @@ const schemas: Record<string, z.ZodType> = {
   'behavior-analyzer-metrics': BehaviorAnalyzerMetrics,
   'composite-behavior': CompositeBehavior,
   'behavior-profile': BehaviorProfile,
+  'benchmark-report': BenchmarkReport,
+  'benchmark-workload': BenchmarkWorkload,
+  'performance-budget': PerformanceBudget,
+  'benchmark-kpis': BenchmarkKpis,
+  'environment-fingerprint': EnvironmentFingerprint,
 };
 
 mkdirSync(outDir, { recursive: true });
