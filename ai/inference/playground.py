@@ -47,6 +47,7 @@ def options_from_body(body: Mapping[str, object], tenant_id: str) -> AnalyzeOpti
     zones = body.get("zones")
     tracking = body.get("tracking") if isinstance(body.get("tracking"), dict) else {}
     behaviors = body.get("behaviors") if isinstance(body.get("behaviors"), dict) else {}
+    profile = body.get("profile") if isinstance(body.get("profile"), dict) else None
     return AnalyzeOptions(
         tenant_id=tenant_id,
         camera_id=str(body.get("cameraId", "cam_playground")),
@@ -66,6 +67,8 @@ def options_from_body(body: Mapping[str, object], tenant_id: str) -> AnalyzeOpti
         track_history_max=int(tracking.get("historyMax", 50)),
         enable_behaviors=bool(body.get("enableBehaviors", True)),
         behavior_options=dict(behaviors) if isinstance(behaviors, dict) else {},
+        enable_composites=bool(body.get("enableComposites", True)),
+        profile=profile,
     )
 
 
@@ -96,13 +99,15 @@ def analyze_request(body: Mapping[str, object], tenant_id: str, *, event_sink: O
         "zoneTransitions": result.zone_transitions,
         "counting": result.counting,
         "behaviors": result.behaviors,
+        "composites": result.composites,
         "trackingStats": result.tracking_stats,
         "behaviorStats": result.behavior_stats,
+        "compositeStats": result.composite_stats,
         "metrics": result.summary["stageTimingsMs"],
     }
     if include_frames:
         out["frames"] = [
-            {"frame": fa.frame, "detections": fa.detections, "events": fa.events, "tracks": fa.tracks, "behaviors": fa.behaviors}
+            {"frame": fa.frame, "detections": fa.detections, "events": fa.events, "tracks": fa.tracks, "behaviors": fa.behaviors, "composites": fa.composites}
             for fa in result.frames
         ]
     return out
@@ -127,6 +132,9 @@ def result_to_documents(result: AnalyzeResult) -> dict:
         "tracking": result.summary.get("tracking"),
         "behaviors": result.summary.get("behaviors"),
         "behavior": result.summary.get("behavior"),
+        "composites": result.summary.get("composites"),
+        "composite": result.summary.get("composite"),
+        "profile": result.summary.get("profile"),
         "stageTimingsMs": result.summary.get("stageTimingsMs"),
     }
     # Track Replay artifact (Architect rec 7/8): lifecycle + trajectory + zone transitions + counting.
@@ -176,11 +184,40 @@ def _behaviors_doc(result: AnalyzeResult) -> dict:
                 "metrics": b.get("metrics"),
             }
         )
+    # Composite graph (Architect AI-4 rec 1/9): composite behaviorId → its contributing behaviorIds,
+    # plus a behavior dependency graph (behaviorType edges) and the deterministic execution order (rec 6).
+    composite_graph = [
+        {
+            "behaviorId": c.get("behaviorId"),
+            "behaviorType": c.get("behaviorType"),
+            "state": c.get("state"),
+            "contributors": c.get("relatedBehaviorIds", []),
+            "composite": c.get("composite"),
+            "trace": (c.get("attributes", {}) or {}).get("compositeTrace", []),
+        }
+        for c in result.composites
+    ]
+    edges = set()
+    for c in result.composites:
+        for e in (c.get("attributes", {}) or {}).get("compositeTrace", []):
+            edges.add((e.get("behaviorType"), c.get("behaviorType")))
+    dependency_graph = sorted(edges)
+    execution_order = {
+        "primitive": [m["analyzer"] for m in result.behavior_stats.get("analyzers", [])],
+        "composite": [m["analyzer"] for m in result.composite_stats.get("analyzers", [])],
+        "flow": "primitive behaviors → composite behaviors → translator → EventEnvelope",
+    }
     return {
         "sessionId": result.summary.get("sessionId"),
+        "profile": result.summary.get("profile"),
         "behaviors": [timeline[bid] for bid in order],
         "results": result.behaviors,  # the raw BehaviorResult stream (contract-shaped)
+        "composites": result.composites,  # the composite BehaviorResult stream
+        "compositeGraph": composite_graph,
+        "dependencyGraph": [{"from": a, "to": b} for a, b in dependency_graph],
+        "executionOrder": execution_order,
         "stats": result.behavior_stats,
+        "compositeStats": result.composite_stats,
         "analyzers": result.behavior_stats.get("analyzers", []),
     }
 
@@ -222,13 +259,25 @@ def _summary_text(result: AnalyzeResult) -> str:
         f"tracking      : {_tracking_line(s)}",
         f"zones         : {s.get('zones')} · transitions={s.get('zoneTransitions')} · counting={s.get('countingEvents')}",
         f"behaviors     : {_behavior_line(s)}",
+        f"composites    : {_composite_line(s)}",
+        f"profile       : {s.get('profile') or 'none'}",
         "stage timings (ms, total):",
         f"  decode={t.get('decodeMs')}  sampling={t.get('samplingMs')}  preprocess={t.get('preprocessMs')}",
         f"  inference={t.get('inferenceMs')}  postprocess={t.get('postprocessMs')}",
-        f"  tracking={t.get('trackingMs')}  zoneCounting={t.get('zoneCountingMs')}  behavior={t.get('behaviorMs')}  eventGen={t.get('eventGenerationMs')}",
+        f"  tracking={t.get('trackingMs')}  zoneCounting={t.get('zoneCountingMs')}  behavior={t.get('behaviorMs')}  composite={t.get('compositeMs')}  eventGen={t.get('eventGenerationMs')}",
         "",
     ]
     return "\n".join(lines)
+
+
+def _composite_line(summary: dict) -> str:
+    if not summary.get("compositesEnabled"):
+        return "disabled"
+    c = summary.get("composite", {})
+    return (
+        f"results={summary.get('composites', 0)} evaluations={c.get('compositeEvaluations', 0)} "
+        f"matches={c.get('compositeMatches', 0)} misses={c.get('compositeMisses', 0)}"
+    )
 
 
 def _behavior_line(summary: dict) -> str:

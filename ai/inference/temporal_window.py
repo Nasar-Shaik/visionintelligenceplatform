@@ -79,3 +79,13 @@ class TemporalWindowStore:
 
     def reset(self) -> None:
         self._windows.clear()
+
+    def stats(self) -> dict:
+        """Window observability (Architect AI-4 rec 8) — additive RuntimeMetrics fields."""
+        spans = [w.span_seconds() for w in self._windows.values()]
+        active = [w for w in self._windows.values() if w.count() > 0]
+        return {
+            "behaviorWindowCount": len(self._windows),
+            "activeTemporalWindows": len(active),
+            "averageWindowDuration": round(sum(spans) / len(spans), 6) if spans else 0.0,
+        }

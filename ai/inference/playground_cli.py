@@ -78,6 +78,13 @@ def run(args: argparse.Namespace) -> int:
         if isinstance(zones, dict):
             zones = zones.get("zones", [])
 
+    profile: Optional[dict] = None
+    if args.profile:
+        # Accept a bare profile name (profiles/<name>.json) or an explicit path.
+        path = args.profile if os.path.isfile(args.profile) else os.path.join(os.path.dirname(__file__), "profiles", f"{args.profile}.json")
+        with open(path, encoding="utf-8") as fh:
+            profile = json.load(fh)
+
     # 2) Analyze the sampled frames (stride-1 over the already-sampled set → 1:1 with result.frames).
     options = AnalyzeOptions(
         tenant_id=args.tenant,
@@ -96,6 +103,8 @@ def run(args: argparse.Namespace) -> int:
         track_max_age=args.track_max_age,
         enable_behaviors=not args.no_behaviors,
         behavior_options=_behavior_options(args),
+        enable_composites=not args.no_composites,
+        profile=profile,
     )
     analyzer = VideoAnalyzer(
         build_adapter(args.engine),
@@ -207,6 +216,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-behaviors", action="store_true", help="disable behavior analysis (loiter/queue/intrusion/fire)")
     p.add_argument("--loiter-seconds", type=float, default=3.0, help="dwell threshold (s) for loitering")
     p.add_argument("--queue-min", type=int, default=2, help="minimum subjects to count as a queue")
+    p.add_argument("--no-composites", action="store_true", help="disable composite behavior analysis (AI-4)")
+    p.add_argument("--profile", help="a BehaviorProfile name (profiles/<name>.json) or path — drives analyzers + composites")
     p.add_argument("--annotate", action="store_true", help="also write annotated.mp4")
     p.add_argument("--diagnostics", action="store_true", help="richer annotated overlays (track IDs, zones, timings)")
     p.add_argument("--publish", action="store_true", help="publish events to the backbone (NATS)")

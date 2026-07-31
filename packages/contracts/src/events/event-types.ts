@@ -53,6 +53,7 @@ export const SECURITY_EVENTS = {
 export const ANALYTICS_EVENTS = {
   peopleCount: 'analytics.people.count',
   queueLength: 'analytics.queue.length',
+  crowdDensity: 'analytics.crowd.density',
   occupancyChanged: 'analytics.occupancy.changed',
   dwellExceeded: 'temporal.dwell.exceeded',
 } as const;

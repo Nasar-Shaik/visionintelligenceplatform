@@ -102,9 +102,9 @@ class TrackSnapshotTests(unittest.TestCase):
 class RegistryTests(unittest.TestCase):
     def test_registration_order_and_enable_disable(self):
         reg = default_registry()
-        self.assertEqual(reg.names(), ["loitering", "queue", "intrusion", "fire"])
+        self.assertEqual(reg.names(), ["loitering", "queue", "intrusion", "crowd", "occupancy", "fire"])
         reg.disable("queue")
-        self.assertEqual([a.name for a in reg.enabled()], ["loitering", "intrusion", "fire"])
+        self.assertEqual([a.name for a in reg.enabled()], ["loitering", "intrusion", "crowd", "occupancy", "fire"])
         reg.enable("queue")
         self.assertIn("queue", [a.name for a in reg.enabled()])
 

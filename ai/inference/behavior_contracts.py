@@ -112,6 +112,12 @@ class BehaviorResult:
     behavior_version: Optional[str] = None  # Architect AI-3 refinement 1 (reserved, analyzer-stamped)
     severity: Optional[str] = None  # Architect AI-3 refinement 5 (reserved; never set by AI-3 runtime)
     correlation_id: Optional[str] = None  # Architect AI-3 refinement 4
+    # --- AI-4 relationships / evidence / composition (all optional/reserved) ---
+    parent_behavior_id: Optional[str] = None  # rec 2
+    follows_behavior_id: Optional[str] = None  # rec 2
+    related_behavior_ids: Optional[List[str]] = None  # rec 2
+    evidence: Optional[Dict[str, object]] = None  # rec 3 (contributingTracks/Zones; frames/dets reserved)
+    composite: Optional[Dict[str, object]] = None  # rec 1/2 (present only on composite results)
     attributes: Dict[str, object] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -144,6 +150,16 @@ class BehaviorResult:
             out["severity"] = self.severity
         if self.correlation_id is not None:
             out["correlationId"] = self.correlation_id
+        if self.parent_behavior_id is not None:
+            out["parentBehaviorId"] = self.parent_behavior_id
+        if self.follows_behavior_id is not None:
+            out["followsBehaviorId"] = self.follows_behavior_id
+        if self.related_behavior_ids is not None:
+            out["relatedBehaviorIds"] = list(self.related_behavior_ids)
+        if self.evidence is not None:
+            out["evidence"] = dict(self.evidence)
+        if self.composite is not None:
+            out["composite"] = dict(self.composite)
         return out
 
 

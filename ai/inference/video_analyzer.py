@@ -23,9 +23,12 @@ from behavior import BehaviorContext, BehaviorLifecycleStore, frame_seconds, sna
 from behavior_registry import BehaviorRegistry
 from behavior_translator import BehaviorResultTranslator
 from behaviors import default_registry
+from composite import CompositeContext
+from composite_registry import CompositeRegistry
 from contracts import FrameContext, ModelBinding
 from counting import CountingEngine
 from events import counting_event, deterministic_id_gen, detections_to_events, zone_transition_event
+from profiles import build_from_profile, zone_roles_from_zones
 from temporal_window import TemporalWindowStore
 from pipeline import (
     ConfidencePostprocessor,
@@ -77,6 +80,9 @@ class AnalyzeOptions:
     # --- behavior analysis (AI-3) ---
     enable_behaviors: bool = True
     behavior_options: dict = field(default_factory=dict)  # per-analyzer knobs for default_registry
+    # --- composite behaviors + profiles (AI-4) ---
+    enable_composites: bool = True
+    profile: Optional[dict] = None  # a BehaviorProfile dict; when set, drives analyzers + composites
 
 
 @dataclass
@@ -91,6 +97,7 @@ class StageTimings:
     tracking_ms: float = 0.0
     zone_counting_ms: float = 0.0
     behavior_ms: float = 0.0
+    composite_ms: float = 0.0
     event_generation_ms: float = 0.0
 
     def as_dict(self) -> dict:
@@ -103,6 +110,7 @@ class StageTimings:
             "trackingMs": round(self.tracking_ms, 3),
             "zoneCountingMs": round(self.zone_counting_ms, 3),
             "behaviorMs": round(self.behavior_ms, 3),
+            "compositeMs": round(self.composite_ms, 3),
             "eventGenerationMs": round(self.event_generation_ms, 3),
         }
 
@@ -114,6 +122,7 @@ class FrameAnalysis:
     events: List[dict]
     tracks: List[dict] = field(default_factory=list)
     behaviors: List[dict] = field(default_factory=list)
+    composites: List[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -125,8 +134,10 @@ class AnalyzeResult:
     zone_transitions: List[dict] = field(default_factory=list)
     counting: List[dict] = field(default_factory=list)
     behaviors: List[dict] = field(default_factory=list)  # every BehaviorResult across the video (AI-3)
+    composites: List[dict] = field(default_factory=list)  # every CompositeBehavior across the video (AI-4)
     tracking_stats: dict = field(default_factory=dict)
     behavior_stats: dict = field(default_factory=dict)
+    composite_stats: dict = field(default_factory=dict)
     timings: StageTimings = field(default_factory=StageTimings)
     summary: dict = field(default_factory=dict)
 
@@ -188,13 +199,31 @@ class VideoAnalyzer:
         self._windows: Optional[TemporalWindowStore] = None
         self._behavior_translator: Optional[BehaviorResultTranslator] = None
         self._behavior_zone_engine = ZoneEngine()
+        # Composite tier (AI-4): a second pass over active BehaviorResults; its own registry + store.
+        self._composites: Optional[CompositeRegistry] = None
+        self._composite_store: Optional[BehaviorLifecycleStore] = None
+        self._zone_roles = zone_roles_from_zones(self._zones)
+        self._profile_loads = 0
+        self._profile_failures = 0
         if options.enable_tracking and options.enable_behaviors:
-            self._behaviors = behavior_registry or default_registry(options.behavior_options)
+            composite_registry: Optional[CompositeRegistry] = None
+            if options.profile is not None:
+                # A profile drives BOTH primitive analyzers and composites (fail-fast validated).
+                self._behaviors, composite_registry = build_from_profile(options.profile)
+                self._profile_loads = 1
+            else:
+                self._behaviors = behavior_registry or default_registry(options.behavior_options)
             self._behavior_store = BehaviorLifecycleStore(
                 camera_id=options.camera_id, session_id=options.session_id, tenant_id=options.tenant_id
             )
             self._windows = TemporalWindowStore()
             self._behavior_translator = BehaviorResultTranslator(id_gen=self._id_gen)
+            if options.enable_composites:
+                self._composites = composite_registry or CompositeRegistry()
+                self._composites.validate_acyclic()
+                self._composite_store = BehaviorLifecycleStore(
+                    camera_id=options.camera_id, session_id=options.session_id, tenant_id=options.tenant_id
+                )
 
     def analyze(self, decoder: FrameDecoder, sampler: Optional[FrameSampler] = None) -> AnalyzeResult:
         opts = self._options
@@ -260,6 +289,7 @@ class VideoAnalyzer:
             # each stage independently replaceable). ---
             frame_tracks: List[dict] = []
             frame_behaviors: List[dict] = []
+            frame_composites: List[dict] = []
             frame_events: List[dict] = []
             if self._manager is not None and self._counting is not None:
                 t = self._clock()
@@ -314,6 +344,31 @@ class VideoAnalyzer:
                         if env is not None:
                             frame_events.append(env)
 
+                    # Composite pass (AI-4) — consumes the ACTIVE primitive BehaviorResults (never
+                    # Tracks; rec 5), producing higher-order BehaviorResults with relationships.
+                    if self._composites is not None and self._composite_store is not None:
+                        t = self._clock()
+                        active = self._behavior_store.active_results(frame_index=frame.index, at=frame.timestamp)
+                        ctx_c = CompositeContext(
+                            tenant_id=opts.tenant_id,
+                            camera_id=opts.camera_id,
+                            frame_index=frame.index,
+                            at=frame.timestamp,
+                            t=frame_seconds(frame.timestamp, frame.index),
+                            behaviors=tuple(active),
+                            zone_roles=self._zone_roles,
+                            session_id=opts.session_id,
+                        )
+                        composed = self._composites.run(ctx_c, self._composite_store)
+                        result.timings.composite_ms += (self._clock() - t) * 1000.0
+                        for cb in composed:
+                            d = cb.to_dict()
+                            result.composites.append(d)
+                            frame_composites.append(d)
+                            env = self._behavior_translator.translate(d)
+                            if env is not None:
+                                frame_events.append(env)
+
             t = self._clock()
             events = detections_to_events(result_dict, id_gen=self._id_gen, ingested_at=frame_at)
             result.timings.event_generation_ms += (self._clock() - t) * 1000.0
@@ -330,6 +385,7 @@ class VideoAnalyzer:
                     events=events,
                     tracks=frame_tracks,
                     behaviors=frame_behaviors,
+                    composites=frame_composites,
                 )
             )
             result.detections.extend(frame_dets)
@@ -347,6 +403,16 @@ class VideoAnalyzer:
                 env = self._behavior_translator.translate(d)
                 if env is not None:
                     result.events.append(env)
+            # Composite terminal flush (AI-4).
+            if self._composites is not None and self._composite_store is not None:
+                for cb in self._composite_store.sweep(
+                    frame_index=last.index, at=last.timestamp, t=frame_seconds(last.timestamp, last.index)
+                ):
+                    d = cb.to_dict()
+                    result.composites.append(d)
+                    env = self._behavior_translator.translate(d)
+                    if env is not None:
+                        result.events.append(env)
 
         if self._manager is not None:
             result.tracks = self._manager.diagnostics()
@@ -357,13 +423,15 @@ class VideoAnalyzer:
             )
         if self._behaviors is not None and self._behavior_store is not None:
             result.behavior_stats = self._behavior_stats(result, sampled)
+        if self._composites is not None:
+            result.composite_stats = self._composite_stats(result)
         result.summary = self._summary(decoder, sampler, decoded, sampled, result)
         return result
 
     def _behavior_stats(self, result: AnalyzeResult, sampled) -> dict:
         """Aggregate behavior observability (Architect rec 8 + refinement 7) — additive RuntimeMetrics
         fields + a per-analyzer breakdown. Business-neutral counts/durations/latencies only."""
-        assert self._behaviors is not None and self._behavior_store is not None
+        assert self._behaviors is not None and self._behavior_store is not None and self._windows is not None
         frames = max(1, len(sampled))
         store = self._behavior_store.stats()
         agg = self._behaviors.aggregate_metrics(frames=frames, behavior_latency_ms=result.timings.behavior_ms)
@@ -374,9 +442,31 @@ class VideoAnalyzer:
             elapsed = 0.0
         if elapsed <= 0:
             elapsed = float(frames)  # frame-index proxy when timestamps aren't seconds
-        stats = {**store, **agg, "behaviorsPerMinute": round(started / (elapsed / 60.0), 6) if elapsed else 0.0}
+        # Relationship count (AI-4 rec 8): every related/parent/follows reference across all behaviors.
+        relationships = sum(
+            len(b.get("relatedBehaviorIds", []) or []) + (1 if b.get("parentBehaviorId") else 0) + (1 if b.get("followsBehaviorId") else 0)
+            for b in result.behaviors + result.composites
+        )
+        stats = {
+            **store,
+            **agg,
+            **self._windows.stats(),
+            "behaviorsPerMinute": round(started / (elapsed / 60.0), 6) if elapsed else 0.0,
+            "behaviorRelationshipCount": relationships,
+            "profileLoads": self._profile_loads,
+            "profileValidationFailures": self._profile_failures,
+            "activeProfiles": self._profile_loads,
+        }
         stats["analyzers"] = self._behaviors.analyzer_metrics()
         return stats
+
+    def _composite_stats(self, result: AnalyzeResult) -> dict:
+        """Aggregate composite observability (Architect AI-4 rec 8 + refinement 8) — additive."""
+        assert self._composites is not None
+        agg = self._composites.aggregate_metrics()
+        agg["compositeBehaviorCount"] = len(result.composites)
+        agg["analyzers"] = self._composites.analyzer_metrics()
+        return agg
 
     def _summary(self, decoder, sampler, decoded, sampled, result: AnalyzeResult) -> dict:
         opts = self._options
@@ -408,6 +498,10 @@ class VideoAnalyzer:
             "behaviorsEnabled": opts.enable_tracking and opts.enable_behaviors,
             "behaviors": len(result.behaviors),
             "behavior": result.behavior_stats,
+            "compositesEnabled": opts.enable_tracking and opts.enable_behaviors and opts.enable_composites,
+            "composites": len(result.composites),
+            "composite": result.composite_stats,
+            "profile": (opts.profile or {}).get("profile") if opts.profile else None,
             "stageTimingsMs": result.timings.as_dict(),
         }
 

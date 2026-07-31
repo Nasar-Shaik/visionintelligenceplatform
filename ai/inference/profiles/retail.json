@@ -1,0 +1,33 @@
+{
+  "profile": "retail",
+  "version": "1.0.0",
+  "description": "Retail pilot reference profile — the 4-camera layout (entrance/shop-floor/cash/exit) expressed purely as configuration of generic analyzers. No retail-specific code. Zone roles + generic attribute flags live on the Zone configs; this profile only tunes thresholds and declares composites.",
+  "author": "VIP AI Platform",
+  "analyzers": {
+    "queue": { "enabled": true, "customParameters": { "minQueue": 3 } },
+    "loitering": { "enabled": true, "customParameters": { "dwellSeconds": 2.0 } },
+    "intrusion": { "enabled": true },
+    "crowd": { "enabled": true, "customParameters": { "minDensity": 5 } },
+    "occupancy": { "enabled": true, "customParameters": { "level": 20 } }
+  },
+  "composites": [
+    {
+      "name": "cash_counter_anomaly",
+      "behaviorType": "cash_counter_anomaly",
+      "category": "retail",
+      "eventType": "behavior.theft.suspected",
+      "requiredTypes": ["loitering"],
+      "zoneRole": "cash",
+      "minDwellSeconds": 2.0,
+      "groupBy": "subject",
+      "confidenceStrategy": "min",
+      "version": "1.0.0"
+    }
+  ],
+  "zoneRoles": {
+    "entrance": "entrance",
+    "shop_floor": "queue",
+    "cash_counter": "cash",
+    "exit": "exit"
+  }
+}

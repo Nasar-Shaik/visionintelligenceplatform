@@ -137,6 +137,39 @@ export const TrackSnapshot = z.object({
 export type TrackSnapshot = z.infer<typeof TrackSnapshot>;
 
 /**
+ * Reserved supporting-evidence metadata (Architect AI-4 rec 3) — an extension point so a behavior can
+ * later reference what supports it. AI-4 populates only the naturally available fields
+ * (`contributingTracks`/`contributingZones`); `supportingFrames`/`supportingDetections` stay reserved
+ * for the dedicated Evidence-integration milestone. All optional — reserving now avoids a later
+ * contract change. Never carries business meaning.
+ */
+export const BehaviorEvidence = z.object({
+  contributingTracks: z.array(z.string().min(1)).optional(),
+  contributingZones: z.array(z.string().min(1)).optional(),
+  /** Reserved (deferred to the Evidence milestone). */
+  supportingFrames: z.array(z.number().int().nonnegative()).optional(),
+  /** Reserved (deferred to the Evidence milestone). */
+  supportingDetections: z.array(z.string().min(1)).optional(),
+});
+export type BehaviorEvidence = z.infer<typeof BehaviorEvidence>;
+
+/**
+ * Composition metadata (Architect AI-4 rec 2) describing HOW a composite behavior was derived — for
+ * debugging + replay, never business logic. Present only on composite results.
+ */
+export const CompositeMetadata = z.object({
+  /** How many contributing BehaviorResults formed this composite. */
+  contributingBehaviorCount: z.number().int().nonnegative(),
+  /** The temporal window (seconds) the composite reasoned over, when time-based. */
+  evaluationWindow: z.number().nonnegative().optional(),
+  /** The evaluation rule applied (e.g. `all_of`, `sequence`, `any_of`). */
+  evaluationStrategy: z.string().min(1).optional(),
+  /** The composite analyzer's algorithm/config version (replay-stable). */
+  compositionVersion: SemVer.optional(),
+});
+export type CompositeMetadata = z.infer<typeof CompositeMetadata>;
+
+/**
  * A platform-owned statement that a behavior was observed — the SOLE output of every analyzer,
  * regardless of implementation (temporal window / heuristic / ML / LLM / hybrid). Distinct from
  * `EventEnvelope`: a `BehaviorResultTranslator` maps this to the wire event.
@@ -187,7 +220,97 @@ export const BehaviorResult = z.object({
   windowMs: z.number().nonnegative().optional(),
   /** Which analyzer produced this (observability/provenance; not a business signal). */
   producer: z.string().min(1).optional(),
+  /**
+   * Behavior relationships (Architect AI-4 rec 2) — optional references to other BehaviorResults, so a
+   * composite/correlation can be reconstructed without changing the core contract. No workflow logic.
+   */
+  parentBehaviorId: z.string().min(1).optional(),
+  followsBehaviorId: z.string().min(1).optional(),
+  relatedBehaviorIds: z.array(z.string().min(1)).optional(),
+  /** Reserved supporting-evidence metadata (AI-4 rec 3). */
+  evidence: BehaviorEvidence.optional(),
+  /** Present only on composite results (AI-4 rec 1/2) — how this higher-order behavior was composed. */
+  composite: CompositeMetadata.optional(),
   /** Generic extension seam (no industry semantics). */
   attributes: z.record(z.string(), z.unknown()).default({}),
 });
 export type BehaviorResult = z.infer<typeof BehaviorResult>;
+
+/**
+ * A **CompositeBehavior** (Architect AI-4 rec 1/12) — the fifth platform contract in the chain
+ * `DetectionResult → Track → BehaviorResult → CompositeBehavior → EventEnvelope`. It IS a
+ * `BehaviorResult` (so the whole downstream platform is unchanged) with `composite` metadata REQUIRED.
+ * Produced by a composite analyzer that consumes only `BehaviorResult`s (never Tracks/Detections/zones)
+ * and references its contributors via `relatedBehaviorIds` — preserving every layer's independence.
+ * The composition engine is DOMAIN-NEUTRAL: retail/healthcare/etc. are configuration, not new types.
+ */
+export const CompositeBehavior = BehaviorResult.extend({
+  composite: CompositeMetadata,
+});
+export type CompositeBehavior = z.infer<typeof CompositeBehavior>;
+
+/**
+ * A generic **zone role** (Architect AI-4 rec 4) — CONFIGURATION metadata a deployment attaches to a
+ * `Zone` (via `attributes.role`) so profiles/composites can target zones by purpose. Analyzers never
+ * depend on these names in code; the set is open (`z.string()` at the seam) and this enum only
+ * documents common roles. Business meaning stays in the Rule Engine.
+ */
+export const ZoneRole = z.enum([
+  'entrance',
+  'exit',
+  'checkout',
+  'cash',
+  'queue',
+  'restricted',
+  'storage',
+  'loading',
+  'aisle',
+]);
+export type ZoneRole = z.infer<typeof ZoneRole>;
+
+/**
+ * A declarative **behavior profile** (Architect AI-4 rec 3/9) — the deployment mechanism for every
+ * industry. It configures GENERIC analyzers + composite rules for a deployment (retail/hospital/
+ * warehouse/…) and carries NO workflow or business logic (that stays in the Rule Engine). Retail is
+ * simply the first profile; a new customer onboards by authoring a profile, never new analyzer code.
+ */
+export const BehaviorProfile = z.object({
+  profile: z.string().min(1),
+  version: SemVer.default('1.0.0'),
+  description: z.string().max(2000).optional(),
+  /** Per-analyzer config overrides, keyed by analyzer name (generic analyzers only). */
+  analyzers: z.record(z.string(), BehaviorConfig).default({}),
+  /** Declarative composite rules (config, not code — Architect AI-4 rec 11). */
+  composites: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        behaviorType: z.string().min(1),
+        category: BehaviorCategory,
+        /** Target event type from the catalog this composite maps to. */
+        eventType: z.string().min(1),
+        /** Behavior types that must all be present to compose (the `all_of` strategy). */
+        requiredTypes: z.array(z.string().min(1)).min(1),
+        /** Restrict to contributors in a zone carrying this role. */
+        zoneRole: z.string().min(1).optional(),
+        /** Require a contributor's `dwellSeconds` metric to reach this threshold. */
+        minDwellSeconds: z.number().nonnegative().optional(),
+        /** Grouping key for co-occurrence: `subject` (same track) or `zone`. */
+        groupBy: z.enum(['subject', 'zone']).default('subject'),
+        strategy: z.string().min(1).default('all_of'),
+        /**
+         * How the composite's confidence is derived from its contributors (Architect AI-4 refinement 2)
+         * — replaceable without any downstream contract change.
+         */
+        confidenceStrategy: z.enum(['min', 'max', 'mean', 'weighted']).default('min'),
+        version: SemVer.default('1.0.0'),
+      }),
+    )
+    .default([]),
+  /** Documentation map of logical zone name → role (the functional role rides on `Zone.attributes.role`). */
+  zoneRoles: z.record(z.string(), z.string()).default({}),
+  /** Reserved provenance (Architect AI-4 refinement 4) — profile evolution, no runtime effect. */
+  createdAt: IsoDateTime.optional(),
+  author: z.string().max(200).optional(),
+});
+export type BehaviorProfile = z.infer<typeof BehaviorProfile>;

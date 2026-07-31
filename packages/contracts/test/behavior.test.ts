@@ -9,6 +9,10 @@ import {
   BehaviorState,
   BehaviorCategory,
   TrackSnapshot,
+  CompositeBehavior,
+  CompositeMetadata,
+  BehaviorProfile,
+  BehaviorEvidence,
 } from '../src/behavior/behavior.js';
 
 const baseBehavior = {
@@ -109,6 +113,78 @@ describe('TrackSnapshot (immutable analyzer input)', () => {
         hits: 1,
         frameIndex: 1,
         at: '2026-07-31T09:00:01.000Z',
+      }),
+    ).toThrow();
+  });
+});
+
+describe('CompositeBehavior + relationships + evidence (AI-4)', () => {
+  it('a composite is a BehaviorResult with required composite metadata + relationships', () => {
+    const c = CompositeBehavior.parse({
+      ...baseBehavior,
+      behaviorType: 'cash_anomaly',
+      category: 'retail',
+      relatedBehaviorIds: ['bhv_1', 'bhv_2'],
+      evidence: { contributingTracks: ['trk_1'], contributingZones: ['zone_1'] },
+      composite: {
+        contributingBehaviorCount: 2,
+        evaluationStrategy: 'all_of',
+        compositionVersion: '1.0.0',
+      },
+    });
+    expect(c.composite.contributingBehaviorCount).toBe(2);
+    expect(c.relatedBehaviorIds).toEqual(['bhv_1', 'bhv_2']);
+    expect(c.evidence?.contributingZones).toEqual(['zone_1']);
+  });
+
+  it('rejects a composite missing composite metadata', () => {
+    expect(() => CompositeBehavior.parse(baseBehavior)).toThrow();
+  });
+
+  it('evidence keeps supportingFrames/Detections reserved (optional)', () => {
+    const e = BehaviorEvidence.parse({ contributingTracks: ['trk_1'] });
+    expect(e.supportingFrames).toBeUndefined();
+    expect(
+      CompositeMetadata.parse({ contributingBehaviorCount: 0 }).contributingBehaviorCount,
+    ).toBe(0);
+  });
+});
+
+describe('BehaviorProfile (declarative, portable — AI-4)', () => {
+  it('parses a profile with analyzers, composites, and confidence strategy defaults', () => {
+    const p = BehaviorProfile.parse({
+      profile: 'retail',
+      analyzers: { queue: { enabled: true, customParameters: { minQueue: 3 } } },
+      composites: [
+        {
+          name: 'cash_anomaly',
+          behaviorType: 'cash_anomaly',
+          category: 'retail',
+          eventType: 'behavior.theft.suspected',
+          requiredTypes: ['loitering'],
+          zoneRole: 'cash',
+        },
+      ],
+    });
+    expect(p.version).toBe('1.0.0');
+    expect(p.composites[0].groupBy).toBe('subject');
+    expect(p.composites[0].confidenceStrategy).toBe('min');
+    expect(p.composites[0].strategy).toBe('all_of');
+  });
+
+  it('rejects a composite rule with no required types', () => {
+    expect(() =>
+      BehaviorProfile.parse({
+        profile: 'bad',
+        composites: [
+          {
+            name: 'x',
+            behaviorType: 'x',
+            category: 'retail',
+            eventType: 'behavior.theft.suspected',
+            requiredTypes: [],
+          },
+        ],
       }),
     ).toThrow();
   });

@@ -25,6 +25,8 @@ BEHAVIOR_EVENT_MAP: Mapping[str, str] = {
     "intrusion": "security.intrusion.detected",
     "fire": "perception.fire.detected",
     "smoke": "perception.smoke.detected",
+    "crowd": "analytics.crowd.density",
+    "occupancy": "analytics.occupancy.changed",
 }
 
 
@@ -39,9 +41,16 @@ class BehaviorResultTranslator:
         self._id_gen = id_gen or _uuid_gen()
 
     def translate(self, behavior: Mapping[str, object]) -> Optional[dict]:
-        """One BehaviorResult → one EventEnvelope, or None when the behaviorType has no event mapping."""
+        """One BehaviorResult → one EventEnvelope, or None when the behaviorType has no event mapping.
+        A composite carries its target event type in `attributes.eventType` (config-driven, AI-4); a
+        primitive resolves via the static BEHAVIOR_EVENT_MAP."""
         behavior_type = str(behavior.get("behaviorType", ""))
-        event_type = event_type_for_behavior(behavior_type)
+        attributes = behavior.get("attributes")
+        event_type = None
+        if isinstance(attributes, dict) and isinstance(attributes.get("eventType"), str):
+            event_type = attributes["eventType"]
+        if event_type is None:
+            event_type = event_type_for_behavior(behavior_type)
         if event_type is None:
             return None
         _assert_not_incident(event_type)
@@ -59,7 +68,19 @@ class BehaviorResultTranslator:
             "state": behavior.get("state"),
             "metrics": behavior.get("metrics", {}),
         }
-        for optional in ("zoneId", "sessionId", "windowMs", "correlationId", "behaviorVersion", "severity"):
+        for optional in (
+            "zoneId",
+            "sessionId",
+            "windowMs",
+            "correlationId",
+            "behaviorVersion",
+            "severity",
+            "relatedBehaviorIds",
+            "parentBehaviorId",
+            "followsBehaviorId",
+            "evidence",
+            "composite",
+        ):
             if behavior.get(optional) is not None:
                 payload[optional] = behavior[optional]
         envelope: dict = {

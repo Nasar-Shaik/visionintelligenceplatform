@@ -54,8 +54,10 @@ CATEGORY_BY_TYPE: Dict[str, str] = {
     "behavior.loitering.detected": "security",
     "analytics.people.count": "analytics",
     "analytics.queue.length": "analytics",
+    "analytics.crowd.density": "analytics",  # AI-4
     "analytics.occupancy.changed": "analytics",
     "security.intrusion.detected": "security",  # AI-3 (perception primitive; rules decide significance)
+    "behavior.theft.suspected": "security",  # AI-4 composite target (retail cash anomaly, config-driven)
     # spatial/tracking (AI-2) — mirror the TS catalog (spatial.zone.* is category "perception").
     "spatial.zone.entered": "perception",
     "spatial.zone.exited": "perception",
@@ -80,7 +82,9 @@ PRIORITY_BY_TYPE: Dict[str, str] = {
     "behavior.loitering.detected": "medium",
     "analytics.people.count": "info",
     "analytics.queue.length": "info",
+    "analytics.crowd.density": "low",  # AI-4
     "analytics.occupancy.changed": "low",
+    "behavior.theft.suspected": "high",  # AI-4 composite target
     "security.intrusion.detected": "high",  # AI-3
     "spatial.zone.entered": "info",
     "spatial.zone.exited": "info",

@@ -83,6 +83,8 @@ const REQUIRED = [
   'track-snapshot',
   'behavior-config',
   'behavior-analyzer-metrics',
+  'composite-behavior',
+  'behavior-profile',
 ];
 
 const errors = [];

@@ -116,6 +116,11 @@ class BehaviorObservation:
     # Optional per-observation behaviorType override — lets ONE analyzer emit a small related family
     # (e.g. Fire/Smoke) while staying a single detector-independent unit. Defaults to the analyzer's.
     behavior_type: Optional[str] = None
+    # --- AI-4: composite provenance (set by composite analyzers; None for primitives) ---
+    related_behavior_ids: Optional[List[str]] = None
+    evidence: Optional[Dict[str, object]] = None
+    composite_meta: Optional[Dict[str, object]] = None
+    attributes: Optional[Dict[str, object]] = None
 
 
 class BehaviorAnalyzer(Protocol):
@@ -252,7 +257,21 @@ class BehaviorLifecycleStore:
             producer=inst.producer,
             behavior_version=inst.version,
             correlation_id=inst.correlation_id,
+            related_behavior_ids=list(obs.related_behavior_ids) if obs.related_behavior_ids else None,
+            evidence=dict(obs.evidence) if obs.evidence else None,
+            composite=dict(obs.composite_meta) if obs.composite_meta else None,
+            attributes=dict(obs.attributes) if obs.attributes else {},
         )
+
+    def active_results(self, *, frame_index: int, at: str) -> List[BehaviorResult]:
+        """Snapshot the CURRENTLY ACTIVE behavior instances as `ongoing` BehaviorResults. Composite
+        analyzers consume this each frame (not just this frame's started/updated emissions), so they
+        reason over the full behavioral state — while still consuming only BehaviorResults (rec 5)."""
+        out: List[BehaviorResult] = []
+        for insts in self._instances.values():
+            for inst in insts.values():
+                out.append(self._build(inst, inst.last_obs, BehaviorState.ONGOING, frame_index, at))
+        return out
 
     def stats(self) -> dict:
         active = sum(len(insts) for insts in self._instances.values())

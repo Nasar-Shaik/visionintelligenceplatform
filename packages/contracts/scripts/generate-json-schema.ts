@@ -44,6 +44,8 @@ import {
   TrackSnapshot,
   BehaviorConfig,
   BehaviorAnalyzerMetrics,
+  CompositeBehavior,
+  BehaviorProfile,
 } from '../src/behavior/behavior.js';
 import {
   Evidence,
@@ -136,6 +138,8 @@ const schemas: Record<string, z.ZodType> = {
   'track-snapshot': TrackSnapshot,
   'behavior-config': BehaviorConfig,
   'behavior-analyzer-metrics': BehaviorAnalyzerMetrics,
+  'composite-behavior': CompositeBehavior,
+  'behavior-profile': BehaviorProfile,
 };
 
 mkdirSync(outDir, { recursive: true });

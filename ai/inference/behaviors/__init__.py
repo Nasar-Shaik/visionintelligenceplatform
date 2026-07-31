@@ -11,27 +11,41 @@ from __future__ import annotations
 from typing import Optional
 
 from behavior_registry import BehaviorRegistry
+from behaviors.crowd import CrowdAnalyzer
 from behaviors.fire import FireAnalyzer
 from behaviors.intrusion import IntrusionAnalyzer
 from behaviors.loitering import LoiteringAnalyzer
+from behaviors.occupancy import OccupancyAnalyzer
 from behaviors.queue import QueueAnalyzer
+
+# Every generic primitive analyzer, by name — the set a BehaviorProfile configures (rec 3/9).
+ANALYZER_TYPES = {
+    "loitering": LoiteringAnalyzer,
+    "queue": QueueAnalyzer,
+    "intrusion": IntrusionAnalyzer,
+    "crowd": CrowdAnalyzer,
+    "occupancy": OccupancyAnalyzer,
+    "fire": FireAnalyzer,
+}
 
 
 def default_registry(options: Optional[dict] = None) -> BehaviorRegistry:
-    """The AI-3 analyzer set: loitering · queue · intrusion · fire/smoke. Order is deterministic."""
+    """The generic analyzer set: loitering · queue · intrusion · crowd · occupancy · fire/smoke.
+    Deterministic order. `options[name]` are per-analyzer kwargs (thresholds)."""
     opts = options or {}
     registry = BehaviorRegistry()
-    registry.register(LoiteringAnalyzer(**opts.get("loitering", {})))
-    registry.register(QueueAnalyzer(**opts.get("queue", {})))
-    registry.register(IntrusionAnalyzer(**opts.get("intrusion", {})))
-    registry.register(FireAnalyzer(**opts.get("fire", {})))
+    for name, cls in ANALYZER_TYPES.items():
+        registry.register(cls(**opts.get(name, {})))
     return registry
 
 
 __all__ = [
     "default_registry",
+    "ANALYZER_TYPES",
     "LoiteringAnalyzer",
     "QueueAnalyzer",
     "IntrusionAnalyzer",
+    "CrowdAnalyzer",
+    "OccupancyAnalyzer",
     "FireAnalyzer",
 ]

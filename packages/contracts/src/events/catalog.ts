@@ -457,6 +457,14 @@ export const EVENT_CATALOG: EventCatalogEntry[] = [
     pii: 'low',
   },
   {
+    type: 'analytics.crowd.density',
+    category: 'analytics',
+    description: 'The crowd density (subjects per zone) crossed a configured level.',
+    producer: 'analytics.crowd',
+    defaultPriority: 'low',
+    pii: 'low',
+  },
+  {
     type: 'analytics.occupancy.changed',
     category: 'analytics',
     description: 'The occupancy of a zone crossed a level/threshold.',

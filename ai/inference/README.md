@@ -181,6 +181,30 @@ Track → [BehaviorAnalyzer(s) via Registry] → BehaviorResult → [BehaviorRes
   **`behaviors_timeline.json`** (Behavior Replay) + `--no-behaviors/--loiter-seconds/--queue-min` and
   behavior overlays. See [AI-3-BEHAVIOR](../../docs/tracker/AI-3-BEHAVIOR.md).
 
+### Composite Behaviors + Profiles (AI-4)
+
+The fifth platform contract — **configurable customer solutions from generic contracts** (retail is a
+profile, not code):
+
+```
+BehaviorResult → [CompositeBehaviorAnalyzer(s) via CompositeRegistry] → CompositeBehavior → Translator → EventEnvelope
+```
+
+- **[`composite`](composite.py)** — `CompositeBehaviorAnalyzer` consumes ONLY `BehaviorResult`s (a
+  `CompositeContext` of active behaviors + a zone-role map; never Tracks/Detections/zones). The generic
+  **`RuleCompositeAnalyzer`** evaluates a declarative co-occurrence rule (required types + zone role +
+  dwell) — customers define composites in **config, not code**. Confidence strategy is replaceable
+  (`min/max/mean/weighted`).
+- **[`composite_registry`](composite_registry.py)** — orchestrates the deterministic second pass,
+  **rejects circular composite graphs** (`validate_acyclic`), and records match/miss/latency metrics.
+- **[`profiles`](profiles.py)** — `BehaviorProfile` is the **portable** deployment mechanism (generic
+  zone roles + config, no tenant/camera/zone ids) with **fail-fast validation**. The retail pilot is
+  **[`profiles/retail.json`](profiles/retail.json)** — the 4-camera layout as pure configuration.
+- **[`behaviors/crowd`](behaviors/crowd.py)** + **[`behaviors/occupancy`](behaviors/occupancy.py)** —
+  new generic primitives. Playground: composite graph + dependency graph + execution order in
+  `behaviors_timeline.json`; `--profile <name>` / `--no-composites`. See
+  [AI-4-COMPOSITE](../../docs/tracker/AI-4-COMPOSITE.md).
+
 ## Configuration (env, `.env` only — ADR-0018)
 
 `HOST`, `PORT` (8085), `LOG_LEVEL`, `INTERNAL_API_KEY` (≥16), `INFERENCE_BACKEND` (`stub`|`onnx`),

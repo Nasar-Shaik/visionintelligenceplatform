@@ -231,6 +231,32 @@ export const RuntimeMetrics = z.object({
   behaviorLatency: z.number().nonnegative().optional(),
   /** Behavior instances started per minute (windowed). */
   behaviorsPerMinute: z.number().nonnegative().optional(),
+  /**
+   * AI-4 composite + profile observability (additive, all optional — reported once composite analysis /
+   * profiles run). Business-neutral counts/durations of analysis, never a business signal.
+   */
+  analyzerQueueDepth: z.number().int().nonnegative().optional(),
+  behaviorWindowCount: z.number().int().nonnegative().optional(),
+  averageWindowDuration: z.number().nonnegative().optional(),
+  activeTemporalWindows: z.number().int().nonnegative().optional(),
+  compositeBehaviorCount: z.number().int().nonnegative().optional(),
+  behaviorCorrelationCount: z.number().int().nonnegative().optional(),
+  /** Composite-analyzer evaluations over the session (analyzers × frames evaluated). */
+  compositeEvaluations: z.number().int().nonnegative().optional(),
+  /** Composite evaluations that matched (produced a composite) vs. did not (Architect AI-4 refinement 8). */
+  compositeMatches: z.number().int().nonnegative().optional(),
+  compositeMisses: z.number().int().nonnegative().optional(),
+  /** Average composite evaluation latency (ms). */
+  averageCompositeLatency: z.number().nonnegative().optional(),
+  /** Average confidence across produced composite behaviors. */
+  averageCompositeConfidence: z.number().min(0).max(1).optional(),
+  /** Average wall-time (ms) a composite evaluation takes. */
+  compositeExecutionTime: z.number().nonnegative().optional(),
+  profileLoads: z.number().int().nonnegative().optional(),
+  profileValidationFailures: z.number().int().nonnegative().optional(),
+  activeProfiles: z.number().int().nonnegative().optional(),
+  /** Total behavior relationships (parent/follows/related) recorded over the session. */
+  behaviorRelationshipCount: z.number().int().nonnegative().optional(),
 });
 export type RuntimeMetrics = z.infer<typeof RuntimeMetrics>;
 
