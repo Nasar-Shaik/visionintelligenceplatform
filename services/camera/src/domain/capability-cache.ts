@@ -16,6 +16,9 @@
  */
 import type { CapabilityCache, CapabilityRefreshReason } from '@vip/contracts';
 
+/** Fraction of the cache window after which capabilities are `aging` rather than `fresh`. */
+const AGING_AT = 0.5;
+
 /**
  * How long a capability read stays fresh. Twenty-four hours because camera capabilities change on
  * firmware upgrades and re-configurations — events measured in months — while the cost of being a
@@ -104,7 +107,13 @@ export function capabilityRefreshDecision(input: RefreshInput): RefreshDecision 
 /** The cache entry to persist after a read. `refreshed: false` records the attempt without claiming one. */
 export function recordRefresh(
   previous: CapabilityCache | undefined,
-  outcome: { reason: CapabilityRefreshReason; refreshed: boolean; firmware?: string; at: Date },
+  outcome: {
+    reason: CapabilityRefreshReason;
+    refreshed: boolean;
+    firmware?: string;
+    at: Date;
+    source?: CapabilityCache['source'];
+  },
 ): CapabilityCache {
   const at = outcome.at.toISOString();
   const firmware = outcome.firmware ?? previous?.firmware;
@@ -122,10 +131,42 @@ export function recordRefresh(
     lastRefreshedAt: at,
     refreshReason: outcome.reason,
     refreshCount: (previous?.refreshCount ?? 0) + (outcome.refreshed ? 1 : 0),
+    source: outcome.refreshed
+      ? (outcome.source ?? 'onvif-directed')
+      : (previous?.source ?? 'declared'),
+    // Written for storage; `freshnessOf` recomputes it against the clock on every read.
+    freshness: outcome.refreshed ? 'fresh' : (previous?.freshness ?? 'unknown'),
   };
 }
 
 /** An empty cache for a camera whose capabilities were declared rather than discovered. */
 export function declaredCache(): CapabilityCache {
-  return { cacheVersion: CAPABILITY_CACHE_VERSION, refreshCount: 0 };
+  return {
+    cacheVersion: CAPABILITY_CACHE_VERSION,
+    refreshCount: 0,
+    source: 'declared',
+    // Never confirmed against a device. Deliberately `unknown`, not `expired` — the second implies
+    // it was true once, and this has never been true.
+    freshness: 'unknown',
+  };
+}
+
+/**
+ * How much the cached capabilities can be trusted right now (P-2.1, Architect rec 6).
+ *
+ * Computed on read rather than trusted from storage, because freshness is a function of the clock: a
+ * stored value is wrong the moment after it is written, which is precisely the silent staleness the
+ * recommendation is about.
+ */
+export function freshnessOf(
+  cache: CapabilityCache | undefined,
+  now: Date,
+  ttlHours = CAPABILITY_TTL_HOURS,
+): CapabilityCache['freshness'] {
+  const reference = cache?.lastRefreshedAt ?? cache?.discoveredAt;
+  if (!cache || !reference || !cache.discoveredAt) return 'unknown';
+  const ageHours = (now.getTime() - new Date(reference).getTime()) / 3_600_000;
+  if (ageHours >= ttlHours) return 'expired';
+  if (ageHours >= ttlHours * AGING_AT) return 'aging';
+  return 'fresh';
 }

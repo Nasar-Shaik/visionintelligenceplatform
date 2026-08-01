@@ -86,15 +86,27 @@ class StreamValidateEndpointTests(unittest.TestCase):
         cls.httpd.shutdown()
 
     def setUp(self):
-        # The probe resolves its builder from the module at call time, so patching the attribute is
-        # enough — the production code path runs verbatim, with no test-only branch inside it.
-        self._real = stream_probe.build_source
+        # The probe resolves its builder and its network seams from the module at call time, so
+        # patching the attributes is enough — the production code path runs verbatim, with no
+        # test-only branch inside it. Without the DNS/TCP stubs these tests would resolve and dial
+        # `cam.local` for real, which is both slow and a different test than the one intended.
+        self._real = (
+            stream_probe.build_source,
+            stream_probe._default_resolve,
+            stream_probe._default_connect,
+        )
         stream_probe.build_source = _fake_build
+        stream_probe._default_resolve = lambda _host: ["10.0.0.64"]
+        stream_probe._default_connect = lambda _h, _p, _t: None
         BUILT_CONFIGS.clear()
         BUILD_BEHAVIOUR["mode"] = "ok"
 
     def tearDown(self):
-        stream_probe.build_source = self._real
+        (
+            stream_probe.build_source,
+            stream_probe._default_resolve,
+            stream_probe._default_connect,
+        ) = self._real
 
     def url(self):
         return f"http://127.0.0.1:{self.port}/streams/validate"
@@ -159,6 +171,8 @@ class StreamValidateEndpointTests(unittest.TestCase):
         self.assertEqual(data["authentication"], "failed")
         self.assertEqual(checks["authentication"], "fail")
         self.assertEqual(checks["stream-open"], "not-executed")
+        # The server names the failure; the console renders it (P-2.1 rec 8/10).
+        self.assertEqual(data["failureCode"], "authentication-failure")
 
     def test_the_declared_protocol_selects_the_source_and_the_uri_is_never_sniffed(self):
         _post(self.url(), {"protocol": "onvif", "streamUrl": "rtsp://cam.local/sub"})
@@ -209,3 +223,47 @@ class ApplyCredentialsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProbeProvenanceTests(StreamValidateEndpointTests):
+    """Provenance travels with the report (P-2.1 rec 4) — the runtime echoes, never invents."""
+
+    def test_echoes_the_callers_provenance_and_stamps_its_own_versions(self):
+        _, body = _post(
+            self.url(),
+            {
+                "protocol": "rtsp",
+                "streamUrl": "rtsp://cam.local/sub",
+                "configVersion": "cfg-abc123",
+                "operator": "usr_7",
+                "correlationId": "corr-9",
+            },
+        )
+        data = body["data"]
+        self.assertEqual(data["probeVersion"], stream_probe.PROBE_VERSION)
+        self.assertEqual(data["runtimeVersion"], "0.1.0")
+        self.assertEqual(data["configVersion"], "cfg-abc123")
+        self.assertEqual(data["operator"], "usr_7")
+        self.assertEqual(data["correlationId"], "corr-9")
+
+    def test_falls_back_to_the_correlation_header(self):
+        req = urllib.request.Request(
+            self.url(),
+            data=json.dumps({"streamUrl": "rtsp://cam.local/sub"}).encode(),
+            headers={
+                "content-type": "application/json",
+                "x-internal-key": KEY,
+                "x-correlation-id": "hdr-42",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310 - localhost test
+            body = json.loads(resp.read())
+        self.assertEqual(body["data"]["correlationId"], "hdr-42")
+
+    def test_every_stage_reports_its_own_duration(self):
+        _, body = _post(self.url(), {"streamUrl": "rtsp://cam.local/sub", "frames": 3})
+        timed = [c for c in body["data"]["checks"] if "durationMs" in c]
+        # Total time alone cannot say WHICH stage is slow — that is the point of rec 1.
+        self.assertTrue(timed)
+        self.assertIn("totalMs", body["data"])

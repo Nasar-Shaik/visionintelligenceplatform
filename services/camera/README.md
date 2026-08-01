@@ -140,11 +140,28 @@ held before. `retire` is **not** `delete` — the record and its timeline are ke
 investigation months later may need them.
 
 The measurement is `POST /streams/validate` on the AI runtime, reached through the `StreamProbe` port
-(same arrangement as discovery, same `CAMERA_DISCOVERY_URL`). It returns nine **ordered** checks in
-which a failure leaves every later check `not-executed` rather than `fail` — the difference between an
-installer re-running cable and fixing a password.
+(same arrangement as discovery, same `CAMERA_DISCOVERY_URL`). It returns thirteen **ordered, timed**
+stages — `dns → tcp → authentication → rtsp-negotiation → stream-open → first-frame →
+frames-received → codec → resolution → fps → stream-profile → latency → jitter` — plus **one**
+mutually-exclusive failure code. A failure leaves later stages `not-executed` rather than `fail`, and
+a stage a transport does not have is `skipped`: three different facts that a boolean flattens into
+one useless one.
 
-Capabilities are **cached, not re-queried**: `CapabilityCache` records the firmware and timestamp they
-were read against, and `domain/capability-cache.ts` decides whether to go back to the device. Bump
-`CAPABILITY_CACHE_VERSION` whenever discovery starts extracting something new, or every camera will
-keep reporting the narrower set it was first read with.
+**Do not re-derive the failure from the check list.** The runtime assigns `failureCode`; the console
+maps it to words. Inferring it a second time is how two components come to disagree about one event.
+
+Capabilities are **cached, not re-queried**: `CapabilityCache` records the firmware, timestamp and
+source they were read against, and `domain/capability-cache.ts` decides whether to go back to the
+device. Bump `CAPABILITY_CACHE_VERSION` whenever discovery starts extracting something new, or every
+camera will keep reporting the narrower set it was first read with. Freshness (`fresh`/`aging`/
+`expired`/`unknown`) is **computed on read** — a stored freshness value is wrong the moment after it
+is written.
+
+A refresh produces a **diff** (`domain/capability-diff.ts`), severity-classified so a 1080p→4K jump
+is not buried beside a firmware string. Profiles are compared **by name, not position**: devices
+reorder them between firmware versions, and a positional diff would report every profile as changed
+on every upgrade.
+
+**Device identity is appended to, never overwritten** (`CameraIdentityHistory`). "When did this
+camera become a different device?" is unanswerable the moment a serial number is overwritten in
+place.

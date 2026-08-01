@@ -3,7 +3,11 @@ import type {
   CameraCapabilities,
   CameraHealthStatus,
   CameraLifecycleState,
+  CapabilityCache,
+  CapabilityChangeSeverity,
+  IdentityConfidence,
   StreamProbeCheck,
+  StreamProbeFailureCode,
 } from '@vip/contracts';
 import type { StatusKind } from '@/lib/status';
 
@@ -160,6 +164,7 @@ export const CHECK_GLYPH: Record<StreamProbeCheck['status'], string> = {
   pass: '✓',
   fail: '✗',
   warn: '!',
+  skipped: '·',
   'not-executed': '–',
 };
 
@@ -167,33 +172,93 @@ export const CHECK_KIND: Record<StreamProbeCheck['status'], StatusKind> = {
   pass: 'ok',
   fail: 'error',
   warn: 'warn',
+  skipped: 'idle',
   'not-executed': 'idle',
 };
 
-/** Human labels for the ordered probe checks. */
+/** Human labels for the ordered probe stages. */
 export const CHECK_LABEL: Record<string, string> = {
-  reachability: 'Device reachable',
+  dns: 'Name resolved',
+  tcp: 'Device reachable',
   authentication: 'Authentication',
-  'stream-open': 'RTSP opened',
-  'frames-received': 'Stream started',
+  'rtsp-negotiation': 'RTSP negotiated',
+  'stream-open': 'Stream opened',
+  'first-frame': 'First frame received',
+  'frames-received': 'Video stream started',
   codec: 'Codec',
   resolution: 'Resolution',
   fps: 'Frame rate',
+  'stream-profile': 'Stream profile',
   latency: 'Latency',
   jitter: 'Jitter',
 };
 
 /**
- * The one line to lead a failed test-connection with.
+ * The failure headline, keyed on the code **the runtime assigned**.
  *
- * The **first** failing check in the ordered list, because the checks are ordered by causation:
- * everything after the first failure is a consequence, and leading with a consequence is what sends
- * an installer to re-run cable for a password problem.
+ * P-2 derived this in the console by finding the first failing check. That was inference — business
+ * logic in the visualization tier (Architect P-2.1 rec 10) — and it would have drifted from the
+ * runtime the first time a stage was renamed. The runtime now names the failure; this map is the
+ * only thing the console adds, and it adds words, not judgement.
  */
-export function probeHeadline(checks: readonly StreamProbeCheck[]): string | null {
-  const failed = checks.find((c) => c.status === 'fail');
-  if (failed) return `${CHECK_LABEL[failed.name] ?? failed.name} failed`;
-  const warned = checks.find((c) => c.status === 'warn');
-  if (warned) return `${CHECK_LABEL[warned.name] ?? warned.name} is below par`;
-  return null;
+export const FAILURE_LABEL: Record<StreamProbeFailureCode, string> = {
+  'configuration-invalid': 'The configuration cannot work',
+  'dns-failure': 'The hostname did not resolve',
+  'tcp-failure': 'The device could not be reached',
+  'authentication-failure': 'The device rejected the credentials',
+  'rtsp-negotiation-failure': 'The device would not serve this stream',
+  'codec-unsupported': 'The codec is not supported',
+  timeout: 'The stream opened but sent no video',
+  'no-first-frame': 'No frame arrived',
+  'stream-interrupted': 'The stream dropped',
+};
+
+/** What to try next. Static copy per code — no inspection of the result, by design. */
+export const FAILURE_REMEDY: Record<StreamProbeFailureCode, string> = {
+  'configuration-invalid': 'Check the stream URL and protocol.',
+  'dns-failure': 'Check DNS, or use the IP address instead of a hostname.',
+  'tcp-failure': 'Check power, cabling, the port and any firewall between here and the camera.',
+  'authentication-failure': 'Check the username and password on the camera itself.',
+  'rtsp-negotiation-failure':
+    'Check the stream path — the camera is reachable but rejects this one.',
+  'codec-unsupported': 'Set the camera to H.264 or H.265.',
+  timeout: 'The camera may be set to a profile it cannot encode. Try the sub-stream.',
+  'no-first-frame': 'The camera accepted the connection then sent nothing. Reboot it and retry.',
+  'stream-interrupted': 'The link is unstable. Check wireless signal or switch port errors.',
+};
+
+/** Severity of a capability change → design-system token. */
+export const SEVERITY_KIND: Record<CapabilityChangeSeverity, StatusKind> = {
+  minor: 'idle',
+  major: 'warn',
+  security: 'error',
+};
+
+/** Cache freshness → design-system token. `unknown` is idle, not ok: nothing has confirmed it. */
+export const FRESHNESS_KIND: Record<NonNullable<CapabilityCache['freshness']>, StatusKind> = {
+  fresh: 'ok',
+  aging: 'warn',
+  expired: 'error',
+  unknown: 'idle',
+};
+
+export const FRESHNESS_LABEL: Record<NonNullable<CapabilityCache['freshness']>, string> = {
+  fresh: 'Fresh',
+  aging: 'Aging',
+  expired: 'Expired',
+  unknown: 'Never confirmed',
+};
+
+/** How an identity match should be described. A low match is shown as low, never as a match. */
+export const CONFIDENCE_LABEL: Record<IdentityConfidence, string> = {
+  high: 'Matched by device identity',
+  medium: 'Matched by hardware address',
+  low: 'Matched by network address only',
+  unknown: 'No reliable identifier',
+};
+
+/** Format a stage duration the way an installer reads it. */
+export function formatDuration(ms: number | undefined): string | undefined {
+  if (ms === undefined) return undefined;
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`;
 }

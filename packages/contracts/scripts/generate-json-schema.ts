@@ -43,8 +43,11 @@ import {
   CapabilityCache,
   StreamProbeRequest,
   StreamProbeResult,
+  StreamProbeCheck,
   CameraProbeReport,
   CapabilityRefreshResult,
+  CapabilityChange,
+  CameraIdentityChange,
 } from '../src/camera/camera.js';
 import {
   StreamStatus,
@@ -196,6 +199,10 @@ const schemas: Record<string, z.ZodType> = {
   'stream-probe-request': StreamProbeRequest,
   'stream-probe-result': StreamProbeResult,
   'camera-probe-report': CameraProbeReport,
+  // P-2.1 — staged diagnostics, capability diff, identity history.
+  'stream-probe-check': StreamProbeCheck,
+  'capability-change': CapabilityChange,
+  'camera-identity-change': CameraIdentityChange,
   'stream-status': StreamStatus,
   'recording-segment': RecordingSegment,
   recording: Recording,

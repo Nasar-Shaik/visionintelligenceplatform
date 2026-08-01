@@ -5,6 +5,7 @@ import type {
   CameraHealthReport,
   CameraHealthSummary,
   CameraProbeReport,
+  HealthTrendWindow,
   CapabilityRefreshResult,
   CameraValidationInput,
   CameraValidationResult,
@@ -47,10 +48,8 @@ export const camerasApi = {
     http.post<CapabilityRefreshResult>(
       `/camera/cameras/${id}/capabilities/refresh${force ? '?force=true' : ''}`,
     ),
-  healthSummary: (id: string, windowHours = 24) =>
-    http.get<CameraHealthSummary>(
-      `/camera/cameras/${id}/health/summary?windowHours=${windowHours}`,
-    ),
+  healthSummary: (id: string, window: HealthTrendWindow = 'day') =>
+    http.get<CameraHealthSummary>(`/camera/cameras/${id}/health/summary?window=${window}`),
   retire: (id: string) => http.post<Camera>(`/camera/cameras/${id}/retire`),
   reinstate: (id: string) => http.post<Camera>(`/camera/cameras/${id}/reinstate`),
 };

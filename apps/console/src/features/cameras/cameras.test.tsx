@@ -61,10 +61,34 @@ const CAMERA = {
       at: '2026-08-01T09:00:00.000Z',
       kind: 'state-changed',
       evidence: 'declared',
+      reasonCode: 'onboarded',
       to: 'configured',
       detail: 'onboarded',
     },
   ],
+  identity: {
+    onvifUuid: 'urn:uuid:abc-123',
+    serialNumber: 'DS2CD00112233',
+    lastKnownAddress: '10.0.0.64',
+  },
+  identityHistory: [
+    {
+      at: '2026-08-01T09:00:00.000Z',
+      attribute: 'address',
+      from: '10.0.0.60',
+      to: '10.0.0.64',
+      source: 'discovery',
+    },
+  ],
+  capabilityCache: {
+    cacheVersion: 1,
+    refreshCount: 2,
+    source: 'onvif-directed',
+    freshness: 'fresh',
+    firmware: 'V5.7.3',
+    discoveredAt: '2026-08-01T09:00:00.000Z',
+    lastRefreshedAt: '2026-08-01T09:30:00.000Z',
+  },
   operational: {
     observedAt: '2026-08-01T10:00:00.000Z',
     source: 'stream-probe',
@@ -87,6 +111,7 @@ const OFFLINE_CAMERA = {
   streamUrl: 'rtsp://10.0.0.65:554/Streaming/Channels/102',
   health: { status: 'offline' },
   lifecycle: { state: 'offline', since: '2026-08-01T10:00:00.000Z', evidence: 'measured' },
+  identityHistory: [],
   metadata: { manufacturer: 'Dahua', model: 'IPC-HFW', tags: [] },
 };
 
@@ -99,6 +124,7 @@ const DEVICE = {
   registryId: 'axis-p3245',
   alreadyOnboarded: false,
   addressChanged: false,
+  identityConfidence: 'unknown',
 };
 
 function listReturns(cameras: unknown[]) {
@@ -352,10 +378,16 @@ const PASSING_PROBE = {
   fps: 10,
   resolution: '640x360',
   authentication: 'ok',
+  probeVersion: '2',
+  runtimeVersion: '0.1.0',
+  totalMs: 346,
   checks: [
-    { name: 'reachability', status: 'pass', measured: '38 ms' },
-    { name: 'authentication', status: 'pass' },
+    { name: 'dns', status: 'pass', measured: '10.0.0.64', durationMs: 12 },
+    { name: 'tcp', status: 'pass', measured: '10.0.0.64:554', durationMs: 4 },
+    { name: 'authentication', status: 'pass', durationMs: 38 },
+    { name: 'rtsp-negotiation', status: 'pass', durationMs: 110 },
     { name: 'stream-open', status: 'pass' },
+    { name: 'first-frame', status: 'pass', durationMs: 182 },
     { name: 'frames-received', status: 'pass', measured: '3 frames' },
   ],
   profiles: [],
@@ -435,11 +467,13 @@ describe('test connection (P-2)', () => {
         ...PASSING_PROBE,
         framesRead: 0,
         authentication: 'failed',
+        failureCode: 'authentication-failure',
         checks: [
-          { name: 'reachability', status: 'pass', measured: '38 ms' },
+          { name: 'dns', status: 'pass', measured: '10.0.0.64', durationMs: 12 },
+          { name: 'tcp', status: 'pass', measured: '10.0.0.64:554', durationMs: 4 },
           { name: 'authentication', status: 'fail', detail: '401 from the device' },
+          { name: 'rtsp-negotiation', status: 'not-executed' },
           { name: 'stream-open', status: 'not-executed' },
-          { name: 'frames-received', status: 'not-executed' },
         ],
       },
       operational: {
@@ -456,11 +490,13 @@ describe('test connection (P-2)', () => {
     const user = await openDetail();
     await user.click(await screen.findByRole('button', { name: /test connection/i }));
 
-    expect(await screen.findByText(/Authentication failed/i)).toBeInTheDocument();
+    // The headline is the runtime's typed code rendered, not a guess made here (rec 10).
+    expect(await screen.findByText(/The device rejected the credentials/i)).toBeInTheDocument();
+    expect(screen.getByText(/Check the username and password/i)).toBeInTheDocument();
     expect(screen.getByText('Device reachable')).toBeInTheDocument();
     expect(screen.getByText('401 from the device', { exact: false })).toBeInTheDocument();
     // The stream was never attempted — showing it as a failure would blame the wrong component.
-    expect(screen.getByText('RTSP opened')).toBeInTheDocument();
+    expect(screen.getByText('RTSP negotiated')).toBeInTheDocument();
   });
 
   it('says plainly when the deployment cannot test connections at all', async () => {
@@ -526,5 +562,121 @@ describe('discovery after an address change (P-2)', () => {
     await user.click(await screen.findByRole('button', { name: /^scan$/i }));
 
     expect(await screen.findByText(/its address changed to 10\.0\.0\.99/i)).toBeInTheDocument();
+  });
+});
+
+// -------------------------------------------------------------------------------------------
+// P-2.1: staged diagnostics, capability diff, identity history
+// -------------------------------------------------------------------------------------------
+
+describe('staged probe readout (P-2.1)', () => {
+  it('shows each stage with its own duration, so "slow" becomes a specific stage', async () => {
+    authAs(['admin']);
+    listReturns([CAMERA]);
+    probeReturns({ cameraId: 'cam_1', probe: PASSING_PROBE, lifecycle: CAMERA.lifecycle });
+    renderWithProviders(<CamerasPage />, { store });
+    const user = await openDetail();
+    await user.click(await screen.findByRole('button', { name: /test connection/i }));
+
+    expect(await screen.findByText('Name resolved')).toBeInTheDocument();
+    expect(screen.getByText('Device reachable')).toBeInTheDocument();
+    expect(screen.getByText('First frame received')).toBeInTheDocument();
+    // Total time alone cannot say which step is slow.
+    expect(screen.getByText('12 ms')).toBeInTheDocument();
+    expect(screen.getByText('182 ms')).toBeInTheDocument();
+    expect(screen.getByText(/346 ms total/)).toBeInTheDocument();
+  });
+
+  it('renders the runtime’s failure code rather than inferring one', async () => {
+    authAs(['admin']);
+    listReturns([CAMERA]);
+    probeReturns({
+      cameraId: 'cam_1',
+      probe: {
+        ...PASSING_PROBE,
+        framesRead: 0,
+        failureCode: 'dns-failure',
+        checks: [
+          { name: 'dns', status: 'fail', detail: 'Name or service not known' },
+          { name: 'tcp', status: 'not-executed' },
+        ],
+      },
+      lifecycle: CAMERA.lifecycle,
+    });
+    renderWithProviders(<CamerasPage />, { store });
+    const user = await openDetail();
+    await user.click(await screen.findByRole('button', { name: /test connection/i }));
+
+    // A DNS problem sends someone to their DNS, not to a ladder.
+    expect(await screen.findByText(/hostname did not resolve/i)).toBeInTheDocument();
+    expect(screen.getByText(/use the IP address instead of a hostname/i)).toBeInTheDocument();
+  });
+
+  it('records the probe version, so two reports months apart are comparable', async () => {
+    authAs(['admin']);
+    listReturns([CAMERA]);
+    probeReturns({ cameraId: 'cam_1', probe: PASSING_PROBE, lifecycle: CAMERA.lifecycle });
+    renderWithProviders(<CamerasPage />, { store });
+    const user = await openDetail();
+    await user.click(await screen.findByRole('button', { name: /test connection/i }));
+
+    expect(await screen.findByText(/Probe v2/)).toBeInTheDocument();
+  });
+});
+
+describe('capability cache and diff (P-2.1)', () => {
+  it('shows how stale the capabilities are and what they were read against', async () => {
+    authAs(['operator']);
+    listReturns([CAMERA]);
+    renderWithProviders(<CamerasPage />, { store });
+    await openDetail();
+
+    expect(await screen.findByText('Fresh')).toBeInTheDocument();
+    expect(screen.getByText(/read against V5\.7\.3/)).toBeInTheDocument();
+  });
+
+  it('shows what changed after a refresh, not merely that it happened', async () => {
+    authAs(['admin']);
+    listReturns([CAMERA]);
+    server.use(
+      mswHttp.post('/api/camera/cameras/:id/capabilities/refresh', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            cameraId: 'cam_1',
+            capabilities: CAPABILITIES,
+            cache: CAMERA.capabilityCache,
+            reason: 'forced',
+            refreshed: true,
+            changes: [
+              { field: 'codecs', severity: 'major', from: 'h264', to: 'h265' },
+              { field: 'audio', severity: 'minor', from: 'false', to: 'true' },
+            ],
+          },
+        }),
+      ),
+    );
+    renderWithProviders(<CamerasPage />, { store });
+    const user = await openDetail();
+    await user.click(await screen.findByRole('button', { name: /refresh capabilities/i }));
+
+    // "Capabilities refreshed" tells an operator nothing; this tells them their decode cost moved.
+    expect(await screen.findByText('codecs')).toBeInTheDocument();
+    expect(screen.getByText(/h264 → h265/)).toBeInTheDocument();
+    expect(screen.getByText('major')).toBeInTheDocument();
+  });
+});
+
+describe('device identity history (P-2.1)', () => {
+  it('shows when a camera changed address, rather than overwriting the fact', async () => {
+    authAs(['operator']);
+    listReturns([CAMERA]);
+    renderWithProviders(<CamerasPage />, { store });
+    await openDetail();
+
+    expect(await screen.findByText('Device identity')).toBeInTheDocument();
+    expect(screen.getByText('urn:uuid:abc-123')).toBeInTheDocument();
+    // "When did this camera become a different device?" is only answerable if the old value survives.
+    expect(screen.getByText(/10\.0\.0\.60 → 10\.0\.0\.64/)).toBeInTheDocument();
   });
 });

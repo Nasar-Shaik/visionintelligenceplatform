@@ -179,16 +179,26 @@ export function registerCameraRoutes(app: FastifyInstance, deps: CameraRoutesDep
     },
   );
 
-  // Trends over the recorded timeline — computed, never stored.
-  app.get<{ Params: CameraParams; Querystring: { windowHours?: string } }>(
+  /**
+   * Trends over the recorded timeline — computed, never stored (P-2.1).
+   *
+   * `?window=hour|day|week|month`. Named windows rather than an arbitrary hour count because the
+   * point is to *bound* the view: a lifetime average hides last night's outage behind a year of
+   * uptime, and letting a caller ask for 100000 hours would quietly reinstate exactly that.
+   */
+  app.get<{ Params: CameraParams; Querystring: { window?: string } }>(
     '/cameras/:id/health/summary',
     { preHandler: auth.authorize('camera:read') },
     async (request, reply) => {
       const scope = scopeOf(request.principal!.tenantId);
-      const parsed = Number(request.query.windowHours);
-      const windowHours = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 24 * 90) : 24;
+      const requested = request.query.window;
+      const window = (['hour', 'day', 'week', 'month'] as const).find((w) => w === requested);
       return reply.send(
-        success(await service.healthSummary(scope, request.params.id, { windowHours })),
+        success(
+          await service.healthSummary(scope, request.params.id, {
+            ...(window ? { window } : {}),
+          }),
+        ),
       );
     },
   );

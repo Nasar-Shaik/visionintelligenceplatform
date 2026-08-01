@@ -229,8 +229,17 @@ def make_handler(
                 "uri": uri,
                 "capabilities": body.get("capabilities") or {},
                 "_credentialed": credentialed,
+                # Provenance, carried through so a stored report can be compared with a later one
+                # (P-2.1 rec 4). The runtime never invents these — it echoes what the caller knew.
+                "configVersion": body.get("configVersion"),
+                "operator": body.get("operator"),
+                "correlationId": body.get("correlationId")
+                or self.headers.get("x-correlation-id"),
+                "streamProfile": body.get("streamProfile"),
             }
-            report = probe_stream(config, frames=frames, timeout_seconds=timeout)
+            report = probe_stream(
+                config, frames=frames, timeout_seconds=timeout, runtime_version=version
+            )
             self._ok(report.to_dict())
 
         # --- /discovery/onvif (P-1) ------------------------------------------------

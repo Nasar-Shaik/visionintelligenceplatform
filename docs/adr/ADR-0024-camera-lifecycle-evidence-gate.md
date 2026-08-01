@@ -91,6 +91,23 @@ and no `health.status`. Negative controls guard it at three levels: `stream_prob
 a flawless simulated probe), `domain/lifecycle.ts` (`stateForProbe` returns `null`), and the camera
 service HTTP tests (a simulated probe leaves the camera `configured`).
 
+## Amendment (P-2.1, 2026-08-02)
+
+Accepted with P-2, and refined in the same review. Three changes to what is written above:
+
+1. **`configured → monitoring` is legal.** The original map required passing through `connected`. The
+   Architect's diagram is right: a running analysis session _is_ hardware evidence and can arrive
+   without an operator-initiated probe, so requiring one first would be the state machine
+   disbelieving its own runtime. The evidence gate is unchanged — `monitoring` still demands
+   `hardware`.
+2. **The probe names its own failure.** `StreamProbeFailureCode` is mutually exclusive and assigned
+   by the runtime. The console renders it. Deriving the failure in the UI — which the first
+   implementation did — put business logic in the visualization tier and would have drifted from the
+   runtime the first time a stage was renamed.
+3. **Stages are per-transport.** `skipped` joins `fail`/`warn`/`not-executed` so that "this transport
+   has no such step" is distinguishable from "the probe never got there". Adding SRT or WebRTC is a
+   new stage-set entry, not a lifecycle change.
+
 ## Revisit when
 
 Ingestion starts reporting continuously (`source: 'ingestion'`). At that point `monitoring` should be

@@ -11,16 +11,25 @@ import {
   CameraValidationInput,
   CameraValidationResult,
   CameraHealthSummary,
+  CameraIdentityChange,
+  CameraIdentityHistory,
   CameraTimeline,
   CameraTimelineEntry,
   CapabilityCache,
+  CapabilityChange,
+  CapabilityChangeSeverity,
   CapabilityRefreshReason,
   CapabilityRefreshResult,
   CaptureProfile,
   CreateCameraInput,
   DiscoveredCamera,
   HealthObservationSource,
+  HealthTrendWindow,
+  IdentityConfidence,
   LifecycleEvidence,
+  StreamProbeCheck,
+  StreamProbeCheckName,
+  StreamProbeFailureCode,
   StreamProbeRequest,
   StreamProbeResult,
   StreamUrl,
@@ -259,6 +268,7 @@ describe('CameraLifecycle + CameraTimeline (P-2)', () => {
       at: now,
       kind: 'firmware-changed',
       evidence: 'measured',
+      reasonCode: 'firmware-updated',
       detail: 'firmware V5.7.3 → V5.7.9',
     });
     expect(entry.kind).toBe('firmware-changed');
@@ -270,6 +280,7 @@ describe('CameraLifecycle + CameraTimeline (P-2)', () => {
       at: now,
       kind: 'state-changed',
       evidence: 'measured',
+      reasonCode: 'hardware-evidence',
       from: 'connected',
       to: 'offline',
       detail: 'no frames',
@@ -334,6 +345,8 @@ describe('StreamProbeResult (P-2)', () => {
     });
     expect(result.evidenceClass).toBe('hardware');
     expect(result.authentication).toBe('unknown');
+    // Two reports are only comparable if you know whether the probe itself changed in between.
+    expect(result.probeVersion).toBe('1');
   });
 
   it('can express the device that opens and then stalls', () => {
@@ -355,7 +368,8 @@ describe('StreamProbeResult (P-2)', () => {
       reachable: true,
       framesRead: 0,
       checks: [
-        { name: 'reachability', status: 'pass' },
+        { name: 'dns', status: 'pass' },
+        { name: 'tcp', status: 'pass' },
         { name: 'authentication', status: 'fail', detail: '401 from the device' },
         { name: 'stream-open', status: 'not-executed' },
         { name: 'frames-received', status: 'not-executed' },
@@ -413,10 +427,12 @@ describe('CameraHealthSummary (P-2)', () => {
   it('reports how much evidence is behind a trend, and omits a percentage it cannot support', () => {
     const summary = CameraHealthSummary.parse({
       cameraId: 'cam_1',
+      window: 'day',
       windowStart: now,
       windowEnd: now,
       observations: 1,
       reconnects: 0,
+      offlineCount: 0,
       credentialFailures: 0,
       offlineSeconds: 0,
       capabilityRefreshes: 0,
@@ -437,9 +453,11 @@ describe('DiscoveredCamera (P-2 identity)', () => {
       cameraId: 'cam_1',
       identity: { onvifUuid: 'urn:uuid:abc' },
       addressChanged: true,
+      identityConfidence: 'high',
     });
     expect(device.addressChanged).toBe(true);
     expect(device.alreadyOnboarded).toBe(true);
+    expect(device.identityConfidence).toBe('high');
   });
 
   it('defaults addressChanged to false', () => {
@@ -449,5 +467,159 @@ describe('DiscoveredCamera (P-2 identity)', () => {
       capabilities: CameraCapabilities.parse({}),
     });
     expect(device.addressChanged).toBe(false);
+    // Never silently assume identity: an unmatched device claims nothing about who it is.
+    expect(device.identityConfidence).toBe('unknown');
+  });
+});
+
+// -------------------------------------------------------------------------------------------
+// P-2.1: diagnostic depth — per-stage timing, typed failures, severity, confidence, freshness
+// -------------------------------------------------------------------------------------------
+
+describe('StreamProbe staging (P-2.1)', () => {
+  it('separates DNS from TCP from negotiation, because each sends you somewhere different', () => {
+    const stages = StreamProbeCheckName.options;
+    expect(stages.slice(0, 6)).toEqual([
+      'dns',
+      'tcp',
+      'authentication',
+      'rtsp-negotiation',
+      'stream-open',
+      'first-frame',
+    ]);
+  });
+
+  it('distinguishes a stage a transport does not have from one the probe never reached', () => {
+    const skipped = StreamProbeCheck.parse({ name: 'rtsp-negotiation', status: 'skipped' });
+    const unreached = StreamProbeCheck.parse({ name: 'codec', status: 'not-executed' });
+    expect(skipped.status).toBe('skipped');
+    expect(unreached.status).toBe('not-executed');
+  });
+
+  it('times each stage, because a total cannot say which step is slow', () => {
+    const check = StreamProbeCheck.parse({ name: 'dns', status: 'pass', durationMs: 12 });
+    expect(check.durationMs).toBe(12);
+  });
+
+  it('names one failure, and the codes do not overlap', () => {
+    expect(StreamProbeFailureCode.options).toEqual([
+      'configuration-invalid',
+      'dns-failure',
+      'tcp-failure',
+      'authentication-failure',
+      'rtsp-negotiation-failure',
+      'codec-unsupported',
+      'timeout',
+      'no-first-frame',
+      'stream-interrupted',
+    ]);
+    expect(new Set(StreamProbeFailureCode.options).size).toBe(
+      StreamProbeFailureCode.options.length,
+    );
+  });
+
+  it('carries provenance so two reports months apart are comparable', () => {
+    const result = StreamProbeResult.parse({
+      probedAt: now,
+      evidenceClass: 'hardware',
+      reachable: true,
+      framesRead: 3,
+      probeVersion: '2',
+      runtimeVersion: '0.1.0',
+      configVersion: 'cfg-abc',
+      operator: 'usr_7',
+      correlationId: 'corr-9',
+      totalMs: 346,
+    });
+    expect(result.probeVersion).toBe('2');
+    expect(result.correlationId).toBe('corr-9');
+  });
+});
+
+describe('CapabilityChange severity (P-2.1)', () => {
+  it('classifies impact so an operator reads the important row first', () => {
+    expect(CapabilityChangeSeverity.options).toEqual(['minor', 'major', 'security']);
+    const change = CapabilityChange.parse({
+      field: 'codecs',
+      severity: 'major',
+      from: 'h264',
+      to: 'h265',
+    });
+    expect(change.severity).toBe('major');
+  });
+});
+
+describe('IdentityConfidence (P-2.1)', () => {
+  it('never lets a match be silently assumed', () => {
+    expect(IdentityConfidence.options).toEqual(['high', 'medium', 'low', 'unknown']);
+  });
+});
+
+describe('CapabilityCache freshness (P-2.1)', () => {
+  it('defaults to unknown — never confirmed is not the same as expired', () => {
+    const cache = CapabilityCache.parse({});
+    expect(cache.freshness).toBe('unknown');
+    expect(cache.source).toBe('declared');
+  });
+});
+
+describe('TimelineReasonCode (P-2.1)', () => {
+  it('makes the reason machine-readable, so a timeline can be filtered and counted', () => {
+    const entry = CameraTimelineEntry.parse({
+      at: now,
+      kind: 'capability-refreshed',
+      evidence: 'measured',
+      reasonCode: 'firmware-updated',
+      detail: 'firmware changed from V5.7.3 to V5.7.9',
+    });
+    expect(entry.reasonCode).toBe('firmware-updated');
+  });
+
+  it('requires a reason — a generic message is what this field exists to eliminate', () => {
+    const withoutReason = {
+      at: now,
+      kind: 'probe-failed',
+      evidence: 'measured',
+      detail: 'something went wrong',
+    };
+    expect(CameraTimelineEntry.safeParse(withoutReason).success).toBe(false);
+  });
+});
+
+describe('CameraIdentityChange (P-2.1)', () => {
+  it('records a first observation distinctly from a change', () => {
+    const first = CameraIdentityChange.parse({
+      at: now,
+      attribute: 'serialNumber',
+      to: 'DS-0001',
+      source: 'discovery',
+    });
+    expect(first.from).toBeUndefined();
+
+    const changed = CameraIdentityChange.parse({
+      at: now,
+      attribute: 'serialNumber',
+      from: 'DS-0001',
+      to: 'DS-0002',
+      source: 'discovery',
+    });
+    // "When did this camera become a different device?" is answerable only if the old value survives.
+    expect(changed.from).toBe('DS-0001');
+  });
+
+  it('bounds the history', () => {
+    const change = { at: now, attribute: 'address', to: '10.0.0.9', source: 'discovery' };
+    expect(CameraIdentityHistory.safeParse(Array.from({ length: 30 }, () => change)).success).toBe(
+      true,
+    );
+    expect(CameraIdentityHistory.safeParse(Array.from({ length: 31 }, () => change)).success).toBe(
+      false,
+    );
+  });
+});
+
+describe('HealthTrendWindow (P-2.1)', () => {
+  it('offers bounded windows rather than a lifetime average that hides last night', () => {
+    expect(HealthTrendWindow.options).toEqual(['hour', 'day', 'week', 'month']);
   });
 });

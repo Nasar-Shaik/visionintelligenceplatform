@@ -14,7 +14,18 @@
  *
  * Pure and deterministic — the window is passed in.
  */
-import type { CameraHealthSummary, CameraTimelineEntry } from '@vip/contracts';
+import type { CameraHealthSummary, CameraTimelineEntry, HealthTrendWindow } from '@vip/contracts';
+
+/**
+ * The named trend windows (P-2.1, Architect rec 5). A lifetime average hides last night's outage
+ * behind a year of uptime — which is exactly the period an operator is investigating when they look.
+ */
+export const WINDOW_HOURS: Record<HealthTrendWindow, number> = {
+  hour: 1,
+  day: 24,
+  week: 24 * 7,
+  month: 24 * 30,
+};
 
 /**
  * Below this many state observations, availability is not reported. Four is the smallest number that
@@ -30,10 +41,13 @@ const UNHEALTHY = new Set(['offline', 'degraded']);
 export interface SummaryInput {
   cameraId: string;
   timeline: readonly CameraTimelineEntry[];
+  window: HealthTrendWindow;
   windowStart: Date;
   windowEnd: Date;
   /** Latency samples observed in the window, when any were recorded. */
   latencySamples?: readonly number[];
+  /** Probe durations observed in the window — a camera taking 9s to answer is a camera in trouble. */
+  probeSamples?: readonly number[];
 }
 
 /**
@@ -56,6 +70,7 @@ export function summarizeHealth(input: SummaryInput): CameraHealthSummary {
     .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
   let reconnects = 0;
+  let offlineCount = 0;
   let credentialFailures = 0;
   let capabilityRefreshes = 0;
   let firmwareChanges = 0;
@@ -85,6 +100,9 @@ export function summarizeHealth(input: SummaryInput): CameraHealthSummary {
         if (entry.from && UNHEALTHY.has(entry.from) && entry.to && HEALTHY.has(entry.to)) {
           reconnects += 1;
         }
+        // Counted separately from `offlineSeconds`: eight one-second blips and one eight-hour outage
+        // produce the same total and mean entirely different things.
+        if (entry.to === 'offline') offlineCount += 1;
         openState = entry.to ?? null;
         openSince = at;
         break;
@@ -96,8 +114,9 @@ export function summarizeHealth(input: SummaryInput): CameraHealthSummary {
         firmwareChanges += 1;
         break;
       case 'probe-failed':
-        // The detail is written by `probeConnection`, which marks credential rejections explicitly.
-        if (/credential|authenticat/i.test(entry.detail)) credentialFailures += 1;
+        // Reads the TYPED reason the runtime assigned (P-2.1 rec 7/8) rather than pattern-matching
+        // prose — a message reworded upstream must not silently zero this counter.
+        if (entry.reasonCode === 'authentication-failure') credentialFailures += 1;
         break;
       default:
         break;
@@ -108,12 +127,14 @@ export function summarizeHealth(input: SummaryInput): CameraHealthSummary {
   const measuredMs = healthyMs + offlineMs;
   const enoughEvidence = stateObservations >= MIN_OBSERVATIONS_FOR_AVAILABILITY && measuredMs > 0;
 
-  const latencies = input.latencySamples ?? [];
-  const averageLatencyMs =
-    latencies.length > 0 ? latencies.reduce((a, b) => a + b, 0) / latencies.length : undefined;
+  const mean = (values: readonly number[]) =>
+    values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : undefined;
+  const averageLatencyMs = mean(input.latencySamples ?? []);
+  const averageProbeMs = mean(input.probeSamples ?? []);
 
   return {
     cameraId,
+    window: input.window,
     windowStart: windowStart.toISOString(),
     windowEnd: windowEnd.toISOString(),
     observations: entries.length,
@@ -121,9 +142,11 @@ export function summarizeHealth(input: SummaryInput): CameraHealthSummary {
       ? { availabilityPercent: Math.round((healthyMs / measuredMs) * 1000) / 10 }
       : {}),
     reconnects,
+    offlineCount,
     credentialFailures,
     offlineSeconds: Math.round(offlineMs / 1000),
     ...(averageLatencyMs !== undefined ? { averageLatencyMs } : {}),
+    ...(averageProbeMs !== undefined ? { averageProbeMs } : {}),
     capabilityRefreshes,
     firmwareChanges,
   };

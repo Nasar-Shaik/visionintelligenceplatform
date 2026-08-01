@@ -229,6 +229,7 @@ export type CameraLifecycle = z.infer<typeof CameraLifecycle>;
  */
 export const CameraTimelineEventKind = z.enum([
   'state-changed',
+  'identity-changed',
   'firmware-changed',
   'capability-refreshed',
   'credentials-updated',
@@ -243,10 +244,42 @@ export type CameraTimelineEventKind = z.infer<typeof CameraTimelineEventKind>;
  * One entry in a camera's operational timeline (Architect P-2 rec 4), modelled on the runtime's
  * DiagnosticsJournal: append-only, bounded, and carrying the evidence class behind each claim.
  */
+/**
+ * Why a timeline entry happened — typed, not prose (P-2.1, Architect rec 7).
+ *
+ * `detail` stays for the human sentence, but the *reason* has to be machine-readable or the timeline
+ * cannot be filtered, counted or trended. "Capability refresh — reason: firmware updated" answers an
+ * investigation; "capabilities refreshed" does not.
+ */
+export const TimelineReasonCode = z.enum([
+  'onboarded',
+  'hardware-evidence',
+  'operator-action',
+  'firmware-updated',
+  'cache-expired',
+  'cache-version-changed',
+  'authentication-failure',
+  'device-unreachable',
+  'stream-unavailable',
+  'address-changed',
+  'credentials-rotated',
+  'configuration-changed',
+  'derived',
+]);
+export type TimelineReasonCode = z.infer<typeof TimelineReasonCode>;
+
 export const CameraTimelineEntry = z.object({
   at: IsoDateTime,
   kind: CameraTimelineEventKind,
   evidence: LifecycleEvidence,
+  /** The machine-readable reason. Generic messages are what this field exists to eliminate. */
+  reasonCode: TimelineReasonCode,
+  /**
+   * Provenance of the measurement behind this entry, when there was one (P-2.1 rec 4). Lets a stored
+   * timeline be compared against a later probe without keeping every full report.
+   */
+  probeVersion: z.string().max(20).optional(),
+  correlationId: z.string().max(120).optional(),
   /** Present on `state-changed` — the transition this entry records. */
   from: CameraLifecycleState.optional(),
   to: CameraLifecycleState.optional(),
@@ -301,6 +334,64 @@ export const CameraDeviceIdentity = z.object({
   confirmedAt: IsoDateTime.optional(),
 });
 export type CameraDeviceIdentity = z.infer<typeof CameraDeviceIdentity>;
+
+/**
+ * Which identifying attribute changed. Network fields are here alongside device fields deliberately:
+ * an operator investigating "when did this become a different camera?" needs both, and separating
+ * them into two histories would make the one question they are asking need two lookups.
+ */
+export const IdentityAttribute = z.enum([
+  'onvifUuid',
+  'serialNumber',
+  'macAddress',
+  'hardwareId',
+  'address',
+  'streamUrl',
+  'firmware',
+]);
+export type IdentityAttribute = z.infer<typeof IdentityAttribute>;
+
+/**
+ * One recorded change to a camera's identity (P-2.1, Architect P-2 rec 1).
+ *
+ * **Identity is appended to, never overwritten.** A camera whose serial number changed is either a
+ * replaced unit somebody swapped in without telling anyone, or a re-used record — and both are worth
+ * knowing about months later. Overwriting the field silently makes an estate that was quietly
+ * re-cabled indistinguishable from one that was not.
+ */
+export const CameraIdentityChange = z.object({
+  at: IsoDateTime,
+  attribute: IdentityAttribute,
+  /** Absent when the attribute was previously unknown — first observation, not a change. */
+  from: z.string().max(200).optional(),
+  to: z.string().max(200),
+  /** How the change was observed. */
+  source: z.enum(['discovery', 'probe', 'operator']),
+});
+export type CameraIdentityChange = z.infer<typeof CameraIdentityChange>;
+
+/**
+ * A camera's identity history, most recent last. Bounded at 30: an identifier that has changed thirty
+ * times is telling you something the thirty-first entry will not add to.
+ */
+export const CameraIdentityHistory = z.array(CameraIdentityChange).max(30);
+export type CameraIdentityHistory = z.infer<typeof CameraIdentityHistory>;
+
+/**
+ * How sure the platform is that a discovered device is a particular managed camera (P-2.1, rec 3).
+ *
+ * - `high` — an ONVIF UUID or a serial number matched. These are assigned by the device.
+ * - `medium` — a MAC matched. Identifies the interface, which is usually but not always the unit.
+ * - `low` — only the network address matched. Addresses are reassigned; this is a guess with a
+ *   plausible story attached.
+ * - `unknown` — the device offered no reliable identifier at all.
+ *
+ * **Identity is never silently assumed.** A `low` match is shown as a low match, because an
+ * installer merging two cameras on the strength of a recycled DHCP lease is a worse outcome than
+ * onboarding one twice.
+ */
+export const IdentityConfidence = z.enum(['high', 'medium', 'low', 'unknown']);
+export type IdentityConfidence = z.infer<typeof IdentityConfidence>;
 
 /** Whether the device accepted the credentials it was offered. `unknown` until something tried. */
 export const CameraAuthState = z.enum(['unknown', 'ok', 'failed']);
@@ -407,6 +498,20 @@ export const CapabilityCache = z.object({
   refreshReason: CapabilityRefreshReason.optional(),
   /** How many times the device has been re-queried — a signal in itself if it climbs. */
   refreshCount: z.number().int().nonnegative().default(0),
+  /**
+   * Where the current capabilities came from. `declared` means an operator or an onboarding default
+   * supplied them and no device has ever confirmed them — which is exactly the case an operator
+   * reading a capability list needs to be able to distinguish from a device-confirmed one.
+   */
+  source: z
+    .enum(['declared', 'discovery', 'onvif-directed', 'operator', 'probe'])
+    .default('declared'),
+  /**
+   * How much the cached capabilities can be trusted right now (P-2.1, Architect rec 6). Derived from
+   * age against the cache window, never stored stale — `unknown` means no device has ever confirmed
+   * them, which is materially different from `expired` (confirmed once, a long time ago).
+   */
+  freshness: z.enum(['fresh', 'aging', 'expired', 'unknown']).default('unknown'),
 });
 export type CapabilityCache = z.infer<typeof CapabilityCache>;
 
@@ -438,6 +543,11 @@ export const Camera = z.object({
   timeline: CameraTimeline.default([]),
   /** Stable device identity (P-2). Absent until a device has told the platform who it is. */
   identity: CameraDeviceIdentity.optional(),
+  /**
+   * Append-only record of every identity change (P-2.1). Answers "when did this camera become a
+   * different device?", which overwriting the identity in place makes permanently unanswerable.
+   */
+  identityHistory: CameraIdentityHistory.default([]),
   /** Provenance of the cached capabilities (P-2) — what they were read against, and when. */
   capabilityCache: CapabilityCache.optional(),
   /**
@@ -551,6 +661,8 @@ export const DiscoveredCamera = z.object({
   alreadyOnboarded: z.boolean().default(false),
   /** Id of the existing camera, when `alreadyOnboarded`. */
   cameraId: z.string().min(1).optional(),
+  /** How the match was made. `low` and `unknown` must be shown as such, never silently accepted. */
+  identityConfidence: IdentityConfidence.default('unknown'),
   /** Stable identity as the device reported it (P-2) — how it is recognised after its IP changes. */
   identity: CameraDeviceIdentity.optional(),
   /**
@@ -697,14 +809,46 @@ export type StreamProbeRequest = z.infer<typeof StreamProbeRequest>;
  * cabling; "✓ reachable, ✗ invalid credentials, — stream not attempted" sends them to the password,
  * and they are done in a minute instead of an afternoon.
  */
+/**
+ * Why a probe failed — **exactly one**, and mutually exclusive (P-2.1, Architect rec 8).
+ *
+ * The *server* names the failure and the console renders it. A UI that infers "probably credentials"
+ * from an error string is business logic in the wrong tier, and it will disagree with the runtime the
+ * first time a message is reworded. Overlapping codes would defeat the purpose too: an installer
+ * needs one remedy, not a set of maybes.
+ */
+export const StreamProbeFailureCode = z.enum([
+  'configuration-invalid',
+  'dns-failure',
+  'tcp-failure',
+  'authentication-failure',
+  'rtsp-negotiation-failure',
+  'codec-unsupported',
+  'timeout',
+  'no-first-frame',
+  'stream-interrupted',
+]);
+export type StreamProbeFailureCode = z.infer<typeof StreamProbeFailureCode>;
+
 export const StreamProbeCheckName = z.enum([
-  'reachability',
+  /** The hostname resolved. Splitting this out sends someone to their DNS, not to their cabling. */
+  'dns',
+  /** A TCP connection to the stream port succeeded. A firewall and a dead camera fail differently. */
+  'tcp',
+  /** The device accepted the credentials it was offered. */
   'authentication',
+  /** RTSP DESCRIBE/SETUP/PLAY completed — the device agreed to serve this stream. */
+  'rtsp-negotiation',
+  /** The source opened. */
   'stream-open',
+  /** A decodable frame arrived. Distinct from `stream-open`: devices routinely do one without the other. */
+  'first-frame',
   'frames-received',
   'codec',
   'resolution',
   'fps',
+  /** The device published a profile matching what was requested. */
+  'stream-profile',
   'latency',
   'jitter',
 ]);
@@ -716,7 +860,17 @@ export type StreamProbeCheckName = z.infer<typeof StreamProbeCheckName>;
  */
 export const StreamProbeCheck = z.object({
   name: StreamProbeCheckName,
-  status: z.enum(['pass', 'fail', 'warn', 'not-executed']),
+  /**
+   * `skipped` means this transport has no such stage (an HTTP source has no RTSP negotiation) —
+   * deliberately distinct from `not-executed`, which means the probe never got that far.
+   */
+  status: z.enum(['pass', 'fail', 'warn', 'skipped', 'not-executed']),
+  /**
+   * Wall-clock cost of this stage (P-2.1, Architect rec 1). Total probe time cannot say *which* step
+   * is slow, and "the camera is slow" and "negotiation takes 1.4s" are different problems with
+   * different fixes. Absent when the stage did not run or has no meaningful duration.
+   */
+  durationMs: z.number().nonnegative().optional(),
   /** What was measured, as displayed — e.g. `1920x1080`, `18.6 fps`, `412 ms`. */
   measured: z.string().max(120).optional(),
   detail: z.string().max(300).optional(),
@@ -737,6 +891,19 @@ export type StreamProbeCheck = z.infer<typeof StreamProbeCheck>;
 export const StreamProbeResult = z.object({
   probedAt: IsoDateTime,
   evidenceClass: EvidenceClass,
+  /**
+   * Version of the probe implementation that produced this report (P-2.1, Architect P-2 rec 6).
+   *
+   * Two probe reports six months apart are only comparable if you know whether the probe itself
+   * changed in between. Without this, a fleet that "got slower" is indistinguishable from a probe
+   * that started measuring latency from a different point, and there is no way to tell after the
+   * fact — the reports look identical.
+   */
+  probeVersion: z.string().max(20).default('1'),
+  /** Runtime build that ran the probe. */
+  runtimeVersion: z.string().max(40).optional(),
+  /** Hash/label of the camera configuration probed, when the caller supplies one. */
+  configVersion: z.string().max(64).optional(),
   /** The ordered check list — this is what the console renders. */
   checks: z.array(StreamProbeCheck).default([]),
   /** The source opened. */
@@ -761,6 +928,14 @@ export const StreamProbeResult = z.object({
   profiles: z.array(CameraStreamProfile).max(10).default([]),
   /** Non-fatal observations — a working camera that will cost more than it should. */
   warnings: z.array(z.string().max(300)).max(10).default([]),
+  /** Total wall-clock cost of the probe. The per-stage breakdown lives on `checks`. */
+  totalMs: z.number().nonnegative().optional(),
+  /** The single reason this probe failed. Absent on success. */
+  failureCode: StreamProbeFailureCode.optional(),
+  /** Who asked for this probe, when a person did. */
+  operator: z.string().max(120).optional(),
+  /** Ties this measurement to the request that caused it. */
+  correlationId: z.string().max(120).optional(),
   /** Failure explanation, credentials redacted. */
   error: z.string().max(500).optional(),
 });
@@ -790,6 +965,36 @@ export type CameraProbeReport = z.infer<typeof CameraProbeReport>;
 // ---------------------------------------------------------------------------------------------
 
 /**
+ * One field that changed between two capability reads (P-2.1, Architect P-2 rec 2).
+ *
+ * Values are rendered as strings rather than typed unions because this is a **diagnostic record**,
+ * not a source of truth — the authoritative capabilities are the object itself. A camera that
+ * silently started serving 4K H.265 where it used to serve 1080p H.264 has just quadrupled the
+ * platform's decode cost, and this is the row that says so.
+ */
+/**
+ * Impact of a capability change (P-2.1, Architect rec 2).
+ *
+ * - `minor` — descriptive: firmware string, friendly name. Nothing downstream behaves differently.
+ * - `major` — changes what analysis costs or receives: resolution, codec, FPS, stream profile.
+ *   A camera that silently moved from 1080p H.264 to 4K H.265 just quadrupled its decode cost.
+ * - `security` — authentication mode, TLS, credential requirements. Read these first.
+ */
+export const CapabilityChangeSeverity = z.enum(['minor', 'major', 'security']);
+export type CapabilityChangeSeverity = z.infer<typeof CapabilityChangeSeverity>;
+
+export const CapabilityChange = z.object({
+  /** Dotted path within `CameraCapabilities`, e.g. `codecs`, `streamProfiles.sub.resolution`. */
+  field: z.string().min(1).max(120),
+  severity: CapabilityChangeSeverity,
+  /** Absent when the field was previously unset. */
+  from: z.string().max(200).optional(),
+  /** Absent when the field was removed. */
+  to: z.string().max(200).optional(),
+});
+export type CapabilityChange = z.infer<typeof CapabilityChange>;
+
+/**
  * Result of a capability read (P-2). Capabilities are **cached, not re-queried** — an ONVIF
  * negotiation is several round trips and a device that is asked for its profiles on every session
  * start is a device that will eventually refuse. They refresh only when asked, when stale, or when
@@ -802,6 +1007,11 @@ export const CapabilityRefreshResult = z.object({
   reason: CapabilityRefreshReason,
   /** True when the device was actually contacted. False = this came from the cache. */
   refreshed: z.boolean(),
+  /**
+   * What changed. Empty on a cache hit, and empty on a refresh that found the device unchanged —
+   * which is itself the useful answer most of the time.
+   */
+  changes: z.array(CapabilityChange).max(50).default([]),
   /** Set when a refresh was warranted but could not be performed. */
   unavailable: z.string().max(500).optional(),
 });
@@ -817,8 +1027,16 @@ export type CapabilityRefreshResult = z.infer<typeof CapabilityRefreshResult>;
  * Every summary carries how much evidence is behind it, and `availabilityPercent` stays absent when
  * there is not enough to say.
  */
+/**
+ * Trend windows (P-2.1, Architect rec 5). A lifetime average hides last night's outage behind a
+ * year of uptime, which is exactly the failure an operator is investigating when they look.
+ */
+export const HealthTrendWindow = z.enum(['hour', 'day', 'week', 'month']);
+export type HealthTrendWindow = z.infer<typeof HealthTrendWindow>;
+
 export const CameraHealthSummary = z.object({
   cameraId: z.string().min(1),
+  window: HealthTrendWindow,
   windowStart: IsoDateTime,
   windowEnd: IsoDateTime,
   /** How many timeline entries this summary was computed from. */
@@ -827,9 +1045,13 @@ export const CameraHealthSummary = z.object({
   availabilityPercent: z.number().min(0).max(100).optional(),
   /** Transitions back into a healthy state — the flapping signal. */
   reconnects: z.number().int().nonnegative(),
+  /** How many times it dropped. Distinct from `offlineSeconds`: eight blips ≠ one eight-hour outage. */
+  offlineCount: z.number().int().nonnegative(),
   credentialFailures: z.number().int().nonnegative(),
   offlineSeconds: z.number().int().nonnegative(),
   averageLatencyMs: z.number().nonnegative().optional(),
+  /** Mean wall-clock cost of a probe — a camera that takes 9s to answer is a camera in trouble. */
+  averageProbeMs: z.number().nonnegative().optional(),
   capabilityRefreshes: z.number().int().nonnegative(),
   firmwareChanges: z.number().int().nonnegative(),
 });

@@ -8,6 +8,7 @@ import type {
   Camera,
   CameraCapabilities,
   CameraDeviceIdentity,
+  CameraIdentityChange,
   CameraLifecycle,
   CameraOperationalHealth,
   CameraTimelineEntry,
@@ -47,6 +48,8 @@ export interface CameraDoc extends TenantScoped {
   timeline?: CameraTimelineEntry[];
   /** Stable device identity (P-2). Absent until a device has identified itself. */
   identity?: CameraDeviceIdentity;
+  /** Append-only record of every identity change (P-2.1). Never overwritten. */
+  identityHistory?: CameraIdentityChange[];
   /** Provenance of the cached capabilities (P-2). */
   capabilityCache?: CapabilityCache;
   /** Last measured device health (P-2). Absent means nothing has ever probed this camera. */
@@ -197,6 +200,7 @@ export function newCamera(
         at: ts,
         kind: 'state-changed',
         evidence: 'declared',
+        reasonCode: 'onboarded',
         to: 'configured',
         detail: 'onboarded',
       },
@@ -259,6 +263,7 @@ export function toCamera(doc: CameraDoc): Camera {
     lifecycle: doc.lifecycle ?? derivedLifecycle(doc.createdAt),
     timeline: doc.timeline ?? [],
     ...(doc.identity ? { identity: doc.identity } : {}),
+    identityHistory: doc.identityHistory ?? [],
     ...(doc.capabilityCache ? { capabilityCache: doc.capabilityCache } : {}),
     ...(doc.operational ? { operational: doc.operational } : {}),
     hasCredentials: doc.credentialCipher !== null,

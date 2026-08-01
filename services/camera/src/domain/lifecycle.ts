@@ -27,6 +27,7 @@ import type {
   EvidenceClass,
   LifecycleEvidence,
   StreamProbeResult,
+  TimelineReasonCode,
 } from '@vip/contracts';
 
 /** How many timeline entries a camera keeps. Matches the `CameraTimeline` contract bound. */
@@ -57,7 +58,11 @@ export const LEGAL_TRANSITIONS: Readonly<
 > = {
   discovered: ['validated', 'configured', 'retired'],
   validated: ['configured', 'offline', 'retired'],
-  configured: ['connected', 'degraded', 'offline', 'validated', 'retired'],
+  // `configured → monitoring` is legal (Architect P-2.1 rec 7 diagram): a running analysis session is
+  // itself hardware evidence, and it can arrive without anyone having pressed "test connection"
+  // first. Requiring a manual probe before the platform would admit a camera is being analysed would
+  // be the state machine disbelieving its own runtime.
+  configured: ['connected', 'monitoring', 'degraded', 'offline', 'validated', 'retired'],
   connected: ['monitoring', 'degraded', 'offline', 'configured', 'retired'],
   monitoring: ['connected', 'degraded', 'offline', 'retired'],
   degraded: ['connected', 'monitoring', 'offline', 'configured', 'retired'],
@@ -84,10 +89,16 @@ export function canTransition(from: CameraLifecycleState, to: CameraLifecycleSta
 export interface TransitionInput {
   to: CameraLifecycleState;
   evidence: LifecycleEvidence;
+  /** Machine-readable cause (P-2.1 rec 7) — what makes a timeline filterable rather than readable. */
+  reasonCode: TimelineReasonCode;
+  /** The human sentence that accompanies it. */
   reason: string;
   at: Date;
   /** The class of evidence behind a measured transition. Required to enter a measured state. */
   evidenceClass?: EvidenceClass;
+  /** Provenance of the measurement behind this transition, when there was one (P-2.1 rec 4). */
+  probeVersion?: string;
+  correlationId?: string;
 }
 
 export interface TransitionOutcome {
@@ -145,6 +156,9 @@ export function transition(current: CameraLifecycle, input: TransitionInput): Tr
       at: timestamp,
       kind: 'state-changed',
       evidence,
+      reasonCode: input.reasonCode,
+      ...(input.probeVersion ? { probeVersion: input.probeVersion } : {}),
+      ...(input.correlationId ? { correlationId: input.correlationId } : {}),
       from: current.state,
       to,
       detail: reason,

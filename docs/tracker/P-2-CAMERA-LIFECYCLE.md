@@ -1,6 +1,6 @@
-# P-2 — Camera Lifecycle, Identity & Operational Health
+# P-2 / P-2.1 — Camera Lifecycle, Identity & Operational Health
 
-- **Status:** Implemented — awaiting Architect review
+- **Status:** P-2 **ACCEPTED** (Architect 2026-08-02). P-2.1 implemented — awaiting review.
 - **Date:** 2026-08-02
 - **Authorization:** Architect, P-1 review ("Proceed with implementation while incorporating the
   recommendations above where appropriate") and the P-2 mid-flight review ("The current
@@ -135,8 +135,77 @@ zone`, with a materialized `path` for subtree queries, and `Camera.zoneId` point
 - **Packet loss** in the probe report — named by the Architect as future, and deliberately absent
   rather than approximated.
 
+## P-2.1 — diagnostic depth
+
+P-2 could tell an operator a camera was broken. P-2.1 tells them **what changed, when, and which
+step failed** — the difference between a status light and a diagnosis.
+
+### The probe became a staged pipeline
+
+```
+dns → tcp → authentication → rtsp-negotiation → stream-open → first-frame
+    → frames-received → codec → resolution → fps → stream-profile → latency → jitter
+```
+
+Each stage is **timed individually** (rec 1). A total of 346 ms cannot say which step is slow;
+`DNS 12 ms · TCP 4 ms · auth 38 ms · negotiation 110 ms · first frame 182 ms` can.
+
+Each failure produces **exactly one typed code** (rec 8), and they are mutually exclusive:
+`dns-failure` · `tcp-failure` · `authentication-failure` · `rtsp-negotiation-failure` ·
+`codec-unsupported` · `timeout` · `no-first-frame` · `stream-interrupted` · `configuration-invalid`.
+A test asserts that exactly one stage ever fails, so exclusivity is a property of the code and not
+of the enum.
+
+**Splitting DNS from TCP is the highest-value change in the slice.** They send an installer to
+completely different places — a DNS server versus a switch port — and P-2 conflated both into
+"reachability".
+
+Stages are selected per transport (rec 9), so an HTTP source reports `rtsp-negotiation: skipped` and
+a file source skips every network stage. `skipped` is a third status, distinct from `fail` and from
+`not-executed`: the transport has no such step, rather than the probe having given up on it. Adding
+SRT or WebRTC is a new entry in `_STAGES_FOR_SCHEME` — not a change to the camera lifecycle.
+
+### What the console is now forbidden from doing
+
+P-2 derived the failure headline in the console by scanning for the first failing check. That was
+**inference in the visualization tier** (rec 10), and it would have drifted from the runtime the
+first time a stage was renamed. The runtime now names the failure; the console maps the code to
+words and a remedy. It renders; it does not decide.
+
+### Everything else that landed
+
+| Rec | Recommendation           | Where                                                                              |
+| --- | ------------------------ | ---------------------------------------------------------------------------------- |
+| 1   | Per-stage probe duration | `ProbeCheck.durationMs` + `totalMs`                                                |
+| 2   | Capability diff severity | `CapabilityChangeSeverity` (`minor`/`major`/`security`) + `capability-diff.ts`     |
+| 3   | Identity confidence      | `IdentityConfidence`; `high` = UUID/serial, `medium` = MAC, `low` = address        |
+| 4   | Probe evidence           | `probeVersion` · `runtimeVersion` · `configVersion` · `operator` · `correlationId` |
+| 5   | Trend windows            | `HealthTrendWindow` (`hour`/`day`/`week`/`month`), named not arbitrary             |
+| 6   | Cache freshness          | `fresh`/`aging`/`expired`/`unknown`, computed on read, never stored stale          |
+| 7   | Timeline reason codes    | `TimelineReasonCode` — required, so a generic message cannot be written            |
+| 8   | Failure taxonomy         | `StreamProbeFailureCode`, mutually exclusive, test-guarded                         |
+| 9   | Protocol neutrality      | Per-scheme stage selection + `skipped`                                             |
+| 10  | Ownership boundary       | Console renders the runtime's code; no inference in the UI                         |
+
+Two details worth calling out because they are easy to get wrong:
+
+- **Identity is appended to, never overwritten** (rec 1 of the P-2 round). "When did this camera
+  become a different device?" is unanswerable the moment a serial number is overwritten in place.
+- **Profiles are diffed by name, not position.** Devices reorder them between firmware versions, and
+  a positional diff would report every profile as changed on every upgrade — noise that would train
+  operators to ignore the feature.
+
+### One correction to the transition map
+
+The rec 7 diagram shows `Configured → Monitoring`. P-2's map required passing through `connected`
+first. The diagram is right: a running analysis session **is** hardware evidence, and it can arrive
+without anyone having pressed "test connection". Requiring a manual probe first would be the state
+machine disbelieving its own runtime. `configured → monitoring` is now legal.
+
 ## Gates
 
-Contracts **+10 → 137 schemas**. **Contracts 264 · Python 816 · camera service 112 · console 67.**
-Typecheck · lint · build · import-graph 0 violations · format clean. No new service, no new runtime
-layer, the five frozen perception contracts untouched.
+P-2: contracts **+10 → 137 schemas**; Contracts 264 · Python 816 · camera 112 · console 67.
+
+P-2.1: **+3 → 140 generated schemas. Contracts 277 · Python 845 · camera 129 · console 73.** Typecheck 28 · lint 20 · build 19 ·
+import-graph 0 violations · format clean. No new service, no new runtime layer, the five frozen
+perception contracts untouched.

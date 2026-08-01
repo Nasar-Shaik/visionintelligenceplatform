@@ -17,6 +17,10 @@ import type {
   CameraProbeReport,
   CameraTimelineEntry,
   CapabilityRefreshResult,
+  CameraIdentityChange,
+  CapabilityChange,
+  HealthTrendWindow,
+  TimelineReasonCode,
   BulkCreateCamerasResult,
   BulkCreateCameraResult,
   Camera,
@@ -56,13 +60,23 @@ import {
   transition,
   LifecycleError,
 } from '../domain/lifecycle.js';
-import { buildMatchIndex, matchDevice } from '../domain/identity.js';
+import {
+  appendIdentityHistory,
+  buildMatchIndex,
+  confidenceFor,
+  identityChanges,
+  identityKey,
+  matchDevice,
+  mergeIdentity,
+} from '../domain/identity.js';
+import { diffCapabilities, highestSeverity } from '../domain/capability-diff.js';
 import {
   capabilityRefreshDecision,
   declaredCache,
+  freshnessOf,
   recordRefresh,
 } from '../domain/capability-cache.js';
-import { summarizeHealth } from '../domain/health-history.js';
+import { WINDOW_HOURS, summarizeHealth } from '../domain/health-history.js';
 import { badRequest, conflict, notFound } from './errors.js';
 import { nullPublisher, type EventPublisher } from './events.js';
 import { UnavailableDiscoveryProvider, type DiscoveryProvider } from './discovery.js';
@@ -74,6 +88,54 @@ const DUPLICATE_KEY = 11000;
 function nameOf(raw: unknown): string {
   const name = (raw as { name?: unknown } | null)?.name;
   return typeof name === 'string' && name.length > 0 ? name.slice(0, 200) : '(unnamed)';
+}
+
+/**
+ * The runtime's typed failure code → the timeline's typed reason code (P-2.1 rec 7/8).
+ *
+ * A mapping, not a re-derivation: the runtime already decided *why* the probe failed, and inferring
+ * it a second time from the same evidence is how two components come to disagree about one event.
+ */
+function reasonCodeForProbe(result: StreamProbeResult): TimelineReasonCode {
+  if (result.framesRead > 0) return 'hardware-evidence';
+  switch (result.failureCode) {
+    case 'authentication-failure':
+      return 'authentication-failure';
+    case 'dns-failure':
+    case 'tcp-failure':
+      return 'device-unreachable';
+    case 'rtsp-negotiation-failure':
+    case 'timeout':
+    case 'no-first-frame':
+    case 'stream-interrupted':
+    case 'codec-unsupported':
+      return 'stream-unavailable';
+    default:
+      return 'hardware-evidence';
+  }
+}
+
+function reasonCodeForRefresh(reason: CapabilityRefreshResult['reason']): TimelineReasonCode {
+  switch (reason) {
+    case 'firmware-changed':
+      return 'firmware-updated';
+    case 'stale':
+      return 'cache-expired';
+    case 'never-discovered':
+      return 'cache-version-changed';
+    default:
+      return 'operator-action';
+  }
+}
+
+/** One line naming what actually changed, led by the most severe class. */
+function summarizeChanges(changes: readonly CapabilityChange[]): string {
+  const severity = highestSeverity(changes);
+  const fields = changes
+    .map((c) => c.field)
+    .slice(0, 6)
+    .join(', ');
+  return `${severity ?? 'no'} change: ${fields}`.slice(0, 300);
 }
 
 export interface CameraServiceDeps {
@@ -180,6 +242,7 @@ export class CameraService {
               at: at.toISOString(),
               kind: 'credentials-updated' as const,
               evidence: 'declared' as const,
+              reasonCode: 'credentials-rotated' as const,
               detail: 'credentials were re-vaulted',
             },
           ]
@@ -190,6 +253,7 @@ export class CameraService {
               at: at.toISOString(),
               kind: 'configuration-updated' as const,
               evidence: 'declared' as const,
+              reasonCode: 'configuration-changed' as const,
               detail: [
                 patch.streamUrl ? 'stream URL' : null,
                 patch.capture ? 'capture profile' : null,
@@ -290,6 +354,11 @@ export class CameraService {
         alreadyOnboarded: match !== null,
         ...(match ? { cameraId: match.camera._id } : {}),
         addressChanged: match?.addressChanged ?? false,
+        // Reported, never assumed (P-2.1 rec 3). A `low` match rests on a network address, and
+        // addresses get reassigned — merging two cameras on that basis is worse than a duplicate.
+        identityConfidence: match
+          ? confidenceFor(match.matchedOn, identityKey(device.identity))
+          : 'unknown',
       };
     });
 
@@ -452,6 +521,11 @@ export class CameraService {
         at: operational.observedAt,
         kind: result.framesRead > 0 ? 'probe-succeeded' : 'probe-failed',
         evidence: 'measured',
+        // The runtime named the failure; the service records that name rather than re-deriving it
+        // from prose (P-2.1 rec 7/8).
+        reasonCode: reasonCodeForProbe(result),
+        probeVersion: result.probeVersion,
+        ...(result.correlationId ? { correlationId: result.correlationId } : {}),
         detail: this.probeDetail(result),
       },
     ];
@@ -464,8 +538,11 @@ export class CameraService {
         to: target,
         evidence: 'measured',
         evidenceClass: result.evidenceClass,
+        reasonCode: 'hardware-evidence',
         reason: this.probeDetail(result),
         at,
+        probeVersion: result.probeVersion,
+        ...(result.correlationId ? { correlationId: result.correlationId } : {}),
       });
       next = moved.lifecycle;
       entries.push(moved.entry);
@@ -517,7 +594,16 @@ export class CameraService {
       ...(doc.operational?.firmware ? { observedFirmware: doc.operational.firmware } : {}),
     });
     if (!decision.refresh) {
-      return { cameraId, capabilities, cache, reason: decision.reason, refreshed: false };
+      // Freshness is recomputed against the clock on every read — a stored value is wrong the moment
+      // after it is written, which is the silent staleness this field exists to prevent.
+      return {
+        cameraId,
+        capabilities,
+        cache: { ...cache, freshness: freshnessOf(cache, at) },
+        reason: decision.reason,
+        refreshed: false,
+        changes: [],
+      };
     }
 
     // A directed negotiation of this one device — not a broadcast. The device is identified by the
@@ -537,6 +623,7 @@ export class CameraService {
         cache: updated,
         reason: decision.reason,
         refreshed: false,
+        changes: [],
         unavailable:
           'this camera has no discovered device address, so it cannot be queried directly — run discovery first',
       };
@@ -557,15 +644,21 @@ export class CameraService {
         cache: updated,
         reason: decision.reason,
         refreshed: false,
+        changes: [],
         unavailable: found.unavailable ?? 'the device did not answer',
       };
     }
 
     const firmware = device.metadata.firmware;
+    // The diff is the product of a refresh, not a side effect of it: "capabilities refreshed" tells
+    // an operator nothing, while "codecs h264 → h265, sub.resolution 640x360 → 3840x2160" tells them
+    // their decode cost just changed by an order of magnitude (P-2.1 rec 2).
+    const changes = diffCapabilities(doc.capabilities, device.capabilities);
     const updatedCache = recordRefresh(cache, {
       reason: decision.reason,
       refreshed: true,
       at,
+      source: 'onvif-directed',
       ...(firmware ? { firmware } : {}),
     });
     const firmwareMoved = Boolean(firmware && cache.firmware && firmware !== cache.firmware);
@@ -577,6 +670,7 @@ export class CameraService {
               at: at.toISOString(),
               kind: 'firmware-changed' as const,
               evidence: 'measured' as const,
+              reasonCode: 'firmware-updated' as const,
               detail: `firmware changed from ${cache.firmware} to ${firmware}`,
             },
           ]
@@ -585,9 +679,17 @@ export class CameraService {
         at: at.toISOString(),
         kind: 'capability-refreshed' as const,
         evidence: 'measured' as const,
-        detail: decision.detail,
+        reasonCode: reasonCodeForRefresh(decision.reason),
+        detail: changes.length > 0 ? summarizeChanges(changes) : 'no capabilities changed',
       },
     );
+
+    // Identity is APPENDED to, never overwritten (P-2.1 rec 1). A device whose serial changed under
+    // the same address is either a swapped unit or a re-used record, and both need to survive.
+    const observedIdentity = device.identity;
+    const idChanges: CameraIdentityChange[] = observedIdentity
+      ? identityChanges(doc.identity, observedIdentity, { at, source: 'discovery' })
+      : [];
 
     await this.cameras.updateOne(
       scope,
@@ -596,7 +698,20 @@ export class CameraService {
         $set: {
           capabilities: device.capabilities,
           capabilityCache: updatedCache,
-          timeline,
+          timeline: appendTimeline(
+            timeline,
+            ...idChanges.map((change) => ({
+              at: change.at,
+              kind: 'identity-changed' as const,
+              evidence: 'measured' as const,
+              reasonCode: 'address-changed' as const,
+              detail: `${change.attribute}: ${change.from ?? '(unknown)'} → ${change.to}`,
+            })),
+          ),
+          ...(observedIdentity ? { identity: mergeIdentity(doc.identity, observedIdentity) } : {}),
+          ...(idChanges.length > 0
+            ? { identityHistory: appendIdentityHistory(doc.identityHistory ?? [], ...idChanges) }
+            : {}),
           updatedAt: at.toISOString(),
         },
       },
@@ -607,6 +722,7 @@ export class CameraService {
       cache: updatedCache,
       reason: decision.reason,
       refreshed: true,
+      changes,
     };
   }
 
@@ -631,15 +747,17 @@ export class CameraService {
   async healthSummary(
     scope: TenantScope,
     cameraId: string,
-    options: { windowHours?: number } = {},
+    options: { window?: HealthTrendWindow } = {},
   ): Promise<CameraHealthSummary> {
     const doc = await this.require(scope, cameraId);
+    const window = options.window ?? 'day';
     const windowEnd = this.clock.now();
-    const windowStart = new Date(windowEnd.getTime() - (options.windowHours ?? 24) * 3_600_000);
+    const windowStart = new Date(windowEnd.getTime() - WINDOW_HOURS[window] * 3_600_000);
     const latency = doc.operational?.rtspLatencyMs;
     return summarizeHealth({
       cameraId,
       timeline: doc.timeline ?? [],
+      window,
       windowStart,
       windowEnd,
       ...(latency !== undefined ? { latencySamples: [latency] } : {}),
@@ -659,7 +777,13 @@ export class CameraService {
     const at = this.clock.now();
     let moved;
     try {
-      moved = transition(lifecycle, { to, evidence: 'administrative', reason, at });
+      moved = transition(lifecycle, {
+        to,
+        evidence: 'administrative',
+        reasonCode: 'operator-action',
+        reason,
+        at,
+      });
     } catch (err) {
       throw err instanceof LifecycleError ? badRequest(err.message) : err;
     }

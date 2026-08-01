@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Activity, Archive, KeyRound, PlugZap, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
-import type { Camera, StreamProbeResult } from '@vip/contracts';
+import type { Camera, CapabilityChange, StreamProbeResult } from '@vip/contracts';
 import { usePermission } from '@/app/hooks';
 import { formatTimestamp } from '@/lib/format';
 import {
@@ -24,11 +24,14 @@ import {
   toast,
 } from '@/ui';
 import {
+  FRESHNESS_KIND,
+  FRESHNESS_LABEL,
   HEALTH_KIND,
   HEALTH_LABEL,
   LIFECYCLE_KIND,
   LIFECYCLE_LABEL,
   LIFECYCLE_MEANING,
+  SEVERITY_KIND,
   analysisProfile,
 } from './cameraPresentation';
 import { ProbeResultPanel } from './ProbeResultPanel';
@@ -68,6 +71,7 @@ export function CameraDetailSheet({
   // Kept in the sheet rather than only in a toast: "this deployment cannot test connections" is a
   // standing fact an installer needs while they work, not a message that disappears in four seconds.
   const [probeUnavailable, setProbeUnavailable] = useState<string | null>(null);
+  const [capabilityChanges, setCapabilityChanges] = useState<CapabilityChange[] | null>(null);
 
   if (!camera) return null;
   const profiles = camera.capabilities.streamProfiles;
@@ -185,6 +189,35 @@ export function CameraDetailSheet({
             )}
           </section>
 
+          {camera.identity || camera.identityHistory.length > 0 ? (
+            <section className="space-y-2">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-text-subtle">
+                Device identity
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="ONVIF UUID">{camera.identity?.onvifUuid ?? '—'}</Field>
+                <Field label="Serial">{camera.identity?.serialNumber ?? '—'}</Field>
+                <Field label="MAC">{camera.identity?.macAddress ?? '—'}</Field>
+                <Field label="Last known address">{camera.identity?.lastKnownAddress ?? '—'}</Field>
+              </div>
+              {camera.identityHistory.length > 0 ? (
+                <ol className="space-y-1 border-l border-border pl-3">
+                  {[...camera.identityHistory].reverse().map((change, i) => (
+                    <li key={`${change.at}-${i}`} className="text-xs">
+                      <span className="font-mono">{change.attribute}</span>{' '}
+                      <span className="text-text-subtle">
+                        {change.from ?? '(first seen)'} → {change.to}
+                      </span>
+                      <div className="text-text-subtle">
+                        {formatTimestamp(change.at)} · {change.source}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+            </section>
+          ) : null}
+
           {probeUnavailable ? (
             <Alert variant="warning" title="Connections cannot be tested here">
               <p>{probeUnavailable}</p>
@@ -217,6 +250,43 @@ export function CameraDetailSheet({
                 </Badge>
               ) : null}
             </div>
+            {camera.capabilityCache ? (
+              <p className="flex items-center gap-2 text-xs">
+                <StatusIndicator
+                  status={FRESHNESS_KIND[camera.capabilityCache.freshness]}
+                  label={FRESHNESS_LABEL[camera.capabilityCache.freshness]}
+                />
+                <span className="text-text-subtle">
+                  from {camera.capabilityCache.source}
+                  {camera.capabilityCache.firmware
+                    ? ` · read against ${camera.capabilityCache.firmware}`
+                    : ''}
+                  {camera.capabilityCache.lastRefreshedAt
+                    ? ` · ${formatTimestamp(camera.capabilityCache.lastRefreshedAt)}`
+                    : ''}
+                </span>
+              </p>
+            ) : null}
+            {capabilityChanges && capabilityChanges.length > 0 ? (
+              <ul className="space-y-1 rounded-md border border-border p-2">
+                {capabilityChanges.map((change) => (
+                  <li key={change.field} className="flex items-baseline gap-2 text-xs">
+                    <StatusIndicator
+                      status={SEVERITY_KIND[change.severity]}
+                      label={change.severity}
+                    />
+                    <span className="font-mono">{change.field}</span>
+                    <span className="text-text-subtle">
+                      {change.from ?? '(none)'} → {change.to ?? '(removed)'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : capabilityChanges ? (
+              <p className="text-xs text-text-subtle">
+                The device was re-read and nothing had changed.
+              </p>
+            ) : null}
             {camera.capabilities.discoveredAt ? (
               <p className="text-xs text-text-subtle">
                 Confirmed against the device {formatTimestamp(camera.capabilities.discoveredAt)}
@@ -326,14 +396,18 @@ export function CameraDetailSheet({
                 refreshCapabilities.mutate(
                   { id: camera.id, force: true },
                   {
-                    onSuccess: (result) =>
-                      result.unavailable
-                        ? toast.error(result.unavailable)
-                        : toast.success(
-                            result.refreshed
-                              ? 'Capabilities re-read from the device'
-                              : 'Served from cache — the device was not contacted',
-                          ),
+                    onSuccess: (result) => {
+                      setCapabilityChanges(result.refreshed ? result.changes : null);
+                      if (result.unavailable) {
+                        toast.error(result.unavailable);
+                        return;
+                      }
+                      toast.success(
+                        result.refreshed
+                          ? `Re-read from the device — ${result.changes.length} change${result.changes.length === 1 ? '' : 's'}`
+                          : 'Served from cache — the device was not contacted',
+                      );
+                    },
                     onError: () => toast.error('Could not refresh capabilities'),
                   },
                 )

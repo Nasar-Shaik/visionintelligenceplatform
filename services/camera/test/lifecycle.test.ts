@@ -20,19 +20,25 @@ import {
   transition,
 } from '../src/domain/lifecycle.js';
 import {
+  appendIdentityHistory,
   buildMatchIndex,
+  confidenceFor,
+  identityChanges,
   identityKey,
   matchDevice,
+  mergeIdentity,
   normalizeMac,
   normalizeStreamUrl,
 } from '../src/domain/identity.js';
+import { diffCapabilities, highestSeverity, severityFor } from '../src/domain/capability-diff.js';
 import {
   CAPABILITY_CACHE_VERSION,
   capabilityRefreshDecision,
   declaredCache,
+  freshnessOf,
   recordRefresh,
 } from '../src/domain/capability-cache.js';
-import { summarizeHealth } from '../src/domain/health-history.js';
+import { WINDOW_HOURS, summarizeHealth } from '../src/domain/health-history.js';
 
 const AT = new Date('2026-08-02T10:00:00.000Z');
 const LATER = new Date('2026-08-02T11:00:00.000Z');
@@ -61,6 +67,7 @@ describe('lifecycle transitions', () => {
       to: 'connected',
       evidence: 'measured',
       evidenceClass: 'hardware',
+      reasonCode: 'hardware-evidence',
       reason: 'probe read 3 frames',
       at: LATER,
     });
@@ -84,6 +91,7 @@ describe('lifecycle transitions', () => {
       to: 'connected',
       evidence: 'measured',
       evidenceClass: 'hardware',
+      reasonCode: 'hardware-evidence',
       reason: 'still connected',
       at: LATER,
     });
@@ -104,6 +112,7 @@ describe('lifecycle transitions', () => {
         to: 'monitoring',
         evidence: 'measured',
         evidenceClass: 'hardware',
+        reasonCode: 'hardware-evidence',
         reason: 'session started',
         at: LATER,
       }),
@@ -123,6 +132,7 @@ describe('lifecycle transitions', () => {
         to: 'connected',
         evidence: 'measured',
         evidenceClass: 'hardware',
+        reasonCode: 'hardware-evidence',
         reason: 'probe succeeded',
         at: LATER,
       }),
@@ -139,6 +149,7 @@ describe('lifecycle transitions', () => {
     const outcome = transition(retired, {
       to: 'configured',
       evidence: 'administrative',
+      reasonCode: 'operator-action',
       reason: 'reinstated',
       at: LATER,
     });
@@ -158,6 +169,7 @@ describe('the evidence gate', () => {
       transition(initialLifecycle(AT), {
         to: 'connected',
         evidence: 'declared',
+        reasonCode: 'operator-action',
         reason: 'an operator said so',
         at: LATER,
       }),
@@ -170,6 +182,7 @@ describe('the evidence gate', () => {
         to: 'connected',
         evidence: 'measured',
         evidenceClass: 'recorded-footage',
+        reasonCode: 'hardware-evidence',
         reason: 'a file played back perfectly',
         at: LATER,
       }),
@@ -239,6 +252,7 @@ describe('timeline', () => {
     at: new Date(AT.getTime() + n * 1000).toISOString(),
     kind: 'state-changed',
     evidence: 'measured',
+    reasonCode: 'hardware-evidence',
     detail: `entry ${n}`,
   });
 
@@ -413,6 +427,7 @@ describe('health trends', () => {
     const summary = summarizeHealth({
       cameraId: 'cam_1',
       timeline: [entry(1, { from: 'configured', to: 'connected' })],
+      window: 'day',
       windowStart: AT,
       windowEnd: LATER,
     });
@@ -431,6 +446,7 @@ describe('health trends', () => {
         entry(50, { from: 'connected', to: 'offline' }),
         entry(55, { from: 'offline', to: 'connected' }),
       ],
+      window: 'day',
       windowStart: AT,
       windowEnd: LATER,
     });
@@ -449,6 +465,7 @@ describe('health trends', () => {
         entry(30, { from: 'connected', to: 'degraded' }),
         entry(40, { from: 'degraded', to: 'connected' }),
       ],
+      window: 'day',
       windowStart: AT,
       windowEnd: LATER,
     });
@@ -462,8 +479,15 @@ describe('health trends', () => {
       timeline: [
         entry(5, { kind: 'firmware-changed', detail: 'V5.7.3 → V5.7.9' }),
         entry(6, { kind: 'capability-refreshed', detail: 'firmware changed' }),
-        entry(7, { kind: 'probe-failed', detail: 'the device rejected the credentials' }),
+        entry(7, {
+          kind: 'probe-failed',
+          // Read from the TYPED reason, not from the prose — a message reworded upstream must not
+          // silently zero this counter.
+          reasonCode: 'authentication-failure',
+          detail: 'the device rejected the credentials',
+        }),
       ],
+      window: 'day',
       windowStart: AT,
       windowEnd: LATER,
     });
@@ -476,9 +500,227 @@ describe('health trends', () => {
     const summary = summarizeHealth({
       cameraId: 'cam_1',
       timeline: [entry(-60, { from: 'connected', to: 'offline' })],
+      window: 'day',
       windowStart: AT,
       windowEnd: LATER,
     });
     expect(summary.observations).toBe(0);
+  });
+});
+
+// -------------------------------------------------------------------------------------------
+// P-2.1: capability diff, identity history + confidence, cache freshness, trend windows
+// -------------------------------------------------------------------------------------------
+
+const caps = (over: Partial<Parameters<typeof diffCapabilities>[1]> = {}) => ({
+  ptz: false,
+  audio: false,
+  snapshot: true,
+  codecs: ['h264' as const],
+  resolutions: ['1920x1080'],
+  protocols: ['rtsp' as const],
+  streamProfiles: [{ name: 'sub', resolution: '640x360', fps: 15, preferredForAnalysis: true }],
+  onvif: true,
+  metadataStream: false,
+  ...over,
+});
+
+describe('capability diff', () => {
+  it('says what changed, not that something changed', () => {
+    const changes = diffCapabilities(caps(), caps({ codecs: ['h265'] }));
+    expect(changes).toEqual([{ field: 'codecs', severity: 'major', from: 'h264', to: 'h265' }]);
+  });
+
+  it('classifies impact so the expensive change is not buried under a firmware string', () => {
+    expect(severityFor('codecs')).toBe('major');
+    expect(severityFor('streamProfiles.sub.resolution')).toBe('major');
+    expect(severityFor('audio')).toBe('minor');
+    expect(severityFor('tls')).toBe('security');
+    expect(highestSeverity([{ field: 'audio', severity: 'minor' }])).toBe('minor');
+  });
+
+  it('catches the change that quadruples the decode bill', () => {
+    const before = caps();
+    const after = caps({
+      streamProfiles: [
+        { name: 'sub', resolution: '3840x2160', fps: 30, preferredForAnalysis: true },
+      ],
+    });
+    const fields = diffCapabilities(before, after).map((c) => c.field);
+    expect(fields).toContain('streamProfiles.sub.resolution');
+    expect(fields).toContain('streamProfiles.sub.fps');
+  });
+
+  it('compares profiles by name, so reordering after a firmware upgrade is not a change', () => {
+    const before = caps({
+      streamProfiles: [
+        { name: 'main', resolution: '1920x1080', preferredForAnalysis: false },
+        { name: 'sub', resolution: '640x360', preferredForAnalysis: true },
+      ],
+    });
+    const reordered = caps({
+      streamProfiles: [
+        { name: 'sub', resolution: '640x360', preferredForAnalysis: true },
+        { name: 'main', resolution: '1920x1080', preferredForAnalysis: false },
+      ],
+    });
+    // A positional diff would report every profile as changed on every upgrade — noise that trains
+    // operators to ignore the feature entirely.
+    expect(diffCapabilities(before, reordered)).toEqual([]);
+  });
+
+  it('reports a profile the device stopped publishing', () => {
+    const after = caps({ streamProfiles: [] });
+    expect(diffCapabilities(caps(), after)).toEqual([
+      { field: 'streamProfiles.sub', severity: 'major', from: '640x360 · 15 fps' },
+    ]);
+  });
+
+  it('has nothing to say about a camera whose capabilities were never read', () => {
+    expect(diffCapabilities(undefined, caps())).toEqual([]);
+  });
+});
+
+describe('identity history', () => {
+  it('records a first observation without claiming something changed', () => {
+    const changes = identityChanges(
+      undefined,
+      { serialNumber: 'DS-0001' },
+      {
+        at: AT,
+        source: 'discovery',
+      },
+    );
+    expect(changes).toHaveLength(1);
+    expect(changes[0]!.from).toBeUndefined();
+  });
+
+  it('answers "when did this camera become a different device?"', () => {
+    const changes = identityChanges(
+      { serialNumber: 'DS-0001', lastKnownAddress: '10.0.0.64' },
+      { serialNumber: 'DS-0002', lastKnownAddress: '10.0.0.64' },
+      { at: LATER, source: 'discovery' },
+    );
+    // A swapped unit, or a re-used record. Overwriting in place makes both invisible.
+    expect(changes).toEqual([
+      {
+        at: LATER.toISOString(),
+        attribute: 'serialNumber',
+        from: 'DS-0001',
+        to: 'DS-0002',
+        source: 'discovery',
+      },
+    ]);
+  });
+
+  it('says nothing when nothing moved', () => {
+    const identity = { onvifUuid: 'urn:uuid:abc', lastKnownAddress: '10.0.0.64' };
+    expect(identityChanges(identity, identity, { at: LATER, source: 'probe' })).toEqual([]);
+  });
+
+  it('never erases a known identifier the device declined to report this time', () => {
+    const merged = mergeIdentity(
+      { onvifUuid: 'urn:uuid:abc', serialNumber: 'DS-0001' },
+      { onvifUuid: 'urn:uuid:abc' },
+    );
+    expect(merged.serialNumber).toBe('DS-0001');
+  });
+
+  it('bounds the history, dropping the oldest first', () => {
+    const change = {
+      at: AT.toISOString(),
+      attribute: 'address' as const,
+      to: '10.0.0.9',
+      source: 'discovery' as const,
+    };
+    let history: (typeof change)[] = [];
+    for (let i = 0; i < 40; i += 1) {
+      history = appendIdentityHistory(history, { ...change, to: `10.0.0.${i}` });
+    }
+    expect(history).toHaveLength(30);
+    expect(history[0]!.to).toBe('10.0.0.10');
+  });
+});
+
+describe('identity confidence', () => {
+  it('grades a match by what the identifier actually guarantees', () => {
+    expect(confidenceFor('identity', 'uuid:urn:uuid:abc')).toBe('high');
+    expect(confidenceFor('identity', 'serial:ds-1')).toBe('high');
+    expect(confidenceFor('identity', 'mac:a4:14:37:0b:2c:9d')).toBe('medium');
+    // Addresses are reassigned by DHCP to whatever asks next.
+    expect(confidenceFor('stream-url', null)).toBe('low');
+    expect(confidenceFor('identity', null)).toBe('unknown');
+  });
+});
+
+describe('capability cache freshness', () => {
+  const cache = (over = {}) => ({
+    cacheVersion: 1,
+    refreshCount: 1,
+    source: 'onvif-directed' as const,
+    freshness: 'fresh' as const,
+    discoveredAt: '2026-08-02T09:00:00.000Z',
+    lastRefreshedAt: '2026-08-02T09:00:00.000Z',
+    ...over,
+  });
+
+  it('never confirmed is unknown, not expired — those are different facts', () => {
+    expect(freshnessOf(undefined, AT)).toBe('unknown');
+    expect(freshnessOf(declaredCache(), AT)).toBe('unknown');
+  });
+
+  it('ages through the window rather than flipping at the end of it', () => {
+    expect(freshnessOf(cache(), new Date('2026-08-02T10:00:00.000Z'))).toBe('fresh');
+    expect(freshnessOf(cache(), new Date('2026-08-02T22:00:00.000Z'))).toBe('aging');
+    expect(freshnessOf(cache(), new Date('2026-08-03T10:00:00.000Z'))).toBe('expired');
+  });
+
+  it('records where the capabilities came from', () => {
+    const refreshed = recordRefresh(cache(), {
+      reason: 'forced',
+      refreshed: true,
+      at: LATER,
+      source: 'onvif-directed',
+    });
+    expect(refreshed.source).toBe('onvif-directed');
+    // A declared cache that failed to refresh must not start claiming a device confirmed it.
+    const failed = recordRefresh(declaredCache(), { reason: 'stale', refreshed: false, at: LATER });
+    expect(failed.source).toBe('declared');
+  });
+});
+
+describe('health trend windows', () => {
+  it('offers bounded windows so last night is not hidden behind a year of uptime', () => {
+    expect(WINDOW_HOURS).toEqual({ hour: 1, day: 24, week: 168, month: 720 });
+  });
+
+  it('counts drops separately from time spent down', () => {
+    const flap = (minutes: number, from: string, to: string) => ({
+      at: new Date(AT.getTime() + minutes * 60_000).toISOString(),
+      kind: 'state-changed' as const,
+      evidence: 'measured' as const,
+      reasonCode: 'hardware-evidence' as const,
+      from: from as 'connected',
+      to: to as 'offline',
+      detail: '',
+    });
+    const summary = summarizeHealth({
+      cameraId: 'cam_1',
+      window: 'hour',
+      timeline: [
+        flap(0, 'configured', 'connected'),
+        flap(10, 'connected', 'offline'),
+        flap(11, 'offline', 'connected'),
+        flap(20, 'connected', 'offline'),
+        flap(21, 'offline', 'connected'),
+      ],
+      windowStart: AT,
+      windowEnd: LATER,
+    });
+    // Two one-minute blips and one two-minute outage produce the same `offlineSeconds` and mean
+    // entirely different things about the camera.
+    expect(summary.offlineCount).toBe(2);
+    expect(summary.offlineSeconds).toBe(120);
+    expect(summary.window).toBe('hour');
   });
 });
