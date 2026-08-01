@@ -60,6 +60,8 @@ import {
   RecoveryOutcome,
   RecoveryPolicy,
   RecoveryReason,
+  RecoveryRecord,
+  FailureAnalytics,
   RecoverySubsystem,
   RecoveryTrigger,
   RestoreStep,
@@ -1027,5 +1029,79 @@ describe('deployment profiles carry operational policy (AI-5d rec 4)', () => {
     expect(p.recovery).toBeUndefined();
     expect(p.health).toBeUndefined();
     expect(p.modelLifecycle).toBeUndefined();
+  });
+});
+
+describe('recovery history + failure analytics (AI-5d follow-up)', () => {
+  const identity = { tenantId: 'tnt_a', cameraId: 'cam_1', sessionId: 'ses_1' };
+
+  it('records everything a recurring-issue investigation needs (rec 1)', () => {
+    const r = RecoveryRecord.parse({
+      identity,
+      failureCategory: 'connection',
+      trigger: 'connection-lost',
+      subsystem: 'stream-source',
+      action: 'restart-session',
+      outcome: 'succeeded',
+      attempt: 2,
+      durationMs: 1420,
+      restartCount: 2,
+      stabilizationSeconds: 30,
+      finalState: 'running',
+      at: now,
+    });
+    expect(r.failureCategory).toBe('connection');
+    expect(r.finalState).toBe('running');
+    expect(r.durationMs).toBe(1420);
+  });
+
+  it('allows a health-triggered recovery with no failure category', () => {
+    const r = RecoveryRecord.parse({
+      identity,
+      trigger: 'health-decline',
+      subsystem: 'session-runner',
+      action: 'degrade',
+      outcome: 'succeeded',
+      at: now,
+    });
+    expect(r.failureCategory).toBeUndefined();
+  });
+
+  it('summarizes long-term failure statistics for reporting, not for decisions (rec 5)', () => {
+    const a = FailureAnalytics.parse({
+      recoveries: 12,
+      byCategory: { connection: 9, model: 3 },
+      byOutcome: { succeeded: 10, 'budget-exhausted': 2 },
+      successPercent: 83.3,
+      averageRecoveryMs: 940,
+      averageStabilizationSeconds: 30,
+      restartsTotal: 10,
+      mostCommonFailure: 'connection',
+      camerasAffected: 4,
+    });
+    expect(a.mostCommonFailure).toBe('connection');
+    expect(a.byCategory.connection).toBe(9);
+  });
+
+  it('reports an empty history as zeroed rather than absent', () => {
+    // A missing statistic and a zero statistic mean different things to an operator.
+    const a = FailureAnalytics.parse({});
+    expect(a.recoveries).toBe(0);
+    expect(a.mostCommonFailure).toBeNull();
+    expect(a.byCategory).toEqual({});
+  });
+
+  it('exposes rolling per-component trends on a health score (rec 2)', () => {
+    const s = HealthScore.parse({
+      identity,
+      score: 82,
+      status: 'degraded',
+      components: { connection: 100, inference: 90, scheduler: 40, resources: 100, recovery: 100 },
+      componentTrends: { scheduler: [98, 94, 88, 82], connection: [100, 100, 100, 100] },
+    });
+    // Operators care more about the shape than the value: 82 means little, 98→94→88→82 does.
+    expect(s.componentTrends?.scheduler).toEqual([98, 94, 88, 82]);
+    // Partial by design — a component with no history yet simply has no entry.
+    expect(s.componentTrends?.recovery).toBeUndefined();
   });
 });

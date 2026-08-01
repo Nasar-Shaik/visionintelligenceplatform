@@ -1,0 +1,10 @@
+{
+  "autoRecoverCategories": ["connection", "model"],
+  "baseCooldownMs": 5000,
+  "description": "Three restarts an hour, then stop bothering anyone. A shop does not have a night engineer.",
+  "maxCooldownMs": 300000,
+  "maxRestarts": 3,
+  "profile": "retail",
+  "restartWindowSeconds": 3600,
+  "stabilizationSeconds": 30
+}

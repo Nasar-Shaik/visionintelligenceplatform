@@ -106,6 +106,10 @@ def make_handler(
                 self._tenant_scoped(supervisor.health)
             elif path == "/fleet-health" and supervisor is not None:
                 self._tenant_scoped(supervisor.fleet_health)
+            elif path == "/recovery-history" and supervisor is not None:
+                self._tenant_scoped(supervisor.recovery_history)
+            elif path == "/failure-analytics" and supervisor is not None:
+                self._tenant_scoped(supervisor.failure_analytics)
             else:
                 self._err(404, "not_found", f"no route for GET {self.path}")
 

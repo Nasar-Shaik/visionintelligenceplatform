@@ -1188,6 +1188,12 @@ export const HealthScore = z.object({
   predictedDecline: z.boolean().default(false),
   /** Observations recorded so far — a score from 1 sample is not yet a trend, and says so. */
   samples: z.number().int().nonnegative().default(0),
+  /**
+   * Rolling per-component history, oldest first (Architect AI-5d follow-up rec 2). Operators care
+   * more about the shape than about any single value: `82` means little, `98 → 94 → 88 → 82` means
+   * something is going wrong right now.
+   */
+  componentTrends: z.partialRecord(HealthComponent, z.array(z.number().min(0).max(100))).optional(),
   at: IsoDateTime.optional(),
 });
 export type HealthScore = z.infer<typeof HealthScore>;
@@ -1334,6 +1340,59 @@ export const RecoveryPolicy = z.object({
   autoRecoverCategories: z.array(RuntimeFailureCategory).default(['connection', 'model']),
 });
 export type RecoveryPolicy = z.infer<typeof RecoveryPolicy>;
+
+/**
+ * One permanently-retained recovery outcome (Architect AI-5d follow-up rec 1).
+ *
+ * Deliberately distinct from `RecoveryAttempt`, which is the in-flight decision record and is
+ * released when a session tears down. This survives teardown, because the question it answers —
+ * "this camera has failed the same way for three weeks" — is unanswerable from a store that forgets
+ * every time the session restarts.
+ */
+export const RecoveryRecord = z.object({
+  identity: SessionIdentity,
+  /** The frozen AI-5b category, absent when health (not a failure) triggered the recovery. */
+  failureCategory: RuntimeFailureCategory.optional(),
+  trigger: RecoveryTrigger,
+  subsystem: RecoverySubsystem,
+  action: RecoveryAction,
+  outcome: RecoveryOutcome,
+  attempt: z.number().int().positive().default(1),
+  /** Wall time spent on the whole decision, not only the executor — a recovery that spent four
+   * seconds deciding it was not allowed still cost four seconds. */
+  durationMs: z.number().nonnegative().default(0),
+  restartCount: z.number().int().nonnegative().default(0),
+  stabilizationSeconds: z.number().nonnegative().default(0),
+  /** The session state the recovery actually left behind, resolved after the executor ran. */
+  finalState: z.string().min(1).max(40).default('unknown'),
+  at: IsoDateTime,
+});
+export type RecoveryRecord = z.infer<typeof RecoveryRecord>;
+
+/**
+ * Long-term failure statistics (Architect AI-5d follow-up rec 5).
+ *
+ * **Operational reporting, never a runtime input.** Nothing in the scheduler, governor or recovery
+ * path reads these; feeding last week's averages into a live control loop is how a system starts
+ * reacting to history instead of to conditions.
+ *
+ * Averages cover **executed** recoveries only — including refusals would drag the mean toward zero
+ * and make a deployment that never recovers look like the fastest one of all.
+ */
+export const FailureAnalytics = z.object({
+  recoveries: z.number().int().nonnegative().default(0),
+  /** Occurrences per failure category (or per trigger, when there was no failure category). */
+  byCategory: z.record(z.string(), z.number().int().nonnegative()).default({}),
+  byOutcome: z.record(z.string(), z.number().int().nonnegative()).default({}),
+  successPercent: z.number().min(0).max(100).default(0),
+  averageRecoveryMs: z.number().nonnegative().default(0),
+  averageStabilizationSeconds: z.number().nonnegative().default(0),
+  restartsTotal: z.number().int().nonnegative().default(0),
+  /** The category to look at first. Null only when nothing has ever been recovered. */
+  mostCommonFailure: z.string().min(1).max(60).nullable().default(null),
+  camerasAffected: z.number().int().nonnegative().default(0),
+});
+export type FailureAnalytics = z.infer<typeof FailureAnalytics>;
 
 /**
  * One entry on the **restoration stack** (Architect AI-5d rec 4, accepted as the permanent recovery

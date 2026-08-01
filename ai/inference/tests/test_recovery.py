@@ -335,3 +335,133 @@ class TenantIsolationTest(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class RecoveryHistoryTest(unittest.TestCase):
+    """AI-5d follow-up rec 1: a permanent record, distinct from the budget ledger."""
+
+    def _fail(self, recovery, identity, *, times=1, clock=None, state="running"):
+        for _ in range(times):
+            if clock is not None:
+                clock.advance(1.0)
+            reason = recovery.reason_for(ConnectionFailure("down"), identity=identity)
+            recovery.attempt(
+                identity, reason, restart=lambda: None, restart_count=1, final_state=state
+            )
+
+    def test_a_record_captures_everything_an_investigation_needs(self):
+        recovery = _recovery()
+        self._fail(recovery, _identity())
+        record = recovery.records.list(tenant_id="tnt_a")[0]
+        for key in (
+            "failureCategory", "action", "durationMs", "outcome",
+            "restartCount", "stabilizationSeconds", "finalState", "at",
+        ):
+            self.assertIn(key, record, f"missing {key}")
+        self.assertEqual(record["failureCategory"], "connection")
+        self.assertEqual(record["finalState"], "running")
+
+    def test_history_survives_session_teardown(self):
+        # The whole point: the ledger forgets a stopped session's budget, the history keeps what
+        # happened to it — the pattern matters most once the session is gone.
+        recovery = _recovery()
+        self._fail(recovery, _identity())
+        recovery.forget(_identity())
+        self.assertEqual(recovery.history(_identity()), [])
+        self.assertEqual(len(recovery.records.list(tenant_id="tnt_a")), 1)
+
+    def test_the_final_state_is_resolved_after_the_executor_runs(self):
+        recovery = _recovery()
+        states = iter(["failed", "running"])
+        reason = recovery.reason_for(ConnectionFailure("down"), identity=_identity())
+        recovery.attempt(
+            _identity(), reason, restart=lambda: next(states), final_state=lambda: "running"
+        )
+        self.assertEqual(recovery.records.list(tenant_id="tnt_a")[0]["finalState"], "running")
+
+    def test_a_broken_state_resolver_never_breaks_a_recovery(self):
+        recovery = _recovery()
+
+        def boom() -> str:
+            raise RuntimeError("diagnostics read failed")
+
+        reason = recovery.reason_for(ConnectionFailure("down"), identity=_identity())
+        attempt = recovery.attempt(_identity(), reason, restart=lambda: None, final_state=boom)
+        self.assertTrue(attempt.recovered)
+        self.assertEqual(recovery.records.list(tenant_id="tnt_a")[0]["finalState"], "unknown")
+
+    def test_history_is_tenant_scoped(self):
+        recovery = _recovery()
+        self._fail(recovery, SessionIdentity("tnt_a", "cam_1", "ses_1"))
+        self.assertEqual(len(recovery.records.list(tenant_id="tnt_a")), 1)
+        self.assertEqual(recovery.records.list(tenant_id="tnt_b"), [])
+
+    def test_history_can_be_filtered_by_camera(self):
+        recovery = _recovery()
+        self._fail(recovery, SessionIdentity("tnt_a", "cam_1", "ses_1"))
+        self._fail(recovery, SessionIdentity("tnt_a", "cam_2", "ses_2"))
+        self.assertEqual(len(recovery.records.list(tenant_id="tnt_a", camera_id="cam_1")), 1)
+
+    def test_history_is_bounded(self):
+        recovery = AutoRecovery(
+            policy=RecoveryPolicy(max_restarts=10000, stabilization_seconds=0.0),
+            clock=_Clock(),
+            history=__import__("recovery").RecoveryHistory(maxlen=20),
+        )
+        self._fail(recovery, _identity(), times=50)
+        self.assertEqual(recovery.records.count(tenant_id="tnt_a"), 20)
+
+
+class FailureAnalyticsTest(unittest.TestCase):
+    """AI-5d follow-up rec 5: long-term statistics — reporting, never a runtime input."""
+
+    def test_analytics_over_an_empty_history_are_zeroed_not_absent(self):
+        stats = _recovery().analytics(tenant_id="tnt_a")
+        self.assertEqual(stats["recoveries"], 0)
+        self.assertIsNone(stats["mostCommonFailure"])
+
+    def test_it_names_the_most_common_failure(self):
+        clock = _Clock()
+        recovery = AutoRecovery(
+            policy=RecoveryPolicy(max_restarts=100, stabilization_seconds=0.0), clock=clock
+        )
+        for _ in range(5):
+            clock.advance(1.0)
+            reason = recovery.reason_for(ConnectionFailure("down"), identity=_identity())
+            recovery.attempt(_identity(), reason, restart=lambda: None)
+        for _ in range(2):
+            clock.advance(1.0)
+            reason = recovery.reason_for(ModelFailure("bad"), identity=_identity())
+            recovery.attempt(_identity(), reason, restart=lambda: None)
+        stats = recovery.analytics(tenant_id="tnt_a")
+        self.assertEqual(stats["mostCommonFailure"], "connection")
+        self.assertEqual(stats["byCategory"]["connection"], 5)
+        self.assertEqual(stats["byCategory"]["model"], 2)
+
+    def test_success_percent_counts_executed_recoveries_only(self):
+        # Including refusals would drag the mean toward zero and make a deployment that never
+        # recovers look like the fastest one of all.
+        clock = _Clock()
+        recovery = AutoRecovery(
+            policy=RecoveryPolicy(max_restarts=1, stabilization_seconds=0.0), clock=clock
+        )
+        for _ in range(4):
+            clock.advance(1.0)
+            reason = recovery.reason_for(ConnectionFailure("down"), identity=_identity())
+            recovery.attempt(_identity(), reason, restart=lambda: None)
+        stats = recovery.analytics(tenant_id="tnt_a")
+        self.assertEqual(stats["recoveries"], 4)          # all four are recorded
+        self.assertEqual(stats["successPercent"], 100.0)  # only one was ever executed
+        self.assertEqual(stats["byOutcome"]["budget-exhausted"], 3)
+
+    def test_it_counts_cameras_affected(self):
+        clock = _Clock()
+        recovery = AutoRecovery(
+            policy=RecoveryPolicy(max_restarts=100, stabilization_seconds=0.0), clock=clock
+        )
+        for index in range(3):
+            clock.advance(1.0)
+            identity = _identity(index)
+            reason = recovery.reason_for(ConnectionFailure("down"), identity=identity)
+            recovery.attempt(identity, reason, restart=lambda: None)
+        self.assertEqual(recovery.analytics(tenant_id="tnt_a")["camerasAffected"], 3)

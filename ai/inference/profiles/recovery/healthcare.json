@@ -1,0 +1,11 @@
+{
+  "autoRecoverCategories": ["connection"],
+  "baseCooldownMs": 30000,
+  "description": "Never auto-restart. A camera in a care setting restarting itself unattended is not acceptable; surface the condition and wait for a human.",
+  "maxCooldownMs": 900000,
+  "maxRestarts": 0,
+  "profile": "healthcare",
+  "requireOperatorApproval": true,
+  "restartWindowSeconds": 3600,
+  "stabilizationSeconds": 120
+}

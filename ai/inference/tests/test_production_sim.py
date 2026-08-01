@@ -45,6 +45,14 @@ class SuiteTest(unittest.TestCase):
             "repeated-model-failures",
             "simultaneous-recoveries",
             "recovery-storm",
+            # AI-5d follow-up rec 7 — the second wave.
+            "partial-gpu-failure",
+            "mixed-hardware-cluster",
+            "network-partition",
+            "rtsp-credential-failure",
+            "gradual-resource-exhaustion",
+            "overnight-continuous",
+            "rolling-model-deployment",
         }
         self.assertEqual(set(SCENARIOS), expected)
 
@@ -149,6 +157,52 @@ class ScenarioResultTest(unittest.TestCase):
         for key in ("scenario", "cameras", "passed", "metrics", "violations", "notes"):
             self.assertIn(key, out)
 
+
+
+class SecondWaveTest(unittest.TestCase):
+    """AI-5d follow-up rec 7 — every operational improvement first exists as a simulation."""
+
+    def test_a_partially_degraded_gpu_does_not_strand_its_sessions(self):
+        result = run_scenario("partial-gpu-failure")
+        self.assertTrue(result.passed, result.violations)
+        self.assertGreater(result.metrics["servedAfter"], 0)
+        self.assertGreaterEqual(result.metrics["freeCapacity"], 0)
+
+    def test_work_spreads_across_a_mixed_node_cluster(self):
+        result = run_scenario("mixed-hardware-cluster")
+        self.assertTrue(result.passed, result.violations)
+        nodes = [k for k in result.metrics if k.startswith("node:")]
+        self.assertGreaterEqual(len(nodes), 3)
+
+    def test_a_whole_fleet_partition_recovers_together(self):
+        result = run_scenario("network-partition")
+        self.assertTrue(result.passed, result.violations)
+        self.assertEqual(result.metrics["successPercent"], 100.0)
+
+    def test_bad_rtsp_credentials_are_never_retried(self):
+        # The most important negative scenario in the suite: a credential error must not look like a
+        # connection problem, must not restart, and must not spend the budget meant for real outages.
+        result = run_scenario("rtsp-credential-failure")
+        self.assertTrue(result.passed, result.violations)
+        self.assertEqual(result.metrics["restarts"], 0)
+        self.assertEqual(result.metrics["budgetRemaining"], 10)
+
+    def test_gradual_exhaustion_degrades_before_saturation(self):
+        result = run_scenario("gradual-resource-exhaustion")
+        self.assertTrue(result.passed, result.violations)
+        self.assertGreaterEqual(result.metrics["firstDegradeTick"], 0)
+
+    def test_overnight_operation_does_not_drift(self):
+        result = run_scenario("overnight-continuous")
+        self.assertTrue(result.passed, result.violations)
+        self.assertGreaterEqual(
+            result.metrics["secondHalfServed"], result.metrics["firstHalfServed"] * 0.9
+        )
+
+    def test_a_failed_rollout_never_leaves_a_split_fleet(self):
+        result = run_scenario("rolling-model-deployment")
+        self.assertTrue(result.passed, result.violations)
+        self.assertEqual(result.metrics["sessionsOnV2"], result.metrics["sessionsStillOnV2"])
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

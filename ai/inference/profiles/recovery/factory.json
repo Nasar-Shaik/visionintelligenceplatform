@@ -1,0 +1,10 @@
+{
+  "autoRecoverCategories": ["connection", "model"],
+  "baseCooldownMs": 5000,
+  "description": "A production line: keep trying, ten times an hour, with short cooldowns.",
+  "maxCooldownMs": 300000,
+  "maxRestarts": 10,
+  "profile": "factory",
+  "restartWindowSeconds": 3600,
+  "stabilizationSeconds": 30
+}

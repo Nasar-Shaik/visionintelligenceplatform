@@ -398,7 +398,15 @@ class SessionRunner:
         if self._recovery is None or failure is None:
             return None
         reason = self._recovery.reason_for(failure, identity=self.identity)
-        attempt = self._recovery.attempt(self.identity, reason, restart=self._recover_restart)
+        attempt = self._recovery.attempt(
+            self.identity,
+            reason,
+            restart=self._recover_restart,
+            restart_count=self.restart_count,
+            # Resolved AFTER the executor runs — the whole point of a "final" state is that it
+            # reflects what the recovery actually left behind.
+            final_state=self._current_state,
+        )
         if attempt.recovered:
             self.last_failure = None
             if self._health is not None:
@@ -406,6 +414,10 @@ class SessionRunner:
                 # would score the new session on the old one's failures.
                 self._health.reset()
         return attempt
+
+    def _current_state(self) -> str:
+        session = self._manager.get(self.identity.tenant_id, self.identity.session_id)
+        return session.state if session is not None else "unknown"
 
     def _recover_restart(self) -> None:
         """The executor auto-recovery calls. Drives the control plane first so state stays truthful."""
@@ -839,6 +851,25 @@ class SessionSupervisor:
             if self.journal is not None:
                 self.journal.record_recovery(attempt.to_dict())
         return attempts
+
+    def recovery_history(
+        self, tenant_id: Optional[str] = None, *, camera_id: Optional[str] = None, limit: int = 50
+    ) -> List[dict]:
+        """Permanent recovery history (AI-5d follow-up rec 1) — survives session teardown, which is
+        what makes "this camera has failed the same way for three weeks" answerable."""
+        if self._recovery is None:
+            return []
+        return self._recovery.records.list(tenant_id=tenant_id, camera_id=camera_id, limit=limit)
+
+    def failure_analytics(
+        self, tenant_id: Optional[str] = None, *, camera_id: Optional[str] = None
+    ) -> dict:
+        """Long-term failure statistics (rec 5). Operational reporting only — deliberately read by
+        nothing in the runtime, because feeding last week's averages into a live control loop is how
+        a system starts reacting to history instead of to conditions."""
+        if self._recovery is None:
+            return {}
+        return self._recovery.analytics(tenant_id=tenant_id, camera_id=camera_id)
 
     def timeline(self, tenant_id: str, session_id: str, *, limit: int = 50) -> List[dict]:
         """One session's ordered operational timeline (rec 5)."""

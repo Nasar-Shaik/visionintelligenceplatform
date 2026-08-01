@@ -1,0 +1,11 @@
+{
+  "autoRecoverCategories": ["connection", "model"],
+  "baseCooldownMs": 30000,
+  "description": "Never give up, never hammer. Unlimited restarts behind a long cooldown so a broken link cannot become a load problem.",
+  "maxCooldownMs": 900000,
+  "maxRestarts": 0,
+  "profile": "bank",
+  "restartWindowSeconds": 3600,
+  "stabilizationSeconds": 120,
+  "unlimitedRestarts": true
+}

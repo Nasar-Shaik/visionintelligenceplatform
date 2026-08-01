@@ -708,10 +708,15 @@ class ModelLifecycleManager:
                 path.append(transition.from_version)
             if transition.succeeded:
                 path.append(transition.to_version)
-            elif transition.state == "rolled-back" and transition.from_version:
+            elif transition.state == "rolled-back":
                 # A rollback returns to where it came from — recording that explicitly is what makes
-                # the path readable as a story rather than a list of attempts.
-                path.append(transition.from_version)
+                # the path readable as a story rather than a list of attempts. When the incumbent is
+                # unknown (no registry attached), fall back to wherever the path already was: a
+                # rollback that leaves NO mark reads as though nothing was ever attempted, which is
+                # the opposite of what this history is for.
+                returned_to = transition.from_version or (path[-1] if path else None)
+                if returned_to is not None:
+                    path.append(returned_to)
         active = None
         if self._registry is not None:
             model = self._registry.get(tenant_id, model_id)
@@ -725,6 +730,80 @@ class ModelLifecycleManager:
             "versionPath": path,
             "transitions": [t.to_dict() for t in transitions],
         }
+
+    # --- persistence (Architect AI-5d follow-up rec 3) ---------------------------------
+
+    def export_history(self, tenant_id: str, *, path: Optional[str] = None) -> dict:
+        """Serialize every transition for a tenant, optionally to disk.
+
+        In-memory history dies with the process, and "what changed on this model, and when?" is asked
+        precisely when a process has just been restarted. This makes the record durable **without
+        adding a database or a service**: a JSON document the deployment can persist wherever it
+        already persists things.
+        """
+        document = {
+            "tenantId": tenant_id,
+            "exportedAt": self._now_iso(),
+            "models": [
+                self.history(tenant_id, model_id)
+                for model_id in sorted({t.model_id for t in self.list(tenant_id)})
+            ],
+        }
+        if path is not None:
+            import json
+            import os
+
+            os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(document, fh, indent=2, sort_keys=True)
+                fh.write("\n")
+        return document
+
+    def import_history(self, document: dict) -> int:
+        """Restore previously exported transitions. Returns how many were loaded.
+
+        Imported transitions are **terminal history only** — an in-flight rollout is not resumable
+        across a restart, because the warmed adapter it referred to no longer exists. Pretending
+        otherwise would leave a transition that can never complete.
+        """
+        tenant_id = str(document.get("tenantId", ""))
+        if not tenant_id:
+            raise ValidationError("an exported history requires a tenantId")
+        loaded = 0
+        for model in document.get("models", []):
+            for raw in model.get("transitions", []):
+                if raw.get("state") not in _TERMINAL_STATES:
+                    continue
+                transition = ModelTransition(
+                    id=str(raw["id"]),
+                    tenant_id=tenant_id,
+                    model_id=str(raw["modelId"]),
+                    from_version=raw.get("fromVersion"),
+                    to_version=str(raw["toVersion"]),
+                    state=str(raw["state"]),
+                    rollback_reason=raw.get("rollbackReason"),
+                    sessions_affected=int(raw.get("sessionsAffected", 0)),
+                    history=[
+                        ModelTransitionEvent(
+                            state=str(e["state"]), at=str(e["at"]), detail=e.get("detail")
+                        )
+                        for e in raw.get("history", [])
+                    ],
+                    started_at=str(raw["startedAt"]),
+                    updated_at=str(raw["updatedAt"]),
+                    completed_at=raw.get("completedAt"),
+                )
+                key = self._key(tenant_id, transition.id)
+                if key in self._transitions:
+                    continue  # idempotent: re-importing the same export changes nothing
+                self._transitions[key] = transition
+                self._order.append(key)
+                loaded += 1
+        # History is read oldest-first, so restored records must interleave with live ones by time
+        # rather than landing after them — otherwise an imported v1→v2 would appear to follow a
+        # v3→v4 that actually happened later.
+        self._order.sort(key=lambda k: self._transitions[k].started_at)
+        return loaded
 
     # --- internals -------------------------------------------------------------------
 

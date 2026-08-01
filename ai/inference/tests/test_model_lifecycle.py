@@ -424,5 +424,87 @@ class PolicyTest(unittest.TestCase):
         self.assertIsNot(a._candidates, b._candidates)
 
 
+
+class HistoryPersistenceTest(unittest.TestCase):
+    """AI-5d follow-up rec 3: in-memory history dies with the process, and "what changed?" is asked
+    precisely when a process has just restarted."""
+
+    def _run_transitions(self):
+        registry, model_id = _registry_with(versions=("v1", "v2", "v3"), active="v1")
+        manager = _manager(registry, policy=ModelLifecyclePolicy(validation_frames=2))
+        for version, detections in (("v2", 2), ("v3", 2)):
+            manager.transition(
+                "tnt_a", model_id, version, loader=lambda d=detections: _Adapter(detections=d),
+                frames=_frames(2), incumbent=_Adapter(detections=2), slots=[],
+            )
+        return manager, model_id
+
+    def test_history_round_trips_through_an_export(self):
+        manager, model_id = self._run_transitions()
+        document = manager.export_history("tnt_a")
+        restored = _manager()
+        self.assertEqual(restored.import_history(document), 2)
+        self.assertEqual(
+            restored.history("tnt_a", model_id)["versionPath"],
+            manager.history("tnt_a", model_id)["versionPath"],
+        )
+
+    def test_an_export_can_be_written_to_disk(self):
+        import json
+        import tempfile
+
+        manager, _model_id = self._run_transitions()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "nested", "model-history.json")
+            manager.export_history("tnt_a", path=path)
+            with open(path, encoding="utf-8") as fh:
+                document = json.load(fh)
+        self.assertEqual(document["tenantId"], "tnt_a")
+        self.assertEqual(len(document["models"]), 1)
+
+    def test_importing_twice_changes_nothing(self):
+        manager, model_id = self._run_transitions()
+        document = manager.export_history("tnt_a")
+        restored = _manager()
+        restored.import_history(document)
+        self.assertEqual(restored.import_history(document), 0)
+        self.assertEqual(len(restored.list("tnt_a")), 2)
+
+    def test_an_in_flight_rollout_is_not_restored(self):
+        # Its warmed adapter no longer exists, so a resumed transition could never complete.
+        registry, model_id = _registry_with()
+        manager = _manager(registry)
+        manager.begin("tnt_a", model_id, "2.0.0")
+        restored = _manager()
+        self.assertEqual(restored.import_history(manager.export_history("tnt_a")), 0)
+
+    def test_restored_history_interleaves_by_time(self):
+        manager, model_id = self._run_transitions()
+        document = manager.export_history("tnt_a")
+        restored = _manager()
+        restored.import_history(document)
+        starts = [t.started_at for t in restored.list("tnt_a")]
+        self.assertEqual(starts, sorted(starts))
+
+    def test_an_export_without_a_tenant_is_rejected(self):
+        from errors import ValidationError
+
+        with self.assertRaises(ValidationError):
+            _manager().import_history({"models": []})
+
+    def test_a_rollback_always_leaves_a_mark_on_the_version_path(self):
+        # A rollback that records nothing reads as though nothing was attempted — the opposite of
+        # what this history is for, even when the incumbent version is unknown.
+        manager = _manager(policy=ModelLifecyclePolicy(validation_frames=2))
+        manager.transition(
+            "tnt_a", "mdl_1", "v2", loader=lambda: _Adapter(detections=2), frames=_frames(2),
+            incumbent=_Adapter(detections=2), slots=[],
+        )
+        manager.transition(
+            "tnt_a", "mdl_1", "v3", loader=lambda: _Adapter(detections=0), frames=_frames(2),
+            incumbent=_Adapter(detections=4), slots=[],
+        )
+        self.assertEqual(manager.history("tnt_a", "mdl_1")["versionPath"], ["v2", "v2"])
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

@@ -45,6 +45,15 @@ SCENARIOS = (
     "repeated-model-failures",
     "simultaneous-recoveries",
     "recovery-storm",
+    # AI-5d follow-up rec 7 — the second wave. Every operational improvement should exist as a
+    # deterministic simulation before it reaches production.
+    "partial-gpu-failure",
+    "mixed-hardware-cluster",
+    "network-partition",
+    "rtsp-credential-failure",
+    "gradual-resource-exhaustion",
+    "overnight-continuous",
+    "rolling-model-deployment",
 )
 
 
@@ -555,6 +564,394 @@ def recovery_storm(*, flaps: int = 30) -> ScenarioResult:
     return result
 
 
+# --- second wave (AI-5d follow-up rec 7) -----------------------------------------------------------
+
+
+def partial_gpu_failure(*, cameras: int = 12, ticks: int = 400) -> ScenarioResult:
+    """One GPU of two degrades to a fraction of its capacity — it does not vanish, it gets slow.
+
+    Harder than total loss: capacity accounting must shrink an in-use resource without stranding the
+    sessions already placed on it, and without manufacturing capacity when they are released.
+    """
+    result = ScenarioResult(scenario="partial-gpu-failure", cameras=cameras, ticks=ticks)
+    resources = [
+        ComputeResource(id="cuda:0", kind="cuda", capacity_units=8.0),
+        ComputeResource(id="cuda:1", kind="cuda", capacity_units=8.0),
+    ]
+    registry, accountant, scheduler, sessions = _rig(cameras, resources=resources)
+    _pump(scheduler, accountant, sessions, ticks=ticks // 2)
+
+    # cuda:1 degrades to a quarter of its capacity while sessions are running on it.
+    degraded = registry.get("cuda:1")
+    stranded_before = degraded.allocated_units
+    degraded.capacity_units = 2.0
+    served_before = sum(s.served for s in sessions.values())
+    _pump(scheduler, accountant, sessions, ticks=ticks // 2)
+    served_after = sum(s.served for s in sessions.values()) - served_before
+
+    result.metrics.update(
+        {
+            "servedAfter": served_after,
+            "freeCapacity": registry.free_capacity,
+            "overCommittedUnits": max(0.0, degraded.allocated_units - degraded.capacity_units),
+            "stranded": stranded_before,
+        }
+    )
+    result.check(served_after > 0, "a partial GPU degradation stopped the fleet entirely")
+    result.check(
+        registry.free_capacity >= 0.0,
+        "free capacity went negative after a resource shrank beneath its allocations",
+    )
+    # Over-commitment is expected and must be visible rather than hidden — admission simply refuses
+    # new work until the existing sessions release.
+    verdict = scheduler.admission.evaluate(
+        SessionIdentity("tnt_sim", "cam_new", "ses_new"), target_fps=5.0
+    )
+    result.check(
+        not verdict.admitted or registry.free_capacity > 0,
+        "new work was admitted onto a resource with no free capacity",
+    )
+    result.notes.append(
+        f"cuda:1 shrank 8.0 → 2.0 units with {stranded_before:.1f} units already placed; "
+        "existing sessions kept running and admission refused new work"
+    )
+    return result
+
+
+def mixed_hardware_cluster(*, cameras: int = 24) -> ScenarioResult:
+    """Resources spread across nodes — the shape a distributed scheduler will present.
+
+    Nothing here is distributed; the point is that the scheduler already cannot tell, because it only
+    ever sees node-qualified ids and abstract units.
+    """
+    result = ScenarioResult(scenario="mixed-hardware-cluster", cameras=cameras, ticks=0)
+    resources = [
+        ComputeResource(id="node-a/cpu:0", kind="cpu", capacity_units=8.0),
+        ComputeResource(id="node-a/cuda:0", kind="cuda", capacity_units=8.0),
+        ComputeResource(id="node-b/cpu:0", kind="cpu", capacity_units=4.0),
+        ComputeResource(id="node-b/npu:0", kind="npu", capacity_units=6.0),
+        ComputeResource(id="node-c/metal:0", kind="metal", capacity_units=4.0),
+    ]
+    registry, _acct, scheduler, sessions = _rig(cameras, resources=resources)
+    nodes: Dict[str, int] = {}
+    for account in _accounts(scheduler):
+        node = (account.resource_id or "unplaced").split("/")[0]
+        nodes[node] = nodes.get(node, 0) + 1
+
+    result.metrics.update({f"node:{k}": v for k, v in sorted(nodes.items())})
+    result.metrics["admitted"] = len(sessions)
+    result.check(len(sessions) > 0, "nothing was admitted onto a mixed cluster")
+    result.check(
+        len(nodes) >= 3, f"work concentrated on too few nodes: {sorted(nodes)}"
+    )
+    result.check("unplaced" not in nodes, "an admitted session was never placed")
+    result.notes.append(
+        "placement spanned nodes using node-qualified ids and abstract units only — the scheduler "
+        "contains no notion of locality, which is what leaves distribution open"
+    )
+    return result
+
+
+def network_partition(*, cameras: int = 12, ticks: int = 300, outage: int = 80) -> ScenarioResult:
+    """Every camera becomes unreachable at once, then all of them return.
+
+    A partition is not N independent disconnects: the fleet fails together and recovers together, so
+    both the recovery budget and the admission reserve are stressed in the same instant.
+    """
+    result = ScenarioResult(scenario="network-partition", cameras=cameras, ticks=ticks)
+    _reg, accountant, scheduler, sessions = _rig(cameras)
+    clock = SimClock()
+    recovery = AutoRecovery(
+        policy=RecoveryPolicy(max_restarts=5, stabilization_seconds=10.0),
+        clock=clock,
+        now_iso=_fixed_iso,
+    )
+
+    served_during = 0
+    for tick in range(ticks):
+        clock.advance(1.0)
+        partitioned = outage <= tick < outage * 2
+        if not partitioned:
+            for session in sessions.values():
+                session.arrive()
+            chosen = scheduler.next_session(
+                ready=lambda sid: sid in sessions and sessions[sid].queue_depth >= 1
+            )
+            if chosen is not None:
+                sessions[chosen].serve()
+                served_during += 1
+        elif tick == outage:
+            for session in sessions.values():
+                reason = recovery.reason_for(
+                    ConnectionFailure("network partition"), identity=session.identity
+                )
+                recovery.attempt(session.identity, reason, restart=lambda: None)
+
+    analytics = recovery.analytics()
+    result.metrics.update(
+        {
+            "served": sum(s.served for s in sessions.values()),
+            "recoveries": analytics["recoveries"],
+            "successPercent": analytics["successPercent"],
+        }
+    )
+    # Against the ADMITTED count, not the requested one: the reserve legitimately refuses some
+    # cameras at admission, and asserting on `cameras` would be testing the reserve, not the partition.
+    result.check(
+        analytics["recoveries"] == len(sessions),
+        f"only {analytics['recoveries']} of {len(sessions)} partitioned cameras attempted recovery",
+    )
+    result.check(
+        analytics["successPercent"] == 100.0,
+        "a simultaneous partition exhausted budgets that are supposed to be per-session",
+    )
+    result.check(
+        sum(s.served for s in sessions.values()) > 0, "the fleet never resumed after the partition"
+    )
+    result.notes.append(
+        f"{cameras} cameras lost and restored together; each spent its own budget and the fleet resumed"
+    )
+    return result
+
+
+def rtsp_credential_failure(*, attempts: int = 15) -> ScenarioResult:
+    """Wrong credentials on a camera. This is a CONFIGURATION failure, and must never be retried.
+
+    The most important negative scenario in the suite: retrying a credential error looks like a
+    connection problem, burns the reconnect budget, and buries the one log line naming the real fault.
+    """
+    result = ScenarioResult(scenario="rtsp-credential-failure", cameras=1, ticks=attempts)
+    clock = SimClock()
+    recovery = AutoRecovery(
+        policy=RecoveryPolicy(max_restarts=10, stabilization_seconds=0.0),
+        clock=clock,
+        now_iso=_fixed_iso,
+    )
+    identity = SessionIdentity("tnt_sim", "cam_0", "ses_0")
+    restarts = 0
+
+    def restart() -> None:
+        nonlocal restarts
+        restarts += 1
+
+    outcomes: Dict[str, int] = {}
+    for _ in range(attempts):
+        clock.advance(5.0)
+        reason = recovery.reason_for(
+            ConfigurationFailure("401 Unauthorized from rtsp://***@cam.local/stream"),
+            identity=identity,
+        )
+        attempt = recovery.attempt(identity, reason, restart=restart)
+        outcomes[attempt.outcome] = outcomes.get(attempt.outcome, 0) + 1
+
+    result.metrics.update({f"outcome:{k}": v for k, v in sorted(outcomes.items())})
+    result.metrics["restarts"] = restarts
+    result.metrics["budgetRemaining"] = float(recovery.budget_remaining(identity) or 0)
+    result.check(restarts == 0, f"a credential error triggered {restarts} restart(s)")
+    result.check(
+        outcomes.get("operator-required", 0) == attempts,
+        "a credential error was not consistently escalated to an operator",
+    )
+    result.check(
+        recovery.budget_remaining(identity) == 10,
+        "a configuration failure consumed the reconnect budget meant for real outages",
+    )
+    result.notes.append(
+        f"{attempts} credential failures produced 0 restarts, 0 budget spent, and {attempts} "
+        "operator escalations"
+    )
+    return result
+
+
+def gradual_resource_exhaustion(*, cameras: int = 8, ticks: int = 600) -> ScenarioResult:
+    """Load creeps up over hours rather than spiking — the case reactive degradation handles worst.
+
+    The governor should act on the TREND, well before utilization reaches its threshold, which is the
+    entire justification for predictive degradation.
+    """
+    result = ScenarioResult(scenario="gradual-resource-exhaustion", cameras=cameras, ticks=ticks)
+    policy = SchedulerPolicy(
+        predictive=True,
+        escalate_after_samples=2,
+        degrade_above_queue_percent=90.0,
+        predicted_pressure_threshold=85.0,
+        reserved_capacity_percent=0.0,
+        stabilization_samples=2,
+    )
+    _reg, accountant, scheduler, sessions = _rig(cameras, policy=policy)
+
+    first_degrade_at: Optional[int] = None
+    first_saturation_at: Optional[int] = None
+    for tick in range(ticks):
+        # Demand grows slowly and monotonically — no spikes for a reactive rule to catch.
+        creep = 0.5 + 2.0 * (tick / ticks)
+        for session in sessions.values():
+            account = accountant.get(session.identity)
+            level = account.degradation if account is not None else "none"
+            session.arrive(scale=0.5 if level != "none" else 1.0 * creep)
+            if session.utilization >= 100.0 and first_saturation_at is None:
+                first_saturation_at = tick
+        chosen = scheduler.next_session(
+            ready=lambda sid: sid in sessions and sessions[sid].queue_depth >= 1
+        )
+        if chosen is not None:
+            sessions[chosen].serve()
+        if tick % 10 == 0:
+            for session in sessions.values():
+                account = accountant.get(session.identity)
+                if account is None:
+                    continue
+                decision = scheduler.governor.observe(
+                    account, queue_utilization=session.utilization
+                )
+                if decision is not None and first_degrade_at is None:
+                    first_degrade_at = tick
+
+    result.metrics.update(
+        {
+            "firstDegradeTick": float(first_degrade_at if first_degrade_at is not None else -1),
+            "firstSaturationTick": float(
+                first_saturation_at if first_saturation_at is not None else -1
+            ),
+            "predictedDegradations": sum(
+                1 for d in scheduler.decisions.all() if d.reason == "predicted-pressure"
+            ),
+        }
+    )
+    result.check(first_degrade_at is not None, "gradual exhaustion never triggered any degradation")
+    if first_degrade_at is not None and first_saturation_at is not None:
+        result.check(
+            first_degrade_at <= first_saturation_at,
+            "the governor degraded only AFTER the queue saturated — prediction bought nothing",
+        )
+    result.notes.append(
+        f"degraded at tick {first_degrade_at} against saturation at {first_saturation_at} — "
+        "the trend, not the threshold, is what triggered it"
+    )
+    return result
+
+
+def overnight_continuous(*, cameras: int = 8, ticks: int = 10000) -> ScenarioResult:
+    """The long night. Everything bounded must still be bounded ten thousand ticks later.
+
+    A separate scenario from `prolonged-operation` because the failure mode is different: that one
+    checks the stores, this one checks that behavior does not DRIFT — fairness, degradation and
+    scheduling must look the same at the end of the run as at the start.
+    """
+    result = ScenarioResult(scenario="overnight-continuous", cameras=cameras, ticks=ticks)
+    _reg, accountant, scheduler, sessions = _rig(cameras)
+
+    _pump(scheduler, accountant, sessions, ticks=ticks // 2)
+    mid_spread = scheduler.fairness()["spread"]
+    mid_served = sum(s.served for s in sessions.values())
+    _pump(scheduler, accountant, sessions, ticks=ticks // 2)
+    end_spread = scheduler.fairness()["spread"]
+    second_half = sum(s.served for s in sessions.values()) - mid_served
+
+    result.metrics.update(
+        {
+            "firstHalfServed": mid_served,
+            "secondHalfServed": second_half,
+            "midSpread": mid_spread,
+            "endSpread": end_spread,
+            "decisionLogEntries": len(scheduler.decisions),
+        }
+    )
+    result.check(second_half > 0, "the fleet stopped serving during the second half of the night")
+    # Throughput must not decay: a slow leak shows up here as a second half quieter than the first.
+    result.check(
+        second_half >= mid_served * 0.9,
+        f"throughput decayed overnight ({mid_served} → {second_half})",
+    )
+    result.check(
+        end_spread <= max(1.5, mid_spread * 1.5),
+        f"fairness drifted overnight (spread {mid_spread} → {end_spread})",
+    )
+    result.check(len(scheduler.decisions) <= 200, "the decision log grew unbounded overnight")
+    result.notes.append(
+        f"{ticks} ticks: throughput and fairness held steady between halves; every store stayed bounded"
+    )
+    return result
+
+
+def rolling_model_deployment(*, cameras: int = 8) -> ScenarioResult:
+    """A model rolled out across a fleet, with one rollout failing validation.
+
+    The property under test is that a **failed** rollout leaves its sessions exactly where they were:
+    a partial deployment must not produce a fleet running two versions by accident.
+    """
+    from contracts import FrameContext, ModelBinding
+    from model_lifecycle import ModelLifecycleManager, ModelLifecyclePolicy, ModelSlot
+
+    result = ScenarioResult(scenario="rolling-model-deployment", cameras=cameras, ticks=0)
+
+    class _Adapter:
+        execution_provider = "stub"
+
+        def __init__(self, detections: int = 2) -> None:
+            self.detections = detections
+
+        def load(self, ref: dict) -> None:
+            return None
+
+        def preprocess(self, ctx):  # noqa: ANN001
+            return ctx
+
+        def infer(self, prepared):  # noqa: ANN001
+            return [{"label": "person", "confidence": 0.9}] * self.detections
+
+        def unload(self) -> None:
+            return None
+
+    stamps = iter([f"2026-08-01T00:{n // 60:02d}:{n % 60:02d}.000Z" for n in range(600)])
+    manager = ModelLifecycleManager(
+        policy=ModelLifecyclePolicy(validation_frames=4), now_iso=lambda: next(stamps)
+    )
+    frames = [
+        FrameContext(tenant_id="tnt_sim", camera_id=f"cam_{i}", image=b"x", frame_number=i)
+        for i in range(4)
+    ]
+    slots = [ModelSlot(_Adapter(), ModelBinding(name="det", version="v1", task="detection"))
+             for _ in range(cameras)]
+
+    good = manager.transition(
+        "tnt_sim", "mdl_1", "v2", loader=lambda: _Adapter(2), frames=frames,
+        incumbent=_Adapter(2), slots=slots,
+    )
+    on_v2 = sum(1 for s in slots if s.binding.version == "v2")
+
+    bad = manager.transition(
+        "tnt_sim", "mdl_1", "v3", loader=lambda: _Adapter(0), frames=frames,
+        incumbent=_Adapter(2), slots=slots,
+    )
+    still_v2 = sum(1 for s in slots if s.binding.version == "v2")
+
+    history = manager.history("tnt_sim", "mdl_1")
+    result.metrics.update(
+        {
+            "sessionsOnV2": on_v2,
+            "sessionsStillOnV2": still_v2,
+            "transitions": len(history["transitions"]),
+        }
+    )
+    result.check(good.succeeded, "a valid rolling deployment did not complete")
+    result.check(on_v2 == cameras, f"only {on_v2}/{cameras} sessions received the new version")
+    result.check(bad.state == "rolled-back", "a failing candidate was not rolled back")
+    result.check(
+        still_v2 == cameras,
+        f"a failed rollout left the fleet split across versions ({still_v2}/{cameras} on v2)",
+    )
+    result.check(
+        history["versionPath"] == ["v2", "v2"],
+        f"the version path did not record the rollback: {history['versionPath']}",
+    )
+    result.notes.append(
+        f"{cameras} sessions moved to v2 with no restart; a failing v3 rolled back leaving all "
+        f"{cameras} on v2 — never a split fleet"
+    )
+    return result
+
+
 # --- the suite ------------------------------------------------------------------------------------
 
 _SCENARIOS: Dict[str, Callable[[], ScenarioResult]] = {
@@ -568,6 +965,13 @@ _SCENARIOS: Dict[str, Callable[[], ScenarioResult]] = {
     "repeated-model-failures": repeated_model_failures,
     "simultaneous-recoveries": simultaneous_recoveries,
     "recovery-storm": recovery_storm,
+    "partial-gpu-failure": partial_gpu_failure,
+    "mixed-hardware-cluster": mixed_hardware_cluster,
+    "network-partition": network_partition,
+    "rtsp-credential-failure": rtsp_credential_failure,
+    "gradual-resource-exhaustion": gradual_resource_exhaustion,
+    "overnight-continuous": overnight_continuous,
+    "rolling-model-deployment": rolling_model_deployment,
 }
 
 

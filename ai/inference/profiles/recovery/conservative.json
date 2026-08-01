@@ -1,0 +1,10 @@
+{
+  "autoRecoverCategories": ["connection"],
+  "baseCooldownMs": 60000,
+  "description": "One restart an hour with a long stabilization window \u2014 for sites where a restart is itself disruptive.",
+  "maxCooldownMs": 900000,
+  "maxRestarts": 1,
+  "profile": "conservative",
+  "restartWindowSeconds": 3600,
+  "stabilizationSeconds": 300
+}

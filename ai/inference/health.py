@@ -169,9 +169,33 @@ class HealthScore:
     predicted_decline: bool = False
     samples: int = 0
     at: Optional[str] = None
+    # Rolling per-component history, oldest first (Architect AI-5d follow-up rec 2). Operators care
+    # more about the shape of the last N observations than about any single value: `82` means little,
+    # `98 → 94 → 88 → 82` means something is going wrong right now.
+    component_trends: Dict[str, List[float]] = field(default_factory=dict)
 
     def component(self, name: str) -> float:
         return self.components.get(name, 100.0)
+
+    def sparkline(self, component: str, *, width: int = 10) -> str:
+        """A fixed-width bar for one component, e.g. `████████░░` (rec 2).
+
+        Rendered from the CURRENT score rather than the history, because the bar answers "how full is
+        this subsystem's health right now?" — the trend answers the other question, and conflating
+        the two into one glyph would make neither readable.
+        """
+        filled = int(round(self.component(component) / 100.0 * width))
+        return "█" * max(0, min(width, filled)) + "░" * max(0, width - filled)
+
+    def render_components(self, *, width: int = 10) -> str:
+        """The whole breakdown as the operator view the Architect sketched (rec 2)."""
+        rows = []
+        for name in sorted(self.components):
+            arrow = {"improving": "↑", "deteriorating": "↓", "stable": "→"}[
+                _direction(_slope(self.component_trends.get(name, [])))
+            ]
+            rows.append(f"{name:<11} {self.sparkline(name, width=width)} {self.component(name):5.1f} {arrow}")
+        return "\n".join(rows)
 
     @property
     def weakest_component(self) -> Optional[str]:
@@ -191,6 +215,10 @@ class HealthScore:
             "predictedDecline": self.predicted_decline,
             "samples": self.samples,
         }
+        if self.component_trends:
+            out["componentTrends"] = {
+                k: [round(v, 3) for v in vs] for k, vs in sorted(self.component_trends.items())
+            }
         if self.projected_score is not None:
             out["projectedScore"] = round(self.projected_score, 3)
         if self.projected_status is not None:
@@ -218,6 +246,9 @@ class HealthMonitor:
         self._policy = policy or HealthPolicy()
         self._now_iso = now_iso or _now_iso
         self._trends: Dict[str, Trend] = {}
+        self._component_trends: Dict[str, Trend] = {
+            component: Trend(self._policy.trend_window_samples) for component in HEALTH_COMPONENTS
+        }
         self._score_trend = Trend(self._policy.trend_window_samples)
         self._samples = 0
         self._healthy_streak = 0
@@ -442,6 +473,9 @@ class HealthMonitor:
                 else 100.0
             )
 
+        for component, value in components.items():
+            self._component_trends[component].observe(value)
+
         weights = {c: self._policy.weight_for(c) for c in HEALTH_COMPONENTS}
         total_weight = sum(weights.values()) or 1.0
         score = sum(components[c] * weights[c] for c in HEALTH_COMPONENTS) / total_weight
@@ -475,6 +509,7 @@ class HealthMonitor:
             predicted_decline=predicted_decline,
             samples=self._samples,
             at=self._now_iso(),
+            component_trends={k: t.samples for k, t in self._component_trends.items()},
         )
         self._last = result
         return result
@@ -494,10 +529,25 @@ class HealthMonitor:
     def reset(self) -> None:
         """Forget every trend — used on restart, when history describes a session that no longer is."""
         self._trends.clear()
+        for trend in self._component_trends.values():
+            trend.reset()
         self._score_trend.reset()
         self._samples = 0
         self._healthy_streak = 0
         self._last = None
+
+
+def _slope(samples: List[float]) -> float:
+    """Least-squares slope over a plain list — the same estimator `Trend` uses, for rendering a
+    trend that was serialized rather than held live."""
+    n = len(samples)
+    if n < 2:
+        return 0.0
+    mean_x = (n - 1) / 2.0
+    mean_y = sum(samples) / n
+    numerator = sum((x - mean_x) * (y - mean_y) for x, y in enumerate(samples))
+    denominator = sum((x - mean_x) ** 2 for x in range(n))
+    return numerator / denominator if denominator else 0.0
 
 
 def _direction(slope: float) -> str:

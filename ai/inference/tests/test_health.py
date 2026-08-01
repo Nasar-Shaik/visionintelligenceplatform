@@ -289,5 +289,72 @@ class HealthShapeTest(unittest.TestCase):
         self.assertEqual(out["identity"]["correlationId"], "corr_1")
 
 
+
+class ComponentTrendTest(unittest.TestCase):
+    """AI-5d follow-up rec 2: operators care more about the shape than about a single value."""
+
+    def _observe(self, monitor, utilization):
+        return monitor.observe(
+            account=_account(frames_processed=100, effective_fps=5.0),
+            ingestion={"availabilityPercent": 100.0, "reconnectCount": 0},
+            backpressure={
+                "queueUtilization": utilization,
+                "framesProcessed": 100,
+                "framesDropped": 0,
+            },
+        )
+
+    def test_every_component_carries_a_rolling_history(self):
+        monitor = _monitor(trend_window_samples=5)
+        score = None
+        for utilization in (0.0, 20.0, 40.0):
+            score = self._observe(monitor, utilization)
+        self.assertEqual(set(score.component_trends), set(HEALTH_COMPONENTS))
+        self.assertEqual(len(score.component_trends["scheduler"]), 3)
+
+    def test_the_history_is_oldest_first_and_shows_the_decline(self):
+        monitor = _monitor()
+        for utilization in (0.0, 20.0, 40.0, 60.0):
+            score = self._observe(monitor, utilization)
+        scheduler = score.component_trends["scheduler"]
+        self.assertEqual(scheduler, sorted(scheduler, reverse=True), "the decline is not monotonic")
+
+    def test_the_window_is_bounded_by_policy(self):
+        monitor = _monitor(trend_window_samples=3)
+        score = None
+        for _ in range(10):
+            score = self._observe(monitor, 10.0)
+        self.assertEqual(len(score.component_trends["connection"]), 3)
+
+    def test_a_sparkline_renders_the_component_score(self):
+        # The Architect's sketch: `████████░░`.
+        monitor = _monitor()
+        score = self._observe(monitor, 0.0)
+        self.assertEqual(score.sparkline("connection", width=10), "█" * 10)
+        self.assertEqual(len(score.sparkline("scheduler", width=10)), 10)
+
+    def test_the_operator_view_names_every_component_with_a_direction(self):
+        monitor = _monitor()
+        for utilization in (0.0, 20.0, 40.0, 60.0):
+            score = self._observe(monitor, utilization)
+        rendered = score.render_components()
+        self.assertEqual(len(rendered.splitlines()), len(HEALTH_COMPONENTS))
+        for component in HEALTH_COMPONENTS:
+            self.assertIn(component, rendered)
+        self.assertIn("↓", rendered)  # the scheduler component is falling
+
+    def test_trends_serialize_with_the_score(self):
+        monitor = _monitor()
+        out = self._observe(monitor, 10.0).to_dict()
+        self.assertIn("componentTrends", out)
+        self.assertEqual(set(out["componentTrends"]), set(HEALTH_COMPONENTS))
+
+    def test_reset_clears_the_component_history_too(self):
+        monitor = _monitor()
+        self._observe(monitor, 50.0)
+        monitor.reset()
+        score = self._observe(monitor, 0.0)
+        self.assertEqual(len(score.component_trends["scheduler"]), 1)
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

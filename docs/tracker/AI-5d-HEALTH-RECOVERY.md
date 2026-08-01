@@ -197,6 +197,43 @@ removed the storm scenario restarts on all 30 flaps, and with the reserve remove
 refuses the critical camera. They fail when the mechanism is absent, which is the only thing that
 makes a passing invariant meaningful.
 
+## 8b. Follow-up refinements (accepted AI-5d review)
+
+Eight further recommendations, folded in without new layers:
+
+| #   | Refinement            | Where it landed                                                                 |
+| --- | --------------------- | ------------------------------------------------------------------------------- |
+| 1   | **Recovery history**  | `RecoveryHistory` — permanent, tenant-scoped, **survives session teardown**     |
+| 2   | **Health trends**     | `componentTrends` + `sparkline()` / `render_components()` on `HealthScore`      |
+| 3   | **Model history**     | `export_history()` / `import_history()` — durable JSON, no database, no service |
+| 4   | **Recovery profiles** | `profiles/recovery/*.json` — a customer adds a **file**, not code               |
+| 5   | **Failure analytics** | `RecoveryHistory.analytics()` — reporting only, read by no runtime path         |
+| 6   | **Oscillation**       | direction-aware guard documented in §4 and in the governor's own docstring      |
+| 7   | **More simulations**  | seven new scenarios → **17 total**                                              |
+| 8   | **Freeze**            | +2 schemas (`RecoveryRecord`, `FailureAnalytics`) + 1 additive field            |
+
+Two distinctions worth naming, because both are easy to get wrong:
+
+- **`RecoveryLedger` vs `RecoveryHistory`.** The ledger is _budget accounting_ and is cleared on
+  teardown; the history is the _operational record_ and is not. Forgetting the history when a session
+  stops would erase the pattern exactly when it becomes interesting.
+- **Analytics never feed the runtime.** Nothing in the scheduler, governor or recovery path reads
+  them. Feeding last week's averages into a live control loop is how a system starts reacting to
+  history instead of to conditions.
+
+**The seven new scenarios** (rec 7): `partial-gpu-failure` (a GPU that gets _slow_, not absent — capacity
+must shrink beneath live allocations without stranding them), `mixed-hardware-cluster` (five resources
+across three nodes; the scheduler already cannot tell it is not distributed), `network-partition` (the
+whole fleet fails and recovers together), `rtsp-credential-failure` (**0 restarts, 0 budget spent, every
+attempt escalated** — the most important negative scenario in the suite), `gradual-resource-exhaustion`
+(degrades on the trend, before saturation), `overnight-continuous` (10,000 ticks with **no drift** in
+throughput or fairness), and `rolling-model-deployment` (a failed rollout **never leaves a split fleet**).
+
+Two findings from writing them: the partition scenario initially asserted against _requested_ rather
+than _admitted_ cameras (it was testing the reserve, not the partition), and `versionPath` silently
+dropped a rollback when the incumbent version was unknown — which made the path read as though nothing
+had been attempted. The path now always records a return.
+
 ## 9. Benchmark governance (rec 6)
 
 The existing `--baseline` gate is unchanged: **Baseline → Optimize → Benchmark → Compare →

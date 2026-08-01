@@ -38,7 +38,7 @@ from __future__ import annotations
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Callable, Deque, Dict, List, Optional
+from typing import Callable, Deque, Dict, List, Optional, Union
 
 from errors import failure_category, failure_code
 from operational_log import OperationalLog, SessionIdentity
@@ -243,6 +243,168 @@ def healthcare_policy() -> RecoveryPolicy:
     return RecoveryPolicy(max_restarts=0, require_operator_approval=True)
 
 
+@dataclass(frozen=True)
+class RecoveryRecord:
+    """One permanently-retained recovery outcome (Architect AI-5d follow-up rec 1).
+
+    Deliberately separate from the `RecoveryLedger`, which is **budget accounting** and is cleared
+    when a session tears down. This is the **operational record**, and it survives teardown — because
+    the question it answers ("this camera has failed the same way for three weeks") is unanswerable
+    from a store that forgets every time the session restarts.
+
+    Frozen and self-contained: it copies the few fields it needs rather than referencing a live
+    account, so a record written in March still means in June exactly what it meant when written.
+    """
+
+    tenant_id: str
+    camera_id: str
+    session_id: str
+    failure_category: Optional[str]
+    trigger: str
+    subsystem: str
+    action: str
+    outcome: str
+    attempt: int
+    duration_ms: float
+    restart_count: int
+    stabilization_seconds: float
+    final_state: str
+    at: str
+    correlation_id: Optional[str] = None
+
+    @property
+    def succeeded(self) -> bool:
+        return self.outcome == "succeeded"
+
+    def to_dict(self) -> dict:
+        out: dict = {
+            "identity": {
+                "tenantId": self.tenant_id,
+                "cameraId": self.camera_id,
+                "sessionId": self.session_id,
+            },
+            "trigger": self.trigger,
+            "subsystem": self.subsystem,
+            "action": self.action,
+            "outcome": self.outcome,
+            "attempt": self.attempt,
+            "durationMs": round(self.duration_ms, 3),
+            "restartCount": self.restart_count,
+            "stabilizationSeconds": round(self.stabilization_seconds, 3),
+            "finalState": self.final_state,
+            "at": self.at,
+        }
+        if self.failure_category is not None:
+            out["failureCategory"] = self.failure_category
+        if self.correlation_id is not None:
+            out["identity"]["correlationId"] = self.correlation_id
+        return out
+
+
+class RecoveryHistory:
+    """Permanent, tenant-scoped recovery history + long-term failure analytics (recs 1 and 5).
+
+    Bounded per tenant rather than per session: a box cycling sessions for a month must not grow
+    without limit, but it also must not lose the pattern the moment a session is replaced — which is
+    exactly when the pattern becomes interesting.
+
+    Analytics here are **operational reporting, never runtime decisions** (rec 5). Nothing in the
+    scheduler, governor or recovery path reads them; feeding long-term averages back into a live
+    control loop is how a system starts reacting to last week.
+    """
+
+    def __init__(self, *, maxlen: int = 1000) -> None:
+        self._records: Dict[str, Deque[RecoveryRecord]] = {}
+        self._maxlen = maxlen
+
+    def record(self, entry: RecoveryRecord) -> RecoveryRecord:
+        self._records.setdefault(entry.tenant_id, deque(maxlen=self._maxlen)).appendleft(entry)
+        return entry
+
+    def list(
+        self,
+        *,
+        tenant_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        camera_id: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[dict]:
+        """Newest first. A tenant filter is the norm; omitting it is an operator-wide view."""
+        if tenant_id is not None:
+            entries = list(self._records.get(tenant_id, ()))
+        else:
+            entries = [e for bucket in self._records.values() for e in bucket]
+            entries.sort(key=lambda e: e.at, reverse=True)
+        if session_id is not None:
+            entries = [e for e in entries if e.session_id == session_id]
+        if camera_id is not None:
+            entries = [e for e in entries if e.camera_id == camera_id]
+        return [e.to_dict() for e in entries[: max(0, limit)]]
+
+    def count(self, *, tenant_id: Optional[str] = None) -> int:
+        if tenant_id is not None:
+            return len(self._records.get(tenant_id, ()))
+        return sum(len(bucket) for bucket in self._records.values())
+
+    def analytics(self, *, tenant_id: Optional[str] = None, camera_id: Optional[str] = None) -> dict:
+        """Long-term failure statistics (rec 5) — operational reporting only.
+
+        Averages are taken over **executed** recoveries only. Including refusals would drag the mean
+        recovery time toward zero and make a deployment that never recovers look fastest of all.
+        """
+        if tenant_id is not None:
+            entries = list(self._records.get(tenant_id, ()))
+        else:
+            entries = [e for bucket in self._records.values() for e in bucket]
+        if camera_id is not None:
+            entries = [e for e in entries if e.camera_id == camera_id]
+        if not entries:
+            return {
+                "recoveries": 0,
+                "byCategory": {},
+                "byOutcome": {},
+                "successPercent": 0.0,
+                "averageRecoveryMs": 0.0,
+                "averageStabilizationSeconds": 0.0,
+                "restartsTotal": 0,
+                "mostCommonFailure": None,
+                "camerasAffected": 0,
+            }
+
+        by_category: Dict[str, int] = {}
+        by_outcome: Dict[str, int] = {}
+        for entry in entries:
+            key = entry.failure_category or entry.trigger
+            by_category[key] = by_category.get(key, 0) + 1
+            by_outcome[entry.outcome] = by_outcome.get(entry.outcome, 0) + 1
+
+        executed = [e for e in entries if e.outcome in ("succeeded", "failed")]
+        succeeded = [e for e in entries if e.succeeded]
+        return {
+            "recoveries": len(entries),
+            "byCategory": dict(sorted(by_category.items())),
+            "byOutcome": dict(sorted(by_outcome.items())),
+            "successPercent": round(100.0 * len(succeeded) / len(executed), 3) if executed else 0.0,
+            "averageRecoveryMs": round(sum(e.duration_ms for e in executed) / len(executed), 3)
+            if executed
+            else 0.0,
+            "averageStabilizationSeconds": round(
+                sum(e.stabilization_seconds for e in entries) / len(entries), 3
+            ),
+            "restartsTotal": sum(1 for e in succeeded if e.action == "restart-session"),
+            # Ties break alphabetically so the answer is stable across runs.
+            "mostCommonFailure": min(
+                sorted(by_category), key=lambda k: -by_category[k]
+            ),
+            "camerasAffected": len({e.camera_id for e in entries}),
+        }
+
+    def forget_tenant(self, tenant_id: str) -> None:
+        """Only ever called on tenant offboarding — never on session teardown, which is the whole
+        point of this store."""
+        self._records.pop(tenant_id, None)
+
+
 class RecoveryLedger:
     """Bounded per-session recovery history + rolling-window budget accounting.
 
@@ -312,12 +474,18 @@ class AutoRecovery:
         now_iso: Optional[Callable[[], str]] = None,
         log: Optional[OperationalLog] = None,
         ledger: Optional[RecoveryLedger] = None,
+        history: Optional[RecoveryHistory] = None,
     ) -> None:
         self._policy = policy or RecoveryPolicy()
         self._clock = clock
         self._now_iso = now_iso or _now_iso
         self._log = log
         self.ledger = ledger or RecoveryLedger()
+        # Permanent operational record (rec 1). Shared across sessions and NOT cleared on teardown —
+        # the ledger forgets a stopped session's budget; `records` keeps what happened to it.
+        # Named apart from `history()` (the per-session ledger view) because the two answer
+        # different questions and confusing them loses the durable one.
+        self.records = history or RecoveryHistory()
 
     @property
     def policy(self) -> RecoveryPolicy:
@@ -378,6 +546,8 @@ class AutoRecovery:
         *,
         restart: Optional[Callable[[], None]] = None,
         rebind: Optional[Callable[[], None]] = None,
+        restart_count: int = 0,
+        final_state: Union[str, Callable[[], str]] = "unknown",
     ) -> RecoveryAttempt:
         """Evaluate one recovery opportunity and, when permitted, execute it.
 
@@ -411,6 +581,27 @@ class AutoRecovery:
                 at=now,
                 counts_against_budget=action not in _IN_BAND_ACTIONS
                 and outcome in ("succeeded", "failed"),
+            )
+            # Duration is measured around the whole decision, not only the executor: a recovery that
+            # spent four seconds deciding it was not allowed still cost four seconds.
+            self.records.record(
+                RecoveryRecord(
+                    tenant_id=identity.tenant_id,
+                    camera_id=identity.camera_id,
+                    session_id=identity.session_id,
+                    correlation_id=identity.correlation_id,
+                    failure_category=reason.failure_category,
+                    trigger=reason.trigger,
+                    subsystem=reason.subsystem,
+                    action=action,
+                    outcome=outcome,
+                    attempt=attempt_no,
+                    duration_ms=(self._clock() - now) * 1000.0,
+                    restart_count=restart_count,
+                    stabilization_seconds=self._policy.stabilization_seconds,
+                    final_state=_resolve_state(final_state),
+                    at=record_attempt.at or self._now_iso(),
+                )
             )
             self._emit(record_attempt)
             return record_attempt
@@ -501,7 +692,13 @@ class AutoRecovery:
         return self.ledger.history(identity, limit=limit)
 
     def forget(self, identity: SessionIdentity) -> None:
+        """Release a session's BUDGET accounting. The permanent history is untouched by design —
+        forgetting it on teardown would erase the pattern exactly when it becomes interesting."""
         self.ledger.forget(identity)
+
+    def analytics(self, *, tenant_id: Optional[str] = None, camera_id: Optional[str] = None) -> dict:
+        """Long-term failure statistics (rec 5). Operational reporting; no runtime path reads it."""
+        return self.records.analytics(tenant_id=tenant_id, camera_id=camera_id)
 
     def _emit(self, attempt: RecoveryAttempt) -> None:
         if self._log is None:
@@ -518,6 +715,20 @@ class AutoRecovery:
             code=attempt.reason.failure_code,
             detail=attempt.detail,
         )
+
+
+def _resolve_state(final_state: Union[str, Callable[[], str]]) -> str:
+    """Accept a literal state or a resolver evaluated at record time.
+
+    A resolver is what the runner passes, because "final state" only means something once the
+    executor has run — reading it beforehand would record the state the recovery was meant to fix.
+    """
+    if callable(final_state):
+        try:
+            return str(final_state())
+        except Exception:  # noqa: BLE001 - a diagnostics read must never break a recovery
+            return "unknown"
+    return str(final_state)
 
 
 def _now_iso() -> str:

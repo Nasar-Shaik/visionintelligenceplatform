@@ -15,6 +15,9 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from deployment import (
+    available_recovery_profiles,
+    load_all_recovery,
+    load_recovery_profile,
     available_profiles,
     load_all,
     load_profile,
@@ -181,4 +184,63 @@ class CapabilityReconciliationTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    unittest.main()
+
+
+class RecoveryProfileTest(unittest.TestCase):
+    """AI-5d follow-up rec 4: a customer authors a new archetype by adding a FILE, not by changing
+    runtime code."""
+
+    def test_every_shipped_recovery_profile_validates(self):
+        profiles = load_all_recovery()
+        self.assertGreaterEqual(len(profiles), 4)
+        for name, policy in profiles.items():
+            self.assertGreaterEqual(policy.max_restarts, 0, name)
+            self.assertGreaterEqual(policy.max_cooldown_ms, policy.base_cooldown_ms, name)
+
+    def test_the_four_archetypes_the_architect_named_are_all_expressible(self):
+        profiles = load_all_recovery()
+        self.assertEqual(profiles["retail"].max_restarts, 3)
+        self.assertEqual(profiles["factory"].max_restarts, 10)
+        self.assertTrue(profiles["bank"].unlimited_restarts)
+        self.assertTrue(profiles["healthcare"].require_operator_approval)
+
+    def test_a_bank_pairs_unlimited_restarts_with_a_long_cooldown(self):
+        # Never give up, never hammer — unlimited restarts without a long cooldown is a load problem.
+        policy = load_all_recovery()["bank"]
+        self.assertTrue(policy.unlimited_restarts)
+        self.assertGreaterEqual(policy.base_cooldown_ms, 30000)
+
+    def test_a_customer_profile_needs_no_code_change(self):
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "airport.json"), "w", encoding="utf-8") as fh:
+                json.dump(
+                    {"profile": "airport", "maxRestarts": 7, "stabilizationSeconds": 45}, fh
+                )
+            policy = load_recovery_profile("airport", directory=tmp)
+            self.assertEqual(policy.max_restarts, 7)
+            self.assertEqual(available_recovery_profiles(directory=tmp), ["airport"])
+
+    def test_an_unknown_profile_lists_what_is_available(self):
+        with self.assertRaises(ConfigurationFailure) as ctx:
+            load_recovery_profile("atlantis")
+        self.assertIn("available:", str(ctx.exception))
+
+    def test_a_profile_asking_to_retry_configuration_errors_is_rejected(self):
+        import json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "reckless.json"), "w", encoding="utf-8") as fh:
+                json.dump(
+                    {"profile": "reckless", "autoRecoverCategories": ["connection", "configuration"]},
+                    fh,
+                )
+            with self.assertRaises(ConfigurationFailure):
+                load_recovery_profile("reckless", directory=tmp)
+
+if __name__ == "__main__":  # pragma: no cover
     unittest.main()

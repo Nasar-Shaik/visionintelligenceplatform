@@ -35,6 +35,7 @@ from scheduler import SchedulerPolicy
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 DEPLOYMENT_PROFILES_DIR = os.path.join(_HERE, "profiles", "deployment")
+RECOVERY_PROFILES_DIR = os.path.join(_HERE, "profiles", "recovery")
 
 _PRIORITIES = ("low", "normal", "high", "critical")
 _DROP_POLICIES = ("drop-oldest", "drop-newest")
@@ -336,6 +337,44 @@ def available_profiles(*, directory: Optional[str] = None) -> List[str]:
 def load_all(*, directory: Optional[str] = None) -> Dict[str, DeploymentProfile]:
     """Load every shipped profile — used by tests to prove they all validate."""
     return {name: load_profile(name, directory=directory) for name in available_profiles(directory=directory)}
+
+
+# --- standalone recovery profiles (Architect AI-5d follow-up rec 4) -------------------------------
+
+
+def load_recovery_profile(name: str, *, directory: Optional[str] = None) -> RecoveryPolicy:
+    """Load a named recovery archetype from `profiles/recovery/*.json`.
+
+    Recovery budgets are already settable inline on a deployment profile. This adds the other half of
+    rec 4: a **customer can author a new archetype by adding a FILE** — no runtime code change, no
+    rebuild, no engine redeploy. `retail`/`factory`/`bank`/`healthcare`/`conservative` ship as
+    ordinary examples of that mechanism, not as privileged built-ins.
+    """
+    path = os.path.join(directory or RECOVERY_PROFILES_DIR, f"{name}.json")
+    if not os.path.isfile(path):
+        available = ", ".join(available_recovery_profiles(directory=directory)) or "none"
+        raise ConfigurationFailure(f"unknown recovery profile '{name}' (available: {available})")
+    with open(path, encoding="utf-8") as fh:
+        try:
+            doc = json.load(fh)
+        except json.JSONDecodeError as exc:
+            raise ConfigurationFailure(f"recovery profile '{name}' is not valid JSON: {exc}") from exc
+    return _parse_recovery(doc, f"recovery:{name}")
+
+
+def available_recovery_profiles(*, directory: Optional[str] = None) -> List[str]:
+    target = directory or RECOVERY_PROFILES_DIR
+    if not os.path.isdir(target):
+        return []
+    return sorted(f[:-5] for f in os.listdir(target) if f.endswith(".json"))
+
+
+def load_all_recovery(*, directory: Optional[str] = None) -> Dict[str, RecoveryPolicy]:
+    """Load every shipped recovery profile — used by tests to prove they all validate."""
+    return {
+        name: load_recovery_profile(name, directory=directory)
+        for name in available_recovery_profiles(directory=directory)
+    }
 
 
 # --- camera capability reconciliation (Architect AI-5b rec 1) -------------------------------------
