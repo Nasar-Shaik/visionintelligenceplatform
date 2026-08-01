@@ -182,8 +182,56 @@ def make_handler(
                 self._post_sessions(segs)
             elif path == "/discovery/onvif":
                 self._discover_onvif()
+            elif path == "/streams/validate":
+                self._validate_stream()
             else:
                 self._err(404, "not_found", f"no route for POST {self.path}")
+
+        # --- /streams/validate (P-2) -----------------------------------------------
+        def _validate_stream(self) -> None:
+            """Open a stream, read a few frames, and report exactly what was observed.
+
+            **A measurement, not perception** — the same bounded exception as `/discovery/onvif`
+            (ADR-0023, ADR-0024): no session is created, no capability runs, nothing is persisted.
+            The runtime owns the decode path, so it is the only component that can answer "does this
+            camera actually stream?", and the camera service calls it through a port.
+
+            Credentials arrive in the body because they are per-camera and cannot come from the
+            runtime's environment the way discovery's do. That is a deliberate, bounded exposure on
+            an internal-key-gated hop: the credentialed URI is built here, never logged, never
+            echoed back, and every error path runs through `redact_uri`.
+            """
+            from stream_probe import probe_stream  # noqa: WPS433 - keeps the server import light
+
+            body, err = self._read_json(allow_empty=True)
+            if err is not None:
+                self._err(400, "bad_request", err)
+                return
+
+            stream_url = str(body.get("streamUrl") or "").strip()
+            if not stream_url:
+                self._err(400, "bad_request", "streamUrl is required")
+                return
+            protocol = str(body.get("protocol") or "rtsp").strip().lower()
+            try:
+                timeout = max(1.0, min(60.0, float(body.get("timeoutSeconds", 8))))
+                frames = max(1, min(30, int(body.get("frames", 3))))
+            except (TypeError, ValueError):
+                self._err(400, "bad_request", "timeoutSeconds and frames must be numbers")
+                return
+
+            credentials = body.get("credentials")
+            uri, credentialed = _apply_credentials(stream_url, credentials)
+            config = {
+                # The DECLARED protocol selects the source implementation — the URI is never sniffed
+                # (AI-5b refinement 4). `rtmp` has no dedicated branch and rides the generic path.
+                "type": "rtsp" if protocol in ("rtsp", "onvif") else "http",
+                "uri": uri,
+                "capabilities": body.get("capabilities") or {},
+                "_credentialed": credentialed,
+            }
+            report = probe_stream(config, frames=frames, timeout_seconds=timeout)
+            self._ok(report.to_dict())
 
         # --- /discovery/onvif (P-1) ------------------------------------------------
         def _discover_onvif(self) -> None:
@@ -223,6 +271,14 @@ def make_handler(
             password = os.environ.get("VIP_CAMERA_PASSWORD")
 
             started = time.monotonic()
+            # P-2: a directed negotiation of ONE device, for a capability refresh. Re-broadcasting
+            # the whole segment to re-read one camera's profiles is wasteful, and across a routed
+            # network it simply does not work — multicast never leaves the local segment, so a
+            # camera on another VLAN would look like it had vanished.
+            endpoint = str(body.get("endpoint") or "").strip()
+            if endpoint:
+                self._negotiate_one(endpoint, username, password, started)
+                return
             try:
                 found = OnvifDiscovery(UdpDiscoveryTransport()).discover(timeout_seconds=timeout)
             except OSError as exc:
@@ -247,24 +303,35 @@ def make_handler(
                     ).negotiate(device)
                 except Exception as exc:  # noqa: BLE001 - one hostile device must not end the scan
                     warning = f"capability negotiation failed: {exc}"
-                devices.append(
-                    {
-                        "endpoint": device.address,
-                        "address": _host_of(device.address),
-                        "metadata": device.to_metadata(),
-                        "capabilities": device.to_capabilities(),
-                        "registryId": device.registry_id,
-                        **({"warning": warning} if warning else {}),
-                        **(
-                            {"suggestedStreamUrl": _stream_url(device)}
-                            if _stream_url(device)
-                            else {}
-                        ),
-                    }
-                )
+                devices.append(_device_payload(device, warning))
             self._ok(
                 {
                     "devices": devices,
+                    "probedSeconds": round(time.monotonic() - started, 3),
+                }
+            )
+
+        def _negotiate_one(self, endpoint: str, username, password, started) -> None:  # noqa: ANN001
+            """Negotiate one already-known device (P-2 capability refresh) — no broadcast."""
+            from onvif import HttpSoapTransport, OnvifDevice  # noqa: WPS433
+
+            address = endpoint if "://" in endpoint else f"http://{endpoint}/onvif/device_service"
+            try:
+                device = OnvifDevice(
+                    address, HttpSoapTransport(), username=username, password=password
+                ).negotiate()
+            except Exception as exc:  # noqa: BLE001 - a refusing device is an answer, not a crash
+                self._ok(
+                    {
+                        "devices": [],
+                        "probedSeconds": round(time.monotonic() - started, 3),
+                        "unavailable": f"the device did not answer: {exc}",
+                    }
+                )
+                return
+            self._ok(
+                {
+                    "devices": [_device_payload(device, None)],
                     "probedSeconds": round(time.monotonic() - started, 3),
                 }
             )
@@ -564,6 +631,53 @@ def _host_of(endpoint: str) -> str:
     if "://" not in endpoint:
         return endpoint
     return endpoint.split("://", 1)[1].split("/", 1)[0]
+
+
+def _device_payload(device, warning) -> dict:  # noqa: ANN001 - onvif.DiscoveredDevice
+    """The wire shape of one discovered device, shared by the broadcast and directed paths.
+
+    `identity` (P-2) is what lets the camera service recognise this device after its IP changes. The
+    ONVIF endpoint UUID is the strongest identifier a camera offers, and `lastKnownAddress` is
+    deliberately carried alongside it rather than inside it — the address is the part expected to
+    change.
+    """
+    identity = device.to_identity()
+    stream_url = _stream_url(device)
+    return {
+        "endpoint": device.address,
+        "address": _host_of(device.address),
+        "metadata": device.to_metadata(),
+        "capabilities": device.to_capabilities(),
+        "registryId": device.registry_id,
+        **({"identity": identity} if identity else {}),
+        **({"warning": warning} if warning else {}),
+        **({"suggestedStreamUrl": stream_url} if stream_url else {}),
+    }
+
+
+def _apply_credentials(stream_url: str, credentials) -> tuple:  # noqa: ANN001 - optional dict
+    """Build the credentialed URI a probe needs, and say whether credentials were actually applied.
+
+    RTSP authentication happens in the URI — FFmpeg/OpenCV expose no other way to pass it — so the
+    one place in the platform that assembles a credentialed URL is here, transiently, for the
+    duration of a single probe. It is never persisted, never logged, and never returned: the caller
+    passes the result straight into the probe, and every error path redacts it.
+
+    The boolean matters as much as the URI. Opening a stream that needed no credentials proves
+    nothing about credentials, and the probe must not report an authentication *result* it did not
+    obtain.
+    """
+    if not isinstance(credentials, dict):
+        return stream_url, False
+    username = str(credentials.get("username") or "")
+    password = str(credentials.get("password") or "")
+    if not username or "://" not in stream_url:
+        return stream_url, False
+    from urllib.parse import quote  # noqa: WPS433 - local; only this path needs it
+
+    scheme, remainder = stream_url.split("://", 1)
+    userinfo = f"{quote(username, safe='')}:{quote(password, safe='')}"
+    return f"{scheme}://{userinfo}@{remainder}", True
 
 
 def _stream_url(device) -> Optional[str]:  # noqa: ANN001 - onvif.DiscoveredDevice

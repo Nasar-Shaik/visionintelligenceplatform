@@ -12,6 +12,11 @@
 import { CreateCameraInput } from '@vip/contracts';
 import type {
   BulkCreateCamerasInput,
+  CameraHealthSummary,
+  CameraLifecycleState,
+  CameraProbeReport,
+  CameraTimelineEntry,
+  CapabilityRefreshResult,
   BulkCreateCamerasResult,
   BulkCreateCameraResult,
   Camera,
@@ -21,6 +26,8 @@ import type {
   CameraStatus,
   CameraValidationInput,
   CameraValidationResult,
+  CameraOperationalHealth,
+  StreamProbeResult,
   DiscoverCamerasInput,
   DiscoverCamerasResult,
   DiscoveredCamera,
@@ -41,9 +48,25 @@ import {
   type IdGen,
   type CameraDoc,
 } from '../domain/camera.js';
+import {
+  appendTimeline,
+  derivedLifecycle,
+  healthFromProbe,
+  stateForProbe,
+  transition,
+  LifecycleError,
+} from '../domain/lifecycle.js';
+import { buildMatchIndex, matchDevice } from '../domain/identity.js';
+import {
+  capabilityRefreshDecision,
+  declaredCache,
+  recordRefresh,
+} from '../domain/capability-cache.js';
+import { summarizeHealth } from '../domain/health-history.js';
 import { badRequest, conflict, notFound } from './errors.js';
 import { nullPublisher, type EventPublisher } from './events.js';
 import { UnavailableDiscoveryProvider, type DiscoveryProvider } from './discovery.js';
+import { UnavailableStreamProbe, type StreamProbe } from './stream-probe.js';
 
 const DUPLICATE_KEY = 11000;
 
@@ -51,23 +74,6 @@ const DUPLICATE_KEY = 11000;
 function nameOf(raw: unknown): string {
   const name = (raw as { name?: unknown } | null)?.name;
   return typeof name === 'string' && name.length > 0 ? name.slice(0, 200) : '(unnamed)';
-}
-
-/**
- * Normalize a stream URL for comparison (P-1). Scheme and host are case-insensitive per RFC 3986;
- * the path is not, because plenty of DVRs serve case-sensitive channel paths. A trailing slash is
- * dropped — `/live` and `/live/` are the same endpoint and a false mismatch would have an installer
- * onboard a duplicate that then fails on the unique index.
- */
-function normalizeStreamUrl(url: string): string {
-  const trimmed = url.trim().replace(/\/+$/, '');
-  const separator = trimmed.indexOf('://');
-  if (separator < 0) return trimmed.toLowerCase();
-  const scheme = trimmed.slice(0, separator).toLowerCase();
-  const rest = trimmed.slice(separator + 3);
-  const slash = rest.indexOf('/');
-  if (slash < 0) return `${scheme}://${rest.toLowerCase()}`;
-  return `${scheme}://${rest.slice(0, slash).toLowerCase()}${rest.slice(slash)}`;
 }
 
 export interface CameraServiceDeps {
@@ -78,6 +84,8 @@ export interface CameraServiceDeps {
   publisher?: EventPublisher;
   /** Network discovery (P-1). Absent = a deployment that onboards from a list of URLs. */
   discovery?: DiscoveryProvider;
+  /** Stream validation (P-2). Absent = a deployment that cannot measure a camera, and says so. */
+  probe?: StreamProbe;
 }
 
 export class CameraService {
@@ -87,6 +95,7 @@ export class CameraService {
   private readonly ids: IdGen;
   private readonly publisher: EventPublisher;
   private readonly discovery: DiscoveryProvider;
+  private readonly streamProbe: StreamProbe;
 
   constructor(deps: CameraServiceDeps) {
     this.cameras = deps.cameras;
@@ -95,10 +104,32 @@ export class CameraService {
     this.ids = deps.ids;
     this.publisher = deps.publisher ?? nullPublisher;
     this.discovery = deps.discovery ?? new UnavailableDiscoveryProvider();
+    this.streamProbe = deps.probe ?? new UnavailableStreamProbe();
   }
 
-  /** Onboard a camera under the caller's tenant. Credentials (if any) are sealed before persistence. */
+  /**
+   * Onboard a camera under the caller's tenant. Credentials (if any) are sealed before persistence.
+   *
+   * **Validation gates onboarding** (Architect P-1 rec 4): a configuration that fails the
+   * deterministic checks is refused rather than stored, because a camera that can never connect is
+   * not an inventory entry — it is a support ticket with a name. What is *not* gated here is live
+   * connectivity: proving that needs the network, and an installer configuring cameras from an
+   * office must still be able to onboard them. That proof is `probeConnection`, and until it runs
+   * the camera stays at `configured` and claims nothing.
+   */
   async create(scope: TenantScope, input: CreateCameraInput): Promise<Camera> {
+    const validation = validateCameraConfig({
+      protocol: input.protocol,
+      streamUrl: input.streamUrl,
+      ...(input.credentials ? { credentials: input.credentials } : {}),
+      ...(input.capture ? { capture: input.capture } : {}),
+    });
+    if (!validation.valid) {
+      const failed = validation.checks.filter((c) => !c.passed && !c.informational);
+      throw badRequest(
+        `configuration is not valid: ${failed.map((c) => c.message ?? c.name).join('; ')}`,
+      );
+    }
     const cipher = input.credentials ? this.vault.seal(JSON.stringify(input.credentials)) : null;
     const doc = newCamera(scope.tenantId, this.ids.cameraId(), input, cipher, this.clock.now());
     try {
@@ -137,7 +168,39 @@ export class CameraService {
     const cipher = patch.credentials
       ? this.vault.seal(JSON.stringify(patch.credentials))
       : undefined;
-    const updated = applyCameraUpdate(existing, patch, cipher, this.clock.now());
+    const at = this.clock.now();
+    const updated = applyCameraUpdate(existing, patch, cipher, at);
+    // P-2: record what changed, because a camera that stopped connecting an hour after someone
+    // rotated its credentials is a five-second diagnosis with this line and an afternoon without it.
+    const timeline = appendTimeline(
+      existing.timeline ?? [],
+      ...(cipher !== undefined
+        ? [
+            {
+              at: at.toISOString(),
+              kind: 'credentials-updated' as const,
+              evidence: 'declared' as const,
+              detail: 'credentials were re-vaulted',
+            },
+          ]
+        : []),
+      ...(patch.streamUrl || patch.capture || patch.capabilities
+        ? [
+            {
+              at: at.toISOString(),
+              kind: 'configuration-updated' as const,
+              evidence: 'declared' as const,
+              detail: [
+                patch.streamUrl ? 'stream URL' : null,
+                patch.capture ? 'capture profile' : null,
+                patch.capabilities ? 'capabilities' : null,
+              ]
+                .filter(Boolean)
+                .join(', '),
+            },
+          ]
+        : []),
+    );
     await this.cameras.updateOne(
       scope,
       { _id: cameraId },
@@ -152,6 +215,7 @@ export class CameraService {
           capabilities:
             updated.capabilities ?? defaultCapabilities(updated.protocol, updated.capture),
           metadata: updated.metadata ?? defaultMetadata(),
+          timeline,
           credentialCipher: updated.credentialCipher,
           updatedAt: updated.updatedAt,
         },
@@ -162,7 +226,7 @@ export class CameraService {
       tenantId: scope.tenantId,
       payload: { cameraId, credentialsRotated: cipher !== undefined },
     });
-    return toCamera(updated);
+    return toCamera({ ...updated, timeline });
   }
 
   /** Remove a camera from the inventory (ingestion should stop consuming it). */
@@ -206,19 +270,14 @@ export class CameraService {
    */
   async discover(scope: TenantScope, input: DiscoverCamerasInput): Promise<DiscoverCamerasResult> {
     const probe = await this.discovery.probe({ timeoutSeconds: input.timeoutSeconds });
-    const existing = await this.cameras.findMany(scope, {});
-    // Compare on the normalized URL: a device answering `RTSP://Cam.local:554/x` and a camera stored
-    // as `rtsp://cam.local:554/x` are the same camera, and telling an installer otherwise would have
-    // them onboard a duplicate that then fails on the unique index.
-    const byUrl = new Map<string, CameraDoc>();
-    for (const doc of existing as CameraDoc[]) {
-      byUrl.set(normalizeStreamUrl(doc.streamUrl), doc);
-    }
+    const existing = (await this.cameras.findMany(scope, {})) as CameraDoc[];
+    // P-2: matched on DEVICE identity first, network identity second. A camera whose DHCP lease
+    // moved it to a new address is the same camera; matching on URL alone would offer it as a new
+    // device, and the installer would onboard the same hardware twice.
+    const index = buildMatchIndex(existing);
 
     const devices: DiscoveredCamera[] = probe.devices.map((device) => {
-      const match = device.suggestedStreamUrl
-        ? byUrl.get(normalizeStreamUrl(device.suggestedStreamUrl))
-        : undefined;
+      const match = matchDevice(index, device);
       return {
         endpoint: device.endpoint,
         ...(device.address ? { address: device.address } : {}),
@@ -227,8 +286,10 @@ export class CameraService {
         ...(device.suggestedStreamUrl ? { suggestedStreamUrl: device.suggestedStreamUrl } : {}),
         ...(device.registryId ? { registryId: device.registryId } : {}),
         ...(device.warning ? { warning: device.warning } : {}),
-        alreadyOnboarded: match !== undefined,
-        ...(match ? { cameraId: match._id } : {}),
+        ...(device.identity ? { identity: device.identity } : {}),
+        alreadyOnboarded: match !== null,
+        ...(match ? { cameraId: match.camera._id } : {}),
+        addressChanged: match?.addressChanged ?? false,
       };
     });
 
@@ -347,6 +408,325 @@ export class CameraService {
       payload: { cameraId, credentialsRotated: false },
     });
     return toCamera({ ...doc, status, updatedAt: at });
+  }
+
+  // --- P-2: lifecycle, measured health, capability cache -------------------------------------
+
+  /**
+   * Test a camera's connection against the physical device and record what was measured.
+   *
+   * This is the only path by which a camera reaches `connected`, and the rule it enforces is the
+   * one that keeps the whole state machine honest: **a probe that did not touch hardware moves
+   * nothing**. A simulated or file-backed probe still returns its full check list — the console
+   * shows it, and it is genuinely useful for debugging the platform — but the lifecycle does not
+   * advance, because nothing was learned about a camera.
+   *
+   * `unavailable` (no probe configured) is reported distinctly from a probe that ran and failed.
+   */
+  async probeConnection(scope: TenantScope, cameraId: string): Promise<CameraProbeReport> {
+    const doc = await this.require(scope, cameraId);
+    const lifecycle = doc.lifecycle ?? derivedLifecycle(doc.createdAt);
+    const credentials = this.openCredentials(doc);
+
+    const outcome = await this.streamProbe.probe({
+      protocol: doc.protocol,
+      streamUrl: doc.streamUrl,
+      ...(credentials ? { credentials } : {}),
+      ...(doc.capabilities ? { capabilities: doc.capabilities } : {}),
+    });
+    if (!outcome.result) {
+      return {
+        cameraId,
+        lifecycle,
+        unavailable: outcome.unavailable ?? 'the stream validator returned no result',
+      };
+    }
+
+    const result = outcome.result;
+    const at = this.clock.now();
+    const operational = healthFromProbe(result);
+    const target = stateForProbe(result);
+
+    const entries: (CameraTimelineEntry | null)[] = [
+      {
+        at: operational.observedAt,
+        kind: result.framesRead > 0 ? 'probe-succeeded' : 'probe-failed',
+        evidence: 'measured',
+        detail: this.probeDetail(result),
+      },
+    ];
+
+    let next = lifecycle;
+    if (target !== null && lifecycle.state !== 'retired') {
+      // A retired camera is skipped rather than refused: a scheduled probe reaching a decommissioned
+      // device is an observation, not an operator decision, and it must not throw.
+      const moved = transition(lifecycle, {
+        to: target,
+        evidence: 'measured',
+        evidenceClass: result.evidenceClass,
+        reason: this.probeDetail(result),
+        at,
+      });
+      next = moved.lifecycle;
+      entries.push(moved.entry);
+    }
+
+    const timeline = appendTimeline(doc.timeline ?? [], ...entries);
+    await this.cameras.updateOne(
+      scope,
+      { _id: cameraId },
+      {
+        $set: {
+          lifecycle: next,
+          timeline,
+          operational,
+          health: this.rollupHealth(operational, at),
+          updatedAt: at.toISOString(),
+        },
+      },
+    );
+    await this.publisher.publish({
+      type: 'camera.health.checked',
+      tenantId: scope.tenantId,
+      payload: { cameraId, status: this.rollupHealth(operational, at).status },
+    });
+    return { cameraId, probe: result, operational, lifecycle: next };
+  }
+
+  /**
+   * Read a camera's capabilities, going back to the device only when that is warranted (P-2).
+   *
+   * The decision is the product here, not the read: an ONVIF negotiation is several round trips
+   * against an embedded web server, and a platform that re-queries on every session start is a
+   * platform whose cameras eventually stop answering.
+   */
+  async refreshCapabilities(
+    scope: TenantScope,
+    cameraId: string,
+    options: { force?: boolean } = {},
+  ): Promise<CapabilityRefreshResult> {
+    const doc = await this.require(scope, cameraId);
+    const capabilities = doc.capabilities ?? defaultCapabilities(doc.protocol, doc.capture);
+    const cache = doc.capabilityCache ?? declaredCache();
+    const at = this.clock.now();
+
+    const decision = capabilityRefreshDecision({
+      cache,
+      now: at,
+      ...(options.force !== undefined ? { force: options.force } : {}),
+      ...(doc.operational?.firmware ? { observedFirmware: doc.operational.firmware } : {}),
+    });
+    if (!decision.refresh) {
+      return { cameraId, capabilities, cache, reason: decision.reason, refreshed: false };
+    }
+
+    // A directed negotiation of this one device — not a broadcast. The device is identified by the
+    // endpoint discovery recorded; without one there is nothing to address, and saying so beats
+    // re-scanning the whole segment on a per-camera button press.
+    const endpoint = doc.identity?.lastKnownAddress;
+    if (!endpoint) {
+      const updated = recordRefresh(cache, { reason: decision.reason, refreshed: false, at });
+      await this.cameras.updateOne(
+        scope,
+        { _id: cameraId },
+        { $set: { capabilityCache: updated, updatedAt: at.toISOString() } },
+      );
+      return {
+        cameraId,
+        capabilities,
+        cache: updated,
+        reason: decision.reason,
+        refreshed: false,
+        unavailable:
+          'this camera has no discovered device address, so it cannot be queried directly — run discovery first',
+      };
+    }
+
+    const found = await this.discovery.probe({ timeoutSeconds: 5, endpoint });
+    const device = found.devices[0];
+    if (!device) {
+      const updated = recordRefresh(cache, { reason: decision.reason, refreshed: false, at });
+      await this.cameras.updateOne(
+        scope,
+        { _id: cameraId },
+        { $set: { capabilityCache: updated, updatedAt: at.toISOString() } },
+      );
+      return {
+        cameraId,
+        capabilities,
+        cache: updated,
+        reason: decision.reason,
+        refreshed: false,
+        unavailable: found.unavailable ?? 'the device did not answer',
+      };
+    }
+
+    const firmware = device.metadata.firmware;
+    const updatedCache = recordRefresh(cache, {
+      reason: decision.reason,
+      refreshed: true,
+      at,
+      ...(firmware ? { firmware } : {}),
+    });
+    const firmwareMoved = Boolean(firmware && cache.firmware && firmware !== cache.firmware);
+    const timeline = appendTimeline(
+      doc.timeline ?? [],
+      ...(firmwareMoved
+        ? [
+            {
+              at: at.toISOString(),
+              kind: 'firmware-changed' as const,
+              evidence: 'measured' as const,
+              detail: `firmware changed from ${cache.firmware} to ${firmware}`,
+            },
+          ]
+        : []),
+      {
+        at: at.toISOString(),
+        kind: 'capability-refreshed' as const,
+        evidence: 'measured' as const,
+        detail: decision.detail,
+      },
+    );
+
+    await this.cameras.updateOne(
+      scope,
+      { _id: cameraId },
+      {
+        $set: {
+          capabilities: device.capabilities,
+          capabilityCache: updatedCache,
+          timeline,
+          updatedAt: at.toISOString(),
+        },
+      },
+    );
+    return {
+      cameraId,
+      capabilities: device.capabilities,
+      cache: updatedCache,
+      reason: decision.reason,
+      refreshed: true,
+    };
+  }
+
+  /**
+   * Decommission a camera without destroying it.
+   *
+   * **Retire is not delete.** Deleting a camera throws away the timeline an incident investigation
+   * six months from now may need to explain why there is no footage of something. Retiring keeps the
+   * record and its evidence, stops ingestion, and makes the state explicit so a later probe cannot
+   * quietly bring it back (see `transition`).
+   */
+  async retire(scope: TenantScope, cameraId: string, reason = 'retired by an operator') {
+    return this.administrative(scope, cameraId, 'retired', reason, 'disabled');
+  }
+
+  /** Return a retired camera to service. It re-enters at `configured` and re-earns everything else. */
+  async reinstate(scope: TenantScope, cameraId: string, reason = 'reinstated by an operator') {
+    return this.administrative(scope, cameraId, 'configured', reason, 'enabled');
+  }
+
+  /** Trends over a camera's recorded timeline (P-2). Computed, never stored. */
+  async healthSummary(
+    scope: TenantScope,
+    cameraId: string,
+    options: { windowHours?: number } = {},
+  ): Promise<CameraHealthSummary> {
+    const doc = await this.require(scope, cameraId);
+    const windowEnd = this.clock.now();
+    const windowStart = new Date(windowEnd.getTime() - (options.windowHours ?? 24) * 3_600_000);
+    const latency = doc.operational?.rtspLatencyMs;
+    return summarizeHealth({
+      cameraId,
+      timeline: doc.timeline ?? [],
+      windowStart,
+      windowEnd,
+      ...(latency !== undefined ? { latencySamples: [latency] } : {}),
+    });
+  }
+
+  /** Shared implementation of the two administrative transitions. */
+  private async administrative(
+    scope: TenantScope,
+    cameraId: string,
+    to: CameraLifecycleState,
+    reason: string,
+    status: CameraStatus,
+  ): Promise<Camera> {
+    const doc = await this.require(scope, cameraId);
+    const lifecycle = doc.lifecycle ?? derivedLifecycle(doc.createdAt);
+    const at = this.clock.now();
+    let moved;
+    try {
+      moved = transition(lifecycle, { to, evidence: 'administrative', reason, at });
+    } catch (err) {
+      throw err instanceof LifecycleError ? badRequest(err.message) : err;
+    }
+    const timeline = appendTimeline(doc.timeline ?? [], moved.entry);
+    await this.cameras.updateOne(
+      scope,
+      { _id: cameraId },
+      { $set: { lifecycle: moved.lifecycle, timeline, status, updatedAt: at.toISOString() } },
+    );
+    await this.publisher.publish({
+      type: 'camera.updated',
+      tenantId: scope.tenantId,
+      payload: { cameraId, credentialsRotated: false },
+    });
+    return toCamera({
+      ...doc,
+      lifecycle: moved.lifecycle,
+      timeline,
+      status,
+      updatedAt: at.toISOString(),
+    });
+  }
+
+  /** One line an installer can act on, assembled from the first check that actually failed. */
+  private probeDetail(result: StreamProbeResult): string {
+    const failed = result.checks.find((c) => c.status === 'fail');
+    if (failed) {
+      return `${failed.name} failed${failed.detail ? `: ${failed.detail}` : ''}`.slice(0, 300);
+    }
+    if (result.framesRead === 0) return (result.error ?? 'no frames were received').slice(0, 300);
+    return `read ${result.framesRead} frames${result.resolution ? ` at ${result.resolution}` : ''}`;
+  }
+
+  /**
+   * Collapse a measured observation into the coarse `CameraHealth` rollup the list view shows.
+   *
+   * A probe that never touched hardware refreshes the timestamp and nothing else: it measured the
+   * platform, not the camera, and overwriting an operator's view of a real device with a simulation
+   * result is the same mistake as certifying hardware from a simulation.
+   */
+  private rollupHealth(operational: CameraOperationalHealth, at: Date): CameraHealth {
+    if (operational.evidenceClass !== 'hardware') {
+      return {
+        status: 'unknown',
+        lastCheckedAt: at.toISOString(),
+        detail: 'not measured on hardware',
+      };
+    }
+    const status = !operational.reachable
+      ? 'offline'
+      : operational.streamAvailable
+        ? 'online'
+        : 'unhealthy';
+    return {
+      status,
+      lastCheckedAt: at.toISOString(),
+      ...(operational.detail ? { detail: operational.detail } : {}),
+    };
+  }
+
+  /** Decrypt vaulted credentials for a transient internal use. Never logged, never persisted. */
+  private openCredentials(doc: CameraDoc): { username: string; password: string } | null {
+    if (!doc.credentialCipher) return null;
+    return JSON.parse(this.vault.open(doc.credentialCipher)) as {
+      username: string;
+      password: string;
+    };
   }
 
   /**

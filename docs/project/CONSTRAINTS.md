@@ -74,6 +74,20 @@
     Architecture v1.0 is complete. Improve it through implementation quality, not structural expansion;
     a new layer requires an ADR and a platform-wide justification. "It would be convenient here" is not
     one. — _enforced: `check:imports`; ADR requirement; review._
+25. **A camera's operational state requires measured evidence.** `connected` · `monitoring` ·
+    `degraded` · `offline` are claims about a physical device and may only be entered from a probe of
+    that device (`EvidenceClass: hardware`). `discovered` · `validated` · `configured` are declared;
+    `retired` is administrative and is not reversible by a health check. This is §18 applied to
+    devices instead of capabilities, and for the same reason: a platform that can talk itself into
+    "connected" from a simulation reports estates that do not exist. — _enforced:
+    `services/camera/src/domain/lifecycle.ts` refuses the transition; `stateForProbe()` returns
+    `null` for non-hardware evidence; negative controls in `stream_probe`, `lifecycle.test.ts` and
+    the camera-service HTTP tests. [ADR-0024](../adr/ADR-0024-camera-lifecycle-evidence-gate.md)._
+26. **One evidence vocabulary, platform-wide.** `EvidenceClass` lives in
+    `@vip/contracts/common/evidence.ts` and is read by certification, capability maturity, benchmarks
+    and the camera lifecycle alike. A second evidence vocabulary would drift, and a drifted evidence
+    vocabulary is how a simulation starts counting as a measurement somewhere nobody is looking. —
+    _enforced: one definition, imported not re-exported, so the barrel exports exactly one; review._
 
 ## Engineering process
 

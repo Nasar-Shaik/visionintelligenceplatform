@@ -3,6 +3,9 @@ import type {
   Camera,
   CameraCapabilities,
   CameraHealthReport,
+  CameraHealthSummary,
+  CameraProbeReport,
+  CapabilityRefreshResult,
   CameraValidationInput,
   CameraValidationResult,
   CreateCameraInput,
@@ -37,4 +40,17 @@ export const camerasApi = {
   checkHealth: (id: string) => http.post<CameraHealthReport>(`/camera/cameras/${id}/health/check`),
   setStatus: (id: string, status: 'enabled' | 'disabled') =>
     http.post<Camera>(`/camera/cameras/${id}/${status === 'enabled' ? 'enable' : 'disable'}`),
+  // P-2. `probe` is a POST for the same reason `discover` is: it opens a stream on the customer's
+  // network and writes what it measured.
+  probe: (id: string) => http.post<CameraProbeReport>(`/camera/cameras/${id}/probe`),
+  refreshCapabilities: (id: string, force = false) =>
+    http.post<CapabilityRefreshResult>(
+      `/camera/cameras/${id}/capabilities/refresh${force ? '?force=true' : ''}`,
+    ),
+  healthSummary: (id: string, windowHours = 24) =>
+    http.get<CameraHealthSummary>(
+      `/camera/cameras/${id}/health/summary?windowHours=${windowHours}`,
+    ),
+  retire: (id: string) => http.post<Camera>(`/camera/cameras/${id}/retire`),
+  reinstate: (id: string) => http.post<Camera>(`/camera/cameras/${id}/reinstate`),
 };

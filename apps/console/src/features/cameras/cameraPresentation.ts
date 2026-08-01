@@ -1,4 +1,10 @@
-import type { Camera, CameraCapabilities, CameraHealthStatus } from '@vip/contracts';
+import type {
+  Camera,
+  CameraCapabilities,
+  CameraHealthStatus,
+  CameraLifecycleState,
+  StreamProbeCheck,
+} from '@vip/contracts';
 import type { StatusKind } from '@/lib/status';
 
 /** Camera health → design-system status token. Shared by the list, the detail sheet and the dashboard. */
@@ -105,3 +111,89 @@ export const DVR_TEMPLATES = [
   { id: 'uniview', label: 'UNV (sub-stream)', template: '/media/video{channel}_2' },
   { id: 'custom', label: 'Custom template', template: '/channel/{channel}' },
 ] as const;
+
+// --- P-2: lifecycle presentation ---------------------------------------------------------------
+
+export const LIFECYCLE_LABEL: Record<CameraLifecycleState, string> = {
+  discovered: 'Discovered',
+  validated: 'Validated',
+  configured: 'Configured',
+  connected: 'Connected',
+  monitoring: 'Monitoring',
+  degraded: 'Degraded',
+  offline: 'Offline',
+  retired: 'Retired',
+};
+
+/**
+ * Lifecycle state → design-system status token.
+ *
+ * `configured` is deliberately `idle` rather than `ok`: a camera that has been set up but never
+ * measured is not a healthy camera, and colouring it green is how an operator comes to believe an
+ * estate is working when nothing has ever connected to it.
+ */
+export const LIFECYCLE_KIND: Record<CameraLifecycleState, StatusKind> = {
+  discovered: 'idle',
+  validated: 'idle',
+  configured: 'idle',
+  connected: 'ok',
+  monitoring: 'ok',
+  degraded: 'warn',
+  offline: 'error',
+  retired: 'idle',
+};
+
+/** One line explaining what a lifecycle state actually means, for the operator who has not read the ADR. */
+export const LIFECYCLE_MEANING: Record<CameraLifecycleState, string> = {
+  discovered: 'Found on the network. Nothing about it has been verified.',
+  validated: 'Its configuration passes the checks. No device has been contacted.',
+  configured: 'Ready to be tested. Nothing has measured this camera yet.',
+  connected: 'Measured: frames were read from the physical device.',
+  monitoring: 'Measured: analysis is running on this camera.',
+  degraded: 'Measured: reachable, but not working properly.',
+  offline: 'Measured: the device could not be reached.',
+  retired: 'Decommissioned. The record and its history are kept.',
+};
+
+/** Probe check status → the glyph an installer scans down the list for. */
+export const CHECK_GLYPH: Record<StreamProbeCheck['status'], string> = {
+  pass: '✓',
+  fail: '✗',
+  warn: '!',
+  'not-executed': '–',
+};
+
+export const CHECK_KIND: Record<StreamProbeCheck['status'], StatusKind> = {
+  pass: 'ok',
+  fail: 'error',
+  warn: 'warn',
+  'not-executed': 'idle',
+};
+
+/** Human labels for the ordered probe checks. */
+export const CHECK_LABEL: Record<string, string> = {
+  reachability: 'Device reachable',
+  authentication: 'Authentication',
+  'stream-open': 'RTSP opened',
+  'frames-received': 'Stream started',
+  codec: 'Codec',
+  resolution: 'Resolution',
+  fps: 'Frame rate',
+  latency: 'Latency',
+  jitter: 'Jitter',
+};
+
+/**
+ * The one line to lead a failed test-connection with.
+ *
+ * The **first** failing check in the ordered list, because the checks are ordered by causation:
+ * everything after the first failure is a consequence, and leading with a consequence is what sends
+ * an installer to re-run cable for a password problem.
+ */
+export function probeHeadline(checks: readonly StreamProbeCheck[]): string | null {
+  const failed = checks.find((c) => c.status === 'fail');
+  if (failed) return `${CHECK_LABEL[failed.name] ?? failed.name} failed`;
+  const warned = checks.find((c) => c.status === 'warn');
+  if (warned) return `${CHECK_LABEL[warned.name] ?? warned.name} is below par`;
+  return null;
+}

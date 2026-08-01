@@ -7,6 +7,11 @@
 import type {
   Camera,
   CameraCapabilities,
+  CameraDeviceIdentity,
+  CameraLifecycle,
+  CameraOperationalHealth,
+  CameraTimelineEntry,
+  CapabilityCache,
   CameraMetadata,
   CameraProtocol,
   CameraStatus,
@@ -19,6 +24,8 @@ import type {
   UpdateCameraInput,
 } from '@vip/contracts';
 import type { TenantScoped } from '@vip/tenancy';
+import { declaredCache } from './capability-cache.js';
+import { derivedLifecycle, initialLifecycle } from './lifecycle.js';
 
 /** MongoDB-persisted camera document. `_id` is the camera id; `tenantId` scopes it (Law 5). */
 export interface CameraDoc extends TenantScoped {
@@ -34,6 +41,16 @@ export interface CameraDoc extends TenantScoped {
   capabilities?: CameraCapabilities;
   /** Operator/device metadata (P2-2 G-1). Optional on read for pre-G-1 documents. */
   metadata?: CameraMetadata;
+  /** Operational state (P-2). Optional on read for pre-P-2 documents; derived when absent. */
+  lifecycle?: CameraLifecycle;
+  /** Bounded operational history (P-2). */
+  timeline?: CameraTimelineEntry[];
+  /** Stable device identity (P-2). Absent until a device has identified itself. */
+  identity?: CameraDeviceIdentity;
+  /** Provenance of the cached capabilities (P-2). */
+  capabilityCache?: CapabilityCache;
+  /** Last measured device health (P-2). Absent means nothing has ever probed this camera. */
+  operational?: CameraOperationalHealth;
   /** Sealed credentials envelope (@vip/crypto), or null when none are vaulted. Never returned. */
   credentialCipher: string | null;
   createdAt: string;
@@ -172,6 +189,24 @@ export function newCamera(
     // Capabilities: use the operator's declaration, else derive from protocol + capture (P2-2 G-1).
     capabilities: input.capabilities ?? defaultCapabilities(input.protocol, capture),
     metadata: input.metadata ?? defaultMetadata(),
+    // P-2: a new camera has a configuration and nothing measured. It reaches `connected` only when
+    // a probe against the physical device says so — never at onboarding.
+    lifecycle: initialLifecycle(at),
+    timeline: [
+      {
+        at: ts,
+        kind: 'state-changed',
+        evidence: 'declared',
+        to: 'configured',
+        detail: 'onboarded',
+      },
+    ],
+    // Empty either way: capabilities supplied at onboarding are *declared*, and a declaration is
+    // not a device read. `discoveredAt` stays absent until something actually asks the camera.
+    capabilityCache: declaredCache(),
+    // P-2: carried from discovery when it is known. This is what makes the camera recognisable at a
+    // new address later — identity recorded at onboarding or not at all.
+    ...(input.identity ? { identity: input.identity } : {}),
     credentialCipher,
     createdAt: ts,
     updatedAt: ts,
@@ -219,6 +254,13 @@ export function toCamera(doc: CameraDoc): Camera {
     // Default for pre-G-1 documents so every response satisfies the (now-required) contract fields.
     capabilities: doc.capabilities ?? defaultCapabilities(doc.protocol, doc.capture),
     metadata: doc.metadata ?? defaultMetadata(),
+    // P-2: derived for pre-P-2 documents rather than left absent — a state machine every consumer
+    // has to null-check is a state machine nobody relies on.
+    lifecycle: doc.lifecycle ?? derivedLifecycle(doc.createdAt),
+    timeline: doc.timeline ?? [],
+    ...(doc.identity ? { identity: doc.identity } : {}),
+    ...(doc.capabilityCache ? { capabilityCache: doc.capabilityCache } : {}),
+    ...(doc.operational ? { operational: doc.operational } : {}),
     hasCredentials: doc.credentialCipher !== null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,

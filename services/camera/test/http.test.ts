@@ -15,6 +15,7 @@ import { signAccessToken } from '@vip/auth';
 import { loadConfig } from '../src/config/env.js';
 import { CameraService } from '../src/application/camera-service.js';
 import type { DiscoveryProbe, DiscoveryProvider } from '../src/application/discovery.js';
+import type { StreamProbe, StreamProbeOutcome } from '../src/application/stream-probe.js';
 import type { CameraDoc } from '../src/domain/camera.js';
 import { buildServer } from '../src/transport/server.js';
 
@@ -88,7 +89,38 @@ const DISCOVERED = {
   registryId: 'hikvision-ds-2cd2143g2',
 };
 
+/** A stream probe the test controls — no runtime, no camera, no network. */
+class StubProbe implements StreamProbe {
+  constructor(public outcome: StreamProbeOutcome) {}
+  async probe(): Promise<StreamProbeOutcome> {
+    return this.outcome;
+  }
+}
+
+/** A probe result that measured a real device and found it working. */
+const HARDWARE_OK: StreamProbeOutcome = {
+  result: {
+    probedAt: '2026-07-28T00:00:00.000Z',
+    evidenceClass: 'hardware',
+    reachable: true,
+    framesRead: 3,
+    firstFrameMs: 412,
+    fps: 10,
+    resolution: '640x360',
+    authentication: 'ok',
+    checks: [
+      { name: 'reachability', status: 'pass' },
+      { name: 'authentication', status: 'pass' },
+      { name: 'stream-open', status: 'pass' },
+      { name: 'frames-received', status: 'pass', measured: '3 frames' },
+    ],
+    profiles: [],
+    warnings: [],
+  },
+};
+
 let discovery: StubDiscovery;
+let probe: StubProbe;
 
 function token(tenantId: string, roles: string[]): Promise<string> {
   return signAccessToken(
@@ -119,12 +151,14 @@ beforeEach(async () => {
   });
   let n = 0;
   discovery = new StubDiscovery({ devices: [DISCOVERED], probedSeconds: 3 });
+  probe = new StubProbe(HARDWARE_OK);
   const service = new CameraService({
     cameras: new TenantRepository<CameraDoc>(memoryCollection<CameraDoc>()),
     vault: SecretBox.fromSecret(SECRET),
     clock: { now: () => new Date('2026-07-28T00:00:00.000Z') },
     ids: { cameraId: () => `cam_${++n}` },
     discovery,
+    probe,
   });
   app = (await buildServer({ config, service, startedAt: new Date() })).app;
   await app.ready();
@@ -600,5 +634,305 @@ describe('G-1 enhancements: status + active health-check', () => {
     expect(res.json().data.lastCheckedAt).toBeTruthy();
     // Config is valid → status stays observed 'unknown' (live connectivity proven by ingestion/G-2).
     expect(res.json().data.status).toBe('unknown');
+  });
+});
+
+// -------------------------------------------------------------------------------------------
+// P-2: lifecycle, measured health, capability cache
+// -------------------------------------------------------------------------------------------
+
+describe('camera lifecycle (P-2)', () => {
+  async function onboard(t: string) {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/cameras',
+      headers: auth(t),
+      payload: validCamera,
+    });
+    return res.json().data;
+  }
+
+  it('a newly onboarded camera is configured, never connected', async () => {
+    const t = await token(TENANT, ['admin']);
+    const camera = await onboard(t);
+    // The platform has a configuration and has measured nothing. Claiming `connected` here is the
+    // failure that makes every downstream dashboard fiction.
+    expect(camera.lifecycle.state).toBe('configured');
+    expect(camera.lifecycle.evidence).toBe('declared');
+    expect(camera.operational).toBeUndefined();
+  });
+
+  it('refuses to onboard a configuration that cannot work', async () => {
+    const t = await token(TENANT, ['admin']);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/cameras',
+      headers: auth(t),
+      payload: { ...validCamera, streamUrl: 'rtsp://admin:pass@cam.local/stream' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('a hardware probe connects the camera and records what it measured', async () => {
+    const t = await token(TENANT, ['admin']);
+    const camera = await onboard(t);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/cameras/${camera.id}/probe`,
+      headers: auth(t),
+    });
+    expect(res.statusCode).toBe(200);
+    const report = res.json().data;
+    expect(report.lifecycle.state).toBe('connected');
+    expect(report.lifecycle.evidence).toBe('measured');
+    expect(report.operational.rtspLatencyMs).toBe(412);
+    expect(report.operational.source).toBe('stream-probe');
+  });
+
+  it('NEGATIVE CONTROL: a flawless simulated probe does not connect the camera', async () => {
+    const t = await token(TENANT, ['admin']);
+    const camera = await onboard(t);
+    probe.outcome = {
+      result: { ...HARDWARE_OK.result!, evidenceClass: 'simulated', framesRead: 30, fps: 25 },
+    };
+    const res = await app.inject({
+      method: 'POST',
+      url: `/cameras/${camera.id}/probe`,
+      headers: auth(t),
+    });
+    const report = res.json().data;
+    // The checks all pass and the console shows them. The camera is still not connected, because
+    // nothing was learned about a camera — only about the platform.
+    expect(report.probe.evidenceClass).toBe('simulated');
+    expect(report.lifecycle.state).toBe('configured');
+  });
+
+  it('distinguishes "we cannot test here" from "this camera failed"', async () => {
+    const t = await token(TENANT, ['admin']);
+    const camera = await onboard(t);
+    probe.outcome = { unavailable: 'stream validation is not configured for this deployment' };
+    const res = await app.inject({
+      method: 'POST',
+      url: `/cameras/${camera.id}/probe`,
+      headers: auth(t),
+    });
+    const report = res.json().data;
+    expect(report.unavailable).toMatch(/not configured/);
+    expect(report.probe).toBeUndefined();
+    // A deployment gap must not be recorded as a camera fault.
+    expect(report.lifecycle.state).toBe('configured');
+  });
+
+  it('an unreachable device goes offline and says why', async () => {
+    const t = await token(TENANT, ['admin']);
+    const camera = await onboard(t);
+    probe.outcome = {
+      result: {
+        ...HARDWARE_OK.result!,
+        reachable: false,
+        framesRead: 0,
+        authentication: 'unknown',
+        error: 'no route to host',
+        checks: [{ name: 'reachability', status: 'fail', detail: 'no route to host' }],
+      },
+    };
+    const res = await app.inject({
+      method: 'POST',
+      url: `/cameras/${camera.id}/probe`,
+      headers: auth(t),
+    });
+    const report = res.json().data;
+    expect(report.lifecycle.state).toBe('offline');
+    expect(report.operational.streamAvailable).toBe(false);
+  });
+
+  it('retire keeps the record and its history, unlike delete', async () => {
+    const t = await token(TENANT, ['admin']);
+    const camera = await onboard(t);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/cameras/${camera.id}/retire`,
+      headers: auth(t),
+    });
+    expect(res.statusCode).toBe(200);
+    const retired = res.json().data;
+    expect(retired.lifecycle.state).toBe('retired');
+    expect(retired.status).toBe('disabled');
+    // Still there — an investigation months from now may need this camera's timeline.
+    const still = await app.inject({
+      method: 'GET',
+      url: `/cameras/${camera.id}`,
+      headers: auth(t),
+    });
+    expect(still.statusCode).toBe(200);
+  });
+
+  it('a retired camera is not revived by a probe that happens to reach it', async () => {
+    const t = await token(TENANT, ['admin']);
+    const camera = await onboard(t);
+    await app.inject({ method: 'POST', url: `/cameras/${camera.id}/retire`, headers: auth(t) });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/cameras/${camera.id}/probe`,
+      headers: auth(t),
+    });
+    expect(res.statusCode).toBe(200);
+    // The device may have been redeployed somewhere else entirely. Reinstatement is a decision.
+    expect(res.json().data.lifecycle.state).toBe('retired');
+  });
+
+  it('reinstate returns a camera to configured, not to whatever it was before', async () => {
+    const t = await token(TENANT, ['admin']);
+    const camera = await onboard(t);
+    await app.inject({ method: 'POST', url: `/cameras/${camera.id}/probe`, headers: auth(t) });
+    await app.inject({ method: 'POST', url: `/cameras/${camera.id}/retire`, headers: auth(t) });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/cameras/${camera.id}/reinstate`,
+      headers: auth(t),
+    });
+    expect(res.json().data.lifecycle.state).toBe('configured');
+    expect(res.json().data.status).toBe('enabled');
+  });
+
+  it('the timeline records credential rotation, which is what explains a later failure', async () => {
+    const t = await token(TENANT, ['admin']);
+    const camera = await onboard(t);
+    await app.inject({
+      method: 'PATCH',
+      url: `/cameras/${camera.id}`,
+      headers: auth(t),
+      payload: { credentials: { username: 'admin', password: 'rotated' } },
+    });
+    const res = await app.inject({ method: 'GET', url: `/cameras/${camera.id}`, headers: auth(t) });
+    const kinds = res.json().data.timeline.map((e: { kind: string }) => e.kind);
+    expect(kinds).toContain('credentials-updated');
+  });
+
+  it('probing requires camera:update, not merely camera:read', async () => {
+    const admin = await token(TENANT, ['admin']);
+    const camera = await onboard(admin);
+    const viewer = await token(TENANT, ['viewer']);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/cameras/${camera.id}/probe`,
+      headers: auth(viewer),
+    });
+    // A probe opens a stream on the customer's network. The permission matches what it does.
+    expect(res.statusCode).toBe(403);
+  });
+});
+
+describe('capability cache (P-2)', () => {
+  it('serves from cache without contacting the device', async () => {
+    const t = await token(TENANT, ['admin']);
+    const created = await app.inject({
+      method: 'POST',
+      url: '/cameras',
+      headers: auth(t),
+      payload: validCamera,
+    });
+    const id = created.json().data.id;
+    const res = await app.inject({
+      method: 'POST',
+      url: `/cameras/${id}/capabilities/refresh`,
+      headers: auth(t),
+    });
+    const result = res.json().data;
+    // Never discovered, and no device address on file — so it reports honestly rather than
+    // re-scanning the whole segment on a per-camera button press.
+    expect(result.reason).toBe('never-discovered');
+    expect(result.refreshed).toBe(false);
+    expect(result.unavailable).toMatch(/discovery/);
+  });
+});
+
+describe('health trends (P-2)', () => {
+  it('reports how much evidence a summary rests on', async () => {
+    const t = await token(TENANT, ['admin']);
+    const created = await app.inject({
+      method: 'POST',
+      url: '/cameras',
+      headers: auth(t),
+      payload: validCamera,
+    });
+    const id = created.json().data.id;
+    const res = await app.inject({
+      method: 'GET',
+      url: `/cameras/${id}/health/summary`,
+      headers: auth(t),
+    });
+    expect(res.statusCode).toBe(200);
+    const summary = res.json().data;
+    expect(summary.cameraId).toBe(id);
+    // One onboarding entry is not a trend, so no percentage is offered.
+    expect(summary.availabilityPercent).toBeUndefined();
+  });
+});
+
+describe('device identity (P-2)', () => {
+  it('THE DHCP CASE: recognises a camera that moved and offers to update, not to duplicate', async () => {
+    const t = await token(TENANT, ['admin']);
+    // Onboarded from discovery, so its identity was carried through and stored.
+    await app.inject({
+      method: 'POST',
+      url: '/cameras',
+      headers: auth(t),
+      payload: {
+        zoneId: 'on_zone1',
+        name: 'Lobby',
+        protocol: 'rtsp',
+        streamUrl: 'rtsp://10.0.0.64:554/Streaming/Channels/102',
+        identity: { onvifUuid: 'urn:uuid:abc-123', lastKnownAddress: '10.0.0.64' },
+      },
+    });
+
+    // The lease renewed overnight; the same physical camera now answers from .99.
+    discovery.probeResult = {
+      devices: [
+        {
+          ...DISCOVERED,
+          identity: { onvifUuid: 'urn:uuid:abc-123', lastKnownAddress: '10.0.0.99' },
+          suggestedStreamUrl: 'rtsp://10.0.0.99:554/Streaming/Channels/102',
+        },
+      ],
+      probedSeconds: 3,
+    };
+    const res = await app.inject({
+      method: 'POST',
+      url: '/cameras/discover',
+      headers: auth(t),
+      payload: {},
+    });
+    const device = res.json().data.devices[0];
+    // Matching on the URL alone would call this a new camera, and the installer would onboard the
+    // same hardware twice — one of the two never connecting again.
+    expect(device.alreadyOnboarded).toBe(true);
+    expect(device.addressChanged).toBe(true);
+    expect(device.cameraId).toBeDefined();
+  });
+
+  it('a device with no identity still matches on its stream URL', async () => {
+    const t = await token(TENANT, ['admin']);
+    await app.inject({
+      method: 'POST',
+      url: '/cameras',
+      headers: auth(t),
+      payload: {
+        zoneId: 'on_zone1',
+        name: 'Lobby',
+        protocol: 'rtsp',
+        streamUrl: 'rtsp://10.0.0.64:554/Streaming/Channels/102',
+      },
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/cameras/discover',
+      headers: auth(t),
+      payload: {},
+    });
+    const device = res.json().data.devices[0];
+    expect(device.alreadyOnboarded).toBe(true);
+    expect(device.addressChanged).toBe(false);
   });
 });

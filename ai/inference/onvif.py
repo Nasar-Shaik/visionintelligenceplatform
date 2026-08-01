@@ -128,6 +128,11 @@ class DiscoveredDevice:
     `CameraMetadata` + `CameraCapabilities` contracts — discovery introduces no new camera model."""
 
     address: str
+    # P-2: the device's own `urn:uuid:` identity from the WS-Discovery EndpointReference. This is
+    # the STRONGEST identifier a camera offers — assigned by the device, unchanged by DHCP, and the
+    # thing that lets the platform recognise the same physical camera at a new address instead of
+    # offering it to an installer as a new device.
+    endpoint_uuid: Optional[str] = None
     manufacturer: Optional[str] = None
     model: Optional[str] = None
     firmware: Optional[str] = None
@@ -184,6 +189,26 @@ class DiscoveredDevice:
         parts = [p for p in (self.manufacturer, self.model) if p]
         return " ".join(parts) if parts else self.address
 
+    def to_identity(self) -> dict:
+        """A `CameraDeviceIdentity` dict (P-2) — only what the device actually reported.
+
+        The network address is carried as `lastKnownAddress`, deliberately outside the identifying
+        fields: it is the one part expected to change, and treating it as identity is what makes a
+        camera look new every time its DHCP lease renews.
+        """
+        out: dict = {}
+        for key, value in (
+            ("onvifUuid", self.endpoint_uuid),
+            ("serialNumber", self.serial_number),
+            ("hardwareId", self.hardware_id),
+            ("lastKnownAddress", self.address),
+        ):
+            if value:
+                out[key] = value
+        if self.discovered_at:
+            out["confirmedAt"] = self.discovered_at
+        return out
+
     @property
     def registry_id(self) -> str:
         """Stable slug for the compatibility registry: `hikvision-ds2cd2143g2`."""
@@ -234,8 +259,17 @@ class OnvifDiscovery:
         scopes_text = " ".join(
             (el.text or "") for el in root.iter(f"{{{NS['d']}}}Scopes")
         ).split()
+        # `a:Address` is NOT callable (see above) but it IS the device's stable identity, so it is
+        # captured rather than discarded — that is the whole basis of P-2 identity matching.
+        endpoint_uuid = None
+        for el in root.iter(f"{{{NS['a']}}}Address"):
+            text = (el.text or "").strip()
+            if text.lower().startswith("urn:"):
+                endpoint_uuid = text
+                break
         device = DiscoveredDevice(
             address=addresses[0],
+            **({"endpoint_uuid": endpoint_uuid} if endpoint_uuid else {}),
             scopes=tuple(scopes_text),
             discovered_at=self._now_iso(),
         )

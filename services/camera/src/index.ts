@@ -15,6 +15,7 @@ import { ReadinessRegistry } from './application/readiness.js';
 import { LoggingEventPublisher } from './application/events.js';
 import { CameraService } from './application/camera-service.js';
 import { HttpDiscoveryProvider, UnavailableDiscoveryProvider } from './application/discovery.js';
+import { HttpStreamProbe, UnavailableStreamProbe } from './application/stream-probe.js';
 import { buildServer } from './transport/server.js';
 
 const clock = { now: () => new Date() };
@@ -51,6 +52,17 @@ async function main(): Promise<void> {
       })
     : new UnavailableDiscoveryProvider();
 
+  // P-2: stream validation is the same arrangement — the runtime owns the decode path, the camera
+  // service owns the lifecycle it feeds (ADR-0024). One URL configures both, because they are the
+  // same runtime; a deployment without it can still onboard cameras, and says plainly that it cannot
+  // test them rather than reporting every camera as failed.
+  const probe = config.discoveryUrl
+    ? new HttpStreamProbe({
+        baseUrl: config.discoveryUrl,
+        internalKey: config.internal.apiKey,
+      })
+    : new UnavailableStreamProbe();
+
   const service = new CameraService({
     cameras: new TenantRepository(mongo.cameras),
     vault,
@@ -58,6 +70,7 @@ async function main(): Promise<void> {
     ids,
     publisher,
     discovery,
+    probe,
   });
 
   const { app } = await buildServer({ config, service, readiness });

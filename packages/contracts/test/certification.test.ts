@@ -21,8 +21,8 @@ import {
   MaturityEvidence,
   MaturityPromotion,
   HardwareRecommendation,
-  EvidenceClass,
 } from '../src/certification/certification.js';
+import { EvidenceClass, isHardwareEvidence } from '../src/common/evidence.js';
 
 const AT = '2026-08-01T10:00:00.000Z';
 
@@ -35,6 +35,12 @@ const target = {
 };
 
 describe('EvidenceClass', () => {
+  it('has one predicate for the rule that governs certification, maturity and device lifecycle', () => {
+    expect(isHardwareEvidence('hardware')).toBe(true);
+    expect(isHardwareEvidence('recorded-footage')).toBe(false);
+    expect(isHardwareEvidence('simulated')).toBe(false);
+  });
+
   it('orders weakest to strongest — simulation never certifies', () => {
     expect(EvidenceClass.options).toEqual(['simulated', 'recorded-footage', 'hardware']);
   });

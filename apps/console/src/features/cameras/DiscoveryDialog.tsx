@@ -234,7 +234,13 @@ function DeviceRow({
         {capabilitySummary(device.capabilities) || '—'}
       </TableCell>
       <TableCell>
-        {device.alreadyOnboarded ? (
+        {device.alreadyOnboarded && device.addressChanged ? (
+          // Recognised by device identity at a different address — the DHCP case. Saying "already
+          // added" alone would hide that the stored URL no longer points at this camera.
+          <span className="text-xs text-status-warn">
+            Already added — its address changed to {device.address ?? 'a new address'}
+          </span>
+        ) : device.alreadyOnboarded ? (
           <Badge variant="outline">
             <Check className="size-3" aria-hidden /> Already added
           </Badge>
@@ -267,5 +273,8 @@ export function toCreateInput(zoneId: string) {
     streamUrl: device.suggestedStreamUrl as string,
     capabilities: device.capabilities,
     metadata: device.metadata,
+    // P-2: identity is recorded at onboarding or not at all. Without it, the next scan after a DHCP
+    // renewal offers this same physical camera as a new device.
+    ...(device.identity ? { identity: device.identity } : {}),
   });
 }

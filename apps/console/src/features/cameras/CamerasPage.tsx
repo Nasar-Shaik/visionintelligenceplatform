@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Camera as CameraIcon, Plus, ScanSearch } from 'lucide-react';
-import type { Camera, CameraHealthStatus } from '@vip/contracts';
+import type { Camera, CameraHealthStatus, CameraLifecycleState } from '@vip/contracts';
 import { usePermission } from '@/app/hooks';
 import {
   Badge,
@@ -33,7 +33,14 @@ import {
 import { AddCameraDialog } from './AddCameraDialog';
 import { CameraDetailSheet } from './CameraDetailSheet';
 import { DiscoveryDialog } from './DiscoveryDialog';
-import { HEALTH_KIND, HEALTH_LABEL, capabilitySummary, matchesSearch } from './cameraPresentation';
+import {
+  HEALTH_KIND,
+  HEALTH_LABEL,
+  LIFECYCLE_KIND,
+  LIFECYCLE_LABEL,
+  capabilitySummary,
+  matchesSearch,
+} from './cameraPresentation';
 import { useCameras, useDeleteCamera } from './useCameras';
 
 const HEALTH_FILTERS: Array<CameraHealthStatus | 'all'> = [
@@ -42,6 +49,22 @@ const HEALTH_FILTERS: Array<CameraHealthStatus | 'all'> = [
   'unhealthy',
   'offline',
   'unknown',
+];
+
+/**
+ * Lifecycle filter (P-2). `active` is first and is what an operator almost always wants: retired
+ * cameras are kept forever for their history, and a site that has replaced its cameras twice would
+ * otherwise show three times as many rows as it has devices.
+ */
+const LIFECYCLE_FILTERS: Array<CameraLifecycleState | 'all' | 'active'> = [
+  'active',
+  'all',
+  'configured',
+  'connected',
+  'monitoring',
+  'degraded',
+  'offline',
+  'retired',
 ];
 
 /**
@@ -58,6 +81,7 @@ export function CamerasPage() {
 
   const [search, setSearch] = useState('');
   const [health, setHealth] = useState<CameraHealthStatus | 'all'>('all');
+  const [lifecycle, setLifecycle] = useState<CameraLifecycleState | 'all' | 'active'>('active');
   const [adding, setAdding] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [selected, setSelected] = useState<Camera | null>(null);
@@ -68,9 +92,15 @@ export function CamerasPage() {
     () =>
       cameras.filter(
         (camera) =>
-          matchesSearch(camera, search) && (health === 'all' || camera.health.status === health),
+          matchesSearch(camera, search) &&
+          (health === 'all' || camera.health.status === health) &&
+          (lifecycle === 'all'
+            ? true
+            : lifecycle === 'active'
+              ? camera.lifecycle.state !== 'retired'
+              : camera.lifecycle.state === lifecycle),
       ),
-    [cameras, search, health],
+    [cameras, search, health, lifecycle],
   );
 
   // The default zone until the org-hierarchy picker lands (tracked with the Tenant context). Named
@@ -111,6 +141,25 @@ export function CamerasPage() {
       />
 
       <FilterBar search={search} onSearchChange={setSearch} searchPlaceholder="Search cameras…">
+        <Select
+          value={lifecycle}
+          onValueChange={(v) => setLifecycle(v as CameraLifecycleState | 'all' | 'active')}
+        >
+          <SelectTrigger className="w-44" aria-label="Filter by lifecycle">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {LIFECYCLE_FILTERS.map((value) => (
+              <SelectItem key={value} value={value}>
+                {value === 'all'
+                  ? 'All lifecycle states'
+                  : value === 'active'
+                    ? 'Active (not retired)'
+                    : LIFECYCLE_LABEL[value]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={health} onValueChange={(v) => setHealth(v as CameraHealthStatus | 'all')}>
           <SelectTrigger className="w-40" aria-label="Filter by health">
             <SelectValue />
@@ -161,6 +210,7 @@ export function CamerasPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Camera</TableHead>
+                <TableHead>Lifecycle</TableHead>
                 <TableHead>Health</TableHead>
                 <TableHead>Zone</TableHead>
                 <TableHead>Capabilities</TableHead>
@@ -186,6 +236,12 @@ export function CamerasPage() {
                     <div className="truncate font-mono text-xs text-text-subtle">
                       {camera.streamUrl}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <StatusIndicator
+                      status={LIFECYCLE_KIND[camera.lifecycle.state]}
+                      label={LIFECYCLE_LABEL[camera.lifecycle.state]}
+                    />
                   </TableCell>
                   <TableCell>
                     <StatusIndicator

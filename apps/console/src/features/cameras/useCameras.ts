@@ -84,3 +84,38 @@ export function useCreateCameras() {
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.cameras.all() }),
   });
 }
+
+/**
+ * Test a camera's connection (P-2).
+ *
+ * A mutation for the same reason discovery is: it opens a stream on the customer's network and
+ * records the measurement. Modelling it as a query would let TanStack re-probe an installer's estate
+ * every time they tabbed back to the console.
+ */
+export function useProbeCamera() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => camerasApi.probe(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.cameras.all() }),
+  });
+}
+
+/** Re-read capabilities, going back to the device only when that is warranted. */
+export function useRefreshCapabilities() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, force }: { id: string; force?: boolean }) =>
+      camerasApi.refreshCapabilities(id, force ?? false),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.cameras.all() }),
+  });
+}
+
+/** Retire (decommission, keeping the record) or reinstate a camera. */
+export function useCameraLifecycleAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: 'retire' | 'reinstate' }) =>
+      action === 'retire' ? camerasApi.retire(id) : camerasApi.reinstate(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.cameras.all() }),
+  });
+}

@@ -17,23 +17,16 @@
  */
 import { z } from 'zod';
 import { IsoDateTime, SemVer } from '../common/primitives.js';
+// `EvidenceClass` moved to `common/evidence.ts` in P-2, when the camera lifecycle needed the same
+// vocabulary and this module could not be imported from `camera.ts` without a cycle. It is imported,
+// not re-exported, so the barrel exports exactly one definition of it.
+import { EvidenceClass } from '../common/evidence.js';
 import { CameraCapabilities, CameraMetadata } from '../camera/camera.js';
 import {
   BenchmarkReport,
   DeploymentClass,
   EnvironmentFingerprint,
 } from '../benchmark/benchmark.js';
-
-/**
- * What a result was actually observed on. Ordered weakest → strongest, and that order is the whole
- * point: a report is only as strong as its weakest check, and certification requires `hardware`.
- *
- * - `simulated` — deterministic simulated sources + stub adapters. Proves the plumbing.
- * - `recorded-footage` — real CCTV footage through the real pipeline. Proves perception, not devices.
- * - `hardware` — a physical camera/DVR/NVR/GPU/edge device. The only class that certifies.
- */
-export const EvidenceClass = z.enum(['simulated', 'recorded-footage', 'hardware']);
-export type EvidenceClass = z.infer<typeof EvidenceClass>;
 
 /**
  * Certification status of a device/target. **`pending-validation` is the default and stays the

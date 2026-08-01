@@ -2,12 +2,27 @@ import { describe, expect, it } from 'vitest';
 import {
   Camera,
   CameraCapabilities,
+  CameraDeviceIdentity,
+  CameraLifecycle,
+  CameraLifecycleState,
   CameraMetadata,
+  CameraOperationalHealth,
   CameraProtocol,
   CameraValidationInput,
   CameraValidationResult,
+  CameraHealthSummary,
+  CameraTimeline,
+  CameraTimelineEntry,
+  CapabilityCache,
+  CapabilityRefreshReason,
+  CapabilityRefreshResult,
   CaptureProfile,
   CreateCameraInput,
+  DiscoveredCamera,
+  HealthObservationSource,
+  LifecycleEvidence,
+  StreamProbeRequest,
+  StreamProbeResult,
   StreamUrl,
   UpdateCameraInput,
 } from '../src/camera/camera.js';
@@ -96,6 +111,7 @@ describe('Camera (returned shape)', () => {
         protocols: ['rtsp'],
       },
       metadata: { tags: [] },
+      lifecycle: { state: 'configured', since: now, evidence: 'declared' },
       hasCredentials: true,
       createdAt: now,
       updatedAt: now,
@@ -200,5 +216,238 @@ describe('camera event catalog', () => {
 describe('CameraProtocol', () => {
   it('is rtsp | rtmp', () => {
     expect(CameraProtocol.options).toEqual(['rtsp', 'rtmp']);
+  });
+});
+
+// -------------------------------------------------------------------------------------------
+// P-2: lifecycle, identity, operational health, probe, capability cache
+// -------------------------------------------------------------------------------------------
+
+describe('CameraLifecycleState (P-2)', () => {
+  it('is the Architect-specified state machine, in order', () => {
+    expect(CameraLifecycleState.options).toEqual([
+      'discovered',
+      'validated',
+      'configured',
+      'connected',
+      'monitoring',
+      'degraded',
+      'offline',
+      'retired',
+    ]);
+  });
+
+  it('separates declared evidence from measured evidence', () => {
+    expect(LifecycleEvidence.options).toEqual([
+      'declared',
+      'validated',
+      'measured',
+      'administrative',
+    ]);
+  });
+});
+
+describe('CameraLifecycle + CameraTimeline (P-2)', () => {
+  it('separates the current position from the history that explains it', () => {
+    const lc = CameraLifecycle.parse({ state: 'configured', since: now, evidence: 'declared' });
+    expect(lc.state).toBe('configured');
+    expect('history' in lc).toBe(false);
+  });
+
+  it('records more than state changes, because that is what explains a state change', () => {
+    const entry = CameraTimelineEntry.parse({
+      at: now,
+      kind: 'firmware-changed',
+      evidence: 'measured',
+      detail: 'firmware V5.7.3 → V5.7.9',
+    });
+    expect(entry.kind).toBe('firmware-changed');
+    expect(entry.from).toBeUndefined();
+  });
+
+  it('caps the timeline so a flapping camera cannot grow its own document without limit', () => {
+    const entry = {
+      at: now,
+      kind: 'state-changed',
+      evidence: 'measured',
+      from: 'connected',
+      to: 'offline',
+      detail: 'no frames',
+    };
+    expect(CameraTimeline.safeParse(Array.from({ length: 50 }, () => entry)).success).toBe(true);
+    expect(CameraTimeline.safeParse(Array.from({ length: 51 }, () => entry)).success).toBe(false);
+  });
+});
+
+describe('CameraDeviceIdentity (P-2)', () => {
+  it('accepts a device that only knows its own serial number', () => {
+    expect(CameraDeviceIdentity.safeParse({ serialNumber: 'DS-2CD-0001' }).success).toBe(true);
+  });
+
+  it('normalises MAC format so two spellings of one device cannot look like two devices', () => {
+    expect(CameraDeviceIdentity.safeParse({ macAddress: 'a4:14:37:0b:2c:9d' }).success).toBe(true);
+    expect(CameraDeviceIdentity.safeParse({ macAddress: 'A4-14-37-0B-2C-9D' }).success).toBe(false);
+  });
+
+  it('keeps the network address out of identity — that is the field expected to change', () => {
+    const id = CameraDeviceIdentity.parse({
+      onvifUuid: 'urn:uuid:abc',
+      lastKnownAddress: '10.0.0.64',
+    });
+    expect(id.onvifUuid).toBe('urn:uuid:abc');
+    expect(id.lastKnownAddress).toBe('10.0.0.64');
+  });
+});
+
+describe('CameraOperationalHealth (P-2)', () => {
+  it('leaves unmeasured signals absent rather than defaulting them to a false measurement', () => {
+    const health = CameraOperationalHealth.parse({
+      observedAt: now,
+      source: 'configuration',
+      evidenceClass: 'simulated',
+    });
+    expect(health.reachable).toBeUndefined();
+    expect(health.streamAvailable).toBeUndefined();
+    expect(health.rtspLatencyMs).toBeUndefined();
+    // Authentication is the one exception, and its default is the honest one.
+    expect(health.authentication).toBe('unknown');
+  });
+
+  it('records what produced the observation, because that bounds what it may claim', () => {
+    expect(HealthObservationSource.options).toEqual([
+      'configuration',
+      'stream-probe',
+      'onvif',
+      'ingestion',
+    ]);
+  });
+});
+
+describe('StreamProbeResult (P-2)', () => {
+  it('carries the evidence class of the source it probed', () => {
+    const result = StreamProbeResult.parse({
+      probedAt: now,
+      evidenceClass: 'hardware',
+      reachable: true,
+      framesRead: 3,
+      resolution: '1920x1080',
+    });
+    expect(result.evidenceClass).toBe('hardware');
+    expect(result.authentication).toBe('unknown');
+  });
+
+  it('can express the device that opens and then stalls', () => {
+    const result = StreamProbeResult.parse({
+      probedAt: now,
+      evidenceClass: 'hardware',
+      reachable: true,
+      framesRead: 0,
+      error: 'stream opened but produced no frames within 8s',
+    });
+    expect(result.reachable).toBe(true);
+    expect(result.framesRead).toBe(0);
+  });
+
+  it('reports checks the probe never reached as not-executed, not as failures', () => {
+    const result = StreamProbeResult.parse({
+      probedAt: now,
+      evidenceClass: 'hardware',
+      reachable: true,
+      framesRead: 0,
+      checks: [
+        { name: 'reachability', status: 'pass' },
+        { name: 'authentication', status: 'fail', detail: '401 from the device' },
+        { name: 'stream-open', status: 'not-executed' },
+        { name: 'frames-received', status: 'not-executed' },
+      ],
+    });
+    // Blaming the stream for a credential problem is how an installer ends up re-running cable.
+    expect(result.checks.filter((c) => c.status === 'fail').map((c) => c.name)).toEqual([
+      'authentication',
+    ]);
+    expect(result.checks.filter((c) => c.status === 'not-executed')).toHaveLength(2);
+  });
+});
+
+describe('StreamProbeRequest (P-2)', () => {
+  it('is lenient about the URL — a probe reports a bad URL rather than refusing it', () => {
+    expect(StreamProbeRequest.safeParse({ protocol: 'rtsp', streamUrl: 'not-a-url' }).success).toBe(
+      true,
+    );
+  });
+
+  it('reads more than one frame by default, which is what catches a stalled stream', () => {
+    const req = StreamProbeRequest.parse({ streamUrl: 'rtsp://cam.local/stream' });
+    expect(req.frames).toBeGreaterThan(1);
+    expect(req.timeoutSeconds).toBe(8);
+  });
+});
+
+describe('CapabilityCache (P-2)', () => {
+  it('says whether the device was actually contacted', () => {
+    const cached = CapabilityRefreshResult.parse({
+      cameraId: 'cam_1',
+      capabilities: CameraCapabilities.parse({}),
+      cache: CapabilityCache.parse({}),
+      reason: 'cached',
+      refreshed: false,
+    });
+    expect(cached.refreshed).toBe(false);
+    expect(CapabilityRefreshReason.options).toContain('firmware-changed');
+  });
+
+  it('records what the capabilities were read against, so staleness is decidable', () => {
+    const cache = CapabilityCache.parse({
+      firmware: 'V5.7.3',
+      discoveredAt: now,
+      lastRefreshedAt: now,
+      refreshReason: 'forced',
+    });
+    expect(cache.cacheVersion).toBe(1);
+    expect(cache.refreshCount).toBe(0);
+    expect(cache.firmware).toBe('V5.7.3');
+  });
+});
+
+describe('CameraHealthSummary (P-2)', () => {
+  it('reports how much evidence is behind a trend, and omits a percentage it cannot support', () => {
+    const summary = CameraHealthSummary.parse({
+      cameraId: 'cam_1',
+      windowStart: now,
+      windowEnd: now,
+      observations: 1,
+      reconnects: 0,
+      credentialFailures: 0,
+      offlineSeconds: 0,
+      capabilityRefreshes: 0,
+      firmwareChanges: 0,
+    });
+    expect(summary.observations).toBe(1);
+    expect(summary.availabilityPercent).toBeUndefined();
+  });
+});
+
+describe('DiscoveredCamera (P-2 identity)', () => {
+  it('flags a device recognised by identity at a new address', () => {
+    const device = DiscoveredCamera.parse({
+      endpoint: 'http://10.0.0.99/onvif/device_service',
+      metadata: { tags: [] },
+      capabilities: CameraCapabilities.parse({}),
+      alreadyOnboarded: true,
+      cameraId: 'cam_1',
+      identity: { onvifUuid: 'urn:uuid:abc' },
+      addressChanged: true,
+    });
+    expect(device.addressChanged).toBe(true);
+    expect(device.alreadyOnboarded).toBe(true);
+  });
+
+  it('defaults addressChanged to false', () => {
+    const device = DiscoveredCamera.parse({
+      endpoint: 'http://10.0.0.64/onvif/device_service',
+      metadata: { tags: [] },
+      capabilities: CameraCapabilities.parse({}),
+    });
+    expect(device.addressChanged).toBe(false);
   });
 });

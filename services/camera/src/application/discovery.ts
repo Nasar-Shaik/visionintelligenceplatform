@@ -16,7 +16,7 @@
  * that explicitly, because "discovery is not configured here" and "no cameras answered" must never
  * look the same to an installer — the first sends them to their settings, the second to their switch.
  */
-import type { CameraCapabilities, CameraMetadata } from '@vip/contracts';
+import type { CameraCapabilities, CameraDeviceIdentity, CameraMetadata } from '@vip/contracts';
 
 /** One device as the discovery provider reported it, before any tenant reconciliation. */
 export interface DiscoveredDevice {
@@ -27,6 +27,8 @@ export interface DiscoveredDevice {
   suggestedStreamUrl?: string;
   registryId?: string;
   warning?: string;
+  /** Stable device identity as the device reported it (P-2) — how it survives an address change. */
+  identity?: CameraDeviceIdentity;
 }
 
 export interface DiscoveryProbe {
@@ -36,8 +38,18 @@ export interface DiscoveryProbe {
   unavailable?: string;
 }
 
+export interface DiscoveryOptions {
+  timeoutSeconds: number;
+  /**
+   * Negotiate this one device directly instead of broadcasting (P-2). A capability refresh is about
+   * a specific camera, and re-scanning the whole segment to re-read one device's profiles is both
+   * wasteful and wrong across a routed network, where multicast never arrives.
+   */
+  endpoint?: string;
+}
+
 export interface DiscoveryProvider {
-  probe(options: { timeoutSeconds: number }): Promise<DiscoveryProbe>;
+  probe(options: DiscoveryOptions): Promise<DiscoveryProbe>;
 }
 
 /** The default when no provider is configured. Honest about being absent. */
@@ -75,7 +87,7 @@ export class HttpDiscoveryProvider implements DiscoveryProvider {
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
-  async probe({ timeoutSeconds }: { timeoutSeconds: number }): Promise<DiscoveryProbe> {
+  async probe({ timeoutSeconds, endpoint }: DiscoveryOptions): Promise<DiscoveryProbe> {
     // The probe window is the runtime's; this timeout is the transport's, and must be the longer of
     // the two or a successful scan would be cancelled by its own caller.
     const budgetMs = this.options.requestTimeoutMs ?? timeoutSeconds * 1000 + 15_000;
@@ -88,7 +100,7 @@ export class HttpDiscoveryProvider implements DiscoveryProvider {
           'content-type': 'application/json',
           'x-internal-key': this.options.internalKey,
         },
-        body: JSON.stringify({ timeoutSeconds }),
+        body: JSON.stringify({ timeoutSeconds, ...(endpoint ? { endpoint } : {}) }),
         signal: controller.signal,
       });
       if (!response.ok) {

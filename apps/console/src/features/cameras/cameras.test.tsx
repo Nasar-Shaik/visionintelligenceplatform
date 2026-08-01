@@ -50,6 +50,31 @@ const CAMERA = {
   health: { status: 'online', lastCheckedAt: '2026-08-01T10:00:00.000Z' },
   capabilities: CAPABILITIES,
   metadata: { manufacturer: 'Hikvision', model: 'DS-2CD2143G2', firmware: 'V5.7.3', tags: [] },
+  lifecycle: {
+    state: 'connected',
+    since: '2026-08-01T10:00:00.000Z',
+    evidence: 'measured',
+    reason: 'read 3 frames at 640x360',
+  },
+  timeline: [
+    {
+      at: '2026-08-01T09:00:00.000Z',
+      kind: 'state-changed',
+      evidence: 'declared',
+      to: 'configured',
+      detail: 'onboarded',
+    },
+  ],
+  operational: {
+    observedAt: '2026-08-01T10:00:00.000Z',
+    source: 'stream-probe',
+    evidenceClass: 'hardware',
+    reachable: true,
+    streamAvailable: true,
+    rtspLatencyMs: 412,
+    fps: 10,
+    authentication: 'ok',
+  },
   hasCredentials: true,
   createdAt: '2026-08-01T09:00:00.000Z',
   updatedAt: '2026-08-01T09:00:00.000Z',
@@ -61,6 +86,7 @@ const OFFLINE_CAMERA = {
   name: 'Stock room',
   streamUrl: 'rtsp://10.0.0.65:554/Streaming/Channels/102',
   health: { status: 'offline' },
+  lifecycle: { state: 'offline', since: '2026-08-01T10:00:00.000Z', evidence: 'measured' },
   metadata: { manufacturer: 'Dahua', model: 'IPC-HFW', tags: [] },
 };
 
@@ -72,6 +98,7 @@ const DEVICE = {
   suggestedStreamUrl: 'rtsp://10.0.0.70:554/axis-media/media.amp',
   registryId: 'axis-p3245',
   alreadyOnboarded: false,
+  addressChanged: false,
 };
 
 function listReturns(cameras: unknown[]) {
@@ -301,5 +328,203 @@ describe('cameraPresentation', () => {
     });
     expect(channels[0]!.name).toBe('Ch 9');
     expect(channels[0]!.streamUrl).toBe('rtsp://10.0.0.9:554/Streaming/Channels/902');
+  });
+});
+
+// -------------------------------------------------------------------------------------------
+// P-2: lifecycle, measured health, the installer test-connection readout
+// -------------------------------------------------------------------------------------------
+
+function probeReturns(body: Record<string, unknown>) {
+  server.use(
+    mswHttp.post('/api/camera/cameras/:id/probe', () =>
+      HttpResponse.json({ success: true, data: body }),
+    ),
+  );
+}
+
+const PASSING_PROBE = {
+  probedAt: '2026-08-01T10:00:00.000Z',
+  evidenceClass: 'hardware',
+  reachable: true,
+  framesRead: 3,
+  firstFrameMs: 412,
+  fps: 10,
+  resolution: '640x360',
+  authentication: 'ok',
+  checks: [
+    { name: 'reachability', status: 'pass', measured: '38 ms' },
+    { name: 'authentication', status: 'pass' },
+    { name: 'stream-open', status: 'pass' },
+    { name: 'frames-received', status: 'pass', measured: '3 frames' },
+  ],
+  profiles: [],
+  warnings: [],
+};
+
+async function openDetail(name = 'Front entrance') {
+  const user = userEvent.setup();
+  await user.click(await screen.findByText(name));
+  return user;
+}
+
+describe('camera lifecycle (P-2)', () => {
+  it('shows the lifecycle state alongside health, because they answer different questions', async () => {
+    authAs(['operator']);
+    listReturns([CAMERA]);
+    renderWithProviders(<CamerasPage />, { store });
+
+    expect(await screen.findByText('Connected')).toBeInTheDocument();
+    expect(screen.getByText('Online')).toBeInTheDocument();
+  });
+
+  it('hides retired cameras by default but keeps them one filter away', async () => {
+    authAs(['operator']);
+    const retired = {
+      ...CAMERA,
+      id: 'cam_3',
+      name: 'Old loading bay',
+      lifecycle: {
+        state: 'retired',
+        since: '2026-08-01T10:00:00.000Z',
+        evidence: 'administrative',
+      },
+    };
+    listReturns([CAMERA, retired]);
+    renderWithProviders(<CamerasPage />, { store });
+
+    // A site that has replaced its cameras twice must not show three times as many rows as devices.
+    expect(await screen.findByText('Front entrance')).toBeInTheDocument();
+    expect(screen.queryByText('Old loading bay')).not.toBeInTheDocument();
+  });
+
+  it('explains what a state means rather than assuming the operator read the ADR', async () => {
+    authAs(['operator']);
+    listReturns([CAMERA]);
+    renderWithProviders(<CamerasPage />, { store });
+    await openDetail();
+
+    expect(
+      await screen.findByText(/frames were read from the physical device/i),
+    ).toBeInTheDocument();
+  });
+
+  it('distinguishes a camera never measured from one measured and found offline', async () => {
+    authAs(['operator']);
+    const unmeasured = {
+      ...CAMERA,
+      operational: undefined,
+      lifecycle: { state: 'configured', since: '2026-08-01T09:00:00.000Z', evidence: 'declared' },
+    };
+    listReturns([unmeasured]);
+    renderWithProviders(<CamerasPage />, { store });
+    await openDetail();
+
+    // Rendering an unmeasured latency as "0 ms" would claim a measurement nobody took.
+    expect(await screen.findByText(/Nothing has ever measured this camera/i)).toBeInTheDocument();
+  });
+});
+
+describe('test connection (P-2)', () => {
+  it('reads out every check, so a credential problem is not mistaken for a cabling one', async () => {
+    authAs(['admin']);
+    listReturns([CAMERA]);
+    probeReturns({
+      cameraId: 'cam_1',
+      probe: {
+        ...PASSING_PROBE,
+        framesRead: 0,
+        authentication: 'failed',
+        checks: [
+          { name: 'reachability', status: 'pass', measured: '38 ms' },
+          { name: 'authentication', status: 'fail', detail: '401 from the device' },
+          { name: 'stream-open', status: 'not-executed' },
+          { name: 'frames-received', status: 'not-executed' },
+        ],
+      },
+      operational: {
+        observedAt: '2026-08-01T10:00:00.000Z',
+        source: 'stream-probe',
+        evidenceClass: 'hardware',
+        reachable: true,
+        streamAvailable: false,
+        authentication: 'failed',
+      },
+      lifecycle: { state: 'degraded', since: '2026-08-01T10:00:00.000Z', evidence: 'measured' },
+    });
+    renderWithProviders(<CamerasPage />, { store });
+    const user = await openDetail();
+    await user.click(await screen.findByRole('button', { name: /test connection/i }));
+
+    expect(await screen.findByText(/Authentication failed/i)).toBeInTheDocument();
+    expect(screen.getByText('Device reachable')).toBeInTheDocument();
+    expect(screen.getByText('401 from the device', { exact: false })).toBeInTheDocument();
+    // The stream was never attempted — showing it as a failure would blame the wrong component.
+    expect(screen.getByText('RTSP opened')).toBeInTheDocument();
+  });
+
+  it('says plainly when the deployment cannot test connections at all', async () => {
+    authAs(['admin']);
+    listReturns([CAMERA]);
+    probeReturns({
+      cameraId: 'cam_1',
+      lifecycle: CAMERA.lifecycle,
+      unavailable: 'stream validation is not configured for this deployment',
+    });
+    renderWithProviders(<CamerasPage />, { store });
+    const user = await openDetail();
+    await user.click(await screen.findByRole('button', { name: /test connection/i }));
+
+    // A deployment gap must not be reported as a camera fault.
+    expect(await screen.findByText(/Connections cannot be tested here/i)).toBeInTheDocument();
+    expect(screen.getByText(/deployment gap, not a fault with this camera/i)).toBeInTheDocument();
+  });
+
+  it('marks a simulated measurement as one that proves nothing about the camera', async () => {
+    authAs(['admin']);
+    listReturns([CAMERA]);
+    probeReturns({
+      cameraId: 'cam_1',
+      probe: { ...PASSING_PROBE, evidenceClass: 'simulated' },
+      lifecycle: CAMERA.lifecycle,
+    });
+    renderWithProviders(<CamerasPage />, { store });
+    const user = await openDetail();
+    await user.click(await screen.findByRole('button', { name: /test connection/i }));
+
+    expect(await screen.findByText(/simulated source/i)).toBeInTheDocument();
+  });
+
+  it('does not offer the test to someone who cannot run it', async () => {
+    authAs(['viewer']);
+    listReturns([CAMERA]);
+    renderWithProviders(<CamerasPage />, { store });
+    await openDetail();
+
+    expect(await screen.findByRole('button', { name: /test connection/i })).toBeDisabled();
+  });
+});
+
+describe('discovery after an address change (P-2)', () => {
+  it('says the camera moved instead of offering it as a new device', async () => {
+    authAs(['admin']);
+    listReturns([CAMERA]);
+    discoveryReturns({
+      devices: [
+        {
+          ...DEVICE,
+          alreadyOnboarded: true,
+          addressChanged: true,
+          cameraId: 'cam_1',
+          address: '10.0.0.99',
+        },
+      ],
+    });
+    renderWithProviders(<CamerasPage />, { store });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /^discover$/i }));
+    await user.click(await screen.findByRole('button', { name: /^scan$/i }));
+
+    expect(await screen.findByText(/its address changed to 10\.0\.0\.99/i)).toBeInTheDocument();
   });
 });

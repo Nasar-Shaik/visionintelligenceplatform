@@ -12,7 +12,7 @@
  */
 import { z } from 'zod';
 import { IsoDateTime, SemVer } from '../common/primitives.js';
-import { EvidenceClass } from '../certification/certification.js';
+import { EvidenceClass } from '../common/evidence.js';
 
 /**
  * The scenario a dataset case exercises. This is the Architect's AI-5e priority-1 list, and it is

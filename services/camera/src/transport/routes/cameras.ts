@@ -147,6 +147,74 @@ export function registerCameraRoutes(app: FastifyInstance, deps: CameraRoutesDep
     },
   );
 
+  // --- P-2: lifecycle, measured health, capability cache ---
+
+  /**
+   * Test a camera's connection against the physical device (P-2).
+   *
+   * `camera:update` rather than `camera:read`: this opens a stream on the customer's network and
+   * writes the measured result to the record. The permission should match what a route *does*, not
+   * what it returns.
+   */
+  app.post<{ Params: CameraParams }>(
+    '/cameras/:id/probe',
+    { preHandler: auth.authorize('camera:update') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      return reply.send(success(await service.probeConnection(scope, request.params.id)));
+    },
+  );
+
+  // Read capabilities, going back to the device only when that is warranted. `?force=true` is the
+  // operator override; everything else is the cache decision.
+  app.post<{ Params: CameraParams; Querystring: { force?: string } }>(
+    '/cameras/:id/capabilities/refresh',
+    { preHandler: auth.authorize('camera:update') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const force = request.query.force === 'true';
+      return reply.send(
+        success(await service.refreshCapabilities(scope, request.params.id, { force })),
+      );
+    },
+  );
+
+  // Trends over the recorded timeline — computed, never stored.
+  app.get<{ Params: CameraParams; Querystring: { windowHours?: string } }>(
+    '/cameras/:id/health/summary',
+    { preHandler: auth.authorize('camera:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const parsed = Number(request.query.windowHours);
+      const windowHours = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 24 * 90) : 24;
+      return reply.send(
+        success(await service.healthSummary(scope, request.params.id, { windowHours })),
+      );
+    },
+  );
+
+  /**
+   * Decommission a camera without destroying it (P-2). Deliberately separate from `DELETE`: retiring
+   * keeps the record and its timeline, which an incident investigation may need months later.
+   */
+  app.post<{ Params: CameraParams }>(
+    '/cameras/:id/retire',
+    { preHandler: auth.authorize('camera:update') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      return reply.send(success(await service.retire(scope, request.params.id)));
+    },
+  );
+
+  app.post<{ Params: CameraParams }>(
+    '/cameras/:id/reinstate',
+    { preHandler: auth.authorize('camera:update') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      return reply.send(success(await service.reinstate(scope, request.params.id)));
+    },
+  );
+
   app.post<{ Params: CameraParams }>(
     '/cameras/:id/enable',
     { preHandler: auth.authorize('camera:update') },

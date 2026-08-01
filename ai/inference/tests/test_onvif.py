@@ -338,3 +338,35 @@ class SecurityTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DeviceIdentityTests(unittest.TestCase):
+    """P-2: the stable identity that survives an address change."""
+
+    def _discover(self):
+        transport = SimulatedDiscoveryTransport([PROBE_MATCH])
+        return OnvifDiscovery(transport, now_iso=AT).discover()[0]
+
+    def test_the_endpoint_uuid_is_captured_rather_than_discarded(self):
+        # `a:Address` is not callable — but it IS the device's identity, and P-2 matching needs it.
+        self.assertEqual(self._discover().endpoint_uuid, "urn:uuid:abc-123")
+
+    def test_identity_carries_the_address_outside_the_identifying_fields(self):
+        identity = self._discover().to_identity()
+        self.assertEqual(identity["onvifUuid"], "urn:uuid:abc-123")
+        # The address is the part expected to change; treating it as identity is what makes a camera
+        # look new on every DHCP renewal.
+        self.assertEqual(identity["lastKnownAddress"], "http://192.168.1.64/onvif/device_service")
+        self.assertEqual(identity["hardwareId"], "DS-2CD2143G2")
+
+    def test_identity_reports_only_what_the_device_actually_said(self):
+        device = DiscoveredDevice(address="http://10.0.0.5/onvif/device_service")
+        self.assertEqual(device.to_identity(), {"lastKnownAddress": device.address})
+
+    def test_a_device_that_answers_without_an_endpoint_reference_still_discovers(self):
+        no_urn = PROBE_MATCH.replace(
+            "<a:EndpointReference><a:Address>urn:uuid:abc-123</a:Address></a:EndpointReference>", ""
+        )
+        device = OnvifDiscovery(SimulatedDiscoveryTransport([no_urn]), now_iso=AT).discover()[0]
+        self.assertIsNone(device.endpoint_uuid)
+        self.assertNotIn("onvifUuid", device.to_identity())

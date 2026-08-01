@@ -31,23 +31,28 @@ headers). Every route is **permission-gated** (deny-by-default via
 
 ## Endpoints
 
-| Method | Path                              | Purpose                                              | Auth            |
-| ------ | --------------------------------- | ---------------------------------------------------- | --------------- |
-| POST   | `/cameras`                        | Onboard a camera (vault credentials)                 | `camera:create` |
-| GET    | `/cameras`                        | List the tenant's cameras                            | `camera:read`   |
-| GET    | `/cameras/:id`                    | Get one camera                                       | `camera:read`   |
-| PATCH  | `/cameras/:id`                    | Update / re-vault credentials / metadata / caps      | `camera:update` |
-| DELETE | `/cameras/:id`                    | Remove from inventory                                | `camera:delete` |
-| GET    | `/cameras/:id/health`             | Observed health (`unknown` until probed)             | `camera:read`   |
-| POST   | `/cameras/discover`               | **P-1** ONVIF discovery + tenant reconciliation      | `camera:create` |
-| POST   | `/cameras/bulk`                   | **P-1** Bulk onboard (DVR/NVR channels)              | `camera:create` |
-| POST   | `/cameras/validate`               | **G-1** Test-connection: validate a candidate config | `camera:read`   |
-| POST   | `/cameras/:id/validate`           | **G-1** Validate an existing camera's config         | `camera:read`   |
-| GET    | `/cameras/:id/capabilities`       | **G-1** Declared capabilities (ptz/audio/codecs/…)   | `camera:read`   |
-| POST   | `/cameras/:id/health/check`       | **G-1** Active re-check → records a health snapshot  | `camera:update` |
-| POST   | `/cameras/:id/enable`             | **G-1** Set status `enabled`                         | `camera:update` |
-| POST   | `/cameras/:id/disable`            | **G-1** Set status `disabled`                        | `camera:update` |
-| GET    | `/health` `/ready` `/metrics` `/` | liveness / readiness / metrics / info                | —               |
+| Method | Path                                | Purpose                                              | Auth            |
+| ------ | ----------------------------------- | ---------------------------------------------------- | --------------- |
+| POST   | `/cameras`                          | Onboard a camera (vault credentials)                 | `camera:create` |
+| GET    | `/cameras`                          | List the tenant's cameras                            | `camera:read`   |
+| GET    | `/cameras/:id`                      | Get one camera                                       | `camera:read`   |
+| PATCH  | `/cameras/:id`                      | Update / re-vault credentials / metadata / caps      | `camera:update` |
+| DELETE | `/cameras/:id`                      | Remove from inventory                                | `camera:delete` |
+| GET    | `/cameras/:id/health`               | Observed health (`unknown` until probed)             | `camera:read`   |
+| POST   | `/cameras/discover`                 | **P-1** ONVIF discovery + tenant reconciliation      | `camera:create` |
+| POST   | `/cameras/bulk`                     | **P-1** Bulk onboard (DVR/NVR channels)              | `camera:create` |
+| POST   | `/cameras/validate`                 | **G-1** Test-connection: validate a candidate config | `camera:read`   |
+| POST   | `/cameras/:id/validate`             | **G-1** Validate an existing camera's config         | `camera:read`   |
+| GET    | `/cameras/:id/capabilities`         | **G-1** Declared capabilities (ptz/audio/codecs/…)   | `camera:read`   |
+| POST   | `/cameras/:id/health/check`         | **G-1** Active re-check → records a health snapshot  | `camera:update` |
+| POST   | `/cameras/:id/enable`               | **G-1** Set status `enabled`                         | `camera:update` |
+| POST   | `/cameras/:id/disable`              | **G-1** Set status `disabled`                        | `camera:update` |
+| POST   | `/cameras/:id/probe`                | **P-2** Test the connection against the device       | `camera:update` |
+| POST   | `/cameras/:id/capabilities/refresh` | **P-2** Re-read capabilities (`?force=true`)         | `camera:update` |
+| GET    | `/cameras/:id/health/summary`       | **P-2** Trends over the timeline (`?windowHours=`)   | `camera:read`   |
+| POST   | `/cameras/:id/retire`               | **P-2** Decommission, keeping the record             | `camera:update` |
+| POST   | `/cameras/:id/reinstate`            | **P-2** Return a retired camera to service           | `camera:update` |
+| GET    | `/health` `/ready` `/metrics` `/`   | liveness / readiness / metrics / info                | —               |
 
 Publishes `camera.registered`, `camera.updated`, `camera.removed`, `camera.health.checked` via a
 publisher seam (NATS wiring in P1-5). Payloads carry ids/metadata only — **never** credentials.
@@ -114,3 +119,32 @@ Three behaviours worth knowing before changing this code:
 - **`POST /cameras/bulk` is deliberately not transactional.** One bad channel in a 16-channel DVR must
   not discard the other fifteen, so each camera is created independently and each row carries its own
   outcome. Items are validated **per item** against `CreateCameraInput`, not at the envelope.
+- **Devices are matched on identity first, address second (P-2).** The ONVIF endpoint UUID is stored at
+  onboarding, so a camera whose DHCP lease moved it is reported as `addressChanged` rather than offered
+  as a new device. Without that, the estate ends up holding one physical camera twice.
+
+## Camera lifecycle (P-2)
+
+`discovered → validated → configured → connected → monitoring → degraded → offline → retired`
+
+**The rule to know before touching `domain/lifecycle.ts`:** `connected`, `monitoring`, `degraded` and
+`offline` are claims about a physical device and may only be entered from a probe of that device with
+`EvidenceClass: hardware`. A flawless probe of a _simulated_ source returns its full check report and
+advances nothing — otherwise a demo environment reports a connected estate that does not exist. This
+is [CONSTRAINTS §18](../../docs/project/CONSTRAINTS.md) applied to devices; see
+[ADR-0024](../../docs/adr/ADR-0024-camera-lifecycle-evidence-gate.md).
+
+Transitions come from an explicit map. `retired → connected` does not exist: a decommissioned camera
+must be **reinstated**, and reinstatement returns it to `configured`, not to whatever measured state it
+held before. `retire` is **not** `delete` — the record and its timeline are kept, because an incident
+investigation months later may need them.
+
+The measurement is `POST /streams/validate` on the AI runtime, reached through the `StreamProbe` port
+(same arrangement as discovery, same `CAMERA_DISCOVERY_URL`). It returns nine **ordered** checks in
+which a failure leaves every later check `not-executed` rather than `fail` — the difference between an
+installer re-running cable and fixing a password.
+
+Capabilities are **cached, not re-queried**: `CapabilityCache` records the firmware and timestamp they
+were read against, and `domain/capability-cache.ts` decides whether to go back to the device. Bump
+`CAPABILITY_CACHE_VERSION` whenever discovery starts extracting something new, or every camera will
+keep reporting the narrower set it was first read with.

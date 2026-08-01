@@ -1,8 +1,10 @@
-import { Activity, KeyRound, Trash2 } from 'lucide-react';
-import type { Camera } from '@vip/contracts';
+import { useState } from 'react';
+import { Activity, Archive, KeyRound, PlugZap, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
+import type { Camera, StreamProbeResult } from '@vip/contracts';
 import { usePermission } from '@/app/hooks';
 import { formatTimestamp } from '@/lib/format';
 import {
+  Alert,
   Badge,
   Button,
   Sheet,
@@ -21,8 +23,22 @@ import {
   TableRow,
   toast,
 } from '@/ui';
-import { HEALTH_KIND, HEALTH_LABEL, analysisProfile } from './cameraPresentation';
-import { useCheckCameraHealth, useSetCameraStatus } from './useCameras';
+import {
+  HEALTH_KIND,
+  HEALTH_LABEL,
+  LIFECYCLE_KIND,
+  LIFECYCLE_LABEL,
+  LIFECYCLE_MEANING,
+  analysisProfile,
+} from './cameraPresentation';
+import { ProbeResultPanel } from './ProbeResultPanel';
+import {
+  useCameraLifecycleAction,
+  useCheckCameraHealth,
+  useProbeCamera,
+  useRefreshCapabilities,
+  useSetCameraStatus,
+} from './useCameras';
 
 /**
  * Everything known about one camera (P-1) — connection, declared capabilities, stream profiles,
@@ -43,8 +59,15 @@ export function CameraDetailSheet({
 }) {
   const setStatus = useSetCameraStatus();
   const checkHealth = useCheckCameraHealth();
+  const probeCamera = useProbeCamera();
+  const refreshCapabilities = useRefreshCapabilities();
+  const lifecycleAction = useCameraLifecycleAction();
   const canUpdate = usePermission('camera:update');
   const canDelete = usePermission('camera:delete');
+  const [probeResult, setProbeResult] = useState<StreamProbeResult | null>(null);
+  // Kept in the sheet rather than only in a toast: "this deployment cannot test connections" is a
+  // standing fact an installer needs while they work, not a message that disappears in four seconds.
+  const [probeUnavailable, setProbeUnavailable] = useState<string | null>(null);
 
   if (!camera) return null;
   const profiles = camera.capabilities.streamProfiles;
@@ -56,10 +79,16 @@ export function CameraDetailSheet({
         <SheetHeader>
           <SheetTitle>{camera.name}</SheetTitle>
           <SheetDescription>
-            <StatusIndicator
-              status={HEALTH_KIND[camera.health.status]}
-              label={HEALTH_LABEL[camera.health.status]}
-            />
+            <span className="flex items-center gap-3">
+              <StatusIndicator
+                status={LIFECYCLE_KIND[camera.lifecycle.state]}
+                label={LIFECYCLE_LABEL[camera.lifecycle.state]}
+              />
+              <StatusIndicator
+                status={HEALTH_KIND[camera.health.status]}
+                label={HEALTH_LABEL[camera.health.status]}
+              />
+            </span>
           </SheetDescription>
         </SheetHeader>
         <SheetBody className="space-y-6">
@@ -103,6 +132,68 @@ export function CameraDetailSheet({
               </div>
             </section>
           ) : null}
+
+          <section className="space-y-2">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-text-subtle">
+              Lifecycle
+            </h3>
+            <p className="text-sm">{LIFECYCLE_MEANING[camera.lifecycle.state]}</p>
+            <p className="text-xs text-text-subtle">
+              Since {formatTimestamp(camera.lifecycle.since)} · {camera.lifecycle.evidence} evidence
+              {camera.lifecycle.reason ? ` · ${camera.lifecycle.reason}` : ''}
+            </p>
+          </section>
+
+          <section className="space-y-2">
+            <h3 className="text-xs font-medium uppercase tracking-wide text-text-subtle">
+              Measured health
+            </h3>
+            {camera.operational ? (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Reachable">{yesNo(camera.operational.reachable)}</Field>
+                  <Field label="Stream">{yesNo(camera.operational.streamAvailable)}</Field>
+                  <Field label="Latency">
+                    {camera.operational.rtspLatencyMs !== undefined
+                      ? `${Math.round(camera.operational.rtspLatencyMs)} ms`
+                      : 'Not measured'}
+                  </Field>
+                  <Field label="Frame rate">
+                    {camera.operational.fps !== undefined
+                      ? `${camera.operational.fps.toFixed(1)} fps`
+                      : 'Not measured'}
+                  </Field>
+                  <Field label="Authentication">{camera.operational.authentication}</Field>
+                  <Field label="Last frame">
+                    {camera.operational.lastFrameAt
+                      ? formatTimestamp(camera.operational.lastFrameAt)
+                      : 'Never'}
+                  </Field>
+                </div>
+                <p className="text-xs text-text-subtle">
+                  Observed {formatTimestamp(camera.operational.observedAt)} via{' '}
+                  {camera.operational.source} · {camera.operational.evidenceClass} evidence
+                </p>
+              </>
+            ) : (
+              // "Never measured" and "measured and found offline" are different facts. Rendering
+              // the first as zeros would be claiming a measurement nobody took.
+              <p className="text-sm text-text-subtle">
+                Nothing has ever measured this camera. Run a connection test to find out whether it
+                works.
+              </p>
+            )}
+          </section>
+
+          {probeUnavailable ? (
+            <Alert variant="warning" title="Connections cannot be tested here">
+              <p>{probeUnavailable}</p>
+              <p className="mt-1 text-muted-foreground">
+                This is a deployment gap, not a fault with this camera.
+              </p>
+            </Alert>
+          ) : null}
+          {probeResult ? <ProbeResultPanel probe={probeResult} /> : null}
 
           <section className="space-y-2">
             <h3 className="text-xs font-medium uppercase tracking-wide text-text-subtle">
@@ -181,9 +272,104 @@ export function CameraDetailSheet({
               </p>
             ) : null}
           </section>
+          {camera.timeline.length > 0 ? (
+            <section className="space-y-2">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-text-subtle">
+                Timeline
+              </h3>
+              <ol className="space-y-1.5 border-l border-border pl-3">
+                {[...camera.timeline].reverse().map((entry, i) => (
+                  <li key={`${entry.at}-${i}`} className="text-sm">
+                    <span className="font-medium">{entry.kind.replace(/-/g, ' ')}</span>
+                    {entry.from && entry.to ? (
+                      <span className="text-muted-foreground">
+                        {' '}
+                        {entry.from} → {entry.to}
+                      </span>
+                    ) : null}
+                    <div className="text-xs text-text-subtle">
+                      {formatTimestamp(entry.at)} · {entry.detail}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ) : null}
         </SheetBody>
         <SheetFooter className="justify-between">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={!canUpdate || probeCamera.isPending}
+              onClick={() =>
+                probeCamera.mutate(camera.id, {
+                  onSuccess: (report) => {
+                    setProbeResult(report.probe ?? null);
+                    setProbeUnavailable(report.unavailable ?? null);
+                    if (report.unavailable) {
+                      // A deployment gap, not a camera fault. Saying "test failed" here would send
+                      // an installer to a working camera.
+                      return;
+                    }
+                    toast.success(`Now ${LIFECYCLE_LABEL[report.lifecycle.state].toLowerCase()}`);
+                  },
+                  onError: () => toast.error('Could not test the connection'),
+                })
+              }
+            >
+              <PlugZap className="size-4" aria-hidden />
+              {probeCamera.isPending ? 'Testing…' : 'Test connection'}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!canUpdate || refreshCapabilities.isPending}
+              onClick={() =>
+                refreshCapabilities.mutate(
+                  { id: camera.id, force: true },
+                  {
+                    onSuccess: (result) =>
+                      result.unavailable
+                        ? toast.error(result.unavailable)
+                        : toast.success(
+                            result.refreshed
+                              ? 'Capabilities re-read from the device'
+                              : 'Served from cache — the device was not contacted',
+                          ),
+                    onError: () => toast.error('Could not refresh capabilities'),
+                  },
+                )
+              }
+            >
+              <RefreshCw className="size-4" aria-hidden />
+              Refresh capabilities
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!canUpdate || lifecycleAction.isPending}
+              onClick={() =>
+                lifecycleAction.mutate(
+                  {
+                    id: camera.id,
+                    action: camera.lifecycle.state === 'retired' ? 'reinstate' : 'retire',
+                  },
+                  {
+                    onSuccess: (updated) =>
+                      toast.success(
+                        updated.lifecycle.state === 'retired'
+                          ? 'Camera retired — its history is kept'
+                          : 'Camera reinstated',
+                      ),
+                    onError: () => toast.error('Could not change the lifecycle state'),
+                  },
+                )
+              }
+            >
+              {camera.lifecycle.state === 'retired' ? (
+                <RotateCcw className="size-4" aria-hidden />
+              ) : (
+                <Archive className="size-4" aria-hidden />
+              )}
+              {camera.lifecycle.state === 'retired' ? 'Reinstate' : 'Retire'}
+            </Button>
             <Button
               variant="outline"
               disabled={!canUpdate || checkHealth.isPending}
@@ -227,6 +413,12 @@ export function CameraDetailSheet({
       </SheetContent>
     </Sheet>
   );
+}
+
+/** Tri-state: an unmeasured signal reads "Not measured", never "No". */
+function yesNo(value: boolean | undefined): string {
+  if (value === undefined) return 'Not measured';
+  return value ? 'Yes' : 'No';
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
