@@ -108,6 +108,29 @@ import {
   TimelineEntry,
   SessionOperationalDiagnostics,
 } from '../src/inference/inference.js';
+import {
+  CertificationCheck,
+  CertificationTarget,
+  CompatibilityReport,
+  CapabilityObservation,
+  CapabilityReport,
+  DriftMeasurement,
+  SoakReport,
+  CertificationSummary,
+  CertificationBundle,
+  CameraRegistryEntry,
+  MaturityEvidence,
+  MaturityPromotion,
+  HardwareRecommendation,
+} from '../src/certification/certification.js';
+import {
+  FootageReference,
+  ExpectedOccurrence,
+  DatasetCase,
+  EvaluationFinding,
+  EvaluationReport,
+  EvaluationSummary,
+} from '../src/dataset/dataset.js';
 import { StreamEnvelope, StreamControl } from '../src/stream/stream.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -217,6 +240,27 @@ const schemas: Record<string, z.ZodType> = {
   'performance-budget': PerformanceBudget,
   'benchmark-kpis': BenchmarkKpis,
   'environment-fingerprint': EnvironmentFingerprint,
+  // AI-5e — production certification framework.
+  'certification-check': CertificationCheck,
+  'certification-target': CertificationTarget,
+  'compatibility-report': CompatibilityReport,
+  'capability-observation': CapabilityObservation,
+  'capability-report': CapabilityReport,
+  'drift-measurement': DriftMeasurement,
+  'soak-report': SoakReport,
+  'certification-summary': CertificationSummary,
+  'certification-bundle': CertificationBundle,
+  'camera-registry-entry': CameraRegistryEntry,
+  'maturity-evidence': MaturityEvidence,
+  'maturity-promotion': MaturityPromotion,
+  'hardware-recommendation': HardwareRecommendation,
+  // AI-5e — CCTV dataset library + accuracy evaluation.
+  'footage-reference': FootageReference,
+  'expected-occurrence': ExpectedOccurrence,
+  'dataset-case': DatasetCase,
+  'evaluation-finding': EvaluationFinding,
+  'evaluation-report': EvaluationReport,
+  'evaluation-summary': EvaluationSummary,
 };
 
 mkdirSync(outDir, { recursive: true });

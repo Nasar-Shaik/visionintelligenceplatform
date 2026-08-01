@@ -1,0 +1,18 @@
+{
+  "evidence": [],
+  "evidenceClass": "simulated",
+  "firmware": [],
+  "id": "generic-dvr",
+  "kind": "dvr",
+  "knownIssues": [],
+  "manufacturer": "Generic",
+  "model": "DVR (analogue channels over RTSP)",
+  "notes": "Per-channel RTSP URLs become per-camera sources. The DVR remains the recorder; the platform only analyses.",
+  "onvif": false,
+  "recommendedSettings": {
+    "rtspTransport": "tcp"
+  },
+  "status": "pending-validation",
+  "transports": ["rtsp"],
+  "updatedAt": "2026-08-01T00:00:00.000Z"
+}

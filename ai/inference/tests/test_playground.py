@@ -15,7 +15,16 @@ import urllib.request
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from adapters.fake_adapter import FakeModelAdapter  # noqa: E402
-from playground import analyze_request, write_artifacts  # noqa: E402
+from playground import (  # noqa: E402
+    analyze_request,
+    build_adapter,
+    evidence_doc,
+    incidents_doc,
+    performance_doc,
+    render_report,
+    timeline_doc,
+    write_artifacts,
+)
 from registry import CapabilityRegistry  # noqa: E402
 from resolver import FakeModelResolver  # noqa: E402
 from server import build_server  # noqa: E402
@@ -117,6 +126,85 @@ class PlaygroundHttpTests(unittest.TestCase):
         self.assertEqual(data["summary"]["framesSampled"], 3)
         self.assertEqual(len(data["events"]), 3)
         self.assertEqual(data["events"][0]["type"], "perception.person.detected")
+
+
+class WorkbenchArtifactsTest(unittest.TestCase):
+    """AI-5e — the surfaces that turn the playground into the demonstration environment."""
+
+    def _result(self, frames: int = 12):
+        analyzer = VideoAnalyzer(
+            build_adapter("stub"),
+            AnalyzeOptions(tenant_id="tnt_pg", camera_id="cam_1", session_id="sess_pg"),
+        )
+        return analyzer.analyze(StubFrameDecoder.synthetic(frames))
+
+    def test_the_full_artifact_set_is_written(self):
+        out = tempfile.mkdtemp()
+        paths = write_artifacts(out, self._result())
+        for name in (
+            "detections.json", "events.json", "metrics.json", "tracks.json",
+            "behaviors_timeline.json", "timeline.json", "incidents.json", "evidence.json",
+            "performance.json", "summary.txt", "report.html",
+        ):
+            self.assertTrue(os.path.isfile(os.path.join(out, name)), name)
+        self.assertIn("report", paths)
+
+    def test_the_timeline_is_ordered_by_frame_then_by_tier(self):
+        # Reading order must match causality: a detection precedes the track it feeds, which precedes
+        # the behaviour, which precedes the event.
+        doc = timeline_doc(self._result())
+        order = {"detection": 0, "track": 1, "behavior": 2, "composite": 3, "event": 4}
+        keys = [(e["frameIndex"], order[e["tier"]]) for e in doc["entries"]]
+        self.assertEqual(keys, sorted(keys))
+
+    def test_the_timeline_records_lifecycle_changes_not_every_frame(self):
+        # A confirmed track present for 400 frames is one event, not 400.
+        doc = timeline_doc(self._result(frames=30))
+        track_entries = [e for e in doc["entries"] if e["tier"] == "track"]
+        seen = {(e["detail"]["trackId"], e["detail"]["state"]) for e in track_entries}
+        self.assertEqual(len(track_entries), len(seen))
+
+    def test_incidents_are_labelled_as_candidates(self):
+        doc = incidents_doc(self._result())
+        self.assertIn("CANDIDATES", doc["note"])
+        self.assertIn("rules service", doc["note"])
+
+    def test_evidence_is_never_claimed_to_be_registered(self):
+        doc = evidence_doc(self._result())
+        for manifest in doc["manifests"]:
+            self.assertEqual(manifest["status"], "not-registered")
+
+    def test_performance_names_the_dominant_stage(self):
+        doc = performance_doc(self._result())
+        self.assertTrue(doc["stages"])
+        self.assertEqual(doc["dominantStage"], doc["stages"][0]["stage"])
+        self.assertAlmostEqual(sum(s["sharePercent"] for s in doc["stages"]), 100.0, places=0)
+
+    def test_the_report_is_self_contained_with_no_external_requests(self):
+        # It has to open from a filesystem on a laptop with no network, which is what a customer
+        # demonstration tends to be.
+        html = render_report(self._result())
+        self.assertNotIn("http://", html.replace("http://www.w3.org", ""))
+        self.assertNotIn("https://", html)
+        self.assertNotIn("<script", html)
+
+    def test_the_report_escapes_pipeline_supplied_text(self):
+        # Identifiers reach the report from configuration and from model label maps — both external
+        # data. A demonstration page that renders them raw is an XSS the moment one is shared.
+        analyzer = VideoAnalyzer(
+            build_adapter("stub"),
+            AnalyzeOptions(tenant_id="tnt_pg", session_id="<img src=x onerror=alert(1)>"),
+        )
+        html = render_report(analyzer.analyze(StubFrameDecoder.synthetic(3)))
+        self.assertNotIn("<img src=x", html)
+        self.assertIn("&lt;img src=x", html)
+
+    def test_a_benchmark_is_folded_in_when_supplied(self):
+        out = tempfile.mkdtemp()
+        paths = write_artifacts(out, self._result(), benchmark={"id": "b1", "kpis": {"fps": 12.5}})
+        self.assertTrue(os.path.isfile(paths["benchmark"]))
+        with open(paths["report"], encoding="utf-8") as fh:
+            self.assertIn("12.5", fh.read())
 
 
 if __name__ == "__main__":

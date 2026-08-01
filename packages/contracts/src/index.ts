@@ -39,6 +39,12 @@ export * from './behavior/behavior.js';
 // benchmarking + performance governance (AI-5a)
 export * from './benchmark/benchmark.js';
 
+// production certification: evidence, compatibility, soak, maturity promotion (AI-5e)
+export * from './certification/certification.js';
+
+// CCTV dataset library + accuracy evaluation (AI-5e)
+export * from './dataset/dataset.js';
+
 // inference platform: model registry, jobs, runtime metrics, pipeline (P2-2 G-3)
 export * from './inference/inference.js';
 

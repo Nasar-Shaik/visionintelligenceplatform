@@ -21,6 +21,7 @@ from stream_source import (
     FaultPlan,
     FileStreamSource,
     ReconnectPolicy,
+    RtspStreamSource,
     SimulatedStreamSource,
     backoff_delay_ms,
     build_source,
@@ -247,6 +248,67 @@ class SourceNeutralityTest(unittest.TestCase):
         frame = Frame(0, "0s", "sim://c", 640, 480, 640, 480, 1.0, b"x")
         with self.assertRaises(Exception):
             frame.index = 5  # frozen dataclass — a stage cannot mutate a decoded frame
+
+
+class RtspStreamSourceTest(unittest.TestCase):
+    """AI-5e — the production RTSP path. Constructed and configured only; opening one needs a camera."""
+
+    def test_it_is_interchangeable_with_the_simulated_source_through_the_protocol(self):
+        # The property that lets a scenario be developed against a simulation and then certified
+        # against a camera with no code change.
+        rtsp = RtspStreamSource("rtsp://cam.local:554/s")
+        sim = SimulatedStreamSource(uri="sim://cam", total_frames=1)
+        for source in (rtsp, sim):
+            for attr in ("source_type", "uri", "source_fps", "open", "frames", "close"):
+                self.assertTrue(hasattr(source, attr), f"{type(source).__name__} lacks {attr}")
+
+    def test_it_defaults_to_tcp(self):
+        # UDP loses frames on any congested or wireless link, and a "flaky camera" that is really a
+        # UDP problem costs days to diagnose.
+        self.assertEqual(RtspStreamSource("rtsp://cam.local/s").transport, "tcp")
+
+    def test_an_unsupported_transport_is_a_configuration_failure(self):
+        with self.assertRaises(ConfigurationFailure):
+            RtspStreamSource("rtsp://cam.local/s", transport="carrier-pigeon")
+
+    def test_it_selects_the_declared_sub_stream_path(self):
+        source = RtspStreamSource.for_profile(
+            "rtsp://cam.local:554/main",
+            {
+                "streamProfiles": [
+                    {"name": "main", "resolution": "1920x1080"},
+                    {"name": "sub", "resolution": "640x360", "path": "/Streaming/Channels/102",
+                     "preferredForAnalysis": True},
+                ]
+            },
+        )
+        self.assertEqual(source.uri, "rtsp://cam.local:554/Streaming/Channels/102")
+
+    def test_a_named_profile_wins_over_the_declared_preference(self):
+        caps = {
+            "streamProfiles": [
+                {"name": "main", "path": "/main", "resolution": "1920x1080"},
+                {"name": "sub", "path": "/sub", "resolution": "640x360", "preferredForAnalysis": True},
+            ]
+        }
+        source = RtspStreamSource.for_profile("rtsp://cam.local:554/x", caps, profile="main")
+        self.assertEqual(source.uri, "rtsp://cam.local:554/main")
+
+    def test_a_device_with_no_declared_capabilities_uses_the_uri_unchanged(self):
+        source = RtspStreamSource.for_profile("rtsp://cam.local:554/only", {})
+        self.assertEqual(source.uri, "rtsp://cam.local:554/only")
+
+    def test_build_source_routes_rtsp_and_onvif_to_the_production_path(self):
+        for declared in ("rtsp", "onvif"):
+            source = build_source({"type": declared, "uri": "rtsp://cam.local/s"})
+            self.assertIsInstance(source, RtspStreamSource)
+            # The DECLARED type is echoed back, never rewritten — the runtime dispatches on declared
+            # type and must not launder it (AI-5b refinement 4).
+            self.assertEqual(source.source_type, declared)
+
+    def test_credentials_are_still_redacted_on_the_production_path(self):
+        source = RtspStreamSource("rtsp://admin:hunter2@cam.local:554/s")
+        self.assertEqual(redact_uri(source.uri), "rtsp://***@cam.local:554/s")
 
 
 if __name__ == "__main__":

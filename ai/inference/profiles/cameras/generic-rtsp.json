@@ -1,0 +1,18 @@
+{
+  "evidence": [],
+  "evidenceClass": "simulated",
+  "firmware": [],
+  "id": "generic-rtsp",
+  "kind": "camera",
+  "knownIssues": [],
+  "manufacturer": "Generic",
+  "model": "RTSP camera (no ONVIF)",
+  "notes": "The no-ONVIF baseline. Plenty of working estates never expose ONVIF and must not be second-class.",
+  "onvif": false,
+  "recommendedSettings": {
+    "rtspTransport": "tcp"
+  },
+  "status": "pending-validation",
+  "transports": ["rtsp"],
+  "updatedAt": "2026-08-01T00:00:00.000Z"
+}

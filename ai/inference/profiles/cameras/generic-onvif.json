@@ -1,0 +1,18 @@
+{
+  "evidence": [],
+  "evidenceClass": "simulated",
+  "firmware": [],
+  "id": "generic-onvif",
+  "kind": "camera",
+  "knownIssues": [],
+  "manufacturer": "Generic",
+  "model": "ONVIF Profile S camera",
+  "notes": "Certifies that discovery works with no vendor-specific code. If this row fails, the ONVIF implementation is wrong rather than the device.",
+  "onvif": true,
+  "recommendedSettings": {
+    "rtspTransport": "tcp"
+  },
+  "status": "pending-validation",
+  "transports": ["onvif", "rtsp"],
+  "updatedAt": "2026-08-01T00:00:00.000Z"
+}

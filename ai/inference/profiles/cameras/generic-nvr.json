@@ -1,0 +1,18 @@
+{
+  "evidence": [],
+  "evidenceClass": "simulated",
+  "firmware": [],
+  "id": "generic-nvr",
+  "kind": "nvr",
+  "knownIssues": [],
+  "manufacturer": "Generic",
+  "model": "NVR (re-streamed IP channels)",
+  "notes": "Analysing the NVR re-stream rather than the cameras directly halves the network load but adds the NVR as a single point of failure \u2014 a deployment decision, recorded here so it is a decision.",
+  "onvif": true,
+  "recommendedSettings": {
+    "rtspTransport": "tcp"
+  },
+  "status": "pending-validation",
+  "transports": ["rtsp", "onvif"],
+  "updatedAt": "2026-08-01T00:00:00.000Z"
+}

@@ -1,0 +1,20 @@
+{
+  "evidence": [],
+  "evidenceClass": "simulated",
+  "firmware": [],
+  "id": "axis-generic",
+  "kind": "camera",
+  "knownIssues": [],
+  "manufacturer": "Axis",
+  "model": "Generic IP camera (P/M series)",
+  "notes": "Reference-quality ONVIF implementation; the useful control case for discovery bugs.",
+  "onvif": true,
+  "recommendedSettings": {
+    "rtspTransport": "tcp",
+    "streamPath": "/axis-media/media.amp?resolution=640x360",
+    "streamProfile": "sub"
+  },
+  "status": "pending-validation",
+  "transports": ["rtsp", "onvif"],
+  "updatedAt": "2026-08-01T00:00:00.000Z"
+}

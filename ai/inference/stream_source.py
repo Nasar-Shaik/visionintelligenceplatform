@@ -32,6 +32,9 @@ Implementations here:
   - `FileStreamSource`      — a finite file replayed as a live source (optionally looping).
   - `OpenCvStreamSource`    — real RTSP/HTTP/USB via a LAZY `cv2` import (integration-only). One class
     covers all three because OpenCV's `VideoCapture` is itself transport-neutral.
+  - `RtspStreamSource`      — the production RTSP path (AI-5e): `OpenCvStreamSource` plus profile
+    selection from declared capabilities and a TCP transport default. Interchangeable with
+    `SimulatedStreamSource` through configuration alone; no runtime logic knows which is active.
 
 Credentials are NEVER logged: `redact_uri` strips userinfo, and only the redacted form reaches stats,
 errors, or diagnostics. Stdlib-only at import time.
@@ -40,6 +43,7 @@ errors, or diagnostics. Stdlib-only at import time.
 from __future__ import annotations
 
 import itertools
+import os
 import time
 from dataclasses import dataclass
 from typing import Callable, Dict, Iterator, List, Optional, Protocol, Sequence
@@ -601,6 +605,99 @@ class OpenCvStreamSource:
             cap.release()
 
 
+class RtspStreamSource(OpenCvStreamSource):
+    """The production RTSP path (AI-5e, deliverable 2).
+
+    **This is a named class, not a new implementation.** `OpenCvStreamSource` already carries the
+    transport-neutral capture loop, so RTSP-specific behavior is exactly two things, and both are
+    configuration rather than logic:
+
+      1. **Profile paths.** A device publishes several streams (`main`, `sub`); `for_profile()` builds
+         the sub-stream URI from declared capabilities, so choosing the cheap stream is a lookup and
+         never a probe.
+      2. **Transport preference.** RTSP-over-TCP is the default because UDP loses frames on any
+         congested or wireless link, and a "flaky camera" that is really a UDP problem costs days.
+
+    Everything else — reconnect, redaction, failure categories, frame accounting — is inherited
+    unchanged. The runtime above the source seam cannot tell an `RtspStreamSource` from a
+    `SimulatedStreamSource`, which is the property that lets a scenario be developed against a
+    simulation and then certified against a camera with no code change (`PRODUCTION_COMPATIBILITY §1`).
+    """
+
+    def __init__(
+        self,
+        uri: str,
+        *,
+        source_type: str = "rtsp",
+        transport: str = "tcp",
+        resize_long_side: Optional[int] = None,
+        jpeg_quality: int = 85,
+        read_timeout_ms: float = 10_000.0,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        # The DECLARED type is preserved, not rewritten to "rtsp". An ONVIF camera streams over RTSP
+        # but the operator configured `onvif`, and diagnostics must echo back what was configured —
+        # the runtime dispatches on declared type and never launders it (AI-5b refinement 4).
+        super().__init__(
+            uri,
+            source_type=source_type,
+            resize_long_side=resize_long_side,
+            jpeg_quality=jpeg_quality,
+            read_timeout_ms=read_timeout_ms,
+            clock=clock,
+        )
+        if transport not in ("tcp", "udp"):
+            raise ConfigurationFailure(f"unsupported rtsp transport '{transport}' (tcp|udp)")
+        self.transport = transport
+
+    def open(self) -> None:
+        # OpenCV reads RTSP transport preference from FFmpeg's environment, not from an API. Set it
+        # only if the operator has not already expressed a preference — their explicit choice wins.
+        os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", f"rtsp_transport;{self.transport}")
+        super().open()
+
+    @classmethod
+    def for_profile(
+        cls,
+        base_uri: str,
+        capabilities: Optional[dict] = None,
+        *,
+        profile: Optional[str] = None,
+        requested_fps: float = 5.0,
+        **kwargs,  # noqa: ANN003 - forwarded verbatim to __init__
+    ) -> "RtspStreamSource":
+        """Build a source for a named stream profile, or for the one declared `preferredForAnalysis`.
+
+        Selection is delegated to `deployment.resolve_stream_settings()` — the same function the
+        scheduler already uses — so there is exactly ONE implementation of "which stream do we
+        analyze". A second copy here would eventually disagree with it, and the disagreement would
+        surface as a camera that benchmarks against the sub-stream and runs against the main one.
+
+        Falls back to `base_uri` untouched when nothing is declared: a device publishing one stream,
+        or one nobody ran discovery against, must still work.
+        """
+        from deployment import resolve_stream_settings  # noqa: WPS433 - local, avoids an import cycle
+
+        settings = resolve_stream_settings(
+            requested_fps=requested_fps,
+            capabilities=capabilities or {},
+            preferred_profile=profile,
+        )
+        path = settings.get("streamPath")
+        return cls(_join_path(base_uri, path) if path else base_uri, **kwargs)
+
+
+def _join_path(base_uri: str, path: str) -> str:
+    """Replace the path of `base_uri` with `path`. Query strings on the profile path are preserved;
+    credentials are never introduced here (the base URI carries none — that is enforced elsewhere)."""
+    if "://" not in base_uri:
+        return base_uri
+    scheme, remainder = base_uri.split("://", 1)
+    authority = remainder.split("/", 1)[0]
+    suffix = path if path.startswith("/") else f"/{path}"
+    return f"{scheme}://{authority}{suffix}"
+
+
 def build_source(config: dict) -> StreamSource:
     """Build a `StreamSource` from a `StreamSourceConfig` dict (the wire shape). The runtime selects
     an implementation by declared `type` ONLY — it never sniffs the URI — so a new transport is a new
@@ -623,7 +720,20 @@ def build_source(config: dict) -> StreamSource:
             total_frames=_opt_int(options.get("totalFrames")),
             source_fps=float(fps) if fps else 30.0,
         )
-    if source_type in ("rtsp", "http", "usb", "file", "onvif", "cloud", "webrtc"):
+    if source_type in ("rtsp", "onvif"):
+        # AI-5e: RTSP and ONVIF-declared cameras both stream over RTSP, so both take the production
+        # RTSP path — profile selection from declared capabilities, TCP transport by default. Still
+        # selected by DECLARED type only; the URI is never sniffed.
+        return RtspStreamSource.for_profile(
+            uri,
+            config.get("capabilities") or {},
+            profile=config.get("streamProfile") or options.get("streamProfile"),
+            requested_fps=float(fps) if fps else 5.0,
+            source_type=source_type,
+            transport=str(options.get("transport") or options.get("rtspTransport") or "tcp"),
+            resize_long_side=_opt_int(options.get("resizeLongSide")),
+        )
+    if source_type in ("http", "usb", "file", "cloud", "webrtc"):
         return OpenCvStreamSource(
             uri,
             source_type=source_type,

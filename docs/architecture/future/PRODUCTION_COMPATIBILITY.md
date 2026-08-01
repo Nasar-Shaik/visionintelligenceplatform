@@ -33,18 +33,18 @@ Customers do not replace their cameras to buy software. The platform meets the e
 `StreamSource` was designed so that meeting it never requires runtime changes — the runtime dispatches
 on **declared type**, never on URI sniffing.
 
-| Environment                | Status          | How it plugs in                                                                     |
-| -------------------------- | --------------- | ----------------------------------------------------------------------------------- |
-| **Existing DVRs**          | supported today | DVR RTSP output → `type: rtsp`; per-channel URLs become per-camera sources          |
-| **Existing NVRs**          | supported today | NVR RTSP/ONVIF re-stream → `type: rtsp` / `onvif`; NVR remains the recorder         |
-| **Direct RTSP cameras**    | supported today | `type: rtsp` (`OpenCvStreamSource`)                                                 |
-| **ONVIF cameras**          | contract ready  | `type: onvif`; `CameraCapabilities.onvif` + `streamProfiles` populated by discovery |
-| **USB / built-in webcams** | supported today | `type: usb` with `options.deviceIndex`                                              |
-| **HTTP / MJPEG**           | supported today | `type: http`                                                                        |
-| **Recorded files**         | supported today | `type: file` (looping supported for soak tests)                                     |
-| **Future cloud cameras**   | contract ready  | `type: cloud` — a new implementation behind the same Protocol                       |
-| **WebRTC**                 | contract ready  | `type: webrtc`                                                                      |
-| **Edge deployments**       | AI-5e           | same runtime, `edge-device` budget class + a deployment profile                     |
+| Environment                | Status                  | How it plugs in                                                                                                       |
+| -------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **Existing DVRs**          | supported today         | DVR RTSP output → `type: rtsp`; per-channel URLs become per-camera sources                                            |
+| **Existing NVRs**          | supported today         | NVR RTSP/ONVIF re-stream → `type: rtsp` / `onvif`; NVR remains the recorder                                           |
+| **Direct RTSP cameras**    | supported today         | `type: rtsp` → `RtspStreamSource` (profile selection + TCP transport, AI-5e)                                          |
+| **ONVIF cameras**          | **implemented** (AI-5e) | `type: onvif` → `RtspStreamSource`; `ai/inference/onvif.py` discovers + negotiates and populates `CameraCapabilities` |
+| **USB / built-in webcams** | supported today         | `type: usb` with `options.deviceIndex`                                                                                |
+| **HTTP / MJPEG**           | supported today         | `type: http`                                                                                                          |
+| **Recorded files**         | supported today         | `type: file` (looping supported for soak tests)                                                                       |
+| **Future cloud cameras**   | contract ready          | `type: cloud` — a new implementation behind the same Protocol                                                         |
+| **WebRTC**                 | contract ready          | `type: webrtc`                                                                                                        |
+| **Edge deployments**       | **packaged** (AI-5e)    | `edge/packaging/` — Docker · mini-PC · NUC · Jetson · industrial PC. Packaged, **not certified**                      |
 
 **Design commitments that make this hold:**
 
@@ -58,11 +58,23 @@ on **declared type**, never on URI sniffing.
 - **Tolerate flaky links.** Bounded-backoff reconnect + availability accounting assume the network
   will fail, because in a warehouse or a parking lot it does.
 
-## 3. Real-hardware certification checklist (rec 9) — executed in **AI-5e**
+## 3. Real-hardware certification — **framework delivered in AI-5e, execution pending hardware**
 
-Everything through AI-5c is deterministic and simulated. That proves the **plumbing**, not the
+Everything through AI-5d is deterministic and simulated. That proves the **plumbing**, not the
 **perception**. No capability is promoted to `Production` in
 [CAPABILITY_MATURITY](CAPABILITY_MATURITY.md) on simulated evidence alone.
+
+**AI-5e built the procedure and deliberately did not execute it.** The harness
+(`ai/inference/certification.py`), the CLI (`vip certify`), the soak framework, the compatibility
+registry and the promotion gate all exist and are tested. **No device has been physically validated**,
+so every row below and every row of the
+[compatibility registry](../../../ai/inference/profiles/cameras/) reads `Pending Validation`.
+
+That is enforced structurally, not by convention: `EvidenceClass` records what every check ran on, a
+report is only as strong as its weakest check, and `certified` is unreachable without `hardware`
+evidence. A complete run against a simulated source — every check green — still returns
+`pending-validation`, and a negative-control test asserts it
+(`tests/test_certification.py::EvidenceClassTest::test_a_flawless_simulated_run_is_still_not_certified`).
 
 **Certification matrix** — each row runs the standard + live benchmark suites, records a
 `BenchmarkReport` (with configuration + hardware fingerprints), and is compared against the AI-5a
@@ -98,17 +110,21 @@ justification, an ADR, and a review. "It would be convenient here" is not a just
 
 **What AI-5b and AI-5c added, and why none of it is a new layer:**
 
-| Addition                     | Why it is not architectural expansion                                              |
-| ---------------------------- | ---------------------------------------------------------------------------------- |
-| `StreamSource` (AI-5b)       | **Stage 1** of the reference architecture, which always specified a Video Source   |
-| `StreamPipeline` (AI-5b)     | The queue between existing stages 3 and 5 — no new stage                           |
-| `InferenceScheduler` (AI-5c) | **Stage 4**, specified since the reference architecture was written                |
-| `ComputeResource` (AI-5c)    | An operational abstraction behind the unchanged `ModelAdapter` seam                |
-| `HealthMonitor` (AI-5d)      | Interprets measurements existing stages already emit — no new instrumentation      |
-| `AutoRecovery` (AI-5d)       | **Executes** the frozen AI-5b failure taxonomy; adds no new judgement              |
-| `ModelSlot` (AI-5d)          | One indirection **behind** the unchanged `ModelAdapter` seam — not a new stage     |
-| `DiagnosticsJournal` (AI-5d) | A **sink** on the operational log a session already writes to — not a new emitter  |
-| Operational contracts (all)  | Additive, operational-only; the **five frozen perception contracts are untouched** |
+| Addition                      | Why it is not architectural expansion                                              |
+| ----------------------------- | ---------------------------------------------------------------------------------- |
+| `StreamSource` (AI-5b)        | **Stage 1** of the reference architecture, which always specified a Video Source   |
+| `StreamPipeline` (AI-5b)      | The queue between existing stages 3 and 5 — no new stage                           |
+| `InferenceScheduler` (AI-5c)  | **Stage 4**, specified since the reference architecture was written                |
+| `ComputeResource` (AI-5c)     | An operational abstraction behind the unchanged `ModelAdapter` seam                |
+| `HealthMonitor` (AI-5d)       | Interprets measurements existing stages already emit — no new instrumentation      |
+| `AutoRecovery` (AI-5d)        | **Executes** the frozen AI-5b failure taxonomy; adds no new judgement              |
+| `ModelSlot` (AI-5d)           | One indirection **behind** the unchanged `ModelAdapter` seam — not a new stage     |
+| `DiagnosticsJournal` (AI-5d)  | A **sink** on the operational log a session already writes to — not a new emitter  |
+| `RtspStreamSource` (AI-5e)    | `OpenCvStreamSource` + declared-profile selection — a subclass, not a new tier     |
+| ONVIF discovery (AI-5e)       | Produces **configuration**. It never touches the pipeline; discovery is data       |
+| Certification harness (AI-5e) | An **observer** of the frozen runtime — it reads diagnostics, it changes nothing   |
+| Soak framework (AI-5e)        | Samples what the runtime already publishes; adds no instrumentation                |
+| Operational contracts (all)   | Additive, operational-only; the **five frozen perception contracts are untouched** |
 
 The five frozen contracts — `DetectionResult` → `Track` → `BehaviorResult` → `CompositeBehavior` →
 `EventEnvelope` — remain additive-only, exactly as [ED-0039](../../project/ENGINEERING_DECISION_LOG.md)

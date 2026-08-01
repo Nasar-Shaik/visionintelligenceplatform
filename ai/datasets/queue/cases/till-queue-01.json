@@ -1,0 +1,58 @@
+{
+  "category": "queue",
+  "expectations": [
+    {
+      "count": 1,
+      "kind": "behavior",
+      "type": "queue",
+      "zoneId": "zone_till_1"
+    },
+    {
+      "count": 1,
+      "countTolerance": 3,
+      "kind": "event",
+      "type": "analytics.queue.length"
+    },
+    {
+      "absent": true,
+      "kind": "behavior",
+      "notes": "queueing is not loitering \u2014 the single most likely false positive in retail",
+      "type": "loitering"
+    }
+  ],
+  "footage": {
+    "durationSeconds": 120.0,
+    "fps": 15.0,
+    "licence": "TEMPLATE \u2014 replace with the dataset's actual licence before use",
+    "origin": "public-dataset",
+    "path": "ai/datasets/queue/footage/till-queue-01.mp4",
+    "resolution": "1920x1080"
+  },
+  "futureImprovements": ["add a two-till variant where the queues are adjacent and must not merge"],
+  "id": "queue/till-queue-01",
+  "notes": "TEMPLATE CASE \u2014 awaiting footage.",
+  "options": {
+    "behaviors": {
+      "queue": {
+        "min_queue": 2
+      }
+    },
+    "targetFps": 5
+  },
+  "title": "A queue of four forms and clears at a single till",
+  "zones": [
+    {
+      "geometry": {
+        "points": [
+          [0.3, 0.4],
+          [0.8, 0.4],
+          [0.8, 0.95],
+          [0.3, 0.95]
+        ]
+      },
+      "kind": "area",
+      "name": "Till 1 queue",
+      "zoneId": "zone_till_1"
+    }
+  ]
+}

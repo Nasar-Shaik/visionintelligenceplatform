@@ -1,0 +1,47 @@
+# Edge deployment (AI-5e). Packaged, not certified — see README.md.
+#
+#   docker compose -f edge/packaging/docker-compose.yml up
+#
+# Credentials come from the environment or a .env file that is NEVER committed. A camera password
+# baked into an image layer is permanent, distributable and invisible.
+
+services:
+  ai-runtime:
+    image: vip-ai-runtime:${RUNTIME_VERSION:-1.0.0}
+    build:
+      context: ../..
+      dockerfile: edge/packaging/Dockerfile
+      args:
+        EXTRAS: ${EXTRAS:-cpu}
+        RUNTIME_VERSION: ${RUNTIME_VERSION:-1.0.0}
+    restart: unless-stopped
+    environment:
+      # Referenced, never inline. The runtime resolves credentials by reference and redacts them
+      # everywhere they could surface (logs, diagnostics, validation bundles).
+      VIP_CAMERA_USERNAME: ${VIP_CAMERA_USERNAME:-}
+      VIP_CAMERA_PASSWORD: ${VIP_CAMERA_PASSWORD:-}
+      VIP_DEPLOYMENT_PROFILE: ${VIP_DEPLOYMENT_PROFILE:-retail-store}
+      NATS_URL: ${NATS_URL:-}
+    ports:
+      - '${AI_PORT:-8081}:8081'
+    volumes:
+      # Models and recorded footage are mounted, not baked: an image that carries a customer's
+      # footage cannot be shared, and one that carries a 300 MB model cannot be updated cheaply.
+      - ${MODELS_DIR:-./models}:/app/models:ro
+      - ${FOOTAGE_DIR:-./footage}:/app/footage:ro
+      - runtime-state:/app/state
+    # An edge box is shared with whatever else the customer runs on it. Unbounded containers are how
+    # a perception runtime takes down a point-of-sale system at 4pm on a Saturday.
+    deploy:
+      resources:
+        limits:
+          cpus: '${CPU_LIMIT:-4.0}'
+          memory: ${MEMORY_LIMIT:-4g}
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+volumes:
+  runtime-state:

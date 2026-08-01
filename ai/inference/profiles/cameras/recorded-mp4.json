@@ -1,0 +1,18 @@
+{
+  "evidence": [],
+  "evidenceClass": "simulated",
+  "firmware": [],
+  "id": "recorded-mp4",
+  "kind": "recording",
+  "knownIssues": [],
+  "manufacturer": "n/a",
+  "model": "Recorded MP4 playback",
+  "notes": "Certifies the offline-replay guarantee (PRODUCTION_COMPATIBILITY \u00a71): live and batch must produce the same output.",
+  "onvif": false,
+  "recommendedSettings": {
+    "loop": false
+  },
+  "status": "pending-validation",
+  "transports": ["file"],
+  "updatedAt": "2026-08-01T00:00:00.000Z"
+}

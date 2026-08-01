@@ -113,6 +113,25 @@ class ServerTests(unittest.TestCase):
         status, payload = self.infer(body, {"x-internal-key": KEY})
         self.assertEqual(status, 404)
 
+    def test_certification_matrix_is_served_and_claims_nothing(self) -> None:
+        """AI-5e. The matrix is a product property, not tenant data, so it needs no tenant header —
+        and every row must still read `pending-validation` from a repository with no hardware."""
+        status, raw = _get(self.base("/certification/matrix"))
+        self.assertEqual(status, 200)
+        data = json.loads(raw)["data"]
+        self.assertGreater(data["devices"], 0)
+        self.assertEqual(data["byStatus"]["certified"], 0)
+        for row in data["matrix"]:
+            self.assertEqual(row["status"], "pending-validation")
+        self.assertIn("physically validated", data["note"])
+
+    def test_dataset_coverage_is_served(self) -> None:
+        status, raw = _get(self.base("/certification/coverage"))
+        self.assertEqual(status, 200)
+        data = json.loads(raw)["data"]
+        self.assertIn("coverage", data)
+        self.assertEqual(len(data["coverage"]), 18)
+
 
 if __name__ == "__main__":
     unittest.main()

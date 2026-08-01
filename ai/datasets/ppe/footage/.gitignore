@@ -1,0 +1,6 @@
+# Footage bytes are DVC-tracked and must NEVER enter git history.
+# Surveillance footage of real people is not something a repository should carry around forever,
+# and a clip committed by accident cannot be un-committed from everyone's clone.
+*
+!.gitignore
+!*.dvc

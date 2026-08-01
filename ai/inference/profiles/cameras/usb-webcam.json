@@ -1,0 +1,18 @@
+{
+  "evidence": [],
+  "evidenceClass": "simulated",
+  "firmware": [],
+  "id": "usb-webcam",
+  "kind": "encoder",
+  "knownIssues": [],
+  "manufacturer": "Generic",
+  "model": "USB / built-in webcam",
+  "notes": "Exercises the usb transport and the device-index option. Demo and development hardware, not a deployment target.",
+  "onvif": false,
+  "recommendedSettings": {
+    "deviceIndex": 0
+  },
+  "status": "pending-validation",
+  "transports": ["usb"],
+  "updatedAt": "2026-08-01T00:00:00.000Z"
+}

@@ -29,7 +29,24 @@ additive-only). Maturity is metadata: promoting/demoting a capability changes **
 requires **no** contract change. A capability advances only with evidence (real-footage validation +
 benchmarks). This register is the single source of truth; keep it in sync as capabilities mature.
 
-## 2. Capability register (2026-07-31)
+> **AI-5e: maturity is no longer edited by hand.** A markdown table anyone can retype drifts, over a
+> year, from a record of evidence into a record of optimism — and by then nobody can tell which entries
+> were ever measured. Promotion is now a **function**, `maturity.promote()`, which takes the **ids** of
+> the reports that justify it and usually refuses, carrying its reasons:
+>
+> | transition            | required evidence                                                                                         |
+> | --------------------- | --------------------------------------------------------------------------------------------------------- |
+> | Experimental → Beta   | a dataset evaluation on **recorded footage** that passed                                                  |
+> | Beta → Production     | + **hardware** evidence: a `certified` compatibility run, a passed soak, a benchmark that did not regress |
+> | anything → Deprecated | a named successor (deprecating with nowhere to go strands whoever is using it)                            |
+> | any demotion          | **none** — discovering something is worse than believed must never be harder than claiming it is better   |
+>
+> An id proves a run _happened_, not that it _succeeded_, so the evidence also carries
+> `certification_status`, `soak_passed` and `benchmark_accepted`. Levels are skipped-proof, refusals are
+> recorded in the history, and every blocker is reported at once — an engineer who has to run the gate
+> five times to discover five blockers stops running the gate.
+
+## 2. Capability register (2026-08-01)
 
 Levels reflect what the deterministic-by-default runtime has **demonstrated to date** (stub-adapter,
 synthetic/limited footage). Most capabilities are **Experimental** until AI-5 validates them against
@@ -131,3 +148,33 @@ production_.
 
 In short: AI-5b made capabilities runnable in production shape, AI-5c made them survive a loaded box,
 AI-5d made them survive a bad night. Only AI-5e can make them _proven_.
+
+### Evidence delivered by AI-5e (production certification framework)
+
+**Nothing in this register moved, and that is the result.**
+
+AI-5e built the entire apparatus for promoting a capability — the certification harness, the soak
+framework, the CCTV dataset library and its accuracy evaluator, the compatibility registry, and the
+promotion gate itself — and then ran it, and it refused to promote anything. Correctly:
+
+- **No physical device has been tested.** Every row of the
+  [compatibility registry](../../../ai/inference/profiles/cameras/) is `Pending Validation`, so no
+  capability has `hardware` evidence, so none can reach `Production`.
+- **No real CCTV footage is present.** The dataset library ships eighteen scenario directories and
+  three template cases; the footage bytes are DVC-tracked and not pulled. Every case reports
+  `footage-missing`, which is **never** a pass, so no capability has `recorded-footage` evidence
+  either — and `Beta` requires it.
+
+So the honest position after AI-5e is: **the platform can now prove things about capabilities, and has
+not yet proved any of them.** The Beta entries above rest on deterministic validation — which is what
+made them Beta and is exactly what stops them being Production.
+
+**What changes a row from here** — and only these:
+
+1. Collect footage into `ai/datasets/<scenario>/footage/` (DVC), write the case with a licence and a
+   human's expectations, and run `python ai/inference/evaluate_cli.py --all --gate`. A pass supplies
+   `recorded-footage` evidence → **Beta**.
+2. Point `vip certify` at a physical camera and run a 24h+ soak. A `certified` summary plus a passed
+   soak plus a non-regressing benchmark supplies `hardware` evidence → **Production**.
+
+There is no third path, and there is deliberately no manual override.

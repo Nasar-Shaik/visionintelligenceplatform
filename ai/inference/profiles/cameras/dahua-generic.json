@@ -1,0 +1,20 @@
+{
+  "evidence": [],
+  "evidenceClass": "simulated",
+  "firmware": [],
+  "id": "dahua-generic",
+  "kind": "camera",
+  "knownIssues": [],
+  "manufacturer": "Dahua",
+  "model": "Generic IP camera (IPC series)",
+  "notes": "Second most common; a differing ONVIF dialect from Hikvision, which is precisely why both must be certified separately.",
+  "onvif": true,
+  "recommendedSettings": {
+    "rtspTransport": "tcp",
+    "streamPath": "/cam/realmonitor?channel=1&subtype=1",
+    "streamProfile": "sub"
+  },
+  "status": "pending-validation",
+  "transports": ["rtsp", "onvif"],
+  "updatedAt": "2026-08-01T00:00:00.000Z"
+}

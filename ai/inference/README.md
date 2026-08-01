@@ -291,6 +291,64 @@ suspended`, with **hysteresis** both ways, a per-deployment **ceiling**, and **p
 - **Benchmark evidence gate** — `benchmark_cli.py --baseline <benchmark.json>` compares against a prior
   run and **exits non-zero on regression**. See [AI-5c-SCHEDULING](../../docs/tracker/AI-5c-SCHEDULING.md).
 
+### Health, Auto-Recovery & Model Lifecycle (AI-5d — Production Readiness)
+
+See [AI-5d-HEALTH-RECOVERY](../../docs/tracker/AI-5d-HEALTH-RECOVERY.md) for the full account:
+[`health`](health.py) (0–100 score across connection · inference · scheduler · resources · recovery,
+with trends and projection), [`recovery`](recovery.py) (budgeted recovery from the frozen AI-5b
+taxonomy; `configuration` failures are never retried), [`model_lifecycle`](model_lifecycle.py)
+(zero-downtime version changes through a per-frame `ModelSlot`), [`journal`](journal.py) (one merged
+operational stream, as a _sink_ on the log a session already writes to), and
+[`production_sim`](production_sim.py) (17 production-condition simulations).
+
+### Production Certification Framework (AI-5e — the final v1.0 milestone)
+
+**Simulation proves architecture; hardware proves production readiness.** AI-5e builds everything
+needed to certify a deployment and is **structurally incapable of certifying itself**: every check
+records an **`EvidenceClass`** (`simulated` → `recorded-footage` → `hardware`), a report is only as
+strong as its **weakest** check, and `certified` is unreachable without `hardware`. A complete run
+against a simulated source — every check green — still returns `pending-validation`.
+
+- **[`onvif`](onvif.py)** — WS-Discovery + capability negotiation. Two Protocol seams
+  (`DiscoveryTransport`, `SoapTransport`), each with a real and a **deterministic simulated**
+  implementation, so the whole path is unit-tested with no network, camera or thread. Produces
+  `CameraCapabilities` + `CameraMetadata` the runtime **consumes instead of probing**. The WS-Security
+  password never enters the envelope (SHA-1 digest only); a device-returned credentialed stream URI is
+  **stripped to a path**. Sub-stream selection is _smallest at or above the analysis floor_.
+- **[`RtspStreamSource`](stream_source.py)** — the production RTSP path: a named subclass of
+  `OpenCvStreamSource` that delegates profile selection to the _existing_ `resolve_stream_settings()`
+  and defaults to RTSP-over-TCP. Interchangeable with `SimulatedStreamSource` through configuration
+  alone; the **declared** source type is preserved, never rewritten.
+- **[`certification`](certification.py)** — the harness. Drives the **real** supervisor and reads only
+  diagnostics the runtime already publishes. Two-phase: `observe_session()` measures what it can,
+  `record()` accepts what only a human can (a cable pull, a power cycle). Checks nobody supplied stay
+  `not-executed` **and keep blocking**. Also `build_bundle()` — the customer validation package, with
+  unconditional deep credential redaction.
+- **[`camera_registry`](camera_registry.py)** + **[`profiles/cameras/`](profiles/cameras/)** — the
+  compatibility matrix. **11 devices, every one `Pending Validation`.** Discovery records a device and
+  **never changes its status**; a `certified` entry with no hardware evidence cannot be constructed.
+- **[`soak`](soak.py)** — long-duration runs measuring **drift, not level**, judging only the adverse
+  direction, with an injected clock so a 72-hour soak is asserted in microseconds.
+- **[`maturity`](maturity.py)** — promotion as a **function** taking report _ids_. Beta needs recorded
+  footage; Production needs a `certified` run, a passed soak and a non-regressing benchmark. Demotion
+  needs nothing.
+- **[`sizing`](sizing.py)** — hardware recommendations from the runtime's own cost model, marked
+  `estimated` until a benchmark backs them. See
+  [HARDWARE_RECOMMENDATIONS](../../docs/architecture/future/HARDWARE_RECOMMENDATIONS.md).
+- **[`dataset`](dataset.py)** + **[`../datasets/`](../datasets/)** — the CCTV corpus: 18 scenarios,
+  footage DVC-only and refused from git, a licence or consent basis **required** to load.
+- **[`evaluation`](evaluation.py)** — accuracy against recorded footage. Scores **both directions**
+  (a false positive costs precision exactly as a miss costs recall), counts a behaviour **once per
+  `behaviorId`**, **defers** `incident` expectations to the rules service, and treats
+  **`footage-missing` as never a pass**.
+- **CLIs** — `python certify_cli.py --matrix | --discover | --sizing <profile> | --target <id>`
+  (`vip certify`) and `python evaluate_cli.py --coverage | --all --gate` (`vip evaluate`).
+- **HTTP (additive)** — `GET /certification/matrix`, `GET /certification/coverage` (not tenant-scoped:
+  what the product supports is identical for every tenant and carries no tenant data).
+- **Packaging** — [`edge/packaging/`](../../edge/packaging/): Docker · mini-PC · NUC · Jetson ·
+  industrial PC. **Packaged, not certified.** See
+  [AI-5e-CERTIFICATION](../../docs/tracker/AI-5e-CERTIFICATION.md).
+
 ## Configuration (env, `.env` only — ADR-0018)
 
 `HOST`, `PORT` (8085), `LOG_LEVEL`, `INTERNAL_API_KEY` (≥16), `INFERENCE_BACKEND` (`stub`|`onnx`),

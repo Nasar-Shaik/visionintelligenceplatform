@@ -1,0 +1,19 @@
+{
+  "evidence": [],
+  "evidenceClass": "simulated",
+  "firmware": [],
+  "id": "uniview-generic",
+  "kind": "camera",
+  "knownIssues": [],
+  "manufacturer": "UNV (Uniview)",
+  "model": "Generic IP camera",
+  "notes": "Common in mid-market Indian and SEA installs.",
+  "onvif": true,
+  "recommendedSettings": {
+    "rtspTransport": "tcp",
+    "streamPath": "/media/video2"
+  },
+  "status": "pending-validation",
+  "transports": ["rtsp", "onvif"],
+  "updatedAt": "2026-08-01T00:00:00.000Z"
+}

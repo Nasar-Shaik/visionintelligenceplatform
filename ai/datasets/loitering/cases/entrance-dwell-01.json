@@ -1,0 +1,59 @@
+{
+  "category": "loitering",
+  "description": "A single person stands just inside an automatic door for roughly 20 seconds while ordinary traffic walks past them. The point of the case is that the passers-by must NOT alert.",
+  "expectations": [
+    {
+      "count": 1,
+      "fromSeconds": 8,
+      "kind": "behavior",
+      "notes": "the dwelling subject",
+      "toSeconds": 40,
+      "type": "loitering",
+      "zoneId": "zone_entrance"
+    },
+    {
+      "count": 1,
+      "countTolerance": 1,
+      "kind": "event",
+      "type": "behavior.loitering.detected"
+    }
+  ],
+  "footage": {
+    "durationSeconds": 45.0,
+    "fps": 25.0,
+    "licence": "TEMPLATE \u2014 replace with the real licence or consent basis before use",
+    "origin": "internal-capture",
+    "path": "ai/datasets/loitering/footage/entrance-dwell-01.mp4",
+    "resolution": "1280x720"
+  },
+  "futureImprovements": [
+    "add a paired negative clip: the same doorway with only pass-through traffic",
+    "record the exact dwell threshold a human would consider correct here"
+  ],
+  "id": "loitering/entrance-dwell-01",
+  "notes": "TEMPLATE CASE \u2014 the manifest is real, the footage is not yet collected. It loads, and reports footage-missing.",
+  "options": {
+    "behaviors": {
+      "loitering": {
+        "dwell_seconds": 10.0
+      }
+    },
+    "targetFps": 5
+  },
+  "title": "One subject dwells at the entrance while others pass through",
+  "zones": [
+    {
+      "geometry": {
+        "points": [
+          [0.1, 0.2],
+          [0.6, 0.2],
+          [0.6, 0.9],
+          [0.1, 0.9]
+        ]
+      },
+      "kind": "area",
+      "name": "Entrance",
+      "zoneId": "zone_entrance"
+    }
+  ]
+}

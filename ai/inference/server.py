@@ -110,6 +110,13 @@ def make_handler(
                 self._tenant_scoped(supervisor.recovery_history)
             elif path == "/failure-analytics" and supervisor is not None:
                 self._tenant_scoped(supervisor.failure_analytics)
+            # AI-5e — certification governance. Deliberately NOT tenant-scoped: which cameras the
+            # platform has certified and what the dataset corpus covers are properties of the
+            # PRODUCT, identical for every tenant, and carry no tenant data.
+            elif path == "/certification/matrix":
+                self._certification_matrix()
+            elif path == "/certification/coverage":
+                self._dataset_coverage()
             else:
                 self._err(404, "not_found", f"no route for GET {self.path}")
 
@@ -117,6 +124,37 @@ def make_handler(
             """Multi-camera capacity + fleet health (tenant-scoped counts stay per-tenant elsewhere;
             this is the runtime's own capacity view for operators)."""
             self._ok(supervisor.stats())
+
+        def _certification_matrix(self) -> None:
+            """The official compatibility matrix (AI-5e deliverable 4). Every device stays
+            `pending-validation` until a physical run says otherwise — this endpoint reports that
+            status, it never computes one."""
+            from camera_registry import CameraRegistry  # noqa: WPS433 - keeps server import light
+
+            registry_ = CameraRegistry().load()
+            self._ok(
+                {
+                    "matrix": registry_.matrix(),
+                    **registry_.summary(),
+                    "note": (
+                        "No hardware compatibility is claimed until a device has been physically "
+                        "validated. Run `vip certify` against the device to change a status."
+                    ),
+                }
+            )
+
+        def _dataset_coverage(self) -> None:
+            """What the CCTV dataset corpus covers, and where it does not (AI-5e priority 3)."""
+            from dataset import DatasetLibrary  # noqa: WPS433
+
+            library = DatasetLibrary().load()
+            self._ok(
+                {
+                    "cases": len(library),
+                    "coverage": library.coverage(),
+                    "missingFootage": [c.id for c in library.missing_footage()],
+                }
+            )
 
         def _tenant_scoped(self, fn) -> None:  # noqa: ANN001
             """SLA + resource views are per-session data, so they are tenant-scoped (Law 5)."""

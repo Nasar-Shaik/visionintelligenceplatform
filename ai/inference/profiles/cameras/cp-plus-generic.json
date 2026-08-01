@@ -1,0 +1,18 @@
+{
+  "evidence": [],
+  "evidenceClass": "simulated",
+  "firmware": [],
+  "id": "cp-plus-generic",
+  "kind": "camera",
+  "knownIssues": [],
+  "manufacturer": "CP Plus",
+  "model": "Generic IP camera",
+  "notes": "Value-segment estate typical of the Indian pilot market. ONVIF support varies by model and firmware \u2014 assume none.",
+  "onvif": false,
+  "recommendedSettings": {
+    "rtspTransport": "tcp"
+  },
+  "status": "pending-validation",
+  "transports": ["rtsp"],
+  "updatedAt": "2026-08-01T00:00:00.000Z"
+}

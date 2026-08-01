@@ -133,6 +133,13 @@ export const CameraCapabilities = z.object({
   streamProfiles: z.array(CameraStreamProfile).max(10).default([]),
   /** ONVIF is reachable on this device (discovery/PTZ/profile enumeration). */
   onvif: z.boolean().default(false),
+  /**
+   * The device can publish an ONVIF metadata stream (analytics/events alongside video) — AI-5e
+   * discovery populates it. Additive and descriptive: the runtime does not consume the metadata
+   * stream today, and recording that a device *offers* one is what lets that decision be made later
+   * from an inventory rather than by re-walking every site.
+   */
+  metadataStream: z.boolean().default(false),
   /** When the capabilities were last confirmed against the device — staleness is an operator signal. */
   discoveredAt: IsoDateTime.optional(),
 });

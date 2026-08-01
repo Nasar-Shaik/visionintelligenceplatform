@@ -126,6 +126,8 @@ describe('CameraCapabilities (G-1)', () => {
       // AI-5c additions — additive and defaulted, so an existing camera record still parses.
       streamProfiles: [],
       onvif: false,
+      // AI-5e — populated by ONVIF discovery; defaulted so pre-discovery records still parse.
+      metadataStream: false,
     });
   });
 

@@ -105,6 +105,8 @@ describe('capabilities & metadata (G-1)', () => {
       // inference runtime clamp against a number nobody verified.
       streamProfiles: [],
       onvif: false,
+      // AI-5e: an ONVIF metadata stream is a discovery finding, so it stays false until confirmed.
+      metadataStream: false,
     });
   });
 

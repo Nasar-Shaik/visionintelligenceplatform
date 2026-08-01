@@ -1,0 +1,39 @@
+{
+  "category": "shoplifting",
+  "description": "A shopper picks up three items, examines them, replaces two and walks to the till with one. Everything a naive concealment heuristic would fire on happens here, and none of it is theft.",
+  "expectations": [
+    {
+      "absent": true,
+      "kind": "composite",
+      "type": "cash-counter-anomaly"
+    },
+    {
+      "absent": true,
+      "kind": "event",
+      "notes": "the whole case: a false positive here is what loses a deployment",
+      "type": "behavior.theft.suspected"
+    },
+    {
+      "count": 1,
+      "countTolerance": 400,
+      "kind": "detection",
+      "notes": "presence only \u2014 per-frame counts are not a meaningful accuracy assertion",
+      "type": "person"
+    }
+  ],
+  "footage": {
+    "durationSeconds": 90.0,
+    "fps": 25.0,
+    "licence": "TEMPLATE \u2014 staged footage with recorded participant consent",
+    "origin": "internal-capture",
+    "path": "ai/datasets/shoplifting/footage/browse-not-theft-01.mp4",
+    "resolution": "1920x1080"
+  },
+  "futureImprovements": ["pair with a staged concealment clip shot from the same camera position"],
+  "id": "shoplifting/browse-not-theft-01",
+  "notes": "TEMPLATE CASE \u2014 awaiting footage. A negative case, deliberately: the corpus needs more of these than positive ones.",
+  "options": {
+    "targetFps": 5
+  },
+  "title": "Ordinary browsing that must NOT be flagged as theft"
+}

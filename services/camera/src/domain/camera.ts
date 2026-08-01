@@ -69,6 +69,9 @@ export function defaultCapabilities(
     // clamp against a number nobody verified.
     streamProfiles: [],
     onvif: false,
+    // AI-5e: whether the device offers an ONVIF metadata stream. Like `onvif`, it stays false until
+    // discovery confirms it — a capability nobody verified is not a capability.
+    metadataStream: false,
   };
 }
 

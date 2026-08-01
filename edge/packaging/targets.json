@@ -1,0 +1,72 @@
+{
+  "note": "Packaging is software; certification is hardware. Every target below is BUILDABLE and none is CERTIFIED. A package that starts on a device proves the image is correct, not that the device is supported \u2014 that requires `vip certify` against the physical unit, and until then the compatibility registry keeps the device at 'pending-validation'.",
+  "packagingVersion": "1.0.0",
+  "runtimeVersion": "1.0.0",
+  "targets": {
+    "docker-generic": {
+      "accelerator": "cpu",
+      "baseImage": "python:3.11-slim-bookworm",
+      "certification": "pending-validation",
+      "deploymentClass": "mini-pc-i5",
+      "label": "Generic Docker host (x86-64)",
+      "notes": "The reference package. No accelerator assumed; sub-stream analysis is essential.",
+      "platform": "linux/amd64",
+      "prerequisites": [
+        "Docker 24+",
+        "2 GB free disk",
+        "a host clock synced by NTP (event ordering depends on it)"
+      ]
+    },
+    "industrial-pc": {
+      "accelerator": "cpu",
+      "baseImage": "python:3.11-slim-bookworm",
+      "certification": "pending-validation",
+      "deploymentClass": "rtx-desktop",
+      "label": "Industrial PC (fanless, DIN-rail)",
+      "notes": "Wide-temperature hardware for factory floors. Same software as docker-generic; the differences that matter are thermal and are only discoverable by soak.",
+      "platform": "linux/amd64",
+      "prerequisites": [
+        "Docker 24+",
+        "wide-temperature-rated storage \u2014 SD cards fail first in this class"
+      ]
+    },
+    "intel-nuc": {
+      "accelerator": "openvino",
+      "baseImage": "python:3.11-slim-bookworm",
+      "certification": "pending-validation",
+      "deploymentClass": "mini-pc-i5",
+      "label": "Intel NUC",
+      "notes": "Same image as mini-pc; kept as its own target because NUC thermal behaviour under a 24h soak is a separate question from a generic mini-PC's.",
+      "platform": "linux/amd64",
+      "prerequisites": [
+        "Docker 24+",
+        "8 GB RAM",
+        "adequate ventilation \u2014 thermal throttling under soak is the expected failure mode"
+      ]
+    },
+    "jetson": {
+      "accelerator": "cuda",
+      "baseImage": "nvcr.io/nvidia/l4t-base:r36.2.0",
+      "certification": "pending-validation",
+      "deploymentClass": "edge-device",
+      "label": "NVIDIA Jetson (Orin Nano / Xavier NX)",
+      "notes": "JetPack-matched base image; the L4T tag MUST match the device's JetPack version or CUDA will not initialise.",
+      "platform": "linux/arm64",
+      "prerequisites": [
+        "JetPack 6.x",
+        "nvidia-container-runtime",
+        "the L4T base tag matching the installed JetPack"
+      ]
+    },
+    "mini-pc": {
+      "accelerator": "openvino",
+      "baseImage": "python:3.11-slim-bookworm",
+      "certification": "pending-validation",
+      "deploymentClass": "mini-pc-i5",
+      "label": "Mini PC (Intel i5, no discrete GPU)",
+      "notes": "Adds the OpenVINO execution provider. The single-site default.",
+      "platform": "linux/amd64",
+      "prerequisites": ["Docker 24+", "Intel CPU with integrated graphics", "8 GB RAM"]
+    }
+  }
+}
