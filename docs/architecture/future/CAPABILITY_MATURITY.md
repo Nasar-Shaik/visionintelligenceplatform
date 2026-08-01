@@ -84,3 +84,32 @@ evidence: real RTSP/live validation, accuracy on representative footage, and **b
 latency p50/p95, throughput) on reference hardware — measured by the AI-5a harness against the documented
 budgets in [PRODUCTION_KPIS](PRODUCTION_KPIS.md) and reported through the additive `RuntimeMetrics`. This
 register is updated as that evidence lands; it never requires a contract change.
+
+### Evidence delivered by AI-5b (live ingestion)
+
+AI-5b supplies the **ingestion half** of that evidence and nothing more — an important distinction when
+reading this register:
+
+- **Delivered:** the runtime can consume a **live, unbounded, disconnect-prone source** across
+  reconnects, run **N cameras concurrently** under a capacity limit, and report ingestion health
+  (availability · recovery · reconnects) and backpressure (queue depth/high-watermark/utilization/
+  processing delay) per session. Live benchmark workloads (`--live`) measure this against the AI-5a
+  baseline.
+- **NOT delivered, so no capability is promoted on AI-5b alone:** validation against a **real camera**
+  and a **real model**. Every AI-5b run is deterministic (simulated sources, stub adapter), which proves
+  the _plumbing_ — not detection accuracy. Real-camera/GPU validation is **AI-5e**, and that is what
+  moves a perception capability from Beta to Production.
+
+In short: AI-5b makes capabilities _runnable in production shape_; it does not make them _proven in
+production_.
+
+### Evidence delivered by AI-5c (scheduling + resource management)
+
+- **Delivered:** the runtime can run **many cameras on one box predictably** — fair scheduling with no
+  starvation, admission control that refuses work it cannot serve, ordered graceful degradation instead
+  of failure, and per-session cost/SLA accounting. Validated by 4/8/16/32-camera simulation against the
+  real scheduler.
+- **NOT delivered:** still no real camera and no real model. AI-5c raises confidence that a capability
+  will _keep running_ under load; it says nothing about whether it _detects correctly_. Promotion to
+  `Production` continues to require the AI-5e certification matrix in
+  [PRODUCTION_COMPATIBILITY §3](PRODUCTION_COMPATIBILITY.md).

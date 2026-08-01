@@ -221,10 +221,89 @@ contract) — the platform's official performance baseline:
 configuration.json`) and exits non-zero on a FAIL. Governance:
   [PRODUCTION_KPIS](../../docs/architecture/future/PRODUCTION_KPIS.md), [AI-5a-BENCHMARK](../../docs/tracker/AI-5a-BENCHMARK.md).
 
+### Live Ingestion & Multi-Camera Sessions (AI-5b — Production Readiness)
+
+Turns the runtime from **offline/batch** into **continuous streaming**. Five tiers with strictly
+non-overlapping ownership (Architect refinement 2) — each module's header restates its own boundary:
+
+```
+StreamSource  →  StreamPipeline  →  VideoAnalyzer  →  SessionRunner  →  SessionSupervisor
+connection       queue                AI processing     orchestration     capacity · fleet
+reconnect        frame lifecycle      only              only              shutdown
+acquisition      drop policy
+```
+
+- **[`stream_source`](stream_source.py)** — `StreamSource` is a **transport-neutral Protocol**: RTSP is
+  only the first implementation, and the runtime dispatches on the **declared type, never by sniffing
+  the URI**, so HTTP/USB/file/WebRTC/ONVIF/cloud plug in with no runtime change. `ConnectionSupervisor`
+  owns the lifecycle (`idle→connecting→connected→lost→reconnecting→stopped|failed`), **deterministic
+  bounded-exponential backoff**, reconnect count, availability % and recovery time. Budget exhaustion is
+  **reported operationally, never raised**. `redact_uri` strips credentials from every stat/log/error.
+  `SimulatedStreamSource` + `FaultPlan` make loss/recovery ordinary unit tests — no camera, no network.
+- **[`stream_pipeline`](stream_pipeline.py)** — `BoundedFrameQueue` (`drop-oldest` default, `drop-newest`
+  available) + backpressure metrics (`queueHighWatermark`/`queueUtilization`/`averageQueueDepth`/
+  `processingDelayMs`). **Sampling (`framesSkipped`) is execution policy; queue overflow
+  (`framesDropped`) is the only real degradation** — never conflated.
+- **[`session_runner`](session_runner.py)** — `SessionRunner` binds one session to one pipeline and does
+  exactly five things (**read · execute · heartbeat · metrics · lifecycle**), finally producing the
+  heartbeats G-3 defined. `SessionSupervisor` owns capacity (**409 rather than degrading everyone**),
+  tenant-scoped lookup, fleet stats and shutdown. Sessions carry a **logical identity**
+  `(tenantId, cameraId, sessionId[, correlationId])` — never a thread or process id.
+- **[`operational_log`](operational_log.py)** — every reconnect, recovery and failure is a structured
+  record correlated with that identity, carrying the failure **category · code · recovery path**.
+- **Failure taxonomy** ([`errors`](errors.py)) — five mutually exclusive categories:
+  `connection`/`AI-CONN`/reconnect · `model`/`AI-MODEL`/rebind · `inference`/`AI-INFER`/skip-frame ·
+  `pipeline`/`AI-PIPE`/skip-frame · `configuration`/`AI-CONFIG`/**operator (never retried)**.
+- **HTTP (additive)** — `POST /sessions` with an optional `source` (omit ⇒ exact G-3 behavior),
+  `GET /sessions/{id}/metrics`, `GET /sessions/{id}/stream`, `GET /supervisor`. Benchmarks:
+  `benchmark_cli.py --live`. See [AI-5b-LIVE-INGESTION](../../docs/tracker/AI-5b-LIVE-INGESTION.md).
+
+### Scheduling & Resource Management (AI-5c — Production Readiness)
+
+**Stage 4** of the reference architecture (always specified; implemented here, not invented). AI-5b
+protected a session from its own camera; AI-5c protects sessions **from each other**.
+
+- **[`compute`](compute.py)** — `ComputeResource` describes capacity in **abstract, dimensionless
+  units** (never cores or VRAM), so `cpu`/`cuda`/`tensorrt`/`openvino`/`metal`/`tpu`/`npu` are registry
+  entries rather than scheduler branches. Ids are **node-qualified** (`node-a/cuda:0`) so a future
+  distributed scheduler adds resources instead of a redesign. `ComputeRegistry` holds back a
+  **reservation** (default 10%) that only `critical` work may draw on — a runtime at 100% committed
+  cannot recover from its own success. `ResourceMonitor` samples process CPU/RSS with the stdlib only.
+- **[`scheduler`](scheduler.py)** — `AdmissionController` estimates a session's cost and **refuses**
+  what cannot be served safely, with a typed reason (`session-capacity`/`compute-capacity`/
+  `reserve-protected`/`no-compatible-resource`). `InferenceScheduler` chooses whose frame runs next:
+  **weighted-fair** (default), `round-robin`, or `strict-priority` — all bounded by
+  `maxConsecutivePerSession`, so **starvation is structurally impossible**. `ResourceGovernor` walks
+  the ordered ladder `none → reduced-fps → reduced-resolution → reduced-behaviors → shedding-frames →
+suspended`, with **hysteresis** both ways, a per-deployment **ceiling**, and **predictive**
+  triggering from a queue-utilization trend. Every action is a recorded `SchedulerDecision`
+  (identity · action · typed reason · triggering measurement).
+- **[`resources`](resources.py)** — per-session accounting (CPU/memory/GPU **attributed** from measured
+  work and documented as estimates) + `SessionSla` (target vs actual FPS/latency, `met`, attainment %).
+- **[`deployment`](deployment.py)** + **[`profiles/deployment/`](profiles/deployment/)** — seven
+  portable operational profiles (retail · warehouse · office · school · hospital · factory · parking)
+  with fail-fast validation. Distinct from the AI-4 `BehaviorProfile`: that configures _what to detect_,
+  this configures _how hard to work_. `resolve_stream_settings` **reads declared `CameraCapabilities`**
+  (fps range, stream profiles, ONVIF) instead of probing the device.
+- **[`scheduler_sim`](scheduler_sim.py)** — deterministic 4/8/16/32-camera load simulation driving the
+  **real** scheduler; byte-identical across runs. It is what caught the fleet-wide suspension collapse.
+- **HTTP (additive)** — `GET /scheduler`, `GET /sla`, `GET /resources` (tenant-scoped).
+- **Benchmark evidence gate** — `benchmark_cli.py --baseline <benchmark.json>` compares against a prior
+  run and **exits non-zero on regression**. See [AI-5c-SCHEDULING](../../docs/tracker/AI-5c-SCHEDULING.md).
+
 ## Configuration (env, `.env` only — ADR-0018)
 
 `HOST`, `PORT` (8085), `LOG_LEVEL`, `INTERNAL_API_KEY` (≥16), `INFERENCE_BACKEND` (`stub`|`onnx`),
 `INFERENCE_MANIFESTS_DIR`, `MLFLOW_TRACKING_URI`, `MLFLOW_S3_ENDPOINT_URL` (onnx backend).
+
+Live ingestion (AI-5b; all validated fail-fast at startup): `INFERENCE_MAX_SESSIONS` (8),
+`INFERENCE_STREAM_QUEUE_SIZE` (32), `INFERENCE_STREAM_DROP_POLICY` (`drop-oldest`|`drop-newest`),
+`INFERENCE_STREAM_TARGET_FPS` (5), `INFERENCE_RECONNECT_MAX_ATTEMPTS` (10, `0` = never reconnect),
+`INFERENCE_RECONNECT_BASE_MS` (500), `INFERENCE_RECONNECT_MAX_MS` (30000).
+
+Scheduling (AI-5c): `INFERENCE_DEPLOYMENT_PROFILE` (empty = env settings above; otherwise one of
+`retail|warehouse|office|school|hospital|factory|parking`, which supplies FPS, queue size, max
+sessions, priority, scheduler policy and degradation ceiling as configuration).
 
 ## Run / test
 

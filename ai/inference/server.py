@@ -23,7 +23,14 @@ from typing import Optional
 from urllib.parse import parse_qs, urlsplit
 
 from contracts import FrameContext
-from errors import Conflict, ContextRequired, InferenceError, NotFound, ValidationError
+from errors import (
+    ConfigurationFailure,
+    Conflict,
+    ContextRequired,
+    InferenceError,
+    NotFound,
+    ValidationError,
+)
 from registry import CapabilityRegistry
 
 _MAX_BODY = 32 * 1024 * 1024  # 32 MiB (a base64 frame)
@@ -38,6 +45,7 @@ def make_handler(
     version: str,
     model_registry=None,
     sessions=None,
+    supervisor=None,
 ):
     class Handler(BaseHTTPRequestHandler):
         server_version = f"{service_name}/{version}"
@@ -82,8 +90,30 @@ def make_handler(
                 self._get_models(segs)
             elif segs[:1] == ["sessions"]:
                 self._get_sessions(segs)
+            elif path == "/supervisor" and supervisor is not None:
+                self._supervisor_stats()
+            elif path == "/scheduler" and supervisor is not None:
+                # AI-5c: scheduling strategy, per-session shares, compute placement, recent decisions.
+                self._ok(supervisor.scheduler_stats())
+            elif path == "/sla" and supervisor is not None:
+                self._tenant_scoped(supervisor.sla)
+            elif path == "/resources" and supervisor is not None:
+                self._tenant_scoped(supervisor.resource_usage)
             else:
                 self._err(404, "not_found", f"no route for GET {self.path}")
+
+        def _supervisor_stats(self) -> None:
+            """Multi-camera capacity + fleet health (tenant-scoped counts stay per-tenant elsewhere;
+            this is the runtime's own capacity view for operators)."""
+            self._ok(supervisor.stats())
+
+        def _tenant_scoped(self, fn) -> None:  # noqa: ANN001
+            """SLA + resource views are per-session data, so they are tenant-scoped (Law 5)."""
+            tenant = self._tenant()
+            if tenant is None:
+                self._err(400, "bad_request", "x-tenant-id header is required")
+                return
+            self._ok(fn(tenant))
 
         def do_POST(self) -> None:  # noqa: N802
             if not hmac.compare_digest(self.headers.get("x-internal-key", ""), internal_key):
@@ -246,11 +276,30 @@ def make_handler(
                     found = sessions.list(tenant, camera_id=_first(q.get("cameraId")), state=_first(q.get("state")))
                     self._ok([s.to_dict() for s in found])
                 elif len(segs) == 2:  # GET /sessions/{id}
-                    self._ok(sessions.require(tenant, segs[1]).to_dict())
+                    self._ok(self._session_dict(tenant, segs[1]))
+                elif len(segs) == 3 and segs[2] == "metrics":  # GET /sessions/{id}/metrics (AI-5b)
+                    self._ok(self._live(tenant, segs[1]).metrics())
+                elif len(segs) == 3 and segs[2] == "stream":  # GET /sessions/{id}/stream (AI-5b)
+                    self._ok(self._live(tenant, segs[1]).diagnostics())
                 else:
                     self._err(404, "not_found", f"no route for GET {self.path}")
             except NotFound as exc:
                 self._err(404, "not_found", str(exc))
+
+        def _session_dict(self, tenant: str, session_id: str) -> dict:
+            """The session record, enriched with live ingestion diagnostics when a runner is bound."""
+            out = sessions.require(tenant, session_id).to_dict()
+            if supervisor is not None:
+                runner = supervisor.get(tenant, session_id)
+                if runner is not None:
+                    out["ingestion"] = runner.diagnostics()["ingestion"]
+            return out
+
+        def _live(self, tenant: str, session_id: str):
+            """Require a LIVE session (one with a running pipeline behind it)."""
+            if supervisor is None:
+                raise NotFound("live sessions are not enabled on this runtime")
+            return supervisor.require(tenant, session_id)
 
         def _post_sessions(self, segs) -> None:
             if sessions is None:
@@ -266,6 +315,15 @@ def make_handler(
                 return
             try:
                 if len(segs) == 1:  # POST /sessions — start
+                    source = body.get("source")
+                    if source is not None and supervisor is not None:
+                        # AI-5b: a `source` binds the session to a LIVE pipeline. Omitting it keeps
+                        # the exact G-3 control-plane-only behavior, so no existing caller changes.
+                        self._ok(_start_live(supervisor, tenant, body, source), status=201)
+                        return
+                    if source is not None and supervisor is None:
+                        self._err(400, "bad_request", "live sessions are not enabled on this runtime")
+                        return
                     session = sessions.start(
                         tenant,
                         camera_id=str(body.get("cameraId", "")),
@@ -276,9 +334,17 @@ def make_handler(
                     )
                     self._ok(session.to_dict(), status=201)
                 elif len(segs) == 3 and segs[2] in _SESSION_ACTIONS:  # POST /sessions/{id}/{action}
-                    self._ok(sessions.transition(tenant, segs[1], segs[2]).to_dict())
+                    # A live session's lifecycle must reach the data plane, so route through the
+                    # supervisor when one is bound; otherwise the control plane alone (unchanged).
+                    if supervisor is not None and supervisor.get(tenant, segs[1]) is not None:
+                        getattr(supervisor, segs[2])(tenant, segs[1])
+                    else:
+                        sessions.transition(tenant, segs[1], segs[2])
+                    self._ok(self._session_dict(tenant, segs[1]))
                 else:
                     self._err(404, "not_found", f"no route for POST {self.path}")
+            except ConfigurationFailure as exc:
+                self._err(400, "bad_request", str(exc))
             except ValidationError as exc:
                 self._err(400, "bad_request", str(exc))
             except NotFound as exc:
@@ -323,6 +389,75 @@ def make_handler(
     return Handler
 
 
+def _start_live(supervisor, tenant: str, body: dict, source: dict) -> dict:
+    """Start a LIVE session (AI-5b): build the per-session analyzer + pipeline options from the request
+    and hand them to the supervisor. The transport does no perception work — it only translates the
+    wire shape into the runner's config, which is why a new source transport needs no change here."""
+    from playground import build_adapter  # noqa: WPS433 - keeps the import graph lean
+    from session_runner import LiveSessionConfig
+    from stream_pipeline import PipelineOptions
+    from stream_source import ReconnectPolicy
+    from video_analyzer import AnalyzeOptions, VideoAnalyzer
+
+    defaults = _LIVE_DEFAULTS
+    camera_id = str(body.get("cameraId", ""))
+    capability_id = str(body.get("capabilityId", ""))
+    if not camera_id or not capability_id:
+        raise ValidationError("cameraId and capabilityId are required")
+
+    target_fps = source.get("targetFps") or defaults["target_fps"]
+    analyze = AnalyzeOptions(
+        tenant_id=tenant,
+        camera_id=camera_id,
+        capability_id=capability_id,
+        target_fps=float(target_fps),
+        correlation_id=body.get("correlationId"),
+        min_confidence=float(body.get("minConfidence", 0.5)),
+        zones=body.get("zones") or (),
+        profile=body.get("profile"),
+    )
+    config = LiveSessionConfig(
+        source=source,
+        analyze=analyze,
+        pipeline=PipelineOptions(
+            queue_capacity=int(defaults["queue_size"]),
+            drop_policy=str(defaults["drop_policy"]),
+            target_fps=float(target_fps),
+        ),
+        reconnect=ReconnectPolicy(
+            max_attempts=int(defaults["reconnect_max_attempts"]),
+            base_ms=float(defaults["reconnect_base_ms"]),
+            max_ms=float(defaults["reconnect_max_ms"]),
+        ),
+    )
+    runner = supervisor.start(
+        tenant,
+        camera_id=camera_id,
+        capability_id=capability_id,
+        config=config,
+        analyzer=VideoAnalyzer(build_adapter(str(defaults.get("backend", "stub"))), analyze),
+        correlation_id=body.get("correlationId"),
+        log_sink=defaults.get("log_sink"),
+        model_id=body.get("modelId"),
+        model_version=body.get("modelVersion"),
+        engine=body.get("engine"),
+    )
+    return runner.diagnostics()
+
+
+# Runtime-wide live defaults, set by `build_server` from InferenceConfig (never read from env here —
+# `@vip/config`-style centralization: config is resolved once, at the composition root).
+_LIVE_DEFAULTS: dict = {
+    "queue_size": 32,
+    "drop_policy": "drop-oldest",
+    "target_fps": 5.0,
+    "reconnect_max_attempts": 10,
+    "reconnect_base_ms": 500.0,
+    "reconnect_max_ms": 30000.0,
+    "backend": "stub",
+}
+
+
 def _split(path: str):
     """Return (path_without_query, query_string)."""
     parts = urlsplit(path)
@@ -347,8 +482,14 @@ def build_server(
     version: str,
     model_registry=None,
     sessions=None,
+    supervisor=None,
+    live_defaults=None,
 ) -> ThreadingHTTPServer:
+    if live_defaults:
+        _LIVE_DEFAULTS.update(live_defaults)
     return ThreadingHTTPServer(
         (host, port),
-        make_handler(registry, internal_key, service_name, version, model_registry, sessions),
+        make_handler(
+            registry, internal_key, service_name, version, model_registry, sessions, supervisor
+        ),
     )

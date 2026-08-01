@@ -105,3 +105,35 @@ class MetricsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MetricGroupTests(unittest.TestCase):
+    """AI-5c (Architect AI-5b rec 2): operational and AI metrics are separate audiences."""
+
+    def test_groups_do_not_overlap(self):
+        from metrics import AI_METRICS, OPERATIONAL_METRICS
+
+        self.assertEqual(OPERATIONAL_METRICS & AI_METRICS, frozenset())
+
+    def test_grouped_snapshot_splits_health_from_perception(self):
+        m = Metrics()
+        m.record_processed(decode_ms=2.0, inference_ms=8.0, confidences=[0.9, 0.8])
+        grouped = m.grouped()
+        self.assertIn("operational", grouped)
+        self.assertIn("ai", grouped)
+        # "is the system healthy?" lives in operational…
+        self.assertIn("fps", grouped["operational"])
+        self.assertIn("queueDepth", grouped["operational"])
+        # …"is the system seeing correctly?" lives in ai.
+        self.assertIn("detectionsTotal", grouped["ai"])
+        self.assertIn("avgConfidence", grouped["ai"])
+        self.assertNotIn("detectionsTotal", grouped["operational"])
+        self.assertNotIn("fps", grouped["ai"])
+
+    def test_every_grouped_key_comes_from_the_snapshot(self):
+        m = Metrics()
+        snapshot = m.snapshot()
+        grouped = m.grouped()
+        for group in grouped.values():
+            for key in group:
+                self.assertIn(key, snapshot)

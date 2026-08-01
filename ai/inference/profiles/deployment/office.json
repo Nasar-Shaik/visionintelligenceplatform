@@ -1,0 +1,36 @@
+{
+  "analyzerCosts": {
+    "costs": {
+      "intrusion": 1.5,
+      "occupancy": 1.0
+    },
+    "protectedAnalyzers": ["intrusion"]
+  },
+  "defaultPriority": "low",
+  "description": "Low camera count, low activity, cost-sensitive. Aggressive sampling is fine - an office corridor rarely needs 5 fps.",
+  "dropPolicy": "drop-oldest",
+  "enabledBehaviors": ["intrusion", "occupancy"],
+  "maxSessions": 8,
+  "preferredStreamProfile": "sub",
+  "profile": "office",
+  "queueCapacity": 16,
+  "reconnect": {
+    "baseMs": 500,
+    "maxAttempts": 10,
+    "maxMs": 30000
+  },
+  "scheduler": {
+    "admissionControl": true,
+    "degradeAboveQueuePercent": 80,
+    "maxBatchSize": 1,
+    "maxConsecutivePerSession": 4,
+    "minDegradedFps": 1,
+    "predictive": true,
+    "recoverBelowQueuePercent": 50,
+    "reservedCapacityPercent": 10,
+    "strategy": "weighted-fair"
+  },
+  "targetEventLatencyMs": 2000,
+  "targetFps": 2,
+  "version": "1.0.0"
+}

@@ -130,5 +130,159 @@ class HarnessSmokeTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)
 
 
+class ReproducibilityFingerprintTest(unittest.TestCase):
+    """AI-5b refinement 5: a report records the five anchors that make it comparable."""
+
+    def test_report_records_all_five_reproducibility_anchors(self):
+        from benchmark import run_benchmark as run
+
+        report = run(BenchmarkWorkload(name="single-camera", cameras=1, frames=4))
+        for key in ("runtimeVersion", "benchmarkVersion", "deploymentClass", "configurationFingerprint", "hardwareFingerprint"):
+            self.assertIn(key, report)
+
+    def test_fingerprints_are_stable_for_identical_inputs(self):
+        from benchmark import stable_fingerprint
+
+        payload = {"frames": 60, "cameras": 4, "mode": "deterministic-synthetic"}
+        first = stable_fingerprint(payload, prefix="cfg")
+        # Key order must not matter, and the digest must be stable across calls/processes.
+        reordered = {"mode": "deterministic-synthetic", "cameras": 4, "frames": 60}
+        self.assertEqual(first, stable_fingerprint(reordered, prefix="cfg"))
+        self.assertTrue(first.startswith("cfg_"))
+
+    def test_different_configurations_fingerprint_differently(self):
+        from benchmark import stable_fingerprint
+
+        self.assertNotEqual(
+            stable_fingerprint({"cameras": 1}, prefix="cfg"),
+            stable_fingerprint({"cameras": 8}, prefix="cfg"),
+        )
+
+
+class LiveWorkloadTest(unittest.TestCase):
+    """AI-5b live workloads run the STREAMING path while staying deterministic (simulated sources)."""
+
+    def test_live_suite_covers_the_production_scenarios(self):
+        from benchmark import live_suite
+
+        names = [w.name for w in live_suite(frames=10)]
+        self.assertEqual(
+            names, ["live-single-camera", "live-multi-camera", "continuous-execution", "reconnect-recovery"]
+        )
+
+    def test_a_live_run_measures_the_streaming_path(self):
+        from benchmark import live_analyze, live_suite
+        from benchmark import run_benchmark as run
+
+        workload = live_suite(frames=12)[0]
+        report = run(
+            workload, analyze=live_analyze(workload), mode="deterministic-live", report_id="live_1"
+        )
+        self.assertGreater(report["kpis"]["framesProcessed"], 0)
+        self.assertEqual(report["configuration"]["mode"], "deterministic-live")
+        self.assertIn("streamAvailabilityPercent", report["configuration"])
+
+    def test_reconnect_workload_records_recovery_not_just_speed(self):
+        from benchmark import live_analyze, live_suite
+        from benchmark import run_benchmark as run
+
+        workload = live_suite(frames=12)[3]
+        report = run(
+            workload,
+            analyze=live_analyze(workload, drop_after=4),
+            mode="deterministic-live",
+            report_id="live_reconnect",
+        )
+        self.assertGreaterEqual(report["configuration"]["reconnectCount"], 1)
+
+    def test_offline_runs_never_report_sampling_as_frame_loss(self):
+        from benchmark import run_benchmark as run
+
+        # 30 fps source sampled to 5 fps skips ~83% of frames BY DESIGN; loss must stay 0.
+        report = run(BenchmarkWorkload(name="single-camera", cameras=1, frames=30, target_fps=5.0))
+        self.assertEqual(report["kpis"]["droppedFramePercent"], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class BaselineComparisonTest(unittest.TestCase):
+    """AI-5c: the evidence gate — never merge an optimization without a measurable improvement."""
+
+    BASE = {
+        "id": "b1", "deploymentClass": "dev-laptop", "workload": {"name": "single-camera"},
+        "configurationFingerprint": "cfg_a", "hardwareFingerprint": "hw_a",
+        "kpis": {"fps": 100.0, "eventLatencyMs": 10.0, "droppedFramePercent": 0.0,
+                 "inferenceLatencyP50Ms": 5.0, "inferenceLatencyP95Ms": 8.0, "eventThroughput": 100.0},
+    }
+
+    def _candidate(self, **kpi_overrides):
+        from copy import deepcopy
+
+        candidate = deepcopy(self.BASE)
+        candidate["id"] = "c1"
+        candidate["kpis"].update(kpi_overrides)
+        return candidate
+
+    def test_accepts_a_measurable_improvement(self):
+        from benchmark import compare_reports
+
+        result = compare_reports(self.BASE, self._candidate(fps=130.0))
+        self.assertTrue(result["accepted"])
+        self.assertIn("fps", result["improved"])
+        self.assertTrue(result["summary"].startswith("ACCEPT"))
+
+    def test_rejects_a_regression(self):
+        from benchmark import compare_reports
+
+        result = compare_reports(self.BASE, self._candidate(fps=70.0))
+        self.assertFalse(result["accepted"])
+        self.assertIn("fps", result["regressed"])
+
+    def test_rejects_change_inside_the_noise_band(self):
+        from benchmark import compare_reports
+
+        # A 2% "improvement" on a wall-clock benchmark is jitter, not a result.
+        result = compare_reports(self.BASE, self._candidate(fps=102.0))
+        self.assertFalse(result["accepted"])
+        self.assertEqual(result["improved"], [])
+        self.assertIn("no measurable change", result["summary"])
+
+    def test_lower_is_better_kpis_are_scored_correctly(self):
+        from benchmark import compare_reports
+
+        result = compare_reports(self.BASE, self._candidate(eventLatencyMs=5.0))
+        self.assertIn("eventLatencyMs", result["improved"])
+        result2 = compare_reports(self.BASE, self._candidate(droppedFramePercent=3.0))
+        self.assertIn("droppedFramePercent", result2["regressed"])
+
+    def test_refuses_to_compare_runs_from_different_hardware(self):
+        from benchmark import compare_reports
+
+        candidate = self._candidate(fps=500.0)
+        candidate["hardwareFingerprint"] = "hw_b"
+        result = compare_reports(self.BASE, candidate)
+        self.assertFalse(result["comparable"])
+        self.assertFalse(result["accepted"])  # a 5x "win" from new hardware is not an optimization
+        self.assertIn("hardware differs", result["incomparableReason"])
+
+    def test_refuses_to_compare_different_configurations_or_workloads(self):
+        from benchmark import compare_reports
+
+        candidate = self._candidate(fps=200.0)
+        candidate["configurationFingerprint"] = "cfg_b"
+        self.assertFalse(compare_reports(self.BASE, candidate)["comparable"])
+
+        other_workload = self._candidate(fps=200.0)
+        other_workload["workload"] = {"name": "eight-cameras"}
+        self.assertFalse(compare_reports(self.BASE, other_workload)["comparable"])
+
+    def test_bundles_are_paired_by_workload_name(self):
+        from benchmark import compare_bundles
+
+        baseline = [self.BASE, {**self.BASE, "id": "b2", "workload": {"name": "four-cameras"}}]
+        candidate = [self._candidate(fps=130.0)]
+        results = compare_bundles(baseline, candidate)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["workload"], "single-camera")

@@ -1,0 +1,38 @@
+{
+  "analyzerCosts": {
+    "costs": {
+      "crowd": 3.0,
+      "loitering": 1.5,
+      "occupancy": 1.0,
+      "queue": 2.0
+    },
+    "protectedAnalyzers": ["queue"]
+  },
+  "defaultPriority": "normal",
+  "description": "Storefront / checkout analytics. Moderate camera counts; queue + crowd behaviors matter; latency is customer-experience relevant.",
+  "dropPolicy": "drop-oldest",
+  "enabledBehaviors": ["loitering", "queue", "crowd", "occupancy"],
+  "maxSessions": 8,
+  "preferredStreamProfile": "sub",
+  "profile": "retail",
+  "queueCapacity": 32,
+  "reconnect": {
+    "baseMs": 500,
+    "maxAttempts": 10,
+    "maxMs": 30000
+  },
+  "scheduler": {
+    "admissionControl": true,
+    "degradeAboveQueuePercent": 80,
+    "maxBatchSize": 1,
+    "maxConsecutivePerSession": 4,
+    "minDegradedFps": 1,
+    "predictive": true,
+    "recoverBelowQueuePercent": 50,
+    "reservedCapacityPercent": 10,
+    "strategy": "weighted-fair"
+  },
+  "targetEventLatencyMs": 500,
+  "targetFps": 5,
+  "version": "1.0.0"
+}

@@ -101,6 +101,10 @@ describe('capabilities & metadata (G-1)', () => {
       codecs: ['h264'],
       resolutions: ['1920x1080'],
       protocols: ['rtsp'],
+      // AI-5c additions. `fpsRange` is deliberately absent: an invented range would make the
+      // inference runtime clamp against a number nobody verified.
+      streamProfiles: [],
+      onvif: false,
     });
   });
 

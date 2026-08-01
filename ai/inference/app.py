@@ -76,6 +76,40 @@ def main() -> None:
     model_registry = ModelRegistry()
     sessions = SessionManager()
 
+    # Live ingestion + multi-camera sessions (AI-5b). The supervisor gives the G-3 control plane a
+    # data plane: each live session runs its pump on its own thread, bounded by INFERENCE_MAX_SESSIONS.
+    from session_runner import SessionSupervisor, ThreadExecutor  # noqa: WPS433
+
+    # AI-5c: scheduling + resource management. A deployment profile (INFERENCE_DEPLOYMENT_PROFILE)
+    # supplies operational defaults as CONFIG, so retail/warehouse/hospital differ without code.
+    from compute import ResourceMonitor, detect_resources  # noqa: WPS433
+    from resources import ResourceAccountant  # noqa: WPS433
+    from scheduler import InferenceScheduler  # noqa: WPS433
+
+    deployment = None
+    if config.deployment_profile:
+        from deployment import load_profile  # noqa: WPS433
+
+        deployment = load_profile(config.deployment_profile)
+
+    compute = detect_resources()
+    scheduler = InferenceScheduler(
+        compute,
+        ResourceAccountant(),
+        policy=deployment.scheduler if deployment is not None else None,
+        max_sessions=deployment.max_sessions if deployment is not None else config.max_sessions,
+        analyzer_costs=deployment.analyzer_costs if deployment is not None else None,
+        protected_analyzers=deployment.protected_analyzers if deployment is not None else None,
+    )
+    supervisor = SessionSupervisor(
+        sessions,
+        max_sessions=deployment.max_sessions if deployment is not None else config.max_sessions,
+        executor_factory=ThreadExecutor,
+        scheduler=scheduler,
+        monitor=ResourceMonitor(),
+        deployment=deployment,
+    )
+
     from server import build_server  # noqa: WPS433 - after registry so /ready is meaningful
 
     httpd = build_server(
@@ -87,9 +121,22 @@ def main() -> None:
         _RUNTIME_VERSION,
         model_registry=model_registry,
         sessions=sessions,
+        supervisor=supervisor,
+        live_defaults={
+            "queue_size": config.stream_queue_size,
+            "drop_policy": config.stream_drop_policy,
+            "target_fps": config.stream_target_fps,
+            "reconnect_max_attempts": config.reconnect_max_attempts,
+            "reconnect_base_ms": config.reconnect_base_ms,
+            "reconnect_max_ms": config.reconnect_max_ms,
+            "backend": config.backend,
+        },
     )
 
     def shutdown(_signum, _frame) -> None:  # noqa: ANN001
+        # Stop every live session first so no thread, queue or source outlives the process
+        # (AI-5b refinement 8) — then stop accepting requests.
+        supervisor.shutdown()
         httpd.shutdown()
 
     for sig in (signal.SIGTERM, signal.SIGINT):

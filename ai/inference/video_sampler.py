@@ -30,10 +30,25 @@ class FrameSampler:
             else:
                 self.stride = 1
         self.stride = max(1, int(self.stride))
+        self._index = 0  # streaming admission cursor (AI-5b); `sample()` keeps its own enumeration
 
     @property
     def effective_rate(self) -> float:
         return 1.0 / float(self.stride)
+
+    def admit(self, frame: Frame) -> Optional[Frame]:
+        """Streaming counterpart of `sample()` (AI-5b) — decide ONE frame at a time, because a live
+        source is unbounded and can never be materialized into a list. Same stride, same re-stamping,
+        same tallies, so sampling policy has exactly one owner. Returns None when the frame is
+        deliberately skipped (execution policy — NOT a dropped frame; the pipeline reports the two
+        separately, and only backpressure loss counts as degradation)."""
+        i = self._index
+        self._index += 1
+        if i % self.stride == 0:
+            self.kept += 1
+            return frame if frame.sampling_rate == self.effective_rate else _restamp(frame, self.effective_rate)
+        self.dropped += 1
+        return None
 
     def sample(self, frames: Iterable[Frame]) -> Iterator[Frame]:
         """Yield admitted frames (re-stamped with the effective sampling rate); tally drops."""

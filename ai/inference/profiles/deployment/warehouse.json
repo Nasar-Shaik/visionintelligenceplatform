@@ -1,0 +1,38 @@
+{
+  "analyzerCosts": {
+    "costs": {
+      "fire": 3.0,
+      "intrusion": 1.5,
+      "loitering": 1.5,
+      "occupancy": 1.0
+    },
+    "protectedAnalyzers": ["intrusion", "fire"]
+  },
+  "defaultPriority": "normal",
+  "description": "Large indoor space, many cameras, safety-oriented. Throughput over latency; intrusion and fire must never be disabled.",
+  "dropPolicy": "drop-oldest",
+  "enabledBehaviors": ["intrusion", "loitering", "occupancy", "fire"],
+  "maxSessions": 16,
+  "preferredStreamProfile": "sub",
+  "profile": "warehouse",
+  "queueCapacity": 48,
+  "reconnect": {
+    "baseMs": 500,
+    "maxAttempts": 10,
+    "maxMs": 30000
+  },
+  "scheduler": {
+    "admissionControl": true,
+    "degradeAboveQueuePercent": 80,
+    "maxBatchSize": 1,
+    "maxConsecutivePerSession": 4,
+    "minDegradedFps": 1,
+    "predictive": true,
+    "recoverBelowQueuePercent": 50,
+    "reservedCapacityPercent": 10,
+    "strategy": "weighted-fair"
+  },
+  "targetEventLatencyMs": 1000,
+  "targetFps": 4,
+  "version": "1.0.0"
+}

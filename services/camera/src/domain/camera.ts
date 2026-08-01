@@ -63,6 +63,12 @@ export function defaultCapabilities(
     codecs: capture.codec ? [capture.codec] : [],
     resolutions: capture.resolution ? [capture.resolution] : [],
     protocols: [protocol],
+    // AI-5c: derived from the capture profile where it is known, so the inference runtime can READ
+    // capabilities instead of probing the device. `fpsRange` stays absent until discovery or an
+    // operator supplies it — an invented range would be worse than none, because the runtime would
+    // clamp against a number nobody verified.
+    streamProfiles: [],
+    onvif: false,
   };
 }
 

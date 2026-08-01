@@ -117,12 +117,29 @@ class StageTimings:
 
 @dataclass
 class FrameAnalysis:
+    """Everything ONE frame produced. `analyze_frame` returns this and keeps nothing per-frame, so the
+    CALLER decides retention (AI-5b: batch keeps every frame; a live session must not, or a
+    long-running camera would grow without bound)."""
+
     frame: dict
     detections: List[dict]
     events: List[dict]
     tracks: List[dict] = field(default_factory=list)
     behaviors: List[dict] = field(default_factory=list)
     composites: List[dict] = field(default_factory=list)
+    # AI-5b: also returned per-frame (previously accumulated straight into AnalyzeResult) so a
+    # streaming caller can observe them without retaining the whole run.
+    zone_transitions: List[dict] = field(default_factory=list)
+    counting: List[dict] = field(default_factory=list)
+
+
+@dataclass
+class FlushResult:
+    """Terminal-flush output — behaviors/composites that were still active when the stream ended."""
+
+    behaviors: List[dict] = field(default_factory=list)
+    composites: List[dict] = field(default_factory=list)
+    events: List[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -205,6 +222,17 @@ class VideoAnalyzer:
         self._zone_roles = zone_roles_from_zones(self._zones)
         self._profile_loads = 0
         self._profile_failures = 0
+        # Running aggregates for `analyze_frame` (AI-5b): bounded scalars only — NO frames, images, or
+        # per-frame results are retained, so a session that runs for a week costs the same as one that
+        # runs for a minute. Frame retention is the caller's decision (refinement 2).
+        self._timings = StageTimings()
+        self._frames_analyzed = 0
+        self._first_frame_meta: Optional[tuple] = None
+        self._last_frame_meta: Optional[tuple] = None
+        self._relationship_count = 0
+        self._composite_total = 0
+        self._zone_transition_total = 0
+        self._counting_total = 0
         if options.enable_tracking and options.enable_behaviors:
             composite_registry: Optional[CompositeRegistry] = None
             if options.profile is not None:
@@ -226,11 +254,15 @@ class VideoAnalyzer:
                 )
 
     def analyze(self, decoder: FrameDecoder, sampler: Optional[FrameSampler] = None) -> AnalyzeResult:
+        """Batch analysis over a FINITE source — unchanged behavior, now expressed as a loop over
+        `analyze_frame` plus a terminal `flush` (AI-5b). Keeping one code path for batch and live means
+        the live runtime cannot silently diverge from the pipeline the whole suite validates."""
         opts = self._options
         sampler = sampler or FrameSampler(
             source_fps=getattr(decoder, "source_fps", 30.0), target_fps=opts.target_fps
         )
         result = AnalyzeResult()
+        self._timings = result.timings  # per-call accumulation (batch semantics unchanged)
 
         # Decode, then sample — timed as distinct stages (rec 6). Materialized for clean per-stage
         # timing; streaming decode is a future optimization for long footage (AI_EXECUTION_ARCH §12).
@@ -243,176 +275,21 @@ class VideoAnalyzer:
         result.timings.sampling_ms += (self._clock() - t) * 1000.0
 
         for frame in sampled:
-            ctx = FrameContext(
-                tenant_id=opts.tenant_id,
-                camera_id=opts.camera_id,
-                image=frame.image,
-                stream_id=None,
-                frame_number=frame.index,
-                timestamp=frame.timestamp,
-                width=frame.processed_width,
-                height=frame.processed_height,
-                source=frame.source_video,
-                correlation_id=opts.correlation_id,
-            )
-
-            t = self._clock()
-            prepared = self._adapter.preprocess(ctx)
-            result.timings.preprocess_ms += (self._clock() - t) * 1000.0
-
-            t = self._clock()
-            raw = self._adapter.infer(prepared)
-            infer_ms = (self._clock() - t) * 1000.0
-            result.timings.inference_ms += infer_ms
-
-            t = self._clock()
-            dets = self._postprocessor.run(raw, ctx, opts.min_confidence)
-            dets = self._tracker.run(dets, ctx)
-            det_result = self._translator.run(
-                dets,
-                ctx,
-                self._model,
-                capability_id=opts.capability_id,
-                capability_version="1.0.0",
-                runtime_version=self._runtime_version,
-                execution_provider=getattr(self._adapter, "execution_provider", "unknown"),
-                inference_ms=infer_ms,
-                at=self._now_iso(),
-            )
-            result.timings.postprocess_ms += (self._clock() - t) * 1000.0
-
-            result_dict = det_result.to_dict()
-            frame_at = result_dict["at"]
-
-            # --- Tracking → Zones → Counting → Behavior Analysis (all consume TRACKS, not detections;
-            # Architect rec 9: Behavior runs AFTER zone/counting so analyzers see zone membership + counts,
-            # each stage independently replaceable). ---
-            frame_tracks: List[dict] = []
-            frame_behaviors: List[dict] = []
-            frame_composites: List[dict] = []
-            frame_events: List[dict] = []
-            if self._manager is not None and self._counting is not None:
-                t = self._clock()
-                tracks = self._manager.update(
-                    dets, tenant_id=opts.tenant_id, camera_id=opts.camera_id, frame_index=frame.index, at=frame.timestamp
-                )
-                result.timings.tracking_ms += (self._clock() - t) * 1000.0
-                t = self._clock()
-                transitions, snapshots = self._counting.update(
-                    self._zones, tracks, frame_index=frame.index, at=frame.timestamp
-                )
-                result.timings.zone_counting_ms += (self._clock() - t) * 1000.0
-                frame_tracks = [tr.to_dict() for tr in tracks]
-                frame_transitions: List[dict] = []
-                frame_counts: List[dict] = []
-                for tr in transitions:
-                    d = tr.to_dict()
-                    result.zone_transitions.append(d)
-                    frame_transitions.append(d)
-                    frame_events.append(zone_transition_event(d, id_gen=self._id_gen))
-                for s in snapshots:
-                    d = s.to_dict()
-                    result.counting.append(d)
-                    frame_counts.append(d)
-                    frame_events.append(counting_event(d, id_gen=self._id_gen))
-
-                # Behavior stage — analyzers consume immutable snapshots + zone/counting state; the
-                # store assigns lifecycle; the translator bridges each BehaviorResult to an event.
-                if self._behaviors is not None and self._behavior_store is not None and self._windows is not None:
-                    t = self._clock()
-                    ctx_b = BehaviorContext(
-                        tenant_id=opts.tenant_id,
-                        camera_id=opts.camera_id,
-                        frame_index=frame.index,
-                        at=frame.timestamp,
-                        t=frame_seconds(frame.timestamp, frame.index),
-                        snapshots=tuple(snapshot_track(tr, frame.index) for tr in tracks),
-                        zones=tuple(self._zones),
-                        transitions=tuple(frame_transitions),
-                        counting=tuple(frame_counts),
-                        windows=self._windows,
-                        zone_engine=self._behavior_zone_engine,
-                        session_id=opts.session_id,
-                    )
-                    produced = self._behaviors.run(ctx_b, self._behavior_store)
-                    result.timings.behavior_ms += (self._clock() - t) * 1000.0
-                    for br in produced:
-                        d = br.to_dict()
-                        result.behaviors.append(d)
-                        frame_behaviors.append(d)
-                        env = self._behavior_translator.translate(d)
-                        if env is not None:
-                            frame_events.append(env)
-
-                    # Composite pass (AI-4) — consumes the ACTIVE primitive BehaviorResults (never
-                    # Tracks; rec 5), producing higher-order BehaviorResults with relationships.
-                    if self._composites is not None and self._composite_store is not None:
-                        t = self._clock()
-                        active = self._behavior_store.active_results(frame_index=frame.index, at=frame.timestamp)
-                        ctx_c = CompositeContext(
-                            tenant_id=opts.tenant_id,
-                            camera_id=opts.camera_id,
-                            frame_index=frame.index,
-                            at=frame.timestamp,
-                            t=frame_seconds(frame.timestamp, frame.index),
-                            behaviors=tuple(active),
-                            zone_roles=self._zone_roles,
-                            session_id=opts.session_id,
-                        )
-                        composed = self._composites.run(ctx_c, self._composite_store)
-                        result.timings.composite_ms += (self._clock() - t) * 1000.0
-                        for cb in composed:
-                            d = cb.to_dict()
-                            result.composites.append(d)
-                            frame_composites.append(d)
-                            env = self._behavior_translator.translate(d)
-                            if env is not None:
-                                frame_events.append(env)
-
-            t = self._clock()
-            events = detections_to_events(result_dict, id_gen=self._id_gen, ingested_at=frame_at)
-            result.timings.event_generation_ms += (self._clock() - t) * 1000.0
-            events = events + frame_events
-
-            # Publish perception + tracking events to the backbone (reuses the EventSink seam).
-            self._event_sink.publish(det_result)
-
-            frame_dets = result_dict["detections"]
-            result.frames.append(
-                FrameAnalysis(
-                    frame=frame.meta(),
-                    detections=frame_dets,
-                    events=events,
-                    tracks=frame_tracks,
-                    behaviors=frame_behaviors,
-                    composites=frame_composites,
-                )
-            )
-            result.detections.extend(frame_dets)
-            result.events.extend(events)
+            analysis = self.analyze_frame(frame)
+            result.frames.append(analysis)
+            result.detections.extend(analysis.detections)
+            result.events.extend(analysis.events)
+            result.zone_transitions.extend(analysis.zone_transitions)
+            result.counting.extend(analysis.counting)
+            result.behaviors.extend(analysis.behaviors)
+            result.composites.extend(analysis.composites)
 
         # Terminal flush (AI-3): behaviors still active at end-of-video close as `expired` (rec 2).
-        if self._behaviors is not None and self._behavior_store is not None and self._behavior_translator is not None and sampled:
-            last = sampled[-1]
-            expired = self._behavior_store.sweep(
-                frame_index=last.index, at=last.timestamp, t=frame_seconds(last.timestamp, last.index)
-            )
-            for br in expired:
-                d = br.to_dict()
-                result.behaviors.append(d)
-                env = self._behavior_translator.translate(d)
-                if env is not None:
-                    result.events.append(env)
-            # Composite terminal flush (AI-4).
-            if self._composites is not None and self._composite_store is not None:
-                for cb in self._composite_store.sweep(
-                    frame_index=last.index, at=last.timestamp, t=frame_seconds(last.timestamp, last.index)
-                ):
-                    d = cb.to_dict()
-                    result.composites.append(d)
-                    env = self._behavior_translator.translate(d)
-                    if env is not None:
-                        result.events.append(env)
+        if sampled:
+            flushed = self.flush()
+            result.behaviors.extend(flushed.behaviors)
+            result.composites.extend(flushed.composites)
+            result.events.extend(flushed.events)
 
         if self._manager is not None:
             result.tracks = self._manager.diagnostics()
@@ -422,31 +299,245 @@ class VideoAnalyzer:
                 frames=max(1, len(sampled)),
             )
         if self._behaviors is not None and self._behavior_store is not None:
-            result.behavior_stats = self._behavior_stats(result, sampled)
+            result.behavior_stats = self.behavior_stats(frames=len(sampled))
         if self._composites is not None:
-            result.composite_stats = self._composite_stats(result)
+            result.composite_stats = self.composite_stats()
         result.summary = self._summary(decoder, sampler, decoded, sampled, result)
         return result
 
-    def _behavior_stats(self, result: AnalyzeResult, sampled) -> dict:
+    def analyze_frame(self, frame) -> FrameAnalysis:
+        """Analyze ONE frame — the single per-frame path shared by batch and live execution.
+
+        **Pure with respect to the Frame** (Architect AI-5b refinement 1): the frame is read, never
+        mutated, and never retained by the analyzer. `Frame` is a frozen dataclass, so immutability is
+        structural rather than a convention; frame OWNERSHIP stays with the caller (`StreamPipeline`
+        for live sessions), and this method owns **AI processing only** (refinement 2).
+
+        Cross-frame PIPELINE state (tracks, behavior lifecycle, temporal windows) is legitimately
+        retained — that is what makes tracking and behavior analysis possible — but no frame, image
+        buffer, or per-frame result is.
+        """
+        opts = self._options
+        timings = self._timings
+        ctx = FrameContext(
+            tenant_id=opts.tenant_id,
+            camera_id=opts.camera_id,
+            image=frame.image,
+            stream_id=None,
+            frame_number=frame.index,
+            timestamp=frame.timestamp,
+            width=frame.processed_width,
+            height=frame.processed_height,
+            source=frame.source_video,
+            correlation_id=opts.correlation_id,
+        )
+
+        t = self._clock()
+        prepared = self._adapter.preprocess(ctx)
+        timings.preprocess_ms += (self._clock() - t) * 1000.0
+
+        t = self._clock()
+        raw = self._adapter.infer(prepared)
+        infer_ms = (self._clock() - t) * 1000.0
+        timings.inference_ms += infer_ms
+
+        t = self._clock()
+        dets = self._postprocessor.run(raw, ctx, opts.min_confidence)
+        dets = self._tracker.run(dets, ctx)
+        det_result = self._translator.run(
+            dets,
+            ctx,
+            self._model,
+            capability_id=opts.capability_id,
+            capability_version="1.0.0",
+            runtime_version=self._runtime_version,
+            execution_provider=getattr(self._adapter, "execution_provider", "unknown"),
+            inference_ms=infer_ms,
+            at=self._now_iso(),
+        )
+        timings.postprocess_ms += (self._clock() - t) * 1000.0
+
+        result_dict = det_result.to_dict()
+        frame_at = result_dict["at"]
+
+        # --- Tracking → Zones → Counting → Behavior Analysis (all consume TRACKS, not detections;
+        # Architect rec 9: Behavior runs AFTER zone/counting so analyzers see zone membership + counts,
+        # each stage independently replaceable). ---
+        frame_tracks: List[dict] = []
+        frame_behaviors: List[dict] = []
+        frame_composites: List[dict] = []
+        frame_events: List[dict] = []
+        frame_transitions: List[dict] = []
+        frame_counts: List[dict] = []
+        if self._manager is not None and self._counting is not None:
+            t = self._clock()
+            tracks = self._manager.update(
+                dets, tenant_id=opts.tenant_id, camera_id=opts.camera_id, frame_index=frame.index, at=frame.timestamp
+            )
+            timings.tracking_ms += (self._clock() - t) * 1000.0
+            t = self._clock()
+            transitions, snapshots = self._counting.update(
+                self._zones, tracks, frame_index=frame.index, at=frame.timestamp
+            )
+            timings.zone_counting_ms += (self._clock() - t) * 1000.0
+            frame_tracks = [tr.to_dict() for tr in tracks]
+            for tr in transitions:
+                d = tr.to_dict()
+                frame_transitions.append(d)
+                frame_events.append(zone_transition_event(d, id_gen=self._id_gen))
+            for s in snapshots:
+                d = s.to_dict()
+                frame_counts.append(d)
+                frame_events.append(counting_event(d, id_gen=self._id_gen))
+
+            # Behavior stage — analyzers consume immutable snapshots + zone/counting state; the
+            # store assigns lifecycle; the translator bridges each BehaviorResult to an event.
+            if self._behaviors is not None and self._behavior_store is not None and self._windows is not None:
+                t = self._clock()
+                ctx_b = BehaviorContext(
+                    tenant_id=opts.tenant_id,
+                    camera_id=opts.camera_id,
+                    frame_index=frame.index,
+                    at=frame.timestamp,
+                    t=frame_seconds(frame.timestamp, frame.index),
+                    snapshots=tuple(snapshot_track(tr, frame.index) for tr in tracks),
+                    zones=tuple(self._zones),
+                    transitions=tuple(frame_transitions),
+                    counting=tuple(frame_counts),
+                    windows=self._windows,
+                    zone_engine=self._behavior_zone_engine,
+                    session_id=opts.session_id,
+                )
+                produced = self._behaviors.run(ctx_b, self._behavior_store)
+                timings.behavior_ms += (self._clock() - t) * 1000.0
+                for br in produced:
+                    d = br.to_dict()
+                    frame_behaviors.append(d)
+                    env = self._behavior_translator.translate(d)
+                    if env is not None:
+                        frame_events.append(env)
+
+                # Composite pass (AI-4) — consumes the ACTIVE primitive BehaviorResults (never
+                # Tracks; rec 5), producing higher-order BehaviorResults with relationships.
+                if self._composites is not None and self._composite_store is not None:
+                    t = self._clock()
+                    active = self._behavior_store.active_results(frame_index=frame.index, at=frame.timestamp)
+                    ctx_c = CompositeContext(
+                        tenant_id=opts.tenant_id,
+                        camera_id=opts.camera_id,
+                        frame_index=frame.index,
+                        at=frame.timestamp,
+                        t=frame_seconds(frame.timestamp, frame.index),
+                        behaviors=tuple(active),
+                        zone_roles=self._zone_roles,
+                        session_id=opts.session_id,
+                    )
+                    composed = self._composites.run(ctx_c, self._composite_store)
+                    timings.composite_ms += (self._clock() - t) * 1000.0
+                    for cb in composed:
+                        d = cb.to_dict()
+                        frame_composites.append(d)
+                        env = self._behavior_translator.translate(d)
+                        if env is not None:
+                            frame_events.append(env)
+
+        t = self._clock()
+        events = detections_to_events(result_dict, id_gen=self._id_gen, ingested_at=frame_at)
+        timings.event_generation_ms += (self._clock() - t) * 1000.0
+        events = events + frame_events
+
+        # Publish perception + tracking events to the backbone (reuses the EventSink seam).
+        self._event_sink.publish(det_result)
+
+        # Running aggregates the analyzer legitimately owns (bounded scalars, never frame data) so a
+        # live session can report stats without retaining every frame it has ever seen.
+        self._frames_analyzed += 1
+        self._last_frame_meta = (frame.index, frame.timestamp)
+        if self._first_frame_meta is None:
+            self._first_frame_meta = (frame.index, frame.timestamp)
+        self._relationship_count += _count_relationships(frame_behaviors) + _count_relationships(frame_composites)
+        self._composite_total += len(frame_composites)
+        self._zone_transition_total += len(frame_transitions)
+        self._counting_total += len(frame_counts)
+
+        return FrameAnalysis(
+            frame=frame.meta(),
+            detections=result_dict["detections"],
+            events=events,
+            tracks=frame_tracks,
+            behaviors=frame_behaviors,
+            composites=frame_composites,
+            zone_transitions=frame_transitions,
+            counting=frame_counts,
+        )
+
+    def flush(self) -> FlushResult:
+        """Terminal flush (AI-3 rec 2): behaviors/composites still active when the stream ends close as
+        `expired`. Called at end-of-video (batch) and at session stop (live) — the same code path, so a
+        live session can never leak an unterminated behavior that batch would have closed."""
+        out = FlushResult()
+        if (
+            self._behaviors is None
+            or self._behavior_store is None
+            or self._behavior_translator is None
+            or self._last_frame_meta is None
+        ):
+            return out
+        index, at = self._last_frame_meta
+        t_seconds = frame_seconds(at, index)
+        for br in self._behavior_store.sweep(frame_index=index, at=at, t=t_seconds):
+            d = br.to_dict()
+            out.behaviors.append(d)
+            self._relationship_count += _count_relationships([d])
+            env = self._behavior_translator.translate(d)
+            if env is not None:
+                out.events.append(env)
+        # Composite terminal flush (AI-4).
+        if self._composites is not None and self._composite_store is not None:
+            for cb in self._composite_store.sweep(frame_index=index, at=at, t=t_seconds):
+                d = cb.to_dict()
+                out.composites.append(d)
+                self._composite_total += 1
+                self._relationship_count += _count_relationships([d])
+                env = self._behavior_translator.translate(d)
+                if env is not None:
+                    out.events.append(env)
+        return out
+
+    @property
+    def timings(self) -> StageTimings:
+        """Cumulative per-stage timings for the frames analyzed so far (live sessions read this)."""
+        return self._timings
+
+    def tracking_stats(self, *, frames: Optional[int] = None) -> dict:
+        """Track-manager observability for the frames analyzed so far (live-session safe)."""
+        if self._manager is None:
+            return {}
+        return self._manager.stats(
+            zone_crossings=self._zone_transition_total,
+            counting_events=self._counting_total,
+            frames=max(1, self._frames_analyzed if frames is None else frames),
+        )
+
+    def behavior_stats(self, *, frames: Optional[int] = None) -> dict:
         """Aggregate behavior observability (Architect rec 8 + refinement 7) — additive RuntimeMetrics
         fields + a per-analyzer breakdown. Business-neutral counts/durations/latencies only."""
         assert self._behaviors is not None and self._behavior_store is not None and self._windows is not None
-        frames = max(1, len(sampled))
+        frames = max(1, self._frames_analyzed if frames is None else frames)
         store = self._behavior_store.stats()
-        agg = self._behaviors.aggregate_metrics(frames=frames, behavior_latency_ms=result.timings.behavior_ms)
+        agg = self._behaviors.aggregate_metrics(frames=frames, behavior_latency_ms=self._timings.behavior_ms)
         started = store.get("startedBehaviors", 0)
-        if sampled:
-            elapsed = frame_seconds(sampled[-1].timestamp, sampled[-1].index) - frame_seconds(sampled[0].timestamp, sampled[0].index)
+        if self._first_frame_meta is not None and self._last_frame_meta is not None:
+            first_index, first_at = self._first_frame_meta
+            last_index, last_at = self._last_frame_meta
+            elapsed = frame_seconds(last_at, last_index) - frame_seconds(first_at, first_index)
         else:
             elapsed = 0.0
         if elapsed <= 0:
             elapsed = float(frames)  # frame-index proxy when timestamps aren't seconds
-        # Relationship count (AI-4 rec 8): every related/parent/follows reference across all behaviors.
-        relationships = sum(
-            len(b.get("relatedBehaviorIds", []) or []) + (1 if b.get("parentBehaviorId") else 0) + (1 if b.get("followsBehaviorId") else 0)
-            for b in result.behaviors + result.composites
-        )
+        # Relationship count (AI-4 rec 8): every related/parent/follows reference across all behaviors,
+        # tallied incrementally as frames are analyzed so a live session needs no retained history.
+        relationships = self._relationship_count
         stats = {
             **store,
             **agg,
@@ -460,11 +551,11 @@ class VideoAnalyzer:
         stats["analyzers"] = self._behaviors.analyzer_metrics()
         return stats
 
-    def _composite_stats(self, result: AnalyzeResult) -> dict:
+    def composite_stats(self) -> dict:
         """Aggregate composite observability (Architect AI-4 rec 8 + refinement 8) — additive."""
         assert self._composites is not None
         agg = self._composites.aggregate_metrics()
-        agg["compositeBehaviorCount"] = len(result.composites)
+        agg["compositeBehaviorCount"] = self._composite_total
         agg["analyzers"] = self._composites.analyzer_metrics()
         return agg
 
@@ -504,6 +595,16 @@ class VideoAnalyzer:
             "profile": (opts.profile or {}).get("profile") if opts.profile else None,
             "stageTimingsMs": result.timings.as_dict(),
         }
+
+
+def _count_relationships(behaviors: List[dict]) -> int:
+    """Every related/parent/follows reference across a batch of behaviors (AI-4 rec 8)."""
+    return sum(
+        len(b.get("relatedBehaviorIds", []) or [])
+        + (1 if b.get("parentBehaviorId") else 0)
+        + (1 if b.get("followsBehaviorId") else 0)
+        for b in behaviors
+    )
 
 
 def _iso(now: float) -> str:

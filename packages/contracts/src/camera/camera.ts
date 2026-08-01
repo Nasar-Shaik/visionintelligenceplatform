@@ -73,9 +73,37 @@ export const CameraHealth = z.object({
 export type CameraHealth = z.infer<typeof CameraHealth>;
 
 /**
- * What a camera/stream supports (P2-2 G-1). Declared at onboarding — defaults are derived from the
- * protocol + capture profile — and editable by an operator; later populated by discovery/ONVIF.
- * Drives the console's Live Monitoring / PTZ affordances without decoding the stream.
+ * One named stream a camera publishes (AI-5c). Real devices expose several — a high-resolution
+ * `main` for recording and a low-resolution `sub` for analysis — and choosing the right one is the
+ * single cheapest performance decision in the platform: analyzing a 4K main stream when a 640×360
+ * sub-stream would do wastes decode and inference budget on every frame.
+ */
+export const CameraStreamProfile = z.object({
+  /** Device-side profile name, e.g. `main`, `sub`, `Profile_1`. */
+  name: z.string().min(1).max(100),
+  codec: CameraCodec.optional(),
+  /** WIDTHxHEIGHT, e.g. "640x360". */
+  resolution: z
+    .string()
+    .regex(/^\d{2,5}x\d{2,5}$/, 'must be WIDTHxHEIGHT, e.g. 1920x1080')
+    .optional(),
+  fps: z.number().int().min(1).max(120).optional(),
+  /** Path/suffix to reach this profile, relative to the camera's stream URL. Never a full credentialed URL. */
+  path: z.string().max(500).optional(),
+  /** Whether this profile is the one the runtime should analyze by default. */
+  preferredForAnalysis: z.boolean().default(false),
+});
+export type CameraStreamProfile = z.infer<typeof CameraStreamProfile>;
+
+/**
+ * What a camera/stream supports (P2-2 G-1; extended AI-5c). Declared at onboarding — defaults are
+ * derived from the protocol + capture profile — and editable by an operator; later populated by
+ * discovery/ONVIF. Drives the console's Live Monitoring / PTZ affordances without decoding the stream.
+ *
+ * **The runtime CONSUMES this instead of probing the device** (Architect AI-5b rec 1). Probing a
+ * camera to learn its codec/resolution/fps costs a connection and a decode every time a session
+ * starts; capabilities are declared once and read thereafter, so N sessions across a restart cost
+ * zero probes. Everything here is descriptive — it never changes perception behavior.
  */
 export const CameraCapabilities = z.object({
   /** Pan / tilt / zoom controllable. */
@@ -93,6 +121,20 @@ export const CameraCapabilities = z.object({
     .default([]),
   /** Transports the camera can be reached on. */
   protocols: z.array(CameraProtocol).default([]),
+  /**
+   * Frame rates the source can emit, as an inclusive range (AI-5c). The runtime clamps its requested
+   * sampling FPS into this range rather than asking a device for a rate it cannot produce.
+   */
+  fpsRange: z
+    .object({ min: z.number().int().min(1).max(120), max: z.number().int().min(1).max(120) })
+    .refine((r) => r.max >= r.min, { message: 'fpsRange.max must be >= fpsRange.min' })
+    .optional(),
+  /** Named streams the device publishes (main/sub/…). Empty when the device has only one. */
+  streamProfiles: z.array(CameraStreamProfile).max(10).default([]),
+  /** ONVIF is reachable on this device (discovery/PTZ/profile enumeration). */
+  onvif: z.boolean().default(false),
+  /** When the capabilities were last confirmed against the device — staleness is an operator signal. */
+  discoveredAt: IsoDateTime.optional(),
 });
 export type CameraCapabilities = z.infer<typeof CameraCapabilities>;
 

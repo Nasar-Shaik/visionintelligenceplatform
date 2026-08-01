@@ -1,0 +1,38 @@
+{
+  "analyzerCosts": {
+    "costs": {
+      "crowd": 3.0,
+      "fire": 3.0,
+      "intrusion": 1.5,
+      "occupancy": 1.0
+    },
+    "protectedAnalyzers": ["fire"]
+  },
+  "defaultPriority": "high",
+  "description": "Industrial floor: safety and fire, high camera counts, tolerant of latency but not of missed safety events.",
+  "dropPolicy": "drop-oldest",
+  "enabledBehaviors": ["intrusion", "fire", "occupancy", "crowd"],
+  "maxSessions": 24,
+  "preferredStreamProfile": "sub",
+  "profile": "factory",
+  "queueCapacity": 48,
+  "reconnect": {
+    "baseMs": 500,
+    "maxAttempts": 10,
+    "maxMs": 30000
+  },
+  "scheduler": {
+    "admissionControl": true,
+    "degradeAboveQueuePercent": 80,
+    "maxBatchSize": 1,
+    "maxConsecutivePerSession": 4,
+    "minDegradedFps": 1,
+    "predictive": true,
+    "recoverBelowQueuePercent": 50,
+    "reservedCapacityPercent": 10,
+    "strategy": "weighted-fair"
+  },
+  "targetEventLatencyMs": 1000,
+  "targetFps": 4,
+  "version": "1.0.0"
+}

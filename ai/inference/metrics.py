@@ -13,6 +13,34 @@ from typing import Deque, List, Optional
 
 _CONF_BUCKETS = 10  # [0,0.1) … [0.9,1.0]
 
+# The authoritative operational/AI partition (AI-5c; mirrors `METRIC_GROUPS` in @vip/contracts).
+# Operational = is the system healthy (ops owns it). AI = is the system seeing correctly (AI owns it).
+OPERATIONAL_METRICS = frozenset(
+    {
+        "fps", "framesProcessed", "framesSkipped", "droppedFrames", "frameDropPercent",
+        "avgLatencyMs", "latencyP50Ms", "latencyP95Ms", "avgDecodeMs", "avgInferenceMs",
+        "queueDepth", "queueHighWatermark", "queueUtilization", "averageQueueDepth",
+        "processingDelayMs", "uptimeSeconds", "memoryMb", "cpuPercent", "gpuPercent",
+        "modelLoadMs", "maxRssKb", "cpuUserSeconds", "cpuSystemSeconds",
+        "sessionCount", "activeSessions", "reconnectCount", "restartCount",
+        "streamAvailability", "averageRecoveryTime", "eventLatencyMs", "benchmarkRunCount",
+    }
+)
+
+AI_METRICS = frozenset(
+    {
+        "detectionFps", "detectionsTotal", "avgConfidence", "confidenceDistribution",
+        "activeTracks", "confirmedTracks", "tentativeTracks", "lostTracks", "removedTracks",
+        "averageTrackAgeFrames", "averageTrackLifetime", "averageTrackLength",
+        "averageTrackVelocity", "zoneCrossings", "countingRate",
+        "activeBehaviors", "compositeBehaviorCount", "behaviorCorrelationCount",
+        "behaviorRelationshipCount", "compositeEvaluations", "compositeMatches",
+        "compositeMisses", "averageCompositeLatency", "averageCompositeConfidence",
+        "compositeExecutionTime", "activeTemporalWindows", "averageWindowDuration",
+        "profileLoads", "profileValidationFailures", "activeProfiles", "eventThroughput",
+    }
+)
+
 
 def _percentile(sorted_values: List[float], pct: float) -> float:
     """Nearest-rank percentile over a pre-sorted list (deterministic; no numpy)."""
@@ -154,6 +182,22 @@ class Metrics:
             }
         )
         return out
+
+    def grouped(self) -> dict:
+        """Split a metrics snapshot into the two audiences (AI-5c, Architect AI-5b rec 2).
+
+        `operational` answers "is the system HEALTHY?" (availability, queues, latency, resources) and
+        pages an operator. `ai` answers "is the system SEEING correctly?" (detections, tracks,
+        behaviors, confidence) and belongs to the AI team. One producer, two audiences — mixing them
+        is why production dashboards end up unreadable.
+
+        Mirrors `METRIC_GROUPS` in @vip/contracts; a field absent from the snapshot is simply omitted.
+        """
+        snapshot = self.snapshot()
+        return {
+            "operational": {k: v for k, v in snapshot.items() if k in OPERATIONAL_METRICS},
+            "ai": {k: v for k, v in snapshot.items() if k in AI_METRICS},
+        }
 
     def prometheus(self) -> str:
         s = self.snapshot()

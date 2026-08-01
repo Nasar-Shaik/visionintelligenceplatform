@@ -1,0 +1,41 @@
+{
+  "analyzerCosts": {
+    "costs": {
+      "crowd": 3.0,
+      "fire": 3.0,
+      "intrusion": 1.5,
+      "loitering": 1.5,
+      "occupancy": 1.0
+    },
+    "protectedAnalyzers": ["fire", "intrusion"]
+  },
+  "defaultPriority": "critical",
+  "description": "Continuous critical monitoring. Never suspends a session - a suspended camera in a care setting is unacceptable - so degradation is capped below suspension and the reserve is larger.",
+  "dropPolicy": "drop-oldest",
+  "enabledBehaviors": ["intrusion", "loitering", "crowd", "occupancy", "fire"],
+  "maxSessions": 16,
+  "preferredStreamProfile": "main",
+  "profile": "hospital",
+  "queueCapacity": 64,
+  "reconnect": {
+    "baseMs": 500,
+    "maxAttempts": 10,
+    "maxMs": 30000
+  },
+  "scheduler": {
+    "admissionControl": true,
+    "degradeAboveQueuePercent": 80,
+    "maxBatchSize": 1,
+    "maxConsecutivePerSession": 4,
+    "maxDegradation": "shedding-frames",
+    "minDegradedFps": 1,
+    "predictive": true,
+    "recoverBelowQueuePercent": 50,
+    "reserveFor": ["critical", "high"],
+    "reservedCapacityPercent": 20,
+    "strategy": "weighted-fair"
+  },
+  "targetEventLatencyMs": 400,
+  "targetFps": 5,
+  "version": "1.0.0"
+}

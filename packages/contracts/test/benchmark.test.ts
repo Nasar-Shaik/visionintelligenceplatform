@@ -104,6 +104,38 @@ describe('BenchmarkReport', () => {
     expect(env.logicalCores).toBe(8);
   });
 
+  it('records the five reproducibility anchors (AI-5b refinement 5)', () => {
+    const r = BenchmarkReport.parse({
+      id: 'bench_1',
+      benchmarkVersion: '1.1.0',
+      deploymentClass: 'dev-laptop',
+      runtimeVersion: '0.2.0',
+      workload: { name: 'multi-camera-live', cameras: 4, frames: 60 },
+      kpis,
+      environment: { os: 'Darwin', arch: 'arm64', pythonVersion: '3.12.0' },
+      configuration: { frames: 60, cameras: 4, mode: 'deterministic-synthetic' },
+      configurationFingerprint: 'cfg_9f2a1c4e',
+      hardwareFingerprint: 'hw_3b7d0e11',
+      recordedAt: '2026-07-31T10:00:00.000Z',
+    });
+    // runtime version · benchmark version · deployment class · config fingerprint · hardware fingerprint
+    expect(r.runtimeVersion).toBe('0.2.0');
+    expect(r.benchmarkVersion).toBe('1.1.0');
+    expect(r.deploymentClass).toBe('dev-laptop');
+    expect(r.configurationFingerprint).toBe('cfg_9f2a1c4e');
+    expect(r.hardwareFingerprint).toBe('hw_3b7d0e11');
+    // Additive: an AI-5a report without fingerprints still parses (baseline stays comparable).
+    const legacy = BenchmarkReport.parse({
+      id: 'bench_0',
+      deploymentClass: 'dev-laptop',
+      runtimeVersion: '0.1.0',
+      workload: { name: 'single-camera', cameras: 1, frames: 60 },
+      kpis,
+      recordedAt: '2026-07-31T10:00:00.000Z',
+    });
+    expect(legacy.configurationFingerprint).toBeUndefined();
+  });
+
   it('rejects a bad deployment class', () => {
     expect(() =>
       BenchmarkReport.parse({

@@ -135,6 +135,15 @@ export const BenchmarkReport = z.object({
   environment: EnvironmentFingerprint.optional(),
   /** Echo of the run configuration (refinement 1) — frames, warmupFrames, targetFps, deterministic, … */
   configuration: z.record(z.string(), z.unknown()).default({}),
+  /**
+   * Stable digests of the two things that invalidate a comparison (Architect AI-5b refinement 5).
+   * Two reports are directly comparable **only** when both fingerprints match; when they differ, the
+   * delta is explained by config or hardware, not by the runtime change under test. Derived
+   * deterministically from `configuration` / `environment`, so they never carry new information —
+   * they make an existing invariant checkable at a glance.
+   */
+  configurationFingerprint: z.string().min(1).max(64).optional(),
+  hardwareFingerprint: z.string().min(1).max(64).optional(),
   /** Reserved (refinement 3): a prior report id this run should be compared against. No regression logic in AI-5a. */
   baselineId: z.string().min(1).optional(),
   recordedAt: IsoDateTime,
@@ -143,3 +152,60 @@ export const BenchmarkReport = z.object({
   notes: z.string().max(1000).optional(),
 });
 export type BenchmarkReport = z.infer<typeof BenchmarkReport>;
+
+// ---------------------------------------------------------------------------
+// Baseline comparison (AI-5c) — evidence-driven optimization
+// ---------------------------------------------------------------------------
+
+/**
+ * How a candidate KPI moved against the baseline. `improved`/`regressed` are only claimed once the
+ * change exceeds a noise threshold — a 0.4% "improvement" on a wall-clock benchmark is measurement
+ * jitter, and treating it as a result is how unjustified optimizations get merged.
+ */
+export const ComparisonVerdict = z.enum(['improved', 'unchanged', 'regressed', 'na']);
+export type ComparisonVerdict = z.infer<typeof ComparisonVerdict>;
+
+/** One KPI's movement between two runs. */
+export const KpiDelta = z.object({
+  kpi: z.string().min(1),
+  baseline: z.number(),
+  candidate: z.number(),
+  /** candidate − baseline (raw units). */
+  delta: z.number(),
+  /** Percentage change relative to the baseline. */
+  deltaPercent: z.number(),
+  /** Whether higher is better for this KPI (fps) or worse (latency, drops). */
+  higherIsBetter: z.boolean(),
+  verdict: ComparisonVerdict,
+});
+export type KpiDelta = z.infer<typeof KpiDelta>;
+
+/**
+ * The governance artifact for the Architect's optimization workflow (AI-5b rec 7):
+ * **Baseline → Optimization → Re-benchmark → Compare → Accept or reject.**
+ *
+ * `accepted` is the gate: an optimization is accepted only when it shows a measurable improvement and
+ * no regression beyond threshold. `comparable` guards the whole thing — two reports with different
+ * configuration or hardware fingerprints are NOT comparable, and a comparison that ignores that would
+ * launder a hardware upgrade as a code improvement.
+ */
+export const BenchmarkComparison = z.object({
+  baselineId: z.string().min(1),
+  candidateId: z.string().min(1),
+  workload: z.string().min(1),
+  deploymentClass: DeploymentClass,
+  /** False when configuration/hardware fingerprints differ — the deltas are then informational only. */
+  comparable: z.boolean().default(true),
+  /** Why the runs are not comparable, when they are not. */
+  incomparableReason: z.string().max(500).optional(),
+  deltas: z.array(KpiDelta).default([]),
+  improved: z.array(z.string()).default([]),
+  regressed: z.array(z.string()).default([]),
+  /** Noise threshold (%) below which a change is `unchanged`. */
+  thresholdPercent: z.number().nonnegative().default(5),
+  /** Overall: a measurable improvement with no regression → accept the optimization. */
+  accepted: z.boolean().default(false),
+  summary: z.string().max(1000).optional(),
+  recordedAt: IsoDateTime,
+});
+export type BenchmarkComparison = z.infer<typeof BenchmarkComparison>;

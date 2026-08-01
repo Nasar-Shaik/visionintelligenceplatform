@@ -123,7 +123,29 @@ describe('CameraCapabilities (G-1)', () => {
       codecs: [],
       resolutions: [],
       protocols: [],
+      // AI-5c additions — additive and defaulted, so an existing camera record still parses.
+      streamProfiles: [],
+      onvif: false,
     });
+  });
+
+  it('declares fps range, stream profiles and ONVIF so the runtime need not probe (AI-5c)', () => {
+    const caps = CameraCapabilities.parse({
+      fpsRange: { min: 1, max: 25 },
+      onvif: true,
+      streamProfiles: [
+        { name: 'main', resolution: '1920x1080', fps: 25 },
+        { name: 'sub', resolution: '640x360', fps: 10, preferredForAnalysis: true },
+      ],
+    });
+    expect(caps.fpsRange).toEqual({ min: 1, max: 25 });
+    expect(caps.onvif).toBe(true);
+    expect(caps.streamProfiles[1]!.preferredForAnalysis).toBe(true);
+    expect(caps.streamProfiles[0]!.preferredForAnalysis).toBe(false);
+  });
+
+  it('rejects an inverted fps range', () => {
+    expect(CameraCapabilities.safeParse({ fpsRange: { min: 30, max: 5 } }).success).toBe(false);
   });
 
   it('rejects a malformed resolution', () => {
