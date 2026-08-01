@@ -236,12 +236,115 @@ export const CameraHealthReport = CameraHealth.extend({
 });
 export type CameraHealthReport = z.infer<typeof CameraHealthReport>;
 
-/** Input to the (stubbed) ONVIF/network discovery endpoint. */
+/**
+ * Input to ONVIF/network discovery (P-1). Discovery is a **WS-Discovery multicast probe**, so it
+ * finds whatever answers on the local segment; `subnet` is advisory metadata recorded on the result,
+ * not a scan range, because multicast does not cross a router and pretending otherwise would make an
+ * installer think the tool was broken when the real problem is their VLAN.
+ */
 export const DiscoverCamerasInput = z.object({
-  /** CIDR to scan, e.g. "10.0.0.0/24". Optional until discovery is implemented. */
+  /** The segment the probe was run on, for the record. Multicast does not cross a router. */
   subnet: z.string().max(64).optional(),
+  /** How long to listen for answers. Devices reply within a second or two, or not at all. */
+  timeoutSeconds: z.number().min(1).max(30).default(3),
 });
 export type DiscoverCamerasInput = z.infer<typeof DiscoverCamerasInput>;
+
+/**
+ * A device found on the network but **not yet onboarded** (P-1). Deliberately a distinct shape from
+ * `Camera`: a discovered device has no tenant, no id, no zone and no credentials — it is a
+ * *candidate*, and giving it the same type as a persisted camera is how a UI ends up implying the
+ * platform is already watching something it has never connected to.
+ */
+export const DiscoveredCamera = z.object({
+  /** ONVIF device service address the probe answered from, e.g. `http://10.0.0.64/onvif/device_service`. */
+  endpoint: z.string().min(1).max(500),
+  /** Network address parsed from the endpoint — what an installer recognises on their switch. */
+  address: z.string().max(200).optional(),
+  /** Manufacturer / model / firmware / serial as the device reported them. */
+  metadata: CameraMetadata,
+  /** Everything discovery negotiated: profiles, codecs, fps range, PTZ, audio, metadata stream. */
+  capabilities: CameraCapabilities,
+  /**
+   * Stream URL to onboard with, derived from the device's own `preferredForAnalysis` profile.
+   * **Never carries credentials** — devices routinely return a URI with the password embedded, and
+   * that is stripped before it reaches this field (`StreamUrl` would reject it anyway).
+   */
+  suggestedStreamUrl: StreamUrl.optional(),
+  /** Slug matching the compatibility registry, e.g. `hikvision-ds-2cd2143g2`. */
+  registryId: z.string().max(120).optional(),
+  /**
+   * True when a camera in this tenant already uses this device's stream URL. The console shows these
+   * greyed rather than hiding them: an installer re-scanning a site needs to see that the four
+   * cameras missing from the list are the four already onboarded, not four that failed to answer.
+   */
+  alreadyOnboarded: z.boolean().default(false),
+  /** Id of the existing camera, when `alreadyOnboarded`. */
+  cameraId: z.string().min(1).optional(),
+  /** Why negotiation was incomplete, when it was — bad credentials, ONVIF disabled, a partial reply. */
+  warning: z.string().max(500).optional(),
+});
+export type DiscoveredCamera = z.infer<typeof DiscoveredCamera>;
+
+/** Result of a discovery probe (P-1). */
+export const DiscoverCamerasResult = z.object({
+  devices: z.array(DiscoveredCamera).default([]),
+  /** How long the probe actually listened. */
+  probedSeconds: z.number().nonnegative(),
+  /** Segment probed, echoed from the input. */
+  subnet: z.string().max(64).optional(),
+  /**
+   * Set when discovery could not run at all (the discovery provider is not configured or is
+   * unreachable). Distinct from "ran and found nothing" — an installer must be able to tell a broken
+   * tool from an empty network, and a bare empty list cannot.
+   */
+  unavailable: z.string().max(500).optional(),
+});
+export type DiscoverCamerasResult = z.infer<typeof DiscoverCamerasResult>;
+
+/**
+ * Onboard several cameras in one call (P-1) — the DVR/NVR case, where one device publishes 8, 16 or
+ * 32 channels and adding them one at a time is the difference between a five-minute install and an
+ * afternoon.
+ */
+export const BulkCreateCamerasInput = z.object({
+  /**
+   * Deliberately `unknown[]` at the envelope, validated **per item** against `CreateCameraInput`.
+   *
+   * Typing this as `CreateCameraInput[]` would make one malformed channel reject all sixteen at parse
+   * time — and would make `BulkCreateCameraResult.error` a promise the shape cannot keep, since a
+   * schema failure would never reach it. An installer pasting a list of DVR channel URLs with one
+   * typo must get fifteen cameras and one named error, not a 400 and no explanation of which row.
+   *
+   * The cost is that callers lose compile-time checking of the array's element type; the count and
+   * bounds are still enforced here, and each element is still validated against the same contract.
+   */
+  cameras: z.array(z.unknown()).min(1).max(64),
+});
+export type BulkCreateCamerasInput = z.infer<typeof BulkCreateCamerasInput>;
+
+/**
+ * Per-camera outcome of a bulk onboard. **Partial success is the expected case**, not an error: one
+ * duplicate channel in a 16-channel DVR must not discard the other fifteen, and an installer needs to
+ * see exactly which one failed and why.
+ */
+export const BulkCreateCameraResult = z.object({
+  /** Index in the submitted array, so the console can point at the row that failed. */
+  index: z.number().int().nonnegative(),
+  name: z.string().max(200),
+  created: z.boolean(),
+  camera: Camera.optional(),
+  error: z.string().max(500).optional(),
+});
+export type BulkCreateCameraResult = z.infer<typeof BulkCreateCameraResult>;
+
+/** Result of a bulk onboard (P-1). */
+export const BulkCreateCamerasResult = z.object({
+  results: z.array(BulkCreateCameraResult).default([]),
+  created: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+});
+export type BulkCreateCamerasResult = z.infer<typeof BulkCreateCamerasResult>;
 
 /**
  * Candidate camera configuration to validate before onboarding (P2-2 G-1, "test connection").

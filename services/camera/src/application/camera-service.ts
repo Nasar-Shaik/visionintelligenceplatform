@@ -9,7 +9,11 @@
  * backbone (subscribe to `tenant.hierarchy.changed`, P1-5), keeping the contexts independently
  * deployable. Enforcing existence is tracked as tech-debt until the backbone lands (ED-0024/TD-3).
  */
+import { CreateCameraInput } from '@vip/contracts';
 import type {
+  BulkCreateCamerasInput,
+  BulkCreateCamerasResult,
+  BulkCreateCameraResult,
   Camera,
   CameraCapabilities,
   CameraHealth,
@@ -17,7 +21,9 @@ import type {
   CameraStatus,
   CameraValidationInput,
   CameraValidationResult,
-  CreateCameraInput,
+  DiscoverCamerasInput,
+  DiscoverCamerasResult,
+  DiscoveredCamera,
   StreamConnection,
   UpdateCameraInput,
 } from '@vip/contracts';
@@ -37,8 +43,32 @@ import {
 } from '../domain/camera.js';
 import { badRequest, conflict, notFound } from './errors.js';
 import { nullPublisher, type EventPublisher } from './events.js';
+import { UnavailableDiscoveryProvider, type DiscoveryProvider } from './discovery.js';
 
 const DUPLICATE_KEY = 11000;
+
+/** Best-effort label for a bulk row that failed validation — an index alone is hard to act on. */
+function nameOf(raw: unknown): string {
+  const name = (raw as { name?: unknown } | null)?.name;
+  return typeof name === 'string' && name.length > 0 ? name.slice(0, 200) : '(unnamed)';
+}
+
+/**
+ * Normalize a stream URL for comparison (P-1). Scheme and host are case-insensitive per RFC 3986;
+ * the path is not, because plenty of DVRs serve case-sensitive channel paths. A trailing slash is
+ * dropped — `/live` and `/live/` are the same endpoint and a false mismatch would have an installer
+ * onboard a duplicate that then fails on the unique index.
+ */
+function normalizeStreamUrl(url: string): string {
+  const trimmed = url.trim().replace(/\/+$/, '');
+  const separator = trimmed.indexOf('://');
+  if (separator < 0) return trimmed.toLowerCase();
+  const scheme = trimmed.slice(0, separator).toLowerCase();
+  const rest = trimmed.slice(separator + 3);
+  const slash = rest.indexOf('/');
+  if (slash < 0) return `${scheme}://${rest.toLowerCase()}`;
+  return `${scheme}://${rest.slice(0, slash).toLowerCase()}${rest.slice(slash)}`;
+}
 
 export interface CameraServiceDeps {
   cameras: TenantRepository<CameraDoc>;
@@ -46,6 +76,8 @@ export interface CameraServiceDeps {
   clock: Clock;
   ids: IdGen;
   publisher?: EventPublisher;
+  /** Network discovery (P-1). Absent = a deployment that onboards from a list of URLs. */
+  discovery?: DiscoveryProvider;
 }
 
 export class CameraService {
@@ -54,6 +86,7 @@ export class CameraService {
   private readonly clock: Clock;
   private readonly ids: IdGen;
   private readonly publisher: EventPublisher;
+  private readonly discovery: DiscoveryProvider;
 
   constructor(deps: CameraServiceDeps) {
     this.cameras = deps.cameras;
@@ -61,6 +94,7 @@ export class CameraService {
     this.clock = deps.clock;
     this.ids = deps.ids;
     this.publisher = deps.publisher ?? nullPublisher;
+    this.discovery = deps.discovery ?? new UnavailableDiscoveryProvider();
   }
 
   /** Onboard a camera under the caller's tenant. Credentials (if any) are sealed before persistence. */
@@ -157,6 +191,103 @@ export class CameraService {
   /** Validate a candidate configuration before onboarding (P2-2 G-1) — pure, no persistence. */
   validateConfig(input: CameraValidationInput): CameraValidationResult {
     return validateCameraConfig(input);
+  }
+
+  /**
+   * Probe the network for ONVIF devices and reconcile the answers against this tenant (P-1).
+   *
+   * **Reconciliation is the part that matters.** A raw device list is nearly useless to an installer
+   * re-scanning a site they half-configured last week: they cannot tell which of the twelve results
+   * are already watched. So every device is matched against the tenant's existing cameras by stream
+   * URL and marked `alreadyOnboarded` — shown, not hidden, because a device *missing* from the list
+   * means it did not answer, and that is a different problem entirely.
+   *
+   * Discovery never persists anything. It returns candidates; onboarding is a separate, deliberate act.
+   */
+  async discover(scope: TenantScope, input: DiscoverCamerasInput): Promise<DiscoverCamerasResult> {
+    const probe = await this.discovery.probe({ timeoutSeconds: input.timeoutSeconds });
+    const existing = await this.cameras.findMany(scope, {});
+    // Compare on the normalized URL: a device answering `RTSP://Cam.local:554/x` and a camera stored
+    // as `rtsp://cam.local:554/x` are the same camera, and telling an installer otherwise would have
+    // them onboard a duplicate that then fails on the unique index.
+    const byUrl = new Map<string, CameraDoc>();
+    for (const doc of existing as CameraDoc[]) {
+      byUrl.set(normalizeStreamUrl(doc.streamUrl), doc);
+    }
+
+    const devices: DiscoveredCamera[] = probe.devices.map((device) => {
+      const match = device.suggestedStreamUrl
+        ? byUrl.get(normalizeStreamUrl(device.suggestedStreamUrl))
+        : undefined;
+      return {
+        endpoint: device.endpoint,
+        ...(device.address ? { address: device.address } : {}),
+        metadata: device.metadata,
+        capabilities: device.capabilities,
+        ...(device.suggestedStreamUrl ? { suggestedStreamUrl: device.suggestedStreamUrl } : {}),
+        ...(device.registryId ? { registryId: device.registryId } : {}),
+        ...(device.warning ? { warning: device.warning } : {}),
+        alreadyOnboarded: match !== undefined,
+        ...(match ? { cameraId: match._id } : {}),
+      };
+    });
+
+    return {
+      devices,
+      probedSeconds: probe.probedSeconds,
+      ...(input.subnet ? { subnet: input.subnet } : {}),
+      ...(probe.unavailable ? { unavailable: probe.unavailable } : {}),
+    };
+  }
+
+  /**
+   * Onboard several cameras in one call (P-1) — the DVR/NVR case, where one device publishes 8, 16
+   * or 32 channels.
+   *
+   * **Partial success is the expected outcome, not an error.** One duplicate channel must not
+   * discard the other fifteen, so each camera is created independently and its outcome recorded.
+   * Wrapping this in a transaction would be worse: an installer who mistyped channel 7 would lose
+   * the six that were right and have to do the whole DVR again.
+   */
+  async createMany(
+    scope: TenantScope,
+    input: BulkCreateCamerasInput,
+  ): Promise<BulkCreateCamerasResult> {
+    const results: BulkCreateCameraResult[] = [];
+    for (const [index, raw] of input.cameras.entries()) {
+      // Validated here, per item, rather than at the envelope — see BulkCreateCamerasInput. A
+      // malformed row must be reported as a row, not turn the whole request into a 400.
+      const parsed = CreateCameraInput.safeParse(raw);
+      if (!parsed.success) {
+        results.push({
+          index,
+          name: nameOf(raw),
+          created: false,
+          error: parsed.error.issues
+            .map((issue) => `${issue.path.join('.') || 'camera'}: ${issue.message}`)
+            .join('; ')
+            .slice(0, 500),
+        });
+        continue;
+      }
+      const candidate = parsed.data;
+      try {
+        const camera = await this.create(scope, candidate);
+        results.push({ index, name: candidate.name, created: true, camera });
+      } catch (err) {
+        results.push({
+          index,
+          name: candidate.name,
+          created: false,
+          error: err instanceof Error ? err.message : 'could not onboard this camera',
+        });
+      }
+    }
+    return {
+      results,
+      created: results.filter((r) => r.created).length,
+      failed: results.filter((r) => !r.created).length,
+    };
   }
 
   /** Validate an existing camera's stored configuration (P2-2 G-1). */

@@ -21,5 +21,8 @@
 | [0015](../adr/ADR-0015-contract-testing-and-plugin-certification.md)     | Contract testing & plugin certification           |
 | [0016](../adr/ADR-0016-nats-jetstream-event-backbone.md)                 | NATS JetStream backbone (resolves ND-1)           |
 | [0017](../adr/ADR-0017-fastify-control-plane.md)                         | Fastify for TS services                           |
+| [0018](../adr/ADR-0018-env-only-secrets-and-centralized-config.md)       | Env-only secrets + centralized config             |
+| [0019](../adr/ADR-0019-operations-console-and-apps-layer.md)             | Operations Console + `apps/` layer                |
+| [0023](../adr/ADR-0023-onvif-discovery-placement.md)                     | ONVIF discovery placement (P-1)                   |
 
 Post-freeze change log: [ARCHITECTURE_CHANGES.md](ARCHITECTURE_CHANGES.md). New decisions → add an ADR, then a row here.

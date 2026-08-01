@@ -24,6 +24,13 @@ export interface ServiceConfig extends AppConfig {
   crypto: CryptoConfig;
   /** Shared key authenticating internal service-to-service calls (e.g. media resolving a stream). */
   internal: InternalConfig;
+  /**
+   * Network-discovery provider (P-1). The AI runtime exposes ONVIF discovery as a read-only
+   * capability (ADR-0023); this is its base URL. **Optional on purpose** — a deployment that onboards
+   * from a list of RTSP URLs is a supported deployment, and the service reports discovery as
+   * unavailable rather than failing to start.
+   */
+  discoveryUrl?: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
@@ -33,5 +40,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
   const crypto = loadCryptoConfig(env);
   const internal = loadInternalConfig(env);
   const serviceVersion = env.SERVICE_VERSION ?? env.npm_package_version ?? '0.1.0';
-  return { ...app, serviceVersion, database, jwt, crypto, internal };
+  // Read directly rather than through a @vip/config group: it is a single optional URL used by one
+  // service, and a shared group would imply a platform-wide convention that does not exist yet. If a
+  // second service needs it, that is the moment to promote it (ADR-0018 governs secrets, not URLs).
+  const discoveryUrl = env.CAMERA_DISCOVERY_URL?.trim();
+  return {
+    ...app,
+    serviceVersion,
+    database,
+    jwt,
+    crypto,
+    internal,
+    ...(discoveryUrl ? { discoveryUrl } : {}),
+  };
 }

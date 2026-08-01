@@ -7,6 +7,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import {
+  BulkCreateCamerasInput,
   CameraValidationInput,
   CreateCameraInput,
   DiscoverCamerasInput,
@@ -15,7 +16,6 @@ import {
 import { TenantScope } from '@vip/tenancy';
 import type { CameraService } from '../../application/camera-service.js';
 import type { Auth } from '../plugins/auth.js';
-import { notImplemented } from '../../application/errors.js';
 import { parseBody, success } from '../http.js';
 
 export interface CameraRoutesDeps {
@@ -42,13 +42,33 @@ export function registerCameraRoutes(app: FastifyInstance, deps: CameraRoutesDep
     return reply.send(success(await service.list(scope)));
   });
 
-  // Discovery stub — declared before `/cameras/:id` so it isn't captured by the param route.
+  // Bulk onboarding — the DVR/NVR case (P-1). Static path, before `/cameras/:id`.
+  app.post(
+    '/cameras/bulk',
+    { preHandler: auth.authorize('camera:create') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const input = parseBody(BulkCreateCamerasInput, request.body);
+      const result = await service.createMany(scope, input);
+      // 207-style semantics without the multipart body: partial success is the expected outcome of a
+      // 16-channel DVR add, so the response is a 200 carrying per-camera outcomes rather than an
+      // all-or-nothing status the console would have to guess at.
+      return reply.status(result.failed === 0 ? 201 : 200).send(success(result));
+    },
+  );
+
+  /**
+   * ONVIF/network discovery (P-1). `camera:create` rather than `camera:read`: a probe is an active
+   * network operation against the customer's estate, and the permission should match what it does,
+   * not what it returns. Declared before `/cameras/:id` so it isn't captured by the param route.
+   */
   app.post(
     '/cameras/discover',
     { preHandler: auth.authorize('camera:create') },
     async (request) => {
-      parseBody(DiscoverCamerasInput, request.body ?? {});
-      throw notImplemented('ONVIF/network camera discovery is not yet implemented');
+      const scope = scopeOf(request.principal!.tenantId);
+      const input = parseBody(DiscoverCamerasInput, request.body ?? {});
+      return success(await service.discover(scope, input));
     },
   );
 

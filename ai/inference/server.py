@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import hmac
 import json
+import os
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
 from urllib.parse import parse_qs, urlsplit
@@ -178,8 +180,94 @@ def make_handler(
                 self._post_models(segs)
             elif segs[:1] == ["sessions"]:
                 self._post_sessions(segs)
+            elif path == "/discovery/onvif":
+                self._discover_onvif()
             else:
                 self._err(404, "not_found", f"no route for POST {self.path}")
+
+        # --- /discovery/onvif (P-1) ------------------------------------------------
+        def _discover_onvif(self) -> None:
+            """Probe the local segment for ONVIF devices and negotiate their capabilities.
+
+            **This endpoint exists here only because the ONVIF implementation does** (AI-5e built it
+            for the certification harness). Device *discovery* is a camera-management concern, not a
+            perception one, so the camera service owns the workflow and calls this as a read-only
+            capability — recorded as a deliberate exception in ADR-0023 rather than left to look like
+            the runtime quietly growing a second job.
+
+            Nothing here touches the pipeline: no session is created, no frame is decoded, no tenant
+            data is read or written. It returns configuration.
+            """
+            from onvif import (  # noqa: WPS433 - keeps the server import light
+                HttpSoapTransport,
+                OnvifDevice,
+                OnvifDiscovery,
+                UdpDiscoveryTransport,
+            )
+
+            body, err = self._read_json(allow_empty=True)
+            if err is not None:
+                self._err(400, "bad_request", err)
+                return
+            timeout = body.get("timeoutSeconds", 3)
+            try:
+                timeout = max(1.0, min(30.0, float(timeout)))
+            except (TypeError, ValueError):
+                self._err(400, "bad_request", "timeoutSeconds must be a number between 1 and 30")
+                return
+
+            # Credentials come from the runtime's environment, never from the request body — a camera
+            # password must not travel through the gateway, the camera service and a JSON body to get
+            # here, leaving a copy in every log along the way.
+            username = os.environ.get("VIP_CAMERA_USERNAME")
+            password = os.environ.get("VIP_CAMERA_PASSWORD")
+
+            started = time.monotonic()
+            try:
+                found = OnvifDiscovery(UdpDiscoveryTransport()).discover(timeout_seconds=timeout)
+            except OSError as exc:
+                # Multicast is commonly blocked in containers and across VLANs. That is an
+                # environment answer, not an empty network, and the caller must be able to tell them
+                # apart — an installer told "no cameras found" will go and check the cameras.
+                self._ok(
+                    {
+                        "devices": [],
+                        "probedSeconds": round(time.monotonic() - started, 3),
+                        "unavailable": f"WS-Discovery could not run on this host: {exc}",
+                    }
+                )
+                return
+
+            devices = []
+            for device in found:
+                warning = None
+                try:
+                    device = OnvifDevice(
+                        device.address, HttpSoapTransport(), username=username, password=password
+                    ).negotiate(device)
+                except Exception as exc:  # noqa: BLE001 - one hostile device must not end the scan
+                    warning = f"capability negotiation failed: {exc}"
+                devices.append(
+                    {
+                        "endpoint": device.address,
+                        "address": _host_of(device.address),
+                        "metadata": device.to_metadata(),
+                        "capabilities": device.to_capabilities(),
+                        "registryId": device.registry_id,
+                        **({"warning": warning} if warning else {}),
+                        **(
+                            {"suggestedStreamUrl": _stream_url(device)}
+                            if _stream_url(device)
+                            else {}
+                        ),
+                    }
+                )
+            self._ok(
+                {
+                    "devices": devices,
+                    "probedSeconds": round(time.monotonic() - started, 3),
+                }
+            )
 
         # --- /infer ----------------------------------------------------------------
         def _infer(self) -> None:
@@ -449,13 +537,15 @@ def make_handler(
                 text = ""
             self._send(200, text, content_type="text/plain; version=0.0.4")
 
-        def _read_json(self):
+        def _read_json(self, *, allow_empty: bool = False):
             try:
                 length = int(self.headers.get("content-length", "0"))
             except ValueError:
                 return {}, "invalid content-length"
             if length <= 0:
-                return {}, "empty body"
+                # Discovery takes no required input, so an empty body is a valid request there and
+                # only there — every other route still rejects one.
+                return ({}, None) if allow_empty else ({}, "empty body")
             if length > _MAX_BODY:
                 return {}, "body too large"
             try:
@@ -467,6 +557,28 @@ def make_handler(
             return parsed, None
 
     return Handler
+
+
+def _host_of(endpoint: str) -> str:
+    """Host[:port] of an ONVIF service address — what an installer recognises on their switch."""
+    if "://" not in endpoint:
+        return endpoint
+    return endpoint.split("://", 1)[1].split("/", 1)[0]
+
+
+def _stream_url(device) -> Optional[str]:  # noqa: ANN001 - onvif.DiscoveredDevice
+    """An RTSP URL for the device's analysis profile, built from the host plus the discovered path.
+
+    Deliberately assembled here rather than taken from the device's `GetStreamUri` reply: that reply
+    routinely embeds the credentials, and the contract's `StreamUrl` rejects a credentialed URL. The
+    port is left implicit (554 is the RTSP default) so an operator can correct it if their estate
+    differs, rather than the platform inventing one.
+    """
+    profiles = [p for p in getattr(device, "profiles", []) or [] if p.preferred_for_analysis]
+    if not profiles or not profiles[0].path:
+        return None
+    host = _host_of(getattr(device, "address", "")).split(":", 1)[0]
+    return f"rtsp://{host}:554{profiles[0].path}" if host else None
 
 
 def _start_live(supervisor, tenant: str, body: dict, source: dict) -> dict:

@@ -27,7 +27,15 @@ import { ApiError } from '../src/common/api-envelope.js';
 import { ConfigNode } from '../src/config/hierarchy.js';
 import { Tenant, OrgNode } from '../src/tenant/tenant.js';
 import { User, Principal, TokenPair } from '../src/auth/auth.js';
-import { Camera, CaptureProfile, CameraHealth } from '../src/camera/camera.js';
+import {
+  Camera,
+  CaptureProfile,
+  CameraHealth,
+  DiscoveredCamera,
+  DiscoverCamerasResult,
+  BulkCreateCamerasInput,
+  BulkCreateCamerasResult,
+} from '../src/camera/camera.js';
 import {
   StreamStatus,
   RecordingSegment,
@@ -162,6 +170,11 @@ const schemas: Record<string, z.ZodType> = {
   camera: Camera,
   'capture-profile': CaptureProfile,
   'camera-health': CameraHealth,
+  // P-1 — ONVIF onboarding + DVR/NVR bulk add.
+  'discovered-camera': DiscoveredCamera,
+  'discover-cameras-result': DiscoverCamerasResult,
+  'bulk-create-cameras-input': BulkCreateCamerasInput,
+  'bulk-create-cameras-result': BulkCreateCamerasResult,
   'stream-status': StreamStatus,
   'recording-segment': RecordingSegment,
   recording: Recording,

@@ -14,6 +14,7 @@ import { connectMongo } from './adapters/mongo.js';
 import { ReadinessRegistry } from './application/readiness.js';
 import { LoggingEventPublisher } from './application/events.js';
 import { CameraService } from './application/camera-service.js';
+import { HttpDiscoveryProvider, UnavailableDiscoveryProvider } from './application/discovery.js';
 import { buildServer } from './transport/server.js';
 
 const clock = { now: () => new Date() };
@@ -40,12 +41,23 @@ async function main(): Promise<void> {
     loggerRef.current?.info({ event }, 'domain event published'),
   );
 
+  // P-1: ONVIF discovery is a capability the camera service CALLS, not one it implements — the
+  // platform's only tested ONVIF stack lives in the AI runtime (ADR-0023). Unconfigured is a valid
+  // deployment: it reports discovery as unavailable instead of refusing to start.
+  const discovery = config.discoveryUrl
+    ? new HttpDiscoveryProvider({
+        baseUrl: config.discoveryUrl,
+        internalKey: config.internal.apiKey,
+      })
+    : new UnavailableDiscoveryProvider();
+
   const service = new CameraService({
     cameras: new TenantRepository(mongo.cameras),
     vault,
     clock,
     ids,
     publisher,
+    discovery,
   });
 
   const { app } = await buildServer({ config, service, readiness });
