@@ -120,6 +120,8 @@ class SessionRunner:
         on_result: Optional[Callable[[object], None]] = None,
         account=None,  # noqa: ANN001 - resources.SessionAccount (AI-5c; None = unscheduled)
         governor=None,  # noqa: ANN001 - scheduler.ResourceGovernor (AI-5c; None = no degradation)
+        health_monitor=None,  # noqa: ANN001 - health.HealthMonitor (AI-5d; None = no scoring)
+        recovery=None,  # noqa: ANN001 - recovery.AutoRecovery (AI-5d; None = AI-5c behavior)
     ) -> None:
         self.identity = identity
         # AI-5c: this session's OWN account + the shared governor that decides its rung. The account is
@@ -127,6 +129,11 @@ class SessionRunner:
         # given), so no mutable state is shared between sessions (refinement 7).
         self._account = account
         self._governor = governor
+        # AI-5d: health SCORES this session (evidence) and recovery DECIDES what to do about a failure
+        # (policy). The runner owns neither — it reports measurements to one and applies the other's
+        # verdict, exactly as it does for the governor. Both optional: absent means AI-5c behavior.
+        self._health = health_monitor
+        self._recovery = recovery
         self._manager = manager
         self._config = config
         self._log = log or OperationalLog(identity)
@@ -134,6 +141,9 @@ class SessionRunner:
         self._clock = clock
         self._on_result = on_result
         self.restart_count = 0
+        # The failure that ended this session, kept so auto-recovery can classify it. Cleared on a
+        # successful recovery — a stale failure would make a healthy session look broken forever.
+        self.last_failure: Optional[BaseException] = None
         self._paused = False
         self._stopping = False
         self._finished = threading.Event()
@@ -280,24 +290,55 @@ class SessionRunner:
         )
         self._account.health = self._session_health()
 
-    def govern(self, *, snapshot=None) -> Optional[object]:  # noqa: ANN001 - ResourceSnapshot
+    def govern(self, *, snapshot=None, analyzers=None) -> Optional[object]:  # noqa: ANN001
         """One governor observation for this session. Returns the decision taken, if any.
 
         Called on the supervisor's cadence, not per frame: degradation is a slow control loop, and
         running it per frame would make it react to noise instead of to trends.
+
+        AI-5d: the health score is computed first and handed to the governor as evidence. The runner
+        still decides nothing — it measures, passes the measurement along, and applies the verdict.
         """
         if self._account is None or self._governor is None:
             return None
         backpressure = self._pipeline.stats()
+        health = self.score_health(snapshot=snapshot)
         decision = self._governor.observe(
             self._account,
             queue_utilization=backpressure["queueUtilization"],
             event_latency_ms=self._account.event_latency_ms,
             snapshot=snapshot,
+            health=health,
+            analyzers=analyzers,
         )
         if decision is not None:
             self._apply_degradation()
         return decision
+
+    def score_health(self, *, snapshot=None):  # noqa: ANN001, ANN201 - health.HealthScore | None
+        """Score this session's health from measurements it already produces (AI-5d recs 1 + 2)."""
+        if self._health is None:
+            return None
+        session = self._manager.get(self.identity.tenant_id, self.identity.session_id)
+        score = self._health.observe(
+            account=self._account,
+            ingestion=self._supervisor.stats(),
+            backpressure=self._pipeline.stats(),
+            snapshot=snapshot,
+            recovery_attempts=(
+                self._recovery.ledger.total(self.identity) if self._recovery is not None else 0
+            ),
+            restart_count=self.restart_count,
+            target_latency_ms=(
+                self._account.target_latency_ms if self._account is not None else None
+            ),
+        )
+        return self._health.reconcile(score, session.state if session is not None else None)
+
+    @property
+    def health(self):  # noqa: ANN201 - health.HealthScore | None
+        """The most recently computed health score — a read, never a recomputation."""
+        return self._health.last if self._health is not None else None
 
     def _apply_degradation(self) -> None:
         """Apply the account's current rung to the data plane. Suspension pauses consumption; it does
@@ -343,6 +384,33 @@ class SessionRunner:
             )
         except (Conflict, NotFound):
             pass
+        self.last_failure = exc
+
+    def recover(self, exc: Optional[BaseException] = None):  # noqa: ANN201 - RecoveryAttempt | None
+        """Offer this session's failure to auto-recovery, and apply whatever it decides (AI-5d).
+
+        The runner supplies the executor and nothing else: whether to restart at all, how many times,
+        after how long, and whether this deployment permits it without a human are all policy
+        questions answered by `AutoRecovery`. Keeping that split is what lets a hospital and a retail
+        store run the same runner.
+        """
+        failure = exc if exc is not None else self.last_failure
+        if self._recovery is None or failure is None:
+            return None
+        reason = self._recovery.reason_for(failure, identity=self.identity)
+        attempt = self._recovery.attempt(self.identity, reason, restart=self._recover_restart)
+        if attempt.recovered:
+            self.last_failure = None
+            if self._health is not None:
+                # Trends describe a session that no longer exists — carrying them across a restart
+                # would score the new session on the old one's failures.
+                self._health.reset()
+        return attempt
+
+    def _recover_restart(self) -> None:
+        """The executor auto-recovery calls. Drives the control plane first so state stays truthful."""
+        self._manager.restart(self.identity.tenant_id, self.identity.session_id)
+        self.restart()
 
     # --- teardown (refinement 8: queue · source · thread · heartbeat · metrics) ---
 
@@ -411,6 +479,29 @@ class SessionRunner:
             **({"lastHeartbeat": session.last_heartbeat} if session and session.last_heartbeat else {}),
         }
 
+    def operational_diagnostics(self, *, journal=None, limit: int = 50) -> dict:  # noqa: ANN001
+        """A `SessionOperationalDiagnostics`-shaped document (AI-5d rec 5).
+
+        The AI-5b stream view answers "how is the stream?"; this answers "how is the session, and what
+        has happened to it?" — health, the restoration stack, recovery history, the journal, and the
+        timeline, all correlated by one identity.
+        """
+        health = self.health or self.score_health()
+        return {
+            "identity": self.identity.to_dict(),
+            **({"health": health.to_dict()} if health is not None else {}),
+            "stream": self.diagnostics(),
+            "degradation": self._account.degradation if self._account is not None else "none",
+            "restoreStack": (
+                [s.to_dict() for s in self._account.restore_stack] if self._account is not None else []
+            ),
+            "recovery": (
+                self._recovery.history(self.identity, limit=limit) if self._recovery is not None else []
+            ),
+            "journal": journal.journal(self.identity, limit=limit) if journal is not None else [],
+            "timeline": journal.timeline(self.identity, limit=limit) if journal is not None else [],
+        }
+
 
 class ConnectionExhausted(RuntimeError):
     """The reconnect budget ran out — a terminal `connection` failure for the session."""
@@ -436,6 +527,10 @@ class SessionSupervisor:
         scheduler=None,  # noqa: ANN001 - scheduler.InferenceScheduler (AI-5c; None = AI-5b behavior)
         monitor=None,  # noqa: ANN001 - compute.ResourceMonitor
         deployment=None,  # noqa: ANN001 - deployment.DeploymentProfile
+        health_policy=None,  # noqa: ANN001 - health.HealthPolicy (AI-5d)
+        recovery=None,  # noqa: ANN001 - recovery.AutoRecovery (AI-5d; None = no auto-recovery)
+        journal=None,  # noqa: ANN001 - journal.DiagnosticsJournal (AI-5d; None = no journal)
+        lifecycle=None,  # noqa: ANN001 - model_lifecycle.ModelLifecycleManager (AI-5d)
     ) -> None:
         if max_sessions < 1:
             raise ConfigurationFailure(f"max_sessions must be >= 1, got {max_sessions}")
@@ -448,6 +543,11 @@ class SessionSupervisor:
         self._scheduler = scheduler
         self._monitor = monitor
         self._deployment = deployment
+        # AI-5d (all optional — absent means exactly the AI-5c behavior, so this stays additive).
+        self._health_policy = health_policy
+        self._recovery = recovery
+        self.journal = journal
+        self.lifecycle = lifecycle
 
     @property
     def max_sessions(self) -> int:
@@ -515,6 +615,15 @@ class SessionSupervisor:
                     pass
                 raise Conflict(verdict.detail)
 
+        # AI-5d rec 5: the journal is a SINK on the log the session already writes to — never a second
+        # emitter. `tee` keeps the caller's sink working, so capturing diagnostics never costs logs.
+        sink = log_sink
+        if self.journal is not None:
+            sink = (
+                self.journal.tee(identity, log_sink)
+                if log_sink is not None
+                else self.journal.sink_for(identity)
+            )
         runner = SessionRunner(
             identity,
             self._manager,
@@ -523,14 +632,28 @@ class SessionSupervisor:
             source=source,
             executor=self._executor_factory(),
             clock=self._clock,
-            log=OperationalLog(identity, sink=log_sink),
+            log=OperationalLog(identity, sink=sink),
             on_result=on_result,
             account=account,
             governor=self._scheduler.governor if self._scheduler is not None else None,
+            health_monitor=self._build_health_monitor(identity),
+            recovery=self._recovery,
         )
         self._runners[self._key(tenant_id, session.session_id)] = runner
         runner.start()
         return runner
+
+    def _build_health_monitor(self, identity: SessionIdentity):  # noqa: ANN202 - HealthMonitor | None
+        """One monitor per session — its own trends, shared with nothing (AI-5c refinement 7).
+
+        Health monitoring is enabled by configuring a policy. A runtime with no policy scores nothing
+        and behaves exactly as it did at AI-5c.
+        """
+        if self._health_policy is None:
+            return None
+        from health import HealthMonitor
+
+        return HealthMonitor(identity, policy=self._health_policy)
 
     # --- lifecycle passthrough (state stays with the SessionManager) --------------
 
@@ -557,7 +680,21 @@ class SessionSupervisor:
         # Hand the compute back — otherwise a stopped session would permanently shrink capacity.
         if self._scheduler is not None:
             self._scheduler.release(runner.identity)
+        self._release_operational_state(runner.identity)
         return runner
+
+    def _release_operational_state(self, identity: SessionIdentity) -> None:
+        """Drop the AI-5d per-session stores on teardown (AI-5b refinement 8).
+
+        The journal and recovery ledger become unreachable the moment the runner leaves `_runners`,
+        so keeping them is a leak rather than a diagnostic: a box cycling sessions for a month would
+        accumulate history nobody can read. Post-mortem retention belongs to whatever consumes the
+        journal downstream, not to a bounded in-process buffer.
+        """
+        if self._recovery is not None:
+            self._recovery.forget(identity)
+        if self.journal is not None:
+            self.journal.forget(identity)
 
     def restart(self, tenant_id: str, session_id: str) -> SessionRunner:
         self._manager.restart(tenant_id, session_id)
@@ -626,12 +763,98 @@ class SessionSupervisor:
         snapshot = self._monitor.sample() if self._monitor is not None else None
         if snapshot is not None:
             self._scheduler_accountant.attribute(snapshot)
+        analyzers = list(self._deployment.enabled_behaviors) if self._deployment is not None else None
         decisions: List[dict] = []
         for runner in list(self._runners.values()):
-            decision = runner.govern(snapshot=snapshot)
+            decision = runner.govern(snapshot=snapshot, analyzers=analyzers)
             if decision is not None:
                 decisions.append(decision.to_dict())
+                if self.journal is not None:
+                    self.journal.record_decision(decision.to_dict())
         return decisions
+
+    # --- AI-5d: health, recovery, and the operational record ----------------------
+
+    def health(self, tenant_id: Optional[str] = None) -> List[dict]:
+        """Every session's health score (AI-5d recs 1 + 2), tenant-scoped when asked."""
+        out: List[dict] = []
+        for runner in self._select(tenant_id):
+            score = runner.health or runner.score_health()
+            if score is not None:
+                out.append(score.to_dict())
+        return out
+
+    def fleet_health(self, tenant_id: Optional[str] = None) -> dict:
+        """Fleet rollup — the number an operator looks at before drilling into any one camera.
+
+        `weakestComponent` is deliberately fleet-wide: when eight cameras all score 74 it is almost
+        always ONE subsystem dragging every one of them, and naming it beats reading eight reports.
+        """
+        scores = [
+            score
+            for runner in self._select(tenant_id)
+            for score in ((runner.health or runner.score_health()),)
+            if score is not None
+        ]
+        if not scores:
+            return {"sessions": 0, "averageScore": 0.0, "byStatus": {}, "unhealthySessions": []}
+        by_status: Dict[str, int] = {}
+        components: Dict[str, List[float]] = {}
+        for score in scores:
+            by_status[score.status] = by_status.get(score.status, 0) + 1
+            for name, value in score.components.items():
+                components.setdefault(name, []).append(value)
+        averages = {k: sum(v) / len(v) for k, v in components.items()}
+        return {
+            "sessions": len(scores),
+            "averageScore": round(sum(s.score for s in scores) / len(scores), 3),
+            "byStatus": by_status,
+            "componentAverages": {k: round(v, 3) for k, v in sorted(averages.items())},
+            "weakestComponent": min(sorted(averages), key=lambda c: averages[c]) if averages else None,
+            "unhealthySessions": sorted(
+                s.identity.session_id for s in scores if s.status in ("degraded", "down")
+            ),
+            "predictedDeclines": sorted(
+                s.identity.session_id for s in scores if s.predicted_decline
+            ),
+        }
+
+    def recover(self, tenant_id: Optional[str] = None) -> List[dict]:
+        """One auto-recovery pass across every failed session (AI-5d).
+
+        Offers each failed session to `AutoRecovery`, which answers within the deployment's budget.
+        Returns every attempt — including the refusals, because a recovery that did NOT happen is
+        exactly as interesting to an operator as one that did.
+        """
+        if self._recovery is None:
+            return []
+        attempts: List[dict] = []
+        for runner in self._select(tenant_id):
+            if runner.last_failure is None:
+                continue
+            attempt = runner.recover()
+            if attempt is None:
+                continue
+            attempts.append(attempt.to_dict())
+            if self.journal is not None:
+                self.journal.record_recovery(attempt.to_dict())
+        return attempts
+
+    def timeline(self, tenant_id: str, session_id: str, *, limit: int = 50) -> List[dict]:
+        """One session's ordered operational timeline (rec 5)."""
+        runner = self.require(tenant_id, session_id)
+        return self.journal.timeline(runner.identity, limit=limit) if self.journal is not None else []
+
+    def operational_diagnostics(self, tenant_id: str, session_id: str, *, limit: int = 50) -> dict:
+        """The full AI-5d operational picture for one session."""
+        runner = self.require(tenant_id, session_id)
+        return runner.operational_diagnostics(journal=self.journal, limit=limit)
+
+    def _select(self, tenant_id: Optional[str]) -> List[SessionRunner]:
+        runners = list(self._runners.values())
+        if tenant_id is not None:
+            runners = [r for r in runners if r.identity.tenant_id == tenant_id]
+        return sorted(runners, key=lambda r: r.identity.session_id)
 
     @property
     def _scheduler_accountant(self):  # noqa: ANN202 - resources.ResourceAccountant
@@ -665,6 +888,7 @@ class SessionSupervisor:
             self._runners.pop(key, None)
             if self._scheduler is not None:
                 self._scheduler.release(runner.identity)
+            self._release_operational_state(runner.identity)
             stopped += 1
         return stopped
 

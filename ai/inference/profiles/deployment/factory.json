@@ -12,7 +12,23 @@
   "description": "Industrial floor: safety and fire, high camera counts, tolerant of latency but not of missed safety events.",
   "dropPolicy": "drop-oldest",
   "enabledBehaviors": ["intrusion", "fire", "occupancy", "crowd"],
+  "health": {
+    "degradedBelow": 85,
+    "predictiveDegradation": true,
+    "projectionHorizonSamples": 3,
+    "stabilizationSamples": 3,
+    "trendWindowSamples": 5,
+    "unhealthyBelow": 55
+  },
   "maxSessions": 24,
+  "modelLifecycle": {
+    "autoRollback": true,
+    "detectionDeltaPercent": 40,
+    "drainMs": 2000,
+    "latencyRegressionPercent": 20,
+    "requireValidation": true,
+    "validationFrames": 30
+  },
   "preferredStreamProfile": "sub",
   "profile": "factory",
   "queueCapacity": 48,
@@ -20,6 +36,14 @@
     "baseMs": 500,
     "maxAttempts": 10,
     "maxMs": 30000
+  },
+  "recovery": {
+    "autoRecoverCategories": ["connection", "model"],
+    "baseCooldownMs": 5000,
+    "maxCooldownMs": 300000,
+    "maxRestarts": 10,
+    "restartWindowSeconds": 3600,
+    "stabilizationSeconds": 30
   },
   "scheduler": {
     "admissionControl": true,

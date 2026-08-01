@@ -99,6 +99,13 @@ def make_handler(
                 self._tenant_scoped(supervisor.sla)
             elif path == "/resources" and supervisor is not None:
                 self._tenant_scoped(supervisor.resource_usage)
+            elif path == "/sessions-health" and supervisor is not None:
+                # AI-5d recs 1 + 2. Deliberately NOT under `/health`, which is the process liveness
+                # probe an orchestrator polls — conflating the two would let a degraded camera look
+                # like a dead container and get the pod restarted.
+                self._tenant_scoped(supervisor.health)
+            elif path == "/fleet-health" and supervisor is not None:
+                self._tenant_scoped(supervisor.fleet_health)
             else:
                 self._err(404, "not_found", f"no route for GET {self.path}")
 
@@ -281,6 +288,24 @@ def make_handler(
                     self._ok(self._live(tenant, segs[1]).metrics())
                 elif len(segs) == 3 and segs[2] == "stream":  # GET /sessions/{id}/stream (AI-5b)
                     self._ok(self._live(tenant, segs[1]).diagnostics())
+                elif len(segs) == 3 and segs[2] == "health":  # GET /sessions/{id}/health (AI-5d)
+                    runner = self._live(tenant, segs[1])
+                    score = runner.health or runner.score_health()
+                    if score is None:
+                        self._err(404, "not_found", "health monitoring is not enabled on this runtime")
+                        return
+                    self._ok(score.to_dict())
+                elif len(segs) == 3 and segs[2] == "diagnostics":  # AI-5d rec 5
+                    if supervisor is None:
+                        raise NotFound("live sessions are not enabled on this runtime")
+                    self._ok(supervisor.operational_diagnostics(tenant, segs[1]))
+                elif len(segs) == 3 and segs[2] == "timeline":  # AI-5d rec 5
+                    if supervisor is None:
+                        raise NotFound("live sessions are not enabled on this runtime")
+                    self._ok(supervisor.timeline(tenant, segs[1]))
+                elif len(segs) == 3 and segs[2] == "recovery":  # AI-5d rec 1
+                    runner = self._live(tenant, segs[1])
+                    self._ok(runner.operational_diagnostics()["recovery"])
                 else:
                     self._err(404, "not_found", f"no route for GET {self.path}")
             except NotFound as exc:
@@ -333,6 +358,19 @@ def make_handler(
                         engine=body.get("engine"),
                     )
                     self._ok(session.to_dict(), status=201)
+                elif len(segs) == 3 and segs[2] == "recover":  # POST /sessions/{id}/recover (AI-5d)
+                    # Offers the session to auto-recovery. The runtime still answers within the
+                    # deployment's budget — an operator asking does not bypass the policy, it only
+                    # asks the question sooner than the supervisor's next sweep would.
+                    if supervisor is None:
+                        self._err(400, "bad_request", "live sessions are not enabled on this runtime")
+                        return
+                    runner = supervisor.require(tenant, segs[1])
+                    attempt = runner.recover()
+                    if attempt is None:
+                        self._err(409, "conflict", "nothing to recover, or auto-recovery is disabled")
+                        return
+                    self._ok(attempt.to_dict())
                 elif len(segs) == 3 and segs[2] in _SESSION_ACTIONS:  # POST /sessions/{id}/{action}
                     # A live session's lifecycle must reach the data plane, so route through the
                     # supervisor when one is bound; otherwise the control plane alone (unchanged).

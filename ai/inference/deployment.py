@@ -28,6 +28,9 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from errors import ConfigurationFailure
+from health import HealthPolicy
+from model_lifecycle import ModelLifecyclePolicy
+from recovery import RecoveryPolicy
 from scheduler import SchedulerPolicy
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -61,6 +64,12 @@ class DeploymentProfile:
     reconnect_base_ms: float = 500.0
     reconnect_max_ms: float = 30000.0
     scheduler: SchedulerPolicy = field(default_factory=SchedulerPolicy)
+    # AI-5d: health thresholds, recovery budgets and model-transition strictness are all operational
+    # policy, which is exactly what a deployment profile is for. A hospital and a retail store then
+    # differ by configuration alone (Architect AI-5d rec 4).
+    health: HealthPolicy = field(default_factory=HealthPolicy)
+    recovery: RecoveryPolicy = field(default_factory=RecoveryPolicy)
+    model_lifecycle: ModelLifecyclePolicy = field(default_factory=ModelLifecyclePolicy)
 
     def to_dict(self) -> dict:
         out: dict = {
@@ -86,6 +95,24 @@ class DeploymentProfile:
                 "costs": dict(self.analyzer_costs),
                 "protectedAnalyzers": list(self.protected_analyzers),
             }
+        out["recovery"] = {
+            "maxRestarts": self.recovery.max_restarts,
+            "restartWindowSeconds": self.recovery.restart_window_seconds,
+            "unlimitedRestarts": self.recovery.unlimited_restarts,
+            "baseCooldownMs": self.recovery.base_cooldown_ms,
+            "maxCooldownMs": self.recovery.max_cooldown_ms,
+            "requireOperatorApproval": self.recovery.require_operator_approval,
+            "stabilizationSeconds": self.recovery.stabilization_seconds,
+            "autoRecoverCategories": list(self.recovery.auto_recover_categories),
+        }
+        out["health"] = {
+            "degradedBelow": self.health.degraded_below,
+            "unhealthyBelow": self.health.unhealthy_below,
+            "trendWindowSamples": self.health.trend_window_samples,
+            "projectionHorizonSamples": self.health.projection_horizon_samples,
+            "predictiveDegradation": self.health.predictive_degradation,
+            "stabilizationSamples": self.health.stabilization_samples,
+        }
         return out
 
 
@@ -147,6 +174,9 @@ def parse_profile(doc: dict) -> DeploymentProfile:
 
     reconnect = doc.get("reconnect") or {}
     scheduler = _parse_scheduler(doc.get("scheduler") or {}, name)
+    health = _parse_health(doc.get("health") or {}, name)
+    recovery = _parse_recovery(doc.get("recovery") or {}, name)
+    lifecycle = _parse_lifecycle(doc.get("modelLifecycle") or {}, name)
 
     return DeploymentProfile(
         profile=name,
@@ -175,6 +205,9 @@ def parse_profile(doc: dict) -> DeploymentProfile:
         reconnect_base_ms=float(reconnect.get("baseMs", 500.0)),
         reconnect_max_ms=float(reconnect.get("maxMs", 30000.0)),
         scheduler=scheduler,
+        health=health,
+        recovery=recovery,
+        model_lifecycle=lifecycle,
     )
 
 
@@ -207,6 +240,76 @@ def _parse_scheduler(doc: dict, profile_name: str) -> SchedulerPolicy:
         raise ConfigurationFailure(f"deployment profile '{profile_name}': {exc}") from exc
     except (TypeError, ValueError) as exc:
         raise ConfigurationFailure(f"deployment profile '{profile_name}': invalid scheduler policy — {exc}") from exc
+
+
+def _parse_health(doc: dict, profile_name: str) -> HealthPolicy:
+    """Map the wire `HealthPolicy` onto the runtime dataclass; `__post_init__` enforces the ordering
+    invariant between the two thresholds."""
+    try:
+        return HealthPolicy(
+            component_weights={
+                str(k): float(v) for k, v in (doc.get("componentWeights") or {}).items()
+            },
+            degraded_below=float(doc.get("degradedBelow", 80.0)),
+            unhealthy_below=float(doc.get("unhealthyBelow", 50.0)),
+            trend_window_samples=int(doc.get("trendWindowSamples", 5)),
+            projection_horizon_samples=int(doc.get("projectionHorizonSamples", 3)),
+            predictive_degradation=bool(doc.get("predictiveDegradation", True)),
+            stabilization_samples=int(doc.get("stabilizationSamples", 3)),
+        )
+    except ConfigurationFailure as exc:
+        raise ConfigurationFailure(f"deployment profile '{profile_name}': {exc}") from exc
+    except (TypeError, ValueError) as exc:
+        raise ConfigurationFailure(
+            f"deployment profile '{profile_name}': invalid health policy — {exc}"
+        ) from exc
+
+
+def _parse_recovery(doc: dict, profile_name: str) -> RecoveryPolicy:
+    """Map the wire `RecoveryPolicy` onto the runtime dataclass (Architect AI-5d rec 4).
+
+    Rejections are loud on purpose: a profile that asks to auto-recover configuration errors would
+    otherwise create a silent restart loop against a mistake only a human can fix.
+    """
+    try:
+        return RecoveryPolicy(
+            max_restarts=int(doc.get("maxRestarts", 3)),
+            restart_window_seconds=float(doc.get("restartWindowSeconds", 3600.0)),
+            unlimited_restarts=bool(doc.get("unlimitedRestarts", False)),
+            base_cooldown_ms=float(doc.get("baseCooldownMs", 5000.0)),
+            max_cooldown_ms=float(doc.get("maxCooldownMs", 300000.0)),
+            require_operator_approval=bool(doc.get("requireOperatorApproval", False)),
+            stabilization_seconds=float(doc.get("stabilizationSeconds", 30.0)),
+            auto_recover_categories=tuple(
+                doc.get("autoRecoverCategories", ("connection", "model"))
+            ),
+        )
+    except ConfigurationFailure as exc:
+        raise ConfigurationFailure(f"deployment profile '{profile_name}': {exc}") from exc
+    except (TypeError, ValueError) as exc:
+        raise ConfigurationFailure(
+            f"deployment profile '{profile_name}': invalid recovery policy — {exc}"
+        ) from exc
+
+
+def _parse_lifecycle(doc: dict, profile_name: str) -> ModelLifecyclePolicy:
+    """Map the wire `ModelLifecyclePolicy` onto the runtime dataclass."""
+    try:
+        return ModelLifecyclePolicy(
+            validation_frames=int(doc.get("validationFrames", 20)),
+            max_validation_latency_ms=_opt_float(doc.get("maxValidationLatencyMs")),
+            latency_regression_percent=float(doc.get("latencyRegressionPercent", 25.0)),
+            detection_delta_percent=float(doc.get("detectionDeltaPercent", 50.0)),
+            drain_ms=float(doc.get("drainMs", 1000.0)),
+            auto_rollback=bool(doc.get("autoRollback", True)),
+            require_validation=bool(doc.get("requireValidation", True)),
+        )
+    except ConfigurationFailure as exc:
+        raise ConfigurationFailure(f"deployment profile '{profile_name}': {exc}") from exc
+    except (TypeError, ValueError) as exc:
+        raise ConfigurationFailure(
+            f"deployment profile '{profile_name}': invalid model lifecycle policy — {exc}"
+        ) from exc
 
 
 def load_profile(name: str, *, directory: Optional[str] = None) -> DeploymentProfile:

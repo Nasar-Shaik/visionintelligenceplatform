@@ -113,3 +113,21 @@ production_.
   will _keep running_ under load; it says nothing about whether it _detects correctly_. Promotion to
   `Production` continues to require the AI-5e certification matrix in
   [PRODUCTION_COMPATIBILITY §3](PRODUCTION_COMPATIBILITY.md).
+
+### Evidence delivered by AI-5d (health, auto-recovery, model lifecycle)
+
+- **Delivered:** the runtime can now report **why** a capability is unwell (a 0–100 score decomposed
+  across connection · inference · scheduler · resources · recovery, with a projection), **recover from
+  failure within a configured budget** rather than staying down until an operator notices, and **change
+  model versions without interrupting a running session**. Ten production-condition simulations
+  (prolonged operation, burst reconnects, repeated model failures, simultaneous recoveries, degraded
+  hardware, recovery storms, …) assert the operational logic holds under conditions a benchmark never
+  creates.
+- **NOT delivered, and important for this register:** model validation is **operational, not
+  accuracy**. `ModelValidation` proves an artifact loads, infers, returns well-formed output, meets a
+  latency budget, and detects a comparable _volume_ to the incumbent. It cannot certify recall without
+  labelled footage. **No capability may be promoted to `Production` on an AI-5d validation pass** —
+  a green model transition means the model _runs_, not that it _sees correctly_.
+
+In short: AI-5b made capabilities runnable in production shape, AI-5c made them survive a loaded box,
+AI-5d made them survive a bad night. Only AI-5e can make them _proven_.

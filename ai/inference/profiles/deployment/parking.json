@@ -11,6 +11,14 @@
   "description": "Outdoor, sparse activity, many cameras per box. Low FPS is sufficient for movement at parking speeds.",
   "dropPolicy": "drop-oldest",
   "enabledBehaviors": ["intrusion", "loitering", "occupancy"],
+  "health": {
+    "degradedBelow": 70,
+    "predictiveDegradation": true,
+    "projectionHorizonSamples": 3,
+    "stabilizationSamples": 3,
+    "trendWindowSamples": 5,
+    "unhealthyBelow": 40
+  },
   "maxSessions": 32,
   "preferredStreamProfile": "sub",
   "profile": "parking",
@@ -19,6 +27,14 @@
     "baseMs": 500,
     "maxAttempts": 10,
     "maxMs": 30000
+  },
+  "recovery": {
+    "autoRecoverCategories": ["connection", "model"],
+    "baseCooldownMs": 15000,
+    "maxCooldownMs": 600000,
+    "maxRestarts": 5,
+    "restartWindowSeconds": 3600,
+    "stabilizationSeconds": 60
   },
   "scheduler": {
     "admissionControl": true,

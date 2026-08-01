@@ -291,6 +291,13 @@ class OrchestrationOnlyTest(unittest.TestCase):
         # AI-5c adds exactly two members, both still orchestration: `govern` APPLIES a decision the
         # governor made (the runner never decides), and `account` REPORTS this session's own measured
         # cost. Neither performs tracking, behavior, business logic, or camera configuration.
+        #
+        # AI-5d adds four, all on the same two seams. MEASURE-AND-REPORT: `score_health` assembles the
+        # inputs the three tiers expose and hands them to the HealthMonitor, which does the scoring —
+        # the same shape as `metrics()`; `health` is a read of the last score; `operational_diagnostics`
+        # is a document, like `diagnostics()`. APPLY-A-DECISION: `recover` supplies an executor to
+        # AutoRecovery, which decides whether, how often, and whether a human must approve. The runner
+        # still scores nothing and still decides nothing.
         public = {name for name in dir(SessionRunner) if not name.startswith("_")}
         self.assertEqual(
             public,
@@ -306,6 +313,10 @@ class OrchestrationOnlyTest(unittest.TestCase):
                 "paused",
                 "govern",
                 "account",
+                "health",
+                "score_health",
+                "recover",
+                "operational_diagnostics",
             },
         )
 

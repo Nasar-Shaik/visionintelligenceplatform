@@ -893,6 +893,14 @@ export const SchedulerReason = z.enum([
   'predicted-pressure',
   /** Refused because only the reserve remained and this priority may not draw on it (refinement 1). */
   'reserve-protected',
+  /**
+   * Degraded because the HEALTH SCORE is projected to decline past its threshold (AI-5d rec 1).
+   * Health produces the evidence; the governor remains the only thing that moves a session down the
+   * ladder — two components able to degrade a session is how you get oscillation nobody can debug.
+   */
+  'predicted-health-decline',
+  /** Held at the current rung because the session is inside its post-recovery stabilization window. */
+  'stabilizing',
 ]);
 export type SchedulerReason = z.infer<typeof SchedulerReason>;
 
@@ -1047,6 +1055,10 @@ export const SessionResourceUsage = z.object({
   framesProcessed: z.number().int().nonnegative().default(0),
   /** Effective analysis FPS after any degradation. */
   effectiveFps: z.number().nonnegative().default(0),
+  /** Analyzers currently disabled by degradation (AI-5d) — restored in exact reverse order. */
+  disabledAnalyzers: z.array(z.string().min(1)).default([]),
+  /** Latest composite health score (AI-5d), when health monitoring is enabled. */
+  healthScore: z.number().min(0).max(100).optional(),
 });
 export type SessionResourceUsage = z.infer<typeof SessionResourceUsage>;
 
@@ -1075,6 +1087,481 @@ export const SchedulerStats = z.object({
   admissionsRefused: z.number().int().nonnegative().default(0),
 });
 export type SchedulerStats = z.infer<typeof SchedulerStats>;
+
+// ---------------------------------------------------------------------------
+// Health monitoring (AI-5d) — health as a SCORE and a TREND, not a boolean
+// ---------------------------------------------------------------------------
+
+/**
+ * The five operational domains a session's health decomposes into (Architect AI-5d rec 2). A single
+ * `overallHealth = 83` tells an operator that something is wrong but not *what*; component scores
+ * (`connection: 98, inference: 81, scheduler: 76, resources: 92, recovery: 100`) point straight at
+ * the subsystem to look at, which is the difference between a 5-minute and a 50-minute diagnosis.
+ */
+export const HealthComponent = z.enum([
+  'connection',
+  'inference',
+  'scheduler',
+  'resources',
+  'recovery',
+]);
+export type HealthComponent = z.infer<typeof HealthComponent>;
+
+/**
+ * One measured input to the health score. Every indicator is derived from a measurement the runtime
+ * ALREADY produces (AI-5b ingestion/backpressure stats, AI-5c accounts) — health monitoring adds no
+ * new instrumentation, it interprets what is already there.
+ *
+ * `frame-loss` is genuine backpressure loss (`framesDropped`) and never sampling (`framesSkipped`) —
+ * conflating them would report a healthy runtime as sick every time an operator lowered the FPS.
+ */
+export const HealthIndicatorName = z.enum([
+  'stream-availability',
+  'reconnect-frequency',
+  'inference-latency',
+  'event-latency',
+  'queue-growth',
+  'frame-loss',
+  'sla-attainment',
+  'cpu-utilization',
+  'memory-utilization',
+  'recovery-attempts',
+  'restart-frequency',
+  'degradation-level',
+]);
+export type HealthIndicatorName = z.infer<typeof HealthIndicatorName>;
+
+/** Which direction an indicator (or a whole score) is moving — the predictive half of health. */
+export const HealthTrend = z.enum(['improving', 'stable', 'deteriorating']);
+export type HealthTrend = z.infer<typeof HealthTrend>;
+
+/**
+ * One scored indicator: what was measured, what it scored (0–100, higher is healthier), and which
+ * way it is moving. `measured` is kept alongside `score` deliberately — an operator needs the raw
+ * number ("queue at 91%") as well as the normalized one, because only the raw number is actionable.
+ */
+export const HealthIndicator = z.object({
+  name: HealthIndicatorName,
+  component: HealthComponent,
+  /** Normalized health of this indicator: 100 = perfect, 0 = as bad as this indicator gets. */
+  score: z.number().min(0).max(100),
+  /** The raw measurement the score was derived from (units depend on the indicator). */
+  measured: z.number().optional(),
+  /** Per-sample slope of the underlying trend; negative means the measurement is falling. */
+  slope: z.number().optional(),
+  trend: HealthTrend.default('stable'),
+  /** Relative weight inside its component. */
+  weight: z.number().positive().default(1),
+  detail: z.string().max(300).optional(),
+});
+export type HealthIndicator = z.infer<typeof HealthIndicator>;
+
+/**
+ * A session's composite operational health (Architect AI-5d recs 1 + 2).
+ *
+ * Two properties make this useful rather than decorative:
+ *   - **Decomposed** — `components` says which subsystem is dragging the score down (rec 2).
+ *   - **Projected** — `projectedScore` is where the score is heading if current trends continue
+ *     (rec 1). Acting on a projection is what makes degradation preventive instead of reactive.
+ *
+ * `status` maps the score onto the SAME four values as the state-derived `SessionHealth`, and state
+ * always wins: a `stopped` session is `down` at any score. The score explains *why*; it never
+ * contradicts *what*.
+ */
+export const HealthScore = z.object({
+  identity: SessionIdentity,
+  /** Weighted composite of the component scores, 0–100. */
+  score: z.number().min(0).max(100),
+  status: SessionHealth,
+  /**
+   * Per-subsystem scores — the operator's first question, answered without drilling in (rec 2).
+   * Every component is REQUIRED: a health report that omits a subsystem is exactly the report that
+   * sends someone looking in the wrong place, so the shape makes omission impossible.
+   */
+  components: z.record(HealthComponent, z.number().min(0).max(100)),
+  indicators: z.array(HealthIndicator).default([]),
+  trend: HealthTrend.default('stable'),
+  /** Score projected `projectionHorizonSamples` observations ahead, if trends continue (rec 1). */
+  projectedScore: z.number().min(0).max(100).optional(),
+  projectedStatus: SessionHealth.optional(),
+  /** Set when the projection (not the current score) is what crosses a threshold. */
+  predictedDecline: z.boolean().default(false),
+  /** Observations recorded so far — a score from 1 sample is not yet a trend, and says so. */
+  samples: z.number().int().nonnegative().default(0),
+  at: IsoDateTime.optional(),
+});
+export type HealthScore = z.infer<typeof HealthScore>;
+
+/** Health scoring configuration — thresholds and weights as policy, never as constants in code. */
+export const HealthPolicy = z.object({
+  /** Relative weight of each component in the composite score; unlisted components use 1.0. */
+  componentWeights: z.partialRecord(HealthComponent, z.number().nonnegative()).optional(),
+  /** Score at/below which a session is `degraded`. */
+  degradedBelow: z.number().min(0).max(100).default(80),
+  /** Score at/below which a session is `down`-grade unhealthy. */
+  unhealthyBelow: z.number().min(0).max(100).default(50),
+  trendWindowSamples: z.number().int().min(2).max(100).default(5),
+  projectionHorizonSamples: z.number().int().min(1).max(50).default(3),
+  /** Whether a projected decline may trigger preventive degradation (rec 1). */
+  predictiveDegradation: z.boolean().default(true),
+  /** Consecutive healthy observations required before health is considered stabilized (rec 6). */
+  stabilizationSamples: z.number().int().min(1).max(100).default(3),
+});
+export type HealthPolicy = z.infer<typeof HealthPolicy>;
+
+// ---------------------------------------------------------------------------
+// Auto-recovery (AI-5d) — recovery as a policy-driven, budgeted, auditable act
+// ---------------------------------------------------------------------------
+
+/** Which tier a recovery originated in — the five AI-5b ownership tiers, plus the model. */
+export const RecoverySubsystem = z.enum([
+  'stream-source',
+  'stream-pipeline',
+  'video-analyzer',
+  'model',
+  'scheduler',
+  'session-runner',
+  'configuration',
+]);
+export type RecoverySubsystem = z.infer<typeof RecoverySubsystem>;
+
+/** How serious the originating condition was (drives alerting, not runtime behavior). */
+export const RecoverySeverity = z.enum(['info', 'warning', 'error', 'critical']);
+export type RecoverySeverity = z.infer<typeof RecoverySeverity>;
+
+/** What prompted a recovery — a closed set, so recoveries are queryable rather than free text. */
+export const RecoveryTrigger = z.enum([
+  'connection-lost',
+  'reconnect-exhausted',
+  'model-failure',
+  'inference-failure',
+  'pipeline-failure',
+  'configuration-failure',
+  'health-decline',
+  'stall-detected',
+  'operator-request',
+]);
+export type RecoveryTrigger = z.infer<typeof RecoveryTrigger>;
+
+/**
+ * The structured "why" behind a recovery (Architect AI-5d rec 1). Recording only that a recovery
+ * *happened* leaves an incident review guessing; recording the trigger, the tier it came from, the
+ * severity, which attempt it was, and the correlation id turns a night of restarts into one query.
+ */
+export const RecoveryReason = z.object({
+  trigger: RecoveryTrigger,
+  /** Where the condition originated — never where it was *noticed*. */
+  subsystem: RecoverySubsystem,
+  severity: RecoverySeverity.default('error'),
+  /** Which attempt this is within the current recovery budget window (1-based). */
+  retryCount: z.number().int().nonnegative().default(0),
+  /** Correlates this recovery with the request/session trace that produced it. */
+  correlationId: z.string().min(1).max(200).optional(),
+  /** The frozen AI-5b failure category, when a failure (rather than health) triggered recovery. */
+  failureCategory: RuntimeFailureCategory.optional(),
+  /** The stable diagnostic code (`AI-CONN`, `AI-MODEL`, …) for log/alert correlation. */
+  failureCode: z.string().min(1).max(40).optional(),
+  detail: z.string().max(500).optional(),
+  at: IsoDateTime,
+});
+export type RecoveryReason = z.infer<typeof RecoveryReason>;
+
+/**
+ * What the runtime does about a condition. Each maps 1:1 onto the recovery path the frozen AI-5b
+ * failure taxonomy already declares, so recovery adds no new judgement — it *executes* the taxonomy.
+ */
+export const RecoveryAction = z.enum([
+  'none',
+  'reconnect',
+  'rebind-model',
+  'skip-frame',
+  'restart-session',
+  'degrade',
+  'operator-intervention',
+]);
+export type RecoveryAction = z.infer<typeof RecoveryAction>;
+
+/** How a recovery attempt ended. A refusal is an outcome, not an error — and is always explained. */
+export const RecoveryOutcome = z.enum([
+  'succeeded',
+  'failed',
+  'deferred',
+  'budget-exhausted',
+  'cooldown',
+  'operator-required',
+  'blocked-by-policy',
+]);
+export type RecoveryOutcome = z.infer<typeof RecoveryOutcome>;
+
+/** One recorded recovery attempt — reason, action, outcome. The audit unit for rec 1 + rec 5. */
+export const RecoveryAttempt = z.object({
+  identity: SessionIdentity,
+  reason: RecoveryReason,
+  action: RecoveryAction,
+  outcome: RecoveryOutcome,
+  /** Attempt number within the budget window. */
+  attempt: z.number().int().positive().default(1),
+  /** Backoff applied before the next attempt, when one is scheduled. */
+  cooldownMs: z.number().nonnegative().optional(),
+  detail: z.string().max(500).optional(),
+  at: IsoDateTime.optional(),
+});
+export type RecoveryAttempt = z.infer<typeof RecoveryAttempt>;
+
+/**
+ * Recovery budgets as **external configuration** (Architect AI-5d rec 4). The same runtime must be
+ * able to behave as a retail store (restart 3 times, then stop bothering anyone), a factory (10),
+ * a bank (indefinitely, with long cooldowns), or a hospital (never restart without an operator) —
+ * and those are policy decisions belonging to a deployment profile, not to runtime code.
+ */
+export const RecoveryPolicy = z.object({
+  /** Restarts allowed inside `restartWindowSeconds`. Ignored when `unlimitedRestarts` is set. */
+  maxRestarts: z.number().int().min(0).max(1000).default(3),
+  /** Rolling window the budget is counted over. */
+  restartWindowSeconds: z.number().positive().max(86400).default(3600),
+  /** Restart forever (banks/critical infrastructure) — always paired with a long cooldown. */
+  unlimitedRestarts: z.boolean().default(false),
+  baseCooldownMs: z.number().nonnegative().default(5000),
+  maxCooldownMs: z.number().nonnegative().default(300000),
+  /** Healthcare-style: never auto-restart; surface the condition and wait for a human. */
+  requireOperatorApproval: z.boolean().default(false),
+  /**
+   * Seconds a session must stay healthy after a recovery before another transition is allowed
+   * (rec 6) — the anti-oscillation guard. Without it a marginal camera flaps forever.
+   */
+  stabilizationSeconds: z.number().nonnegative().max(3600).default(30),
+  /** Failure categories eligible for automatic recovery. `configuration` is NEVER retried. */
+  autoRecoverCategories: z.array(RuntimeFailureCategory).default(['connection', 'model']),
+});
+export type RecoveryPolicy = z.infer<typeof RecoveryPolicy>;
+
+/**
+ * One entry on the **restoration stack** (Architect AI-5d rec 4, accepted as the permanent recovery
+ * mechanism). A rung is not what was actually taken away — `reduced-behaviors` disabled *specific*
+ * analyzers, and re-enabling different ones is not the reverse. Each degradation pushes exactly what
+ * it removed; each recovery pops it, which makes exact-reverse restoration structural rather than
+ * merely intended.
+ */
+export const RestoreStep = z.object({
+  /** The rung this step entered (i.e. what must be undone to leave it). */
+  level: DegradationLevel,
+  /** Monotonic push order — recovery pops strictly descending. */
+  sequence: z.number().int().nonnegative(),
+  /** Analyzers this step disabled, in the order they were disabled. */
+  disabledAnalyzers: z.array(z.string().min(1)).default([]),
+  fpsBefore: z.number().nonnegative().optional(),
+  fpsAfter: z.number().nonnegative().optional(),
+  resolutionScale: z.number().positive().max(1).optional(),
+  at: IsoDateTime.optional(),
+});
+export type RestoreStep = z.infer<typeof RestoreStep>;
+
+// ---------------------------------------------------------------------------
+// Model lifecycle (AI-5d) — zero-downtime version transitions
+// ---------------------------------------------------------------------------
+
+/**
+ * The staged transition an active model version goes through (Architect AI-5d rec 3):
+ *
+ *   active(vN) → warming → validating → switching → draining → active(vN+1)
+ *                              └── failed validation ──→ rolled-back(vN)
+ *
+ * The switch is a **binding swap read per frame**, so no running session restarts and no frame is
+ * lost. `draining` keeps the outgoing model warm long enough for in-flight frames to finish on the
+ * model that started them — swapping under a frame mid-pipeline is how you get results that belong
+ * to neither version.
+ */
+export const ModelTransitionState = z.enum([
+  'pending',
+  'warming',
+  'validating',
+  'switching',
+  'draining',
+  'active',
+  'rolled-back',
+  'failed',
+]);
+export type ModelTransitionState = z.infer<typeof ModelTransitionState>;
+
+/**
+ * The **operational** validation checks a candidate must pass. Deliberately NOT accuracy checks:
+ * without labelled footage a runtime cannot certify recall, and a contract implying otherwise would
+ * be a lie an operator might trust. These catch the failures that actually break a deployment — a
+ * corrupt artifact, a wrong input shape, a 10× latency regression, a model that silently detects
+ * nothing. Accuracy validation belongs to AI-5e certification with labelled footage.
+ */
+export const ModelValidationCheckName = z.enum([
+  'artifact-loads',
+  'inference-runs',
+  'output-structure',
+  'latency-budget',
+  'detection-comparability',
+]);
+export type ModelValidationCheckName = z.infer<typeof ModelValidationCheckName>;
+
+/** One validation check — pass/fail plus the measurement and the budget it was judged against. */
+export const ModelValidationCheck = z.object({
+  name: ModelValidationCheckName,
+  passed: z.boolean(),
+  measured: z.number().optional(),
+  budget: z.number().optional(),
+  detail: z.string().max(500).optional(),
+});
+export type ModelValidationCheck = z.infer<typeof ModelValidationCheck>;
+
+/** The verdict on a candidate version. `passed` is the AND of every check. */
+export const ModelValidationResult = z.object({
+  passed: z.boolean(),
+  checks: z.array(ModelValidationCheck).default([]),
+  framesEvaluated: z.number().int().nonnegative().default(0),
+  candidateLatencyMs: z.number().nonnegative().optional(),
+  /** The incumbent's latency over the same frames — the only fair comparison. */
+  incumbentLatencyMs: z.number().nonnegative().optional(),
+  candidateDetections: z.number().int().nonnegative().optional(),
+  incumbentDetections: z.number().int().nonnegative().optional(),
+  at: IsoDateTime.optional(),
+});
+export type ModelValidationResult = z.infer<typeof ModelValidationResult>;
+
+/** One state change inside a transition — the fine-grained audit trail (rec 3). */
+export const ModelTransitionEvent = z.object({
+  state: ModelTransitionState,
+  at: IsoDateTime,
+  detail: z.string().max(500).optional(),
+});
+export type ModelTransitionEvent = z.infer<typeof ModelTransitionEvent>;
+
+/**
+ * One staged model version transition, start to finish. Kept queryable forever (rec 3) because the
+ * question an incident review asks — "what changed on this model, and when?" — is unanswerable
+ * from a registry that only stores the *current* active version.
+ */
+export const ModelTransition = z.object({
+  id: z.string().min(1).max(100),
+  tenantId: TenantId,
+  modelId: z.string().min(1).max(100),
+  /** Null on the very first activation — there was no incumbent to come from. */
+  fromVersion: z.string().min(1).max(100).nullable(),
+  toVersion: z.string().min(1).max(100),
+  state: ModelTransitionState,
+  validation: ModelValidationResult.optional(),
+  /** Why a rollback happened — always present when `state` is `rolled-back`. */
+  rollbackReason: z.string().max(500).optional(),
+  /** Sessions that stayed running across the switch — the zero-downtime evidence. */
+  sessionsAffected: z.number().int().nonnegative().default(0),
+  history: z.array(ModelTransitionEvent).default([]),
+  startedAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+  completedAt: IsoDateTime.optional(),
+});
+export type ModelTransition = z.infer<typeof ModelTransition>;
+
+/**
+ * The full lifecycle history of one model (rec 3). `versionPath` is the compact answer — e.g.
+ * `['v1','v2','v1','v3','v4']` reads as "v2 was tried and rolled back" at a glance.
+ */
+export const ModelLifecycleHistory = z.object({
+  tenantId: TenantId,
+  modelId: z.string().min(1).max(100),
+  activeVersion: z.string().min(1).max(100).nullable(),
+  versionPath: z.array(z.string().min(1)).default([]),
+  transitions: z.array(ModelTransition).default([]),
+});
+export type ModelLifecycleHistory = z.infer<typeof ModelLifecycleHistory>;
+
+/** Model-transition policy — validation strictness, drain window, and rollback behavior. */
+export const ModelLifecyclePolicy = z.object({
+  /** Frames the candidate is evaluated over during `validating`. */
+  validationFrames: z.number().int().min(1).max(10000).default(20),
+  /** Absolute latency ceiling for the candidate (ms). */
+  maxValidationLatencyMs: z.number().positive().optional(),
+  /** Candidate latency may exceed the incumbent's by at most this percentage. */
+  latencyRegressionPercent: z.number().min(0).max(1000).default(25),
+  /** Candidate detection count may differ from the incumbent's by at most this percentage. */
+  detectionDeltaPercent: z.number().min(0).max(100).default(50),
+  /** How long the outgoing model stays warm so in-flight frames finish on it. */
+  drainMs: z.number().nonnegative().max(600000).default(1000),
+  /** Roll back automatically when validation fails (rather than parking in `failed`). */
+  autoRollback: z.boolean().default(true),
+  /** Whether a transition may skip validation. Off by default — that is the whole point. */
+  requireValidation: z.boolean().default(true),
+});
+export type ModelLifecyclePolicy = z.infer<typeof ModelLifecyclePolicy>;
+
+// ---------------------------------------------------------------------------
+// Operational diagnostics (AI-5d) — one correlated journal + an ordered timeline
+// ---------------------------------------------------------------------------
+
+/** Which operational concern an entry came from — the journal's filter axis. */
+export const DiagnosticKind = z.enum([
+  'lifecycle',
+  'connection',
+  'scheduling',
+  'degradation',
+  'recovery',
+  'model',
+  'health',
+  'failure',
+]);
+export type DiagnosticKind = z.infer<typeof DiagnosticKind>;
+
+/**
+ * One entry in a session's operational journal (Architect AI-5d rec 5). Admission, scheduling,
+ * degradation, recovery, restart, model transitions and failures all land here with a timestamp and
+ * the correlating identity — so an incident is one query, not a grep across interleaved camera logs.
+ */
+export const DiagnosticEntry = z.object({
+  at: IsoDateTime,
+  kind: DiagnosticKind,
+  /** The structured event name, e.g. `stream.reconnecting`, `scheduler.degraded`. */
+  event: z.string().min(1).max(120),
+  level: z.enum(['info', 'warn', 'error']).default('info'),
+  identity: SessionIdentity,
+  detail: z.string().max(500).optional(),
+  /** The numeric measurements that accompanied the event. */
+  measurement: z.record(z.string(), z.number()).default({}),
+});
+export type DiagnosticEntry = z.infer<typeof DiagnosticEntry>;
+
+/**
+ * One line of the human-readable **operational timeline** (rec 5) — chronological, oldest first,
+ * one short sentence per line:
+ *
+ *   `10:02 Connected · 10:10 Queue increasing · 10:11 Governor reduced FPS · 10:13 Health stabilized`
+ *
+ * The journal is the machine-queryable record; the timeline is what a human reads first.
+ */
+export const TimelineEntry = z.object({
+  at: IsoDateTime,
+  /** Wall-clock `HH:MM:SS` — the timeline is read by eye, so the time is pre-formatted. */
+  time: z.string().min(1).max(20),
+  kind: DiagnosticKind,
+  /** A short human sentence, e.g. `Governor reduced FPS (queue-pressure)`. */
+  label: z.string().min(1).max(200),
+  level: z.enum(['info', 'warn', 'error']).default('info'),
+});
+export type TimelineEntry = z.infer<typeof TimelineEntry>;
+
+/**
+ * The complete operational picture of one session (AI-5d) — the AI-5b stream diagnostics plus health,
+ * recovery history, the journal and the timeline.
+ *
+ * Kept as a distinct document rather than extra fields on `SessionDiagnostics` because the two answer
+ * different questions and are read by different consumers: `SessionDiagnostics` is "how is the
+ * stream?", this is "how is the session, and what has happened to it?".
+ */
+export const SessionOperationalDiagnostics = z.object({
+  identity: SessionIdentity,
+  health: HealthScore,
+  stream: SessionDiagnostics,
+  degradation: DegradationLevel.default('none'),
+  /** The restoration stack, deepest-first — exactly what recovery will give back, in order. */
+  restoreStack: z.array(RestoreStep).default([]),
+  recovery: z.array(RecoveryAttempt).default([]),
+  journal: z.array(DiagnosticEntry).default([]),
+  timeline: z.array(TimelineEntry).default([]),
+});
+export type SessionOperationalDiagnostics = z.infer<typeof SessionOperationalDiagnostics>;
 
 /**
  * A reusable **operational** deployment profile (Architect AI-5b rec 4) — retail, warehouse, office,
@@ -1119,6 +1606,15 @@ export const DeploymentProfile = z.object({
   analyzerCosts: AnalyzerCostModel.optional(),
   /** Sampling stride override; when set it wins over `targetFps` for admission decisions. */
   samplingStride: z.number().int().min(1).max(600).optional(),
+  /** Health scoring thresholds + weights (AI-5d). Absent = runtime defaults. */
+  health: HealthPolicy.optional(),
+  /**
+   * Recovery budgets (AI-5d rec 4) — this is what makes "restart 3 times" (retail) and "never
+   * restart without an operator" (healthcare) the same runtime with different configuration.
+   */
+  recovery: RecoveryPolicy.optional(),
+  /** Model-transition strictness for this deployment (AI-5d rec 3). */
+  modelLifecycle: ModelLifecyclePolicy.optional(),
 });
 export type DeploymentProfile = z.infer<typeof DeploymentProfile>;
 

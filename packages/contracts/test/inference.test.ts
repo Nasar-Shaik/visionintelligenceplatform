@@ -41,6 +41,31 @@ import {
   SessionPriority,
   SessionResourceUsage,
   SessionSla,
+  DiagnosticEntry,
+  DiagnosticKind,
+  HealthComponent,
+  HealthIndicator,
+  HealthIndicatorName,
+  HealthPolicy,
+  HealthScore,
+  HealthTrend,
+  ModelLifecycleHistory,
+  ModelLifecyclePolicy,
+  ModelTransition,
+  ModelTransitionState,
+  ModelValidationCheckName,
+  ModelValidationResult,
+  RecoveryAction,
+  RecoveryAttempt,
+  RecoveryOutcome,
+  RecoveryPolicy,
+  RecoveryReason,
+  RecoverySubsystem,
+  RecoveryTrigger,
+  RestoreStep,
+  SchedulerReason,
+  SessionOperationalDiagnostics,
+  TimelineEntry,
 } from '../src/inference/inference.js';
 import { EVENT_CATALOG, isKnownEventType, lookupEvent } from '../src/events/catalog.js';
 
@@ -628,5 +653,379 @@ describe('scheduling + resource management (AI-5c)', () => {
     expect(s.sharesBySession).toEqual({});
     expect(s.recentDecisions).toEqual([]);
     expect(s.admissionsRefused).toBe(0);
+  });
+});
+
+describe('health monitoring (AI-5d)', () => {
+  const identity = { tenantId: 'tnt_a', cameraId: 'cam_1', sessionId: 'ses_1' };
+
+  it('decomposes health into the five operational subsystems', () => {
+    // Rec 2: `overallHealth = 83` says something is wrong; component scores say *what*.
+    expect(HealthComponent.options).toEqual([
+      'connection',
+      'inference',
+      'scheduler',
+      'resources',
+      'recovery',
+    ]);
+  });
+
+  it('requires every component on a score — omission is what misdirects an operator', () => {
+    const complete = {
+      identity,
+      score: 83,
+      status: 'degraded',
+      components: { connection: 98, inference: 81, scheduler: 76, resources: 92, recovery: 100 },
+    };
+    expect(HealthScore.parse(complete).components.scheduler).toBe(76);
+    // A partial breakdown is rejected: a health report that silently drops a subsystem is exactly
+    // the report that sends someone looking in the wrong place.
+    expect(HealthScore.safeParse({ ...complete, components: { connection: 98 } }).success).toBe(
+      false,
+    );
+  });
+
+  it('carries where health is HEADING, not only where it is', () => {
+    const s = HealthScore.parse({
+      identity,
+      score: 88,
+      status: 'healthy',
+      components: { connection: 100, inference: 90, scheduler: 70, resources: 90, recovery: 100 },
+      trend: 'deteriorating',
+      projectedScore: 64,
+      projectedStatus: 'degraded',
+      predictedDecline: true,
+      samples: 5,
+    });
+    expect(s.predictedDecline).toBe(true);
+    expect(s.projectedScore).toBeLessThan(s.score);
+    expect(HealthTrend.options).toEqual(['improving', 'stable', 'deteriorating']);
+  });
+
+  it('scores every indicator on one 0–100 scale and keeps the raw measurement', () => {
+    const i = HealthIndicator.parse({
+      name: 'queue-growth',
+      component: 'scheduler',
+      score: 9,
+      measured: 91,
+      slope: -4.2,
+      trend: 'deteriorating',
+    });
+    // Only the raw number is actionable ("queue at 91%"), so both are kept.
+    expect(i.measured).toBe(91);
+    expect(i.weight).toBe(1);
+    expect(HealthIndicator.safeParse({ ...i, score: 101 }).success).toBe(false);
+  });
+
+  it('separates deliberate sampling from genuine loss in its indicator set', () => {
+    // `frame-loss` exists; there is deliberately no `frames-skipped` indicator, because sampling is
+    // an execution policy and scoring it would mark a correctly-tuned camera as sick.
+    expect(HealthIndicatorName.options).toContain('frame-loss');
+    expect(HealthIndicatorName.options).not.toContain('frame-sampling');
+  });
+
+  it('defaults a health policy to sane, ordered thresholds', () => {
+    const p = HealthPolicy.parse({});
+    expect(p.unhealthyBelow).toBeLessThan(p.degradedBelow);
+    expect(p.predictiveDegradation).toBe(true);
+    expect(p.stabilizationSamples).toBeGreaterThan(0);
+  });
+});
+
+describe('auto-recovery (AI-5d)', () => {
+  const identity = { tenantId: 'tnt_a', cameraId: 'cam_1', sessionId: 'ses_1' };
+
+  it('records the full structured why behind a recovery', () => {
+    // Rec 1: trigger, subsystem, severity, retry count, correlation id — recording only that a
+    // recovery happened leaves an incident review guessing.
+    const r = RecoveryReason.parse({
+      trigger: 'connection-lost',
+      subsystem: 'stream-source',
+      severity: 'warning',
+      retryCount: 2,
+      correlationId: 'corr_1',
+      failureCategory: 'connection',
+      failureCode: 'AI-CONN',
+      at: now,
+    });
+    expect(r.subsystem).toBe('stream-source');
+    expect(r.failureCode).toBe('AI-CONN');
+  });
+
+  it('names subsystems as the five AI-5b ownership tiers plus the model', () => {
+    expect(RecoverySubsystem.options).toEqual([
+      'stream-source',
+      'stream-pipeline',
+      'video-analyzer',
+      'model',
+      'scheduler',
+      'session-runner',
+      'configuration',
+    ]);
+  });
+
+  it('offers exactly the actions the frozen failure taxonomy declares', () => {
+    expect(RecoveryAction.options).toEqual([
+      'none',
+      'reconnect',
+      'rebind-model',
+      'skip-frame',
+      'restart-session',
+      'degrade',
+      'operator-intervention',
+    ]);
+    expect(RecoveryTrigger.options).toContain('configuration-failure');
+  });
+
+  it('treats a refusal as an outcome, never an error', () => {
+    // A recovery that did NOT happen is as interesting to an operator as one that did.
+    for (const outcome of [
+      'budget-exhausted',
+      'cooldown',
+      'operator-required',
+      'blocked-by-policy',
+    ]) {
+      expect(RecoveryOutcome.options).toContain(outcome);
+    }
+    const a = RecoveryAttempt.parse({
+      identity,
+      reason: { trigger: 'connection-lost', subsystem: 'stream-source', at: now },
+      action: 'restart-session',
+      outcome: 'budget-exhausted',
+      attempt: 4,
+    });
+    expect(a.attempt).toBe(4);
+  });
+
+  it('makes recovery budgets external configuration (rec 4)', () => {
+    // The Architect's four archetypes, all expressible without a code change.
+    expect(RecoveryPolicy.parse({ maxRestarts: 3 }).maxRestarts).toBe(3); // retail
+    expect(RecoveryPolicy.parse({ maxRestarts: 10 }).maxRestarts).toBe(10); // factory
+    expect(RecoveryPolicy.parse({ unlimitedRestarts: true }).unlimitedRestarts).toBe(true); // bank
+    expect(RecoveryPolicy.parse({ requireOperatorApproval: true }).requireOperatorApproval).toBe(
+      true,
+    ); // healthcare
+  });
+
+  it('never arms configuration recovery by default', () => {
+    // A configuration error does not become correct by retrying it.
+    expect(RecoveryPolicy.parse({}).autoRecoverCategories).toEqual(['connection', 'model']);
+  });
+
+  it('has a stabilization window so a marginal camera cannot flap forever (rec 6)', () => {
+    expect(RecoveryPolicy.parse({}).stabilizationSeconds).toBeGreaterThan(0);
+    expect(SchedulerReason.options).toContain('stabilizing');
+  });
+
+  it('records exactly what a degradation removed, so recovery can give it back (rec 4)', () => {
+    const step = RestoreStep.parse({
+      level: 'reduced-behaviors',
+      sequence: 3,
+      disabledAnalyzers: ['crowd'],
+    });
+    // A rung says WHERE a session is; the stack says WHAT was taken — only the stack can be
+    // restored in the exact reverse order.
+    expect(step.disabledAnalyzers).toEqual(['crowd']);
+    expect(step.sequence).toBe(3);
+  });
+
+  it('lets a projected health decline reach the governor as a reason (rec 1)', () => {
+    expect(SchedulerReason.options).toContain('predicted-health-decline');
+  });
+});
+
+describe('model lifecycle (AI-5d)', () => {
+  it('stages a transition through warm → validate → switch → drain', () => {
+    expect(ModelTransitionState.options).toEqual([
+      'pending',
+      'warming',
+      'validating',
+      'switching',
+      'draining',
+      'active',
+      'rolled-back',
+      'failed',
+    ]);
+    // `draining` sits between switching and active so in-flight frames finish on the model that
+    // started them — swapping under a frame produces a result belonging to neither version.
+    expect(ModelTransitionState.options.indexOf('draining')).toBeGreaterThan(
+      ModelTransitionState.options.indexOf('switching'),
+    );
+  });
+
+  it('validates operationally and never claims to validate accuracy', () => {
+    expect(ModelValidationCheckName.options).toEqual([
+      'artifact-loads',
+      'inference-runs',
+      'output-structure',
+      'latency-budget',
+      'detection-comparability',
+    ]);
+    // Without labelled footage a runtime cannot certify recall; a check named `accuracy` would be a
+    // lie an operator might trust. That belongs to AI-5e certification.
+    expect(ModelValidationCheckName.options).not.toContain('accuracy');
+    expect(ModelValidationCheckName.options).not.toContain('recall');
+  });
+
+  it('compares a candidate against the incumbent over the same frames', () => {
+    const v = ModelValidationResult.parse({
+      passed: true,
+      framesEvaluated: 20,
+      candidateLatencyMs: 12,
+      incumbentLatencyMs: 11,
+      candidateDetections: 40,
+      incumbentDetections: 38,
+    });
+    expect(v.framesEvaluated).toBe(20);
+    expect(v.incumbentLatencyMs).toBeDefined();
+  });
+
+  it('keeps a transition queryable with its full state history (rec 3)', () => {
+    const t = ModelTransition.parse({
+      id: 'mtr_1',
+      tenantId: 'tnt_a',
+      modelId: 'mdl_1',
+      fromVersion: 'v1',
+      toVersion: 'v2',
+      state: 'rolled-back',
+      rollbackReason: 'validation failed: detection-comparability',
+      sessionsAffected: 4,
+      history: [
+        { state: 'pending', at: now },
+        { state: 'warming', at: now },
+        { state: 'rolled-back', at: now },
+      ],
+      startedAt: now,
+      updatedAt: now,
+    });
+    expect(t.history).toHaveLength(3);
+    expect(t.fromVersion).toBe('v1');
+    // Zero-downtime evidence: sessions kept running across the switch.
+    expect(t.sessionsAffected).toBe(4);
+  });
+
+  it('reads a model version path as a story', () => {
+    // `v1 → v2 → v1 → v3 → v4` says "v2 was tried and rolled back" at a glance.
+    const h = ModelLifecycleHistory.parse({
+      tenantId: 'tnt_a',
+      modelId: 'mdl_1',
+      activeVersion: 'v4',
+      versionPath: ['v1', 'v2', 'v1', 'v3', 'v4'],
+    });
+    expect(h.versionPath).toHaveLength(5);
+    expect(h.activeVersion).toBe('v4');
+  });
+
+  it('requires validation before a switch by default', () => {
+    const p = ModelLifecyclePolicy.parse({});
+    expect(p.requireValidation).toBe(true);
+    expect(p.autoRollback).toBe(true);
+    expect(p.drainMs).toBeGreaterThan(0);
+  });
+
+  it('allows the first activation to have no incumbent', () => {
+    const t = ModelTransition.parse({
+      id: 'mtr_1',
+      tenantId: 'tnt_a',
+      modelId: 'mdl_1',
+      fromVersion: null,
+      toVersion: 'v1',
+      state: 'active',
+      startedAt: now,
+      updatedAt: now,
+    });
+    expect(t.fromVersion).toBeNull();
+  });
+});
+
+describe('operational diagnostics (AI-5d rec 5)', () => {
+  const identity = { tenantId: 'tnt_a', cameraId: 'cam_1', sessionId: 'ses_1' };
+
+  it('merges every operational concern into one correlated stream', () => {
+    expect(DiagnosticKind.options).toEqual([
+      'lifecycle',
+      'connection',
+      'scheduling',
+      'degradation',
+      'recovery',
+      'model',
+      'health',
+      'failure',
+    ]);
+    const e = DiagnosticEntry.parse({
+      at: now,
+      kind: 'degradation',
+      event: 'scheduler.degraded',
+      identity,
+      level: 'warn',
+      detail: 'none → reduced-fps (queue-pressure)',
+      measurement: { queueUtilization: 91.2 },
+    });
+    expect(e.identity.sessionId).toBe('ses_1');
+    expect(e.measurement.queueUtilization).toBe(91.2);
+  });
+
+  it('renders a timeline a human reads before any log', () => {
+    const t = TimelineEntry.parse({
+      at: now,
+      time: '10:11:02',
+      kind: 'degradation',
+      label: 'Governor reduced FPS (queue-pressure)',
+      level: 'warn',
+    });
+    // Pre-formatted because a timeline is read by eye, not parsed.
+    expect(t.time).toBe('10:11:02');
+    expect(t.label).toContain('queue-pressure');
+  });
+
+  it('assembles the whole operational picture of one session', () => {
+    const d = SessionOperationalDiagnostics.parse({
+      identity,
+      health: {
+        identity,
+        score: 83,
+        status: 'degraded',
+        components: { connection: 98, inference: 81, scheduler: 76, resources: 92, recovery: 100 },
+      },
+      stream: {
+        identity,
+        state: 'running',
+        ingestion: { sourceType: 'rtsp', source: 'rtsp://***@cam.local/s', state: 'connected' },
+        backpressure: { queueCapacity: 32 },
+      },
+      degradation: 'reduced-fps',
+      restoreStack: [{ level: 'reduced-fps', sequence: 1, fpsBefore: 5, fpsAfter: 2.5 }],
+    });
+    expect(d.degradation).toBe('reduced-fps');
+    expect(d.restoreStack).toHaveLength(1);
+    expect(d.recovery).toEqual([]);
+    expect(d.timeline).toEqual([]);
+  });
+});
+
+describe('deployment profiles carry operational policy (AI-5d rec 4)', () => {
+  it('lets a hospital and a retail store differ by configuration alone', () => {
+    const retail = DeploymentProfile.parse({
+      profile: 'retail',
+      recovery: { maxRestarts: 3 },
+      health: { degradedBelow: 80 },
+    });
+    const hospital = DeploymentProfile.parse({
+      profile: 'hospital',
+      recovery: { maxRestarts: 0, requireOperatorApproval: true },
+      health: { degradedBelow: 90, unhealthyBelow: 60 },
+      modelLifecycle: { validationFrames: 50, latencyRegressionPercent: 10 },
+    });
+    expect(retail.recovery?.maxRestarts).toBe(3);
+    expect(hospital.recovery?.requireOperatorApproval).toBe(true);
+    expect(hospital.health?.degradedBelow).toBeGreaterThan(retail.health!.degradedBelow);
+    expect(hospital.modelLifecycle?.validationFrames).toBe(50);
+  });
+
+  it('stays additive — a profile with no AI-5d policy is still valid', () => {
+    const p = DeploymentProfile.parse({ profile: 'warehouse' });
+    expect(p.recovery).toBeUndefined();
+    expect(p.health).toBeUndefined();
+    expect(p.modelLifecycle).toBeUndefined();
   });
 });

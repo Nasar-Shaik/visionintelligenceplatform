@@ -42,6 +42,7 @@ from resources import (
     PRIORITIES,
     PRIORITY_WEIGHTS,
     ResourceAccountant,
+    RestoreStep,
     SessionAccount,
     ladder_index,
 )
@@ -72,6 +73,10 @@ class SchedulerPolicy:
     trend_window_samples: int = 5
     predicted_pressure_threshold: float = 95.0
     prediction_horizon_samples: int = 3
+    # AI-5d rec 6: observations a session must complete after ANY transition before another is
+    # allowed. Hysteresis alone stops a spike from throttling a camera; this stops a camera that
+    # oscillates *across* the hysteresis band from flapping between rungs forever.
+    stabilization_samples: int = 2
 
     def __post_init__(self) -> None:
         if self.strategy not in ("round-robin", "weighted-fair", "strict-priority"):
@@ -85,6 +90,8 @@ class SchedulerPolicy:
             )
         if self.max_degradation not in DEGRADATION_LADDER:
             raise ConfigurationFailure(f"unknown degradation level '{self.max_degradation}'")
+        if self.stabilization_samples < 0:
+            raise ConfigurationFailure("stabilization_samples must be >= 0")
 
 
 @dataclass
@@ -304,6 +311,14 @@ class ResourceGovernor:
         self._log = log
         self._pressure_streak: Dict[str, int] = {}
         self._relief_streak: Dict[str, int] = {}
+        # AI-5d rec 6: observations since each session's last transition, the direction that
+        # transition went, and whether a suppression has already been announced. Suppression is
+        # edge-triggered — recording it on every observation would bury the decision log under the
+        # very noise the guard exists to prevent.
+        self._since_transition: Dict[str, int] = {}
+        self._last_direction: Dict[str, str] = {}
+        self._announced_hold: Dict[str, bool] = {}
+        self.transitions_suppressed = 0
 
     # --- the expensive-analyzer ordering (refinement 4) ---------------------------
 
@@ -323,20 +338,33 @@ class ResourceGovernor:
         queue_utilization: float,
         event_latency_ms: float = 0.0,
         snapshot: Optional[ResourceSnapshot] = None,
+        health=None,  # noqa: ANN001 - health.HealthScore (AI-5d; None = exactly AI-5c behavior)
+        analyzers: Optional[List[str]] = None,
     ) -> Optional[SchedulerDecision]:
         """Record one observation and escalate/recover at most ONE rung. Returns the decision taken,
-        or None when nothing changed."""
+        or None when nothing changed.
+
+        `health` is EVIDENCE, not a decision (AI-5d rec 1): a projected health decline becomes one
+        more pressure reason on the existing path. The governor remains the only component that moves
+        a session down the ladder, which is what keeps degradation debuggable.
+        """
         account.observe(queue_utilization=queue_utilization, event_latency_ms=event_latency_ms)
         key = account.identity.session_id
+        if health is not None:
+            account.health_score = health.score
+            account.predicted_decline = health.predicted_decline
+        self._since_transition[key] = self._since_transition.get(key, self._policy.stabilization_samples) + 1
 
-        pressure_reason = self._pressure_reason(account, snapshot)
+        pressure_reason = self._pressure_reason(account, snapshot, health)
         if pressure_reason is not None:
             self._relief_streak[key] = 0
             streak = self._pressure_streak.get(key, 0) + 1
             self._pressure_streak[key] = streak
             if streak >= self._policy.escalate_after_samples:
+                if not self._stabilized(key, "up"):
+                    return self._hold(account, pressure_reason)
                 self._pressure_streak[key] = 0
-                return self._escalate(account, pressure_reason)
+                return self._escalate(account, pressure_reason, analyzers)
             return None
 
         # No pressure — count toward recovery.
@@ -348,12 +376,17 @@ class ResourceGovernor:
         streak = self._relief_streak.get(key, 0) + 1
         self._relief_streak[key] = streak
         if streak >= self._policy.recover_after_samples:
+            if not self._stabilized(key, "down"):
+                return self._hold(account, "pressure-relieved")
             self._relief_streak[key] = 0
             return self._recover(account)
         return None
 
     def _pressure_reason(
-        self, account: SessionAccount, snapshot: Optional[ResourceSnapshot]
+        self,
+        account: SessionAccount,
+        snapshot: Optional[ResourceSnapshot],
+        health=None,  # noqa: ANN001 - health.HealthScore
     ) -> Optional[str]:
         """Which pressure (if any) justifies degrading — the reason recorded on the decision."""
         policy = self._policy
@@ -363,6 +396,10 @@ class ResourceGovernor:
             projected = account.queue_trend.project(policy.prediction_horizon_samples)
             if projected >= policy.predicted_pressure_threshold and account.queue_trend.slope > 0:
                 return "predicted-pressure"
+            # AI-5d rec 1: health is a broader early warning than the queue alone — a session can be
+            # deteriorating on latency or reconnects while its queue still looks calm.
+            if health is not None and getattr(health, "predicted_decline", False):
+                return "predicted-health-decline"
         if snapshot is not None:
             if (
                 policy.cpu_ceiling_percent is not None
@@ -378,7 +415,59 @@ class ResourceGovernor:
                 return "memory-pressure"
         return None
 
-    def _escalate(self, account: SessionAccount, reason: str) -> Optional[SchedulerDecision]:
+    def _stabilized(self, session_id: str, direction: str) -> bool:
+        """Whether a session may transition in `direction` right now (AI-5d rec 6).
+
+        The window guards **direction reversals only**. The oscillation the guard exists to prevent is
+        `recover → immediately degrade → recover`; two escalations in a row are not oscillation, they
+        are the ladder doing its job under sustained pressure, and delaying them would leave a session
+        that is genuinely drowning at a rung that cannot save it. So a transition continuing in the
+        same direction as the last one is always allowed; only a reversal must wait.
+        """
+        last = self._last_direction.get(session_id)
+        if last is None or last == direction:
+            return True
+        return self._since_transition.get(session_id, 0) >= self._policy.stabilization_samples
+
+    def _hold(self, account: SessionAccount, blocked_reason: str) -> Optional[SchedulerDecision]:
+        """Suppress a transition because the session is still stabilizing.
+
+        Edge-triggered: the first suppression is recorded so an operator can see *why* a camera that
+        clearly wants to degrade is not degrading; subsequent ones are merely counted, because a
+        decision per observation would flood exactly the log this guard protects.
+        """
+        key = account.identity.session_id
+        self.transitions_suppressed += 1
+        if self._announced_hold.get(key):
+            return None
+        self._announced_hold[key] = True
+        decision = SchedulerDecision(
+            identity=account.identity,
+            action="throttled",
+            reason="stabilizing",
+            from_level=account.degradation,
+            to_level=account.degradation,
+            measurement={
+                "queueUtilization": account.queue_utilization,
+                "observationsSinceTransition": float(self._since_transition.get(key, 0)),
+            },
+            detail=(
+                f"held at '{account.degradation}': {blocked_reason} suppressed inside the "
+                f"{self._policy.stabilization_samples}-observation stabilization window"
+            ),
+            at=self._now_iso(),
+        )
+        self._emit(decision)
+        return self._decisions.record(decision)
+
+    def _note_transition(self, session_id: str, direction: str) -> None:
+        self._since_transition[session_id] = 0
+        self._last_direction[session_id] = direction
+        self._announced_hold[session_id] = False
+
+    def _escalate(
+        self, account: SessionAccount, reason: str, analyzers: Optional[List[str]] = None
+    ) -> Optional[SchedulerDecision]:
         current = ladder_index(account.degradation)
         ceiling = ladder_index(self._policy.max_degradation)
         if current >= ceiling:
@@ -391,6 +480,9 @@ class ResourceGovernor:
             return None
         previous = account.degradation
         account.degradation = nxt
+        step = self._restore_step_for(account, nxt, analyzers)
+        account.push_restore(step)
+        self._note_transition(account.identity.session_id, "up")
         decision = SchedulerDecision(
             identity=account.identity,
             action="suspended" if nxt == "suspended" else "degraded",
@@ -404,12 +496,36 @@ class ResourceGovernor:
                     self._policy.prediction_horizon_samples
                 ),
                 "effectiveFps": account.effective_fps,
+                "restoreDepth": float(len(account.restore_stack)),
             },
-            detail=f"{previous} → {nxt} ({reason})",
+            detail=(
+                f"{previous} → {nxt} ({reason})"
+                + (f"; disabled {', '.join(step.disabled_analyzers)}" if step.disabled_analyzers else "")
+            ),
             at=self._now_iso(),
         )
         self._emit(decision)
         return self._decisions.record(decision)
+
+    def _restore_step_for(
+        self, account: SessionAccount, level: str, analyzers: Optional[List[str]]
+    ) -> "RestoreStep":
+        """Capture exactly what entering `level` takes away (AI-5d rec 4).
+
+        Only the rungs that actually remove something record it: `shedding-frames` and `suspended`
+        change how much work arrives, not what the session is capable of, so they have nothing to
+        give back beyond the rung itself.
+        """
+        step = RestoreStep(level=level, sequence=0, at=self._now_iso())
+        if level == "reduced-fps":
+            step.fps_before = account.target_fps
+            step.fps_after = max(self._policy.min_degraded_fps, account.target_fps / 2.0)
+        elif level == "reduced-resolution":
+            step.resolution_scale = self._policy.reduced_resolution_scale
+        elif level == "reduced-behaviors":
+            candidates = [a for a in (analyzers or []) if a not in account.disabled_analyzers]
+            step.disabled_analyzers = self.most_expensive_analyzers(candidates, count=1)
+        return step
 
     def _recover(self, account: SessionAccount) -> Optional[SchedulerDecision]:
         current = ladder_index(account.degradation)
@@ -418,14 +534,28 @@ class ResourceGovernor:
         nxt = DEGRADATION_LADDER[current - 1]
         previous = account.degradation
         account.degradation = nxt
+        # Pop the stack rather than reading the rung: the rung says WHERE we are, the stack says what
+        # was actually taken, and only the latter can be given back in the exact reverse order.
+        restored = account.pop_restore()
+        self._note_transition(account.identity.session_id, "down")
         decision = SchedulerDecision(
             identity=account.identity,
             action="resumed" if previous == "suspended" else "recovered",
             reason="pressure-relieved",
             from_level=previous,
             to_level=nxt,
-            measurement={"queueUtilization": account.queue_utilization},
-            detail=f"{previous} → {nxt} (pressure relieved)",
+            measurement={
+                "queueUtilization": account.queue_utilization,
+                "restoreDepth": float(len(account.restore_stack)),
+            },
+            detail=(
+                f"{previous} → {nxt} (pressure relieved)"
+                + (
+                    f"; restored {', '.join(restored.disabled_analyzers)}"
+                    if restored and restored.disabled_analyzers
+                    else ""
+                )
+            ),
             at=self._now_iso(),
         )
         self._emit(decision)
@@ -454,6 +584,17 @@ class ResourceGovernor:
             and PRIORITY_WEIGHTS.get(account.priority, 2)
             > max((PRIORITY_WEIGHTS.get(a.priority, 2) for a in others), default=0)
         )
+
+    def forget(self, session_id: str) -> None:
+        """Release every per-session bookkeeping entry (AI-5b refinement 8: nothing leaks)."""
+        for store in (
+            self._pressure_streak,
+            self._relief_streak,
+            self._since_transition,
+            self._last_direction,
+            self._announced_hold,
+        ):
+            store.pop(session_id, None)
 
     def effective_fps_for(self, account: SessionAccount) -> float:
         """The analysis rate a session should run at, given its rung. Halves per FPS rung, floored at
@@ -607,6 +748,7 @@ class InferenceScheduler:
         self._accountant.close(identity)
         self._order = [s for s in self._order if s != identity.session_id]
         self._credits.pop(identity.session_id, None)
+        self.governor.forget(identity.session_id)
         if self._cursor >= len(self._order):
             self._cursor = 0
         self.decisions.record(
@@ -717,6 +859,9 @@ class InferenceScheduler:
             "computeResources": self._registry.to_dict(),
             "recentDecisions": self.decisions.recent(decisions),
             "admissionsRefused": self.admissions_refused,
+            # AI-5d rec 6: how often a transition was withheld because a session was still
+            # stabilizing. A number that climbs steadily means the ladder is fighting the workload.
+            "transitionsSuppressed": self.governor.transitions_suppressed,
         }
         if snapshot is not None:
             out["resources"] = snapshot.to_dict()

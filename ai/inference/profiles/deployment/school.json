@@ -11,7 +11,23 @@
   "description": "Safety-first with strict privacy expectations. Intrusion plus crowd for corridor surges; high priority during school hours.",
   "dropPolicy": "drop-oldest",
   "enabledBehaviors": ["intrusion", "crowd", "loitering"],
+  "health": {
+    "degradedBelow": 85,
+    "predictiveDegradation": true,
+    "projectionHorizonSamples": 3,
+    "stabilizationSamples": 3,
+    "trendWindowSamples": 5,
+    "unhealthyBelow": 55
+  },
   "maxSessions": 12,
+  "modelLifecycle": {
+    "autoRollback": true,
+    "detectionDeltaPercent": 30,
+    "drainMs": 2000,
+    "latencyRegressionPercent": 15,
+    "requireValidation": true,
+    "validationFrames": 40
+  },
   "preferredStreamProfile": "sub",
   "profile": "school",
   "queueCapacity": 32,
@@ -19,6 +35,15 @@
     "baseMs": 500,
     "maxAttempts": 10,
     "maxMs": 30000
+  },
+  "recovery": {
+    "autoRecoverCategories": ["connection", "model"],
+    "baseCooldownMs": 30000,
+    "maxCooldownMs": 900000,
+    "maxRestarts": 0,
+    "restartWindowSeconds": 3600,
+    "stabilizationSeconds": 120,
+    "unlimitedRestarts": true
   },
   "scheduler": {
     "admissionControl": true,

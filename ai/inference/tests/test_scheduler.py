@@ -256,7 +256,11 @@ class DegradationLadderTest(unittest.TestCase):
         for _ in range(3):
             scheduler.governor.observe(account, queue_utilization=95.0)
         self.assertEqual(account.degradation, "reduced-behaviors")
-        for _ in range(3):
+        # AI-5d rec 6: the FIRST reversal (escalating → recovering) waits out the stabilization
+        # window, so unwinding three rungs costs `stabilization_samples` extra observations. Full
+        # reversibility is unchanged — it simply refuses to unwind on the first calm reading, which
+        # is the whole point of the guard.
+        for _ in range(3 + policy.stabilization_samples):
             scheduler.governor.observe(account, queue_utilization=5.0)
         self.assertEqual(account.degradation, "none")  # fully reversible
 

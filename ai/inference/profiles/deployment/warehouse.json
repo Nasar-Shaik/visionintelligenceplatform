@@ -12,6 +12,14 @@
   "description": "Large indoor space, many cameras, safety-oriented. Throughput over latency; intrusion and fire must never be disabled.",
   "dropPolicy": "drop-oldest",
   "enabledBehaviors": ["intrusion", "loitering", "occupancy", "fire"],
+  "health": {
+    "degradedBelow": 80,
+    "predictiveDegradation": true,
+    "projectionHorizonSamples": 3,
+    "stabilizationSamples": 3,
+    "trendWindowSamples": 5,
+    "unhealthyBelow": 50
+  },
   "maxSessions": 16,
   "preferredStreamProfile": "sub",
   "profile": "warehouse",
@@ -20,6 +28,14 @@
     "baseMs": 500,
     "maxAttempts": 10,
     "maxMs": 30000
+  },
+  "recovery": {
+    "autoRecoverCategories": ["connection", "model"],
+    "baseCooldownMs": 5000,
+    "maxCooldownMs": 300000,
+    "maxRestarts": 10,
+    "restartWindowSeconds": 3600,
+    "stabilizationSeconds": 30
   },
   "scheduler": {
     "admissionControl": true,

@@ -110,6 +110,22 @@ def run(args: argparse.Namespace) -> int:
         except (OSError, json.JSONDecodeError) as exc:
             print(f"warning: could not read baseline '{args.baseline}': {exc}", file=sys.stderr)
 
+    # Operational gate (Architect AI-5d recs 6 + 7). A change can hold every performance KPI and
+    # still break the runtime under conditions a benchmark never creates — a reconnect burst, a
+    # broken model, a lost accelerator. Benchmarks measure speed; the scenario suite measures whether
+    # the operational logic still holds, and both must pass for a change to be accepted.
+    scenarios: dict = {}
+    if args.scenarios:
+        from production_sim import production_suite, summarize
+
+        scenarios = summarize(production_suite())
+        print("\n--- production condition scenarios ---")
+        for result in scenarios["results"]:
+            status = "PASS" if result["passed"] else "FAIL"
+            print(f"[{status}] {result['scenario']}")
+            for violation in result["violations"]:
+                print(f"         {violation}", file=sys.stderr)
+
     artifacts = {
         "benchmark.json": {"deploymentClass": args.deployment, "reports": reports},
         "runtime_metrics.json": {"metrics": runtime_metrics},
@@ -118,6 +134,8 @@ def run(args: argparse.Namespace) -> int:
     }
     if comparisons:
         artifacts["comparison.json"] = {"comparisons": comparisons}
+    if scenarios:
+        artifacts["scenarios.json"] = scenarios
     for name, doc in artifacts.items():
         with open(os.path.join(args.output, name), "w", encoding="utf-8") as fh:
             json.dump(doc, fh, indent=2, sort_keys=True)
@@ -133,7 +151,10 @@ def run(args: argparse.Namespace) -> int:
     regressed = [c for c in comparisons if c.get("comparable") and c.get("regressed")]
     if regressed:
         print(f"\nBENCHMARK REGRESSION in {len(regressed)} workload(s) — rejecting.", file=sys.stderr)
-    return 1 if (failed or regressed) else 0
+    broken = scenarios.get("failed", []) if scenarios else []
+    if broken:
+        print(f"\nOPERATIONAL REGRESSION in scenario(s): {', '.join(broken)} — rejecting.", file=sys.stderr)
+    return 1 if (failed or regressed or broken) else 0
 
 
 def _summary_text(deployment: str, reports: List[dict], env: dict) -> str:
@@ -183,6 +204,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-budget", action="store_true", help="measure only; do not evaluate against a budget")
     p.add_argument("--baseline", help="path to a previous benchmark.json to compare against (evidence gate)")
     p.add_argument("--threshold", type=float, default=5.0, help="percent change below which a delta is noise")
+    p.add_argument("--scenarios", action="store_true", help="also run the AI-5d production condition suite (operational gate)")
     p.add_argument("--output", default="benchmark-output", help="output directory")
     return p
 

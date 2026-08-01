@@ -104,7 +104,11 @@ justification, an ADR, and a review. "It would be convenient here" is not a just
 | `StreamPipeline` (AI-5b)     | The queue between existing stages 3 and 5 — no new stage                           |
 | `InferenceScheduler` (AI-5c) | **Stage 4**, specified since the reference architecture was written                |
 | `ComputeResource` (AI-5c)    | An operational abstraction behind the unchanged `ModelAdapter` seam                |
-| Operational contracts (both) | Additive, operational-only; the **five frozen perception contracts are untouched** |
+| `HealthMonitor` (AI-5d)      | Interprets measurements existing stages already emit — no new instrumentation      |
+| `AutoRecovery` (AI-5d)       | **Executes** the frozen AI-5b failure taxonomy; adds no new judgement              |
+| `ModelSlot` (AI-5d)          | One indirection **behind** the unchanged `ModelAdapter` seam — not a new stage     |
+| `DiagnosticsJournal` (AI-5d) | A **sink** on the operational log a session already writes to — not a new emitter  |
+| Operational contracts (all)  | Additive, operational-only; the **five frozen perception contracts are untouched** |
 
 The five frozen contracts — `DetectionResult` → `Track` → `BehaviorResult` → `CompositeBehavior` →
 `EventEnvelope` — remain additive-only, exactly as [ED-0039](../../project/ENGINEERING_DECISION_LOG.md)

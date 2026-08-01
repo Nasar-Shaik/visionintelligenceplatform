@@ -10,6 +10,14 @@
   "description": "Low camera count, low activity, cost-sensitive. Aggressive sampling is fine - an office corridor rarely needs 5 fps.",
   "dropPolicy": "drop-oldest",
   "enabledBehaviors": ["intrusion", "occupancy"],
+  "health": {
+    "degradedBelow": 70,
+    "predictiveDegradation": true,
+    "projectionHorizonSamples": 3,
+    "stabilizationSamples": 3,
+    "trendWindowSamples": 5,
+    "unhealthyBelow": 40
+  },
   "maxSessions": 8,
   "preferredStreamProfile": "sub",
   "profile": "office",
@@ -18,6 +26,14 @@
     "baseMs": 500,
     "maxAttempts": 10,
     "maxMs": 30000
+  },
+  "recovery": {
+    "autoRecoverCategories": ["connection", "model"],
+    "baseCooldownMs": 10000,
+    "maxCooldownMs": 600000,
+    "maxRestarts": 3,
+    "restartWindowSeconds": 3600,
+    "stabilizationSeconds": 60
   },
   "scheduler": {
     "admissionControl": true,

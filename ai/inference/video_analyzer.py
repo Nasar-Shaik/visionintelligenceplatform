@@ -51,6 +51,17 @@ from zones import ZoneEngine
 _RUNTIME_VERSION = "0.1.0"
 
 
+def _own_slot(adapter: ModelAdapter, binding: ModelBinding):  # noqa: ANN202 - ModelSlot
+    """A private, never-swapped slot for an analyzer nobody handed one to.
+
+    Imported lazily so the AI-1…AI-4 analysis path keeps its exact import graph: model lifecycle is an
+    AI-5d operational concern and the perception pipeline must not depend on it to run.
+    """
+    from model_lifecycle import ModelSlot
+
+    return ModelSlot(adapter, binding)
+
+
 @dataclass
 class AnalyzeOptions:
     """Configurable playground options (Architect rec 5) — all optional with sensible defaults."""
@@ -176,10 +187,10 @@ class VideoAnalyzer:
         clock: Callable[[], float] = time.perf_counter,
         now_iso: Optional[Callable[[], str]] = None,
         id_gen: Optional[Callable[[], str]] = None,
+        slot=None,  # noqa: ANN001 - model_lifecycle.ModelSlot (AI-5d; None = a private slot)
     ) -> None:
-        self._adapter = adapter
         self._options = options
-        self._adapter.load({"labels": list(options.labels)})
+        adapter.load({"labels": list(options.labels)})
         self._postprocessor = postprocessor or ConfidencePostprocessor(labels=options.labels)
         self._tracker = tracker or NoopTracker()
         self._translator = translator or DefaultResultTranslator()
@@ -188,13 +199,19 @@ class VideoAnalyzer:
         self._clock = clock
         self._now_iso = now_iso or (lambda: _iso(time.time()))
         self._id_gen = id_gen or deterministic_id_gen("evt")
-        self._model = ModelBinding(
+        binding = ModelBinding(
             name=options.model,
             version=options.model_version,
             task="detection",
             family="*",
             accelerator=options.accelerator,
         )
+        # AI-5d: the analyzer holds a SLOT, not an adapter, and reads it per frame. That single
+        # indirection is what makes a model version swap zero-downtime — promoting a version changes
+        # what the next frame executes and nothing else, so no session stops and no queue drains.
+        # When no slot is supplied the analyzer owns a private one, so every existing caller and every
+        # existing behavior is unchanged.
+        self._slot = slot if slot is not None else _own_slot(adapter, binding)
         # Tracking (AI-2): TrackManager owns lifecycle; the associator is the only swappable part.
         self._manager: Optional[TrackManager] = None
         self._counting: Optional[CountingEngine] = None
@@ -252,6 +269,24 @@ class VideoAnalyzer:
                 self._composite_store = BehaviorLifecycleStore(
                     camera_id=options.camera_id, session_id=options.session_id, tenant_id=options.tenant_id
                 )
+
+    # --- the model seam (AI-5d) ---------------------------------------------------
+    # Read through the slot on every access rather than cached at construction: a version promoted
+    # mid-session must reach the very next frame, and a cached reference is precisely what would
+    # leave a long-running session serving the old model forever.
+
+    @property
+    def _adapter(self):  # noqa: ANN202 - pipeline.ModelAdapter
+        return self._slot.adapter
+
+    @property
+    def _model(self) -> ModelBinding:
+        return self._slot.binding
+
+    @property
+    def slot(self):  # noqa: ANN201 - model_lifecycle.ModelSlot
+        """This analyzer's model slot — what a lifecycle transition swaps to switch traffic."""
+        return self._slot
 
     def analyze(self, decoder: FrameDecoder, sampler: Optional[FrameSampler] = None) -> AnalyzeResult:
         """Batch analysis over a FINITE source — unchanged behavior, now expressed as a loop over

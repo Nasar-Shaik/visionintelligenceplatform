@@ -94,6 +94,41 @@ class Trend:
 
 
 @dataclass
+class RestoreStep:
+    """One entry on a session's **restoration stack** (Architect AI-5d rec 4).
+
+    A rung is not what was actually taken away. `reduced-behaviors` disabled *specific* analyzers, and
+    re-enabling a different set is not the reverse of that — it is merely the same rung count. Each
+    degradation therefore pushes exactly what it removed and each recovery pops it, which makes
+    exact-reverse restoration a structural property rather than an intention.
+    """
+
+    level: str
+    sequence: int
+    disabled_analyzers: List[str] = field(default_factory=list)
+    fps_before: Optional[float] = None
+    fps_after: Optional[float] = None
+    resolution_scale: Optional[float] = None
+    at: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        out: dict = {
+            "level": self.level,
+            "sequence": self.sequence,
+            "disabledAnalyzers": list(self.disabled_analyzers),
+        }
+        for key, value in (
+            ("fpsBefore", self.fps_before),
+            ("fpsAfter", self.fps_after),
+            ("resolutionScale", self.resolution_scale),
+            ("at", self.at),
+        ):
+            if value is not None:
+                out[key] = round(value, 3) if isinstance(value, float) else value
+        return out
+
+
+@dataclass
 class SessionAccount:
     """Measured cost + service level of ONE session. Owned exclusively by that session (rec 7)."""
 
@@ -116,6 +151,14 @@ class SessionAccount:
     effective_fps: float = 0.0
     health: str = "unknown"
     disabled_analyzers: List[str] = field(default_factory=list)
+    # AI-5d: what each degradation step took away, newest last. Popped in reverse on recovery, which
+    # is what makes progressive restoration exact rather than approximate.
+    restore_stack: List[RestoreStep] = field(default_factory=list)
+    degradation_sequence: int = 0
+    # The health score most recently computed for this session (AI-5d). Evidence only — the governor
+    # decides; health never moves a session down the ladder by itself.
+    health_score: Optional[float] = None
+    predicted_decline: bool = False
     # Attributed shares (estimates — see module docstring)
     cpu_percent: Optional[float] = None
     memory_mb: Optional[float] = None
@@ -154,6 +197,32 @@ class SessionAccount:
         self.queue_trend.observe(queue_utilization)
         self.latency_trend.observe(event_latency_ms)
 
+    # --- the restoration stack (AI-5d rec 4) --------------------------------------
+
+    def push_restore(self, step: RestoreStep) -> RestoreStep:
+        """Record what a degradation step took away, so recovery knows exactly what to give back."""
+        self.degradation_sequence += 1
+        step.sequence = self.degradation_sequence
+        self.restore_stack.append(step)
+        for analyzer in step.disabled_analyzers:
+            if analyzer not in self.disabled_analyzers:
+                self.disabled_analyzers.append(analyzer)
+        return step
+
+    def pop_restore(self) -> Optional[RestoreStep]:
+        """Undo the most recent degradation step — strictly LIFO, never by rung name."""
+        if not self.restore_stack:
+            return None
+        step = self.restore_stack.pop()
+        for analyzer in step.disabled_analyzers:
+            if analyzer in self.disabled_analyzers:
+                self.disabled_analyzers.remove(analyzer)
+        return step
+
+    @property
+    def fully_restored(self) -> bool:
+        return not self.restore_stack and not self.disabled_analyzers
+
     def to_usage_dict(self) -> dict:
         """A `SessionResourceUsage`-shaped snapshot (camelCase; mirrors @vip/contracts)."""
         out: dict = {
@@ -167,7 +236,10 @@ class SessionAccount:
             "reconnectCount": self.reconnect_count,
             "framesProcessed": self.frames_processed,
             "effectiveFps": round(self.effective_fps, 3),
+            "disabledAnalyzers": list(self.disabled_analyzers),
         }
+        if self.health_score is not None:
+            out["healthScore"] = round(self.health_score, 3)
         for key, value in (
             ("cpuPercent", self.cpu_percent),
             ("memoryMb", self.memory_mb),

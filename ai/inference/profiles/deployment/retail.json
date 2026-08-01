@@ -12,6 +12,14 @@
   "description": "Storefront / checkout analytics. Moderate camera counts; queue + crowd behaviors matter; latency is customer-experience relevant.",
   "dropPolicy": "drop-oldest",
   "enabledBehaviors": ["loitering", "queue", "crowd", "occupancy"],
+  "health": {
+    "degradedBelow": 80,
+    "predictiveDegradation": true,
+    "projectionHorizonSamples": 3,
+    "stabilizationSamples": 3,
+    "trendWindowSamples": 5,
+    "unhealthyBelow": 50
+  },
   "maxSessions": 8,
   "preferredStreamProfile": "sub",
   "profile": "retail",
@@ -20,6 +28,14 @@
     "baseMs": 500,
     "maxAttempts": 10,
     "maxMs": 30000
+  },
+  "recovery": {
+    "autoRecoverCategories": ["connection", "model"],
+    "baseCooldownMs": 5000,
+    "maxCooldownMs": 300000,
+    "maxRestarts": 3,
+    "restartWindowSeconds": 3600,
+    "stabilizationSeconds": 30
   },
   "scheduler": {
     "admissionControl": true,
