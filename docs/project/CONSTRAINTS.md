@@ -29,6 +29,52 @@
     14b. **Never commit model weights or dataset bytes to git.** They live in the registry / object storage — models in MLflow (+MinIO), datasets in DVC (+MinIO). Git holds only pointers (`*.dvc`), model cards, and metadata. — _enforced: `.gitignore` (weights/`/datasets/`) + DVC; review._
     14c. **Reference models by registry selector, never by hardcoded path/vendor** ([ADR-0002](../adr/ADR-0002-model-agnostic-inference.md)). — _enforced: review; capability contract._
 
+## AI Runtime evidence discipline (v1.0 closed 2026-08-01 — these are permanent)
+
+> Recorded at the **AI-5e acceptance / AI Runtime Architecture v1.0 closure** review (Architect, 7
+> recommendations). The runtime architecture is now **frozen and closed**; it evolves through better
+> models, faster implementations and hardware integrations — **not through structural expansion**.
+> These seven rules outlive the phase that produced them.
+
+18. **Never certify hardware without measured evidence.** Simulation validates architecture; physical
+    devices validate production. A device stays `pending-validation` until a run against the physical
+    unit says otherwise. — _enforced: `certification.CertificationHarness._status_for()` returns
+    `pending-validation` for any evidence class below `hardware`; `CameraRegistryEntry` **refuses to
+    construct** a `certified` row with no evidence or sub-hardware evidence; negative control
+    `tests/test_certification.py::EvidenceClassTest::test_a_flawless_simulated_run_is_still_not_certified`._
+19. **Never promote capability maturity manually.** Promotion goes through `maturity.promote()` with the
+    **ids** of the reports that justify it: Experimental → Beta needs a passing recorded-footage
+    evaluation; Beta → Production needs, additionally, a `certified` compatibility run, a passed soak and
+    a non-regressing benchmark. Demotion needs nothing — discovering something is worse than believed
+    must never be harder than claiming it is better. — _enforced: `maturity.py`; `tests/test_maturity.py`.
+    A hand-edit of [CAPABILITY_MATURITY](../architecture/future/CAPABILITY_MATURITY.md) is a constraint
+    violation, not a documentation update._
+20. **Grow the CCTV dataset library; it is the asset.** Future perception improvements come from **better
+    datasets, not deeper runtime abstraction**. Every case records a licence or consent basis, expectations
+    written from what a **human** saw (never from current output), and at least one **negative** expectation
+    — a false positive costs a deployment more than a miss. — _enforced: `dataset.py` refuses a case with
+    no licence and a case filed under the wrong scenario; footage `.gitignore` refuses bytes into git;
+    `evaluate_cli.py --gate` treats `footage-missing` as a failure, never a pass._
+21. **Expand the compatibility registry with every deployment.** A validated device permanently records
+    manufacturer · model · firmware · codecs · stream profiles · ONVIF capabilities · known issues ·
+    benchmark history · certification history. The fifth Hikvision deployment should cost a fraction of
+    the first, and that only happens if the first wrote down what it learned. — _enforced:
+    `profiles/cameras/*.json` are data, not code; `CameraRegistry.certify()` is the only mutator, and
+    discovery deliberately **never** changes a status._
+22. **The AI Playground is the primary engineering workbench.** Every new model, behaviour and
+    optimization proves itself there — annotated video, timeline, incident candidates, performance
+    breakdown — **before** it reaches production. — _enforced: review; `playground_cli.py` +
+    `report.html` are the artifact of record for a change to perception._
+23. **Maintain benchmark governance.** Baseline → optimization → benchmark → regression comparison →
+    accept or reject. No performance claim without a comparison against the accepted baseline, and no
+    comparison across differing configuration or hardware fingerprints. — _enforced:
+    `benchmark_cli.py --baseline` **exits non-zero on regression**; `BenchmarkComparison.comparable`
+    guards fingerprint mismatch; `--scenarios` folds the 17 production simulations into the same gate._
+24. **Keep architectural discipline: no new abstraction layer without necessity.** AI Runtime
+    Architecture v1.0 is complete. Improve it through implementation quality, not structural expansion;
+    a new layer requires an ADR and a platform-wide justification. "It would be convenient here" is not
+    one. — _enforced: `check:imports`; ADR requirement; review._
+
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._
