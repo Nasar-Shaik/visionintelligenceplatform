@@ -56,6 +56,8 @@ headers). Every route is **permission-gated** (deny-by-default via
 | GET    | `/cameras/:id/probes/metrics`       | **P-2.2** Probe performance (`?window=`)             | `camera:read`   |
 | GET    | `/cameras/:id/probes/:probeId`      | **P-2.2** Replay a stored report — contacts nothing  | `camera:read`   |
 | GET    | `/cameras/:id/evidence`             | **P-2.2** Every record, one chronology (`?window=`)  | `camera:read`   |
+| GET    | `/cameras/:id/confidence`           | **P-2.3** Reliability trend (`?window=`) — derived   | `camera:read`   |
+| GET    | `/cameras/:id/decisions`            | **P-2.3** Why the platform did what it did           | `camera:read`   |
 | GET    | `/cameras/metrics`                  | **P-2.2** Fleet probe performance (`?window=`)       | `camera:read`   |
 | GET    | `/health` `/ready` `/metrics` `/`   | liveness / readiness / metrics / info                | —               |
 
@@ -211,3 +213,36 @@ compatibility register have different bounds, keys and retention rules, so they 
 write side; `GET /cameras/:id/evidence` merges them chronologically on read. The archive is
 authoritative for probes, so a lifecycle entry echoing an archived report is dropped from the merge
 rather than counted twice.
+
+## Chain of custody, and the freeze (P-2.3)
+
+Every evidence item carries the **same envelope** whatever produced it — `evidenceId` ·
+`evidenceType` · `evidenceClass` · `source` · `tenantId` · `producer` · `producerVersion` ·
+`runtimeVersion` · `at` · `correlationId` · `sessionId`. `evidenceId` is **derived from the record**,
+never generated: the timeline is merged from four stores on every request, and a generated id would
+make every navigation link dangle on the next refresh.
+
+Causation runs **both ways**. `rootCauseEvidenceId` answers _why did this happen_;
+`causedEvidenceIds` answers _what did it break_, which is what decides whether an incident is over.
+
+**Persist measurements; derive conclusions** ([CONSTRAINTS §30](../../docs/project/CONSTRAINTS.md)).
+Confidence, trends, decisions and metrics are pure functions over stored records — there is no writer
+for any of them. `domain/decisions.ts` reconstructs _why was this camera degraded / why was this probe
+marked failed / why did confidence drop_, and **nothing consults a decision**: it is explainability
+only, which is what allows it inside the freeze.
+
+**The unified timeline is the only investigation API** (§32). Consumers read the envelope rather than
+switching on the producer — the console's source and producer labels are lookups with a fallback, and
+a test renders an evidence type the console has never heard of. `diagnostics`, `recovery`,
+`certification` and `session` are declared ahead of their producers, because adding an enum value
+later is the one contract change that is not purely additive for a strict parser.
+
+**Fleet reads are bounded** (rec 5). Sorting and limiting live in the query, not after it; the fleet
+aggregate counts cameras rather than loading them, and `FleetProbeMetrics.sampled` says when the caps
+bit. A sampled aggregate presented as a census is worse than no aggregate.
+
+> **🔒 The Camera Foundation is frozen** ([CONSTRAINTS §31](../../docs/project/CONSTRAINTS.md)):
+> discovery · identity · lifecycle · capability cache · probe pipeline · evidence archive ·
+> operational timeline · compatibility tracking. Extend through **additive contracts only** — a new
+> field, a new enum value, a new validation provider, a new evidence type. A breaking change requires
+> an ADR.

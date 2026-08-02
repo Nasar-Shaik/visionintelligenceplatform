@@ -16,6 +16,7 @@ export const queryKeys = {
     probes: (id: string) => ['cameras', 'probes', id] as const,
     replay: (id: string, probeId: string) => ['cameras', 'probes', id, probeId] as const,
     evidence: (id: string) => ['cameras', 'evidence', id] as const,
+    decisions: (id: string) => ['cameras', 'decisions', id] as const,
   },
   events: {
     all: () => ['events'] as const,

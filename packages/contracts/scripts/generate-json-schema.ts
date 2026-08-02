@@ -56,6 +56,11 @@ import {
   CameraEvidenceTimeline,
   FleetProbeMetrics,
   OperationalConfidence,
+  ConfidenceTrend,
+  OperationalDecision,
+  CameraDecisionLog,
+  CapabilityChangeSet,
+  CameraEvidenceEntry,
 } from '../src/camera/camera.js';
 import {
   StreamStatus,
@@ -219,6 +224,11 @@ const schemas: Record<string, z.ZodType> = {
   'compatibility-record': CompatibilityRecord,
   'operational-confidence': OperationalConfidence,
   'camera-evidence-timeline': CameraEvidenceTimeline,
+  'camera-evidence-entry': CameraEvidenceEntry,
+  'confidence-trend': ConfidenceTrend,
+  'operational-decision': OperationalDecision,
+  'camera-decision-log': CameraDecisionLog,
+  'capability-change-set': CapabilityChangeSet,
   'fleet-probe-metrics': FleetProbeMetrics,
   'stream-status': StreamStatus,
   'recording-segment': RecordingSegment,

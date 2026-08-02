@@ -143,6 +143,15 @@ export function useCameraEvidence(id: string | undefined, enabled = true) {
   });
 }
 
+/** Why the platform did what it did (P-2.3). Explainability only — reads stored evidence. */
+export function useCameraDecisions(id: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.cameras.decisions(id ?? ''),
+    queryFn: () => camerasApi.decisions(id as string),
+    enabled: Boolean(id) && enabled,
+  });
+}
+
 /** Retire (decommission, keeping the record) or reinstate a camera. */
 export function useCameraLifecycleAction() {
   const qc = useQueryClient();

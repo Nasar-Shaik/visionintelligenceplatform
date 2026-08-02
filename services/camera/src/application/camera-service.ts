@@ -12,7 +12,10 @@
 import { CreateCameraInput } from '@vip/contracts';
 import type {
   BulkCreateCamerasInput,
+  CameraDecisionLog,
   CameraEvidenceTimeline,
+  CapabilityChangeSet,
+  ConfidenceTrend,
   CameraHealthSummary,
   CameraLifecycleState,
   CameraProbeMetrics,
@@ -85,9 +88,10 @@ import {
   type ProbeRecordDoc,
 } from '../domain/probe-archive.js';
 import { recordCompatibility } from '../domain/compatibility.js';
-import { operationalConfidence } from '../domain/confidence.js';
+import { confidenceTrend, operationalConfidence } from '../domain/confidence.js';
 import { fleetMetrics, inWindow, probeMetrics } from '../domain/probe-metrics.js';
 import { evidenceTimeline } from '../domain/evidence-timeline.js';
+import { explainDecisions } from '../domain/decisions.js';
 import {
   capabilityRefreshDecision,
   declaredCache,
@@ -101,6 +105,17 @@ import { UnavailableDiscoveryProvider, type DiscoveryProvider } from './discover
 import { UnavailableStreamProbe, type StreamProbe } from './stream-probe.js';
 
 const DUPLICATE_KEY = 11000;
+
+/**
+ * Caps on what a fleet read loads (P-2.3, Architect rec 5).
+ *
+ * A fleet view of a hundred-thousand-camera estate must not become a hundred-thousand-document read.
+ * These bounds keep it a page; `FleetProbeMetrics.sampled` says plainly when they bit, because a
+ * sampled aggregate presented as a census is worse than no aggregate — it is a confident number
+ * describing a subset nobody chose.
+ */
+const FLEET_CAMERA_SAMPLE = 2_000;
+const FLEET_PROBE_SAMPLE = 20_000;
 
 /** Best-effort label for a bulk row that failed validation — an index alone is hard to act on. */
 function nameOf(raw: unknown): string {
@@ -720,12 +735,65 @@ export class CameraService {
     const { windowStart, windowEnd } = this.windowFor(options.window ?? 'month');
     return evidenceTimeline({
       cameraId,
+      tenantId: scope.tenantId,
       from: windowStart,
       to: windowEnd,
       timeline: doc.timeline ?? [],
       identityHistory: doc.identityHistory ?? [],
       probes: await this.recordsFor(scope, cameraId),
       compatibility: doc.compatibility ?? [],
+    });
+  }
+
+  /**
+   * How a camera's reliability has moved (P-2.3 rec 4).
+   *
+   * Derived on every read like every other metric here — **confidence is never persisted**. A stored
+   * trend is a second copy of a conclusion that can drift from the evidence behind it, which is the
+   * failure this whole layer exists to prevent.
+   */
+  async confidenceTrend(
+    scope: TenantScope,
+    cameraId: string,
+    options: { window?: HealthTrendWindow } = {},
+  ): Promise<ConfidenceTrend> {
+    const doc = await this.require(scope, cameraId);
+    const window = options.window ?? 'month';
+    const { windowStart, windowEnd } = this.windowFor(window);
+    const records = await this.recordsFor(scope, cameraId);
+    return confidenceTrend({
+      cameraId,
+      window,
+      windowStart,
+      windowEnd,
+      probes: records.filter((record) => inWindow(record.at, windowStart, windowEnd)),
+      current: this.confidenceFor(doc, records, windowStart, windowEnd),
+    });
+  }
+
+  /**
+   * Why the platform did what it did (P-2.3 rec 8).
+   *
+   * **Explainability only — nothing consults this to decide anything.** Reconstructed from stored
+   * evidence so an operator asking *why was this camera degraded?* gets the rule that ran and the
+   * evidence it ran on, with ids that resolve in the evidence timeline.
+   */
+  async decisions(
+    scope: TenantScope,
+    cameraId: string,
+    options: { window?: HealthTrendWindow } = {},
+  ): Promise<CameraDecisionLog> {
+    const doc = await this.require(scope, cameraId);
+    const { windowStart, windowEnd } = this.windowFor(options.window ?? 'month');
+    const records = await this.recordsFor(scope, cameraId);
+    return explainDecisions({
+      cameraId,
+      from: windowStart,
+      to: windowEnd,
+      timeline: doc.timeline ?? [],
+      probes: records,
+      compatibility: doc.compatibility ?? [],
+      confidence: this.confidenceFor(doc, records, windowStart, windowEnd),
     });
   }
 
@@ -743,10 +811,23 @@ export class CameraService {
   ): Promise<FleetProbeMetrics> {
     const window = options.window ?? 'day';
     const { windowStart, windowEnd } = this.windowFor(window);
-    const cameras = (await this.cameras.findMany(scope, {})) as CameraDoc[];
-    const records = ((await this.probes.findMany(scope, {})) as ProbeRecordDoc[]).map(
-      toProbeRecord,
-    );
+    // Bounded on both sides (P-2.3 rec 5). The camera page caps what is loaded for the firmware and
+    // compatibility distributions; the probe query is filtered to the window and capped, and ordered
+    // by the `tenant_at` index rather than sorted after the fact. An estate larger than the cap is
+    // reported as sampled rather than silently presented as complete.
+    const cameras = (await this.cameras.findMany(
+      scope,
+      {},
+      { limit: FLEET_CAMERA_SAMPLE },
+    )) as CameraDoc[];
+    const cameraCount = await this.cameras.count(scope, {});
+    const records = (
+      (await this.probes.findMany(
+        scope,
+        { at: { $gte: windowStart.toISOString() } },
+        { sort: { at: -1 }, limit: FLEET_PROBE_SAMPLE },
+      )) as ProbeRecordDoc[]
+    ).map(toProbeRecord);
 
     const confidenceScores: number[] = [];
     for (const camera of cameras) {
@@ -758,6 +839,8 @@ export class CameraService {
       window,
       windowStart,
       windowEnd,
+      totalCameras: cameraCount,
+      sampled: cameraCount > cameras.length || records.length >= FLEET_PROBE_SAMPLE,
       cameras: cameras.map((camera) => ({
         cameraId: camera._id,
         ...(camera.capabilityCache?.firmware ? { firmware: camera.capabilityCache.firmware } : {}),
@@ -862,6 +945,22 @@ export class CameraService {
       firstObservation: doc.capabilities === undefined,
     });
     const unexpected = changes.filter((change) => change.drift === 'unexpected');
+    // One observation, one logical event (P-2.3 rec 3). A firmware upgrade that moves the codec, the
+    // resolution, a profile and the frame rate is *one upgrade with four consequences*; four
+    // unrelated rows at the same instant read as four problems and lose the thing that explains them.
+    const changeSetId = `chg_${this.ids.probeId()}`;
+    const changeSet: CapabilityChangeSet | undefined =
+      changes.length > 0
+        ? {
+            changeSetId,
+            at: at.toISOString(),
+            cause: changes[0]?.cause ?? 'unexplained',
+            drift: unexpected.length > 0 ? 'unexpected' : 'expected',
+            ...(firmwareMoved && cache.firmware ? { firmwareFrom: cache.firmware } : {}),
+            ...(firmwareMoved && firmware ? { firmwareTo: firmware } : {}),
+            changes,
+          }
+        : undefined;
     const updatedCache = recordRefresh(cache, {
       reason: decision.reason,
       refreshed: true,
@@ -878,6 +977,7 @@ export class CameraService {
               kind: 'firmware-changed' as const,
               evidence: 'measured' as const,
               reasonCode: 'firmware-updated' as const,
+              ...(changeSet ? { changeSetId } : {}),
               detail: `firmware changed from ${cache.firmware} to ${firmware}`,
             },
           ]
@@ -890,6 +990,7 @@ export class CameraService {
         // Cost of the refresh, so "average capability refresh time" is measured rather than guessed
         // at (P-2.2 rec 7).
         durationMs: refreshMs,
+        ...(changeSet ? { changeSetId } : {}),
         detail:
           changes.length > 0
             ? `${unexpected.length > 0 ? 'unexpected' : 'expected'} ${summarizeChanges(changes)}`
@@ -936,6 +1037,7 @@ export class CameraService {
       reason: decision.reason,
       refreshed: true,
       changes,
+      ...(changeSet ? { changeSet } : {}),
     };
   }
 
@@ -1005,26 +1107,47 @@ export class CameraService {
       { _id: record.cameraId },
       { $set: { probeCount: (doc.probeCount ?? 0) + 1 } },
     );
-    const retained = await this.recordsFor(scope, record.cameraId);
-    for (const stale of retained.slice(PROBE_RETENTION)) {
-      await this.probes.deleteOne(scope, { _id: stale.probeId });
+    // Only the tail past the cap is fetched — the retained body is never loaded to be counted.
+    const stale = (await this.probes.findMany(
+      scope,
+      { cameraId: record.cameraId },
+      { sort: { sequence: -1 }, skip: PROBE_RETENTION, limit: 20 },
+    )) as ProbeRecordDoc[];
+    for (const doc of stale) {
+      await this.probes.deleteOne(scope, { _id: doc._id });
     }
   }
 
-  /** A camera's records, newest first. Sorted here so the in-memory and Mongo paths agree exactly. */
-  private async recordsFor(scope: TenantScope, cameraId: string): Promise<CameraProbeRecord[]> {
-    const docs = (await this.probes.findMany(scope, { cameraId })) as ProbeRecordDoc[];
-    // Ordered by the per-camera sequence, not by timestamp: two probes in the same millisecond are
-    // ordinary (a retry, a scheduled sweep) and a time sort would leave their order to the storage
-    // engine — taking the `previousProbeId` chain with it.
-    return docs.map(toProbeRecord).sort((a, b) => b.sequence - a.sequence);
+  /**
+   * A camera's records, newest first — **bounded and ordered in the store** (P-2.3 rec 5).
+   *
+   * The sort and the limit are pushed into the query rather than applied after loading. At a hundred
+   * reports the difference is invisible; at a hundred thousand cameras it is the difference between
+   * a page load and an outage, and nothing in a test fixture would ever reveal it.
+   *
+   * Ordered by the per-camera `sequence`, not by timestamp: two probes in the same millisecond are
+   * ordinary (a retry, a scheduled sweep) and a time sort would leave their order to the storage
+   * engine — taking the `previousProbeId` chain with it.
+   */
+  private async recordsFor(
+    scope: TenantScope,
+    cameraId: string,
+    limit = PROBE_RETENTION,
+  ): Promise<CameraProbeRecord[]> {
+    const docs = (await this.probes.findMany(
+      scope,
+      { cameraId },
+      { sort: { sequence: -1 }, limit },
+    )) as ProbeRecordDoc[];
+    return docs.map(toProbeRecord);
   }
 
   private async latestProbe(
     scope: TenantScope,
     cameraId: string,
   ): Promise<CameraProbeRecord | null> {
-    return (await this.recordsFor(scope, cameraId))[0] ?? null;
+    // One document, not the whole archive. This runs on every probe.
+    return (await this.recordsFor(scope, cameraId, 1))[0] ?? null;
   }
 
   private windowFor(window: HealthTrendWindow): { windowStart: Date; windowEnd: Date } {

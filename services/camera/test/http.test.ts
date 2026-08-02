@@ -24,7 +24,13 @@ const SECRET = 'test-secret-at-least-16-chars';
 const INTERNAL_KEY = 'internal-key-at-least-16-chars';
 
 function matches(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
-  return Object.entries(filter).every(([k, v]) => doc[k] === v);
+  return Object.entries(filter).every(([k, v]) => {
+    // The one operator the service uses — the fleet query's window bound on `at`.
+    if (v && typeof v === 'object' && '$gte' in (v as Record<string, unknown>)) {
+      return String(doc[k]) >= String((v as { $gte: unknown }).$gte);
+    }
+    return doc[k] === v;
+  });
 }
 
 function memoryCollection<T extends Record<string, unknown>>(): Collection<T> {
@@ -37,8 +43,40 @@ function memoryCollection<T extends Record<string, unknown>>(): Collection<T> {
     async findOne(filter: Record<string, unknown>) {
       return store.find((d) => matches(d, filter)) ?? null;
     },
+    /**
+     * A cursor that honours `sort`/`skip`/`limit`.
+     *
+     * P-2.2 loaded collections and sliced them in memory; P-2.3 pushes the ordering and the bound
+     * into the query, and this fake has to model that or the tests would pass against behaviour the
+     * production driver does not have. Supports the `$gte` the fleet query uses on `at`.
+     */
     find(filter: Record<string, unknown>) {
-      return { toArray: async () => store.filter((d) => matches(d, filter)) };
+      let rows = store.filter((d) => matches(d, filter));
+      const cursor = {
+        sort(spec: Record<string, 1 | -1>) {
+          const [[key, direction] = ['', 1]] = Object.entries(spec);
+          rows = [...rows].sort((a, b) => {
+            const left = a[key as keyof typeof a] as string | number;
+            const right = b[key as keyof typeof b] as string | number;
+            if (left === right) return 0;
+            return (left < right ? -1 : 1) * (direction as number);
+          });
+          return cursor;
+        },
+        skip(n: number) {
+          rows = rows.slice(n);
+          return cursor;
+        },
+        limit(n: number) {
+          rows = rows.slice(0, n);
+          return cursor;
+        },
+        toArray: async () => rows,
+      };
+      return cursor;
+    },
+    async countDocuments(filter: Record<string, unknown>) {
+      return store.filter((d) => matches(d, filter)).length;
     },
     async updateOne(filter: Record<string, unknown>, update: { $set?: Partial<T> }) {
       const doc = store.find((d) => matches(d, filter));
@@ -1195,5 +1233,92 @@ describe('immutable probe archive (P-2.2)', () => {
       headers: auth(other),
     });
     expect(res.statusCode).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// P-2.3 — provenance, decisions, trend
+// ---------------------------------------------------------------------------------------------
+
+describe('investigation surface (P-2.3)', () => {
+  const onboard = async (t: string) => (await create(t)).json().data.id as string;
+
+  it('gives every evidence entry the same provenance envelope', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = await onboard(t);
+    await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+    const evidence = (
+      await app.inject({ method: 'GET', url: `/cameras/${id}/evidence`, headers: auth(t) })
+    ).json().data;
+
+    for (const entry of evidence.entries) {
+      // The chain of custody, identical whatever produced the entry — which is what lets a future
+      // producer appear in this timeline without a consumer change.
+      expect(entry.evidenceId).toBeTruthy();
+      expect(entry.evidenceType).toBeTruthy();
+      expect(entry.tenantId).toBe(TENANT);
+      expect(entry.producer).toBeTruthy();
+      expect(entry.links.cameraId).toBe(id);
+    }
+    const probe = evidence.entries.find((e: { source: string }) => e.source === 'probe');
+    expect(probe.producer).toBe('ai-runtime');
+    expect(probe.runtimeVersion).toBe('0.1.0');
+  });
+
+  it('explains why a simulated probe moved nothing', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = await onboard(t);
+    probe.outcome = {
+      result: { ...HARDWARE_OK.result!, evidenceClass: 'simulated' },
+    };
+    await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+
+    const log = (
+      await app.inject({ method: 'GET', url: `/cameras/${id}/decisions`, headers: auth(t) })
+    ).json().data;
+    const unchanged = log.decisions.find((d: { decision: string }) => d.decision === 'unchanged');
+    // Explainability only — this route reconstructs and changes nothing. Without it, a state that
+    // correctly refuses to move looks exactly like a bug.
+    expect(unchanged.reason).toContain('hardware evidence');
+    expect(unchanged.supportingEvidence[0]).toMatch(/^probe:/);
+  });
+
+  it('never persists a derived value on the camera', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = await onboard(t);
+    await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+    const camera = (
+      await app.inject({ method: 'GET', url: `/cameras/${id}`, headers: auth(t) })
+    ).json().data;
+    // Measurements and observations are stored; conclusions are derived on read. A stored confidence
+    // or trend is a second copy of a conclusion that can drift from the evidence behind it.
+    for (const derived of ['confidence', 'confidenceTrend', 'decisions', 'trend', 'summary']) {
+      expect(camera[derived]).toBeUndefined();
+    }
+  });
+
+  it('returns a confidence trend with gaps rather than an interpolated line', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = await onboard(t);
+    await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+    const trend = (
+      await app.inject({ method: 'GET', url: `/cameras/${id}/confidence`, headers: auth(t) })
+    ).json().data;
+    expect(trend.points).toHaveLength(12);
+    // One probe is not a trend, and the buckets say so instead of drawing a line through them.
+    expect(trend.points.every((p: { score?: number }) => p.score === undefined)).toBe(true);
+    expect(trend.current.band).toBe('insufficient-evidence');
+  });
+
+  it('reports a fleet aggregate as a census when it is one', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = await onboard(t);
+    await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+    const fleet = (
+      await app.inject({ method: 'GET', url: '/cameras/metrics', headers: auth(t) })
+    ).json().data;
+    // `sampled` is what stops a bounded read being presented as a complete one at fleet scale.
+    expect(fleet.sampled).toBe(false);
+    expect(fleet.cameras).toBe(1);
   });
 });

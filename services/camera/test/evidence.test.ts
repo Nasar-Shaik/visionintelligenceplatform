@@ -13,7 +13,9 @@ import { classifyDrift, diffCapabilities, directionOf } from '../src/domain/capa
 import { compareProbes, replayProbe } from '../src/domain/probe-archive.js';
 import { recordCompatibility, statusFor } from '../src/domain/compatibility.js';
 import { operationalConfidence } from '../src/domain/confidence.js';
-import { evidenceTimeline } from '../src/domain/evidence-timeline.js';
+import { evidenceTimeline, producersIn } from '../src/domain/evidence-timeline.js';
+import { explainDecisions } from '../src/domain/decisions.js';
+import { confidenceTrend } from '../src/domain/confidence.js';
 import { probeMetrics } from '../src/domain/probe-metrics.js';
 
 const CAPS = (over: Partial<CameraCapabilities> = {}): CameraCapabilities => ({
@@ -321,6 +323,7 @@ describe('the unified evidence timeline (rec 8)', () => {
           source: 'discovery',
         },
       ],
+      tenantId: 'tnt_a',
       probes: [RECORD()],
       compatibility: [
         {
@@ -362,6 +365,7 @@ describe('the unified evidence timeline (rec 8)', () => {
           detail: 'read 3 frames',
         },
       ],
+      tenantId: 'tnt_a',
       identityHistory: [],
       probes: [RECORD()],
       compatibility: [],
@@ -420,5 +424,229 @@ describe('probe metrics (rec 7)', () => {
     });
     expect(metrics.successRatePercent).toBeUndefined();
     expect(metrics.probes).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// P-2.3 — provenance, navigation, decisions, trend
+// ---------------------------------------------------------------------------------------------
+
+const TIMELINE = (over: Partial<Parameters<typeof evidenceTimeline>[0]> = {}) =>
+  evidenceTimeline({
+    cameraId: 'cam_1',
+    tenantId: 'tnt_a',
+    from: new Date('2026-08-01T00:00:00.000Z'),
+    to: new Date('2026-08-03T00:00:00.000Z'),
+    timeline: [],
+    identityHistory: [],
+    probes: [],
+    compatibility: [],
+    ...over,
+  });
+
+describe('evidence provenance (P-2.3 rec 1)', () => {
+  it('gives every entry the same envelope whatever produced it', () => {
+    const timeline = TIMELINE({
+      timeline: [
+        {
+          at: '2026-08-01T09:00:00.000Z',
+          kind: 'state-changed',
+          evidence: 'declared',
+          reasonCode: 'onboarded',
+          to: 'configured',
+          detail: 'onboarded',
+        },
+      ],
+      probes: [RECORD()],
+      compatibility: [
+        {
+          dimension: 'firmware',
+          value: 'V5.7.3',
+          status: 'supported',
+          firstSeenAt: '2026-08-02T09:00:00.000Z',
+          lastSeenAt: '2026-08-02T10:00:00.000Z',
+          evidenceClass: 'hardware',
+          successfulProbes: 1,
+          failedProbes: 0,
+        },
+      ],
+    });
+    // A consumer reading the envelope never has to know what it is looking at — which is what lets a
+    // future evidence type appear without a renderer change (rec 6).
+    for (const entry of timeline.entries) {
+      expect(entry.evidenceId).toBeTruthy();
+      expect(entry.evidenceType).toBeTruthy();
+      expect(entry.tenantId).toBe('tnt_a');
+      expect(entry.producer).toBeTruthy();
+      expect(entry.links.cameraId).toBe('cam_1');
+      expect(entry.at).toBeTruthy();
+    }
+  });
+
+  it('attributes a probe to the runtime that measured it, not the service that stored it', () => {
+    const timeline = TIMELINE({ probes: [RECORD({ runtimeVersion: '0.1.0' })] });
+    expect(timeline.entries[0]).toMatchObject({
+      producer: 'ai-runtime',
+      producerVersion: '3',
+      runtimeVersion: '0.1.0',
+    });
+    expect(producersIn(timeline.entries)).toEqual(['ai-runtime']);
+  });
+
+  it('derives evidence ids that survive a second read', () => {
+    const input = {
+      timeline: [
+        {
+          at: '2026-08-01T09:00:00.000Z',
+          kind: 'state-changed' as const,
+          evidence: 'declared' as const,
+          reasonCode: 'onboarded' as const,
+          to: 'configured' as const,
+          detail: 'onboarded',
+        },
+      ],
+      probes: [RECORD()],
+    };
+    // Every link in the timeline points at an id derived from stored data. A generated id would make
+    // all of them dangle the moment the page was refreshed.
+    expect(TIMELINE(input).entries.map((e) => e.evidenceId)).toEqual(
+      TIMELINE(input).entries.map((e) => e.evidenceId),
+    );
+  });
+});
+
+describe('investigation navigation (P-2.3 rec 2/3)', () => {
+  it('links each entry to the previous one of the same type, not the row above', () => {
+    const timeline = TIMELINE({
+      probes: [
+        RECORD({ probeId: 'prb_2', sequence: 2, at: '2026-08-02T11:00:00.000Z' }),
+        RECORD({ probeId: 'prb_1', sequence: 1, at: '2026-08-02T10:00:00.000Z' }),
+      ],
+      identityHistory: [
+        {
+          at: '2026-08-02T10:30:00.000Z',
+          attribute: 'address',
+          from: '10.0.0.60',
+          to: '10.0.0.64',
+          source: 'discovery',
+        },
+      ],
+    });
+    const newest = timeline.entries.find((e) => e.evidenceId === 'probe:prb_2');
+    // The identity change sits between them in time and is deliberately not the answer to
+    // "the probe before this one".
+    expect(newest?.links.previousEvidenceId).toBe('probe:prb_1');
+  });
+
+  it('walks causation in both directions', () => {
+    const timeline = TIMELINE({
+      timeline: [
+        {
+          at: '2026-08-02T10:00:01.000Z',
+          kind: 'state-changed',
+          evidence: 'measured',
+          reasonCode: 'hardware-evidence',
+          probeId: 'prb_other',
+          from: 'configured',
+          to: 'degraded',
+          detail: 'first-frame failed',
+        },
+      ],
+      probes: [RECORD({ probeId: 'prb_other', correlationId: 'corr-1' })],
+    });
+    const probe = timeline.entries.find((e) => e.evidenceId === 'probe:prb_other');
+    const state = timeline.entries.find((e) => e.source === 'lifecycle');
+    // Backwards answers "why did this happen"; forwards answers "what did it break", which is what
+    // decides whether an incident is over.
+    expect(state?.links.rootCauseEvidenceId).toBe('probe:prb_other');
+    expect(probe?.links.causedEvidenceIds).toContain(state?.evidenceId);
+    // And nothing is ever its own root cause.
+    expect(probe?.links.rootCauseEvidenceId).toBeUndefined();
+  });
+});
+
+describe('operational decisions (P-2.3 rec 8)', () => {
+  const log = (over: Partial<Parameters<typeof explainDecisions>[0]> = {}) =>
+    explainDecisions({
+      cameraId: 'cam_1',
+      from: new Date('2026-08-01T00:00:00.000Z'),
+      to: new Date('2026-08-03T00:00:00.000Z'),
+      timeline: [],
+      probes: [],
+      compatibility: [],
+      confidence: { band: 'insufficient-evidence', observations: 0, basis: [] },
+      ...over,
+    });
+
+  it("explains why a probe was marked failed, in the runtime's own terms", () => {
+    const decisions = log({
+      probes: [RECORD({ outcome: 'failed', failureCode: 'no-first-frame' })],
+    }).decisions;
+    const outcome = decisions.find((d) => d.kind === 'probe-outcome');
+    expect(outcome).toMatchObject({ decision: 'failed', actor: 'runtime' });
+    expect(outcome?.reason).toContain('no-first-frame');
+    // A decision with no supporting evidence is an opinion, and the platform does not issue those.
+    expect(outcome?.supportingEvidence).toEqual(['probe:prb_1']);
+  });
+
+  it('explains why a flawless simulated probe moved nothing', () => {
+    const decisions = log({ probes: [RECORD({ evidenceClass: 'simulated' })] }).decisions;
+    const unchanged = decisions.find((d) => d.decision === 'unchanged');
+    // The negative control, made legible. Without this the state staying put looks like a bug to
+    // whoever is watching it not move.
+    expect(unchanged?.reason).toContain('hardware evidence');
+    expect(unchanged?.evidenceClass).toBe('simulated');
+  });
+
+  it('explains a compatibility status by naming what it deliberately ignores', () => {
+    const decisions = log({
+      compatibility: [
+        {
+          dimension: 'firmware',
+          value: 'V5.8.0',
+          status: 'unsupported',
+          firstSeenAt: '2026-08-02T09:00:00.000Z',
+          lastSeenAt: '2026-08-02T10:00:00.000Z',
+          evidenceClass: 'hardware',
+          successfulProbes: 0,
+          failedProbes: 3,
+        },
+      ],
+    }).decisions;
+    const status = decisions.find((d) => d.kind === 'compatibility-status');
+    expect(status?.reason).toContain('network and credential failures are deliberately excluded');
+  });
+});
+
+describe('confidence trend (P-2.3 rec 4)', () => {
+  it('leaves a gap where nothing was measured rather than interpolating one', () => {
+    const trend = confidenceTrend({
+      cameraId: 'cam_1',
+      window: 'month',
+      windowStart: new Date('2026-07-03T00:00:00.000Z'),
+      windowEnd: new Date('2026-08-02T00:00:00.000Z'),
+      probes: [],
+      current: { band: 'insufficient-evidence', observations: 0, basis: [] },
+    });
+    expect(trend.points).toHaveLength(12);
+    // Interpolating would draw a confident line through a period nobody measured — the same lie as a
+    // lifetime average, just prettier.
+    expect(trend.points.every((p) => p.score === undefined)).toBe(true);
+    expect(trend.points.every((p) => p.band === 'insufficient-evidence')).toBe(true);
+  });
+
+  it('scores a bucket that has enough probes in it', () => {
+    const at = '2026-08-01T23:00:00.000Z';
+    const trend = confidenceTrend({
+      cameraId: 'cam_1',
+      window: 'month',
+      windowStart: new Date('2026-07-03T00:00:00.000Z'),
+      windowEnd: new Date('2026-08-02T00:00:00.000Z'),
+      probes: [1, 2, 3].map((n) => RECORD({ probeId: `prb_${n}`, sequence: n, at })),
+      current: { band: 'stable', score: 100, observations: 3, basis: [] },
+    });
+    const scored = trend.points.filter((p) => p.score !== undefined);
+    expect(scored).toHaveLength(1);
+    expect(scored[0]?.band).toBe('stable');
   });
 });

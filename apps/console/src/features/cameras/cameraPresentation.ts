@@ -1,7 +1,10 @@
 import type {
   Camera,
   CameraCapabilities,
+  CameraEvidenceSeverity,
   CameraEvidenceSource,
+  EvidenceProducer,
+  OperationalDecisionKind,
   CameraHealthStatus,
   CameraLifecycleState,
   CapabilityCache,
@@ -318,15 +321,70 @@ export const PROBE_OUTCOME_LABEL: Record<ProbeOutcome, string> = {
   unavailable: 'Could not run',
 };
 
-/** Which record an evidence entry came from. */
-export const EVIDENCE_SOURCE_LABEL: Record<CameraEvidenceSource, string> = {
+/**
+ * Which record an evidence entry came from.
+ *
+ * **Partial by design, and read through `evidenceSourceLabel`.** The unified timeline is the
+ * platform's only investigation API (P-2.3 rec 6), which means a future producer must be able to
+ * appear in it without a console release. An exhaustive `Record` would make that a compile error
+ * here and a blank cell in production; a lookup with a fallback renders the new source's own name.
+ */
+export const EVIDENCE_SOURCE_LABEL: Partial<Record<CameraEvidenceSource, string>> = {
   lifecycle: 'State',
   identity: 'Identity',
   capability: 'Capabilities',
   probe: 'Probe',
   compatibility: 'Compatibility',
   configuration: 'Configuration',
+  diagnostics: 'Diagnostics',
+  recovery: 'Recovery',
+  certification: 'Certification',
+  session: 'Session',
 };
+
+/** Title-case an unrecognised machine name, so an unknown source reads as words rather than a blank. */
+function humanize(value: string): string {
+  return value.replace(/[-_]/g, ' ').replace(/^./, (c) => c.toUpperCase());
+}
+
+export function evidenceSourceLabel(source: CameraEvidenceSource | string): string {
+  return EVIDENCE_SOURCE_LABEL[source as CameraEvidenceSource] ?? humanize(source);
+}
+
+/** Evidence severity → design-system token. */
+export const EVIDENCE_SEVERITY_KIND: Record<CameraEvidenceSeverity, StatusKind> = {
+  info: 'idle',
+  // `notice` is "worth reading", not "good". `ok` would put a green tick beside a state change,
+  // which reads as an all-clear on the one row that is telling you something changed.
+  notice: 'idle',
+  warning: 'warn',
+};
+
+/** Who produced a piece of evidence — the chain of custody, in words. */
+export const PRODUCER_LABEL: Partial<Record<EvidenceProducer, string>> = {
+  'camera-service': 'Camera service',
+  'ai-runtime': 'AI runtime',
+  discovery: 'Discovery',
+  operator: 'Operator',
+};
+
+export function producerLabel(producer: EvidenceProducer | string): string {
+  return PRODUCER_LABEL[producer as EvidenceProducer] ?? humanize(producer);
+}
+
+/** What kind of decision the platform made. Read through a fallback for the same reason as above. */
+export const DECISION_KIND_LABEL: Partial<Record<OperationalDecisionKind, string>> = {
+  'lifecycle-state': 'Lifecycle state',
+  'probe-outcome': 'Probe outcome',
+  'capability-refresh': 'Capability refresh',
+  'capability-drift': 'Capability drift',
+  'compatibility-status': 'Compatibility',
+  confidence: 'Confidence',
+};
+
+export function decisionKindLabel(kind: OperationalDecisionKind | string): string {
+  return DECISION_KIND_LABEL[kind as OperationalDecisionKind] ?? humanize(kind);
+}
 
 /** How each validation provider should be named to an operator. */
 export const PROVIDER_LABEL: Record<ValidationProvider, string> = {

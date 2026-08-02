@@ -245,6 +245,42 @@ it has no network endpoint, so they are `skipped`. Previously the probe resolved
 host the URI happened to carry — a report of work it had not done, and the root cause of P-2.1's
 113-second test suite.
 
+## P-2.3 — Chain of Custody (closing the Camera Foundation)
+
+Two overlapping acceptance messages arrived for P-2.2; both are folded in here. The foundation could
+already prove what it measured. It could not yet **explain itself**.
+
+| Rec | Recommendation               | Where it landed                                                         |
+| --- | ---------------------------- | ----------------------------------------------------------------------- |
+| 1   | Evidence provenance envelope | Identical on every type; `evidenceId` derived, never generated          |
+| 2   | Bidirectional causation      | `rootCauseEvidenceId` + `causedEvidenceIds`                             |
+| 3   | Capability drift changesets  | `CapabilityChangeSet` — one upgrade, four consequences                  |
+| 4   | Derive, never persist        | Confidence · trends · decisions · metrics all computed on read          |
+| 5   | Fleet readiness              | Sort/limit pushed into the query; `sampled` disclosed                   |
+| 6   | Single investigation API     | Consumers read the envelope; future sources declared ahead of producers |
+| 7   | Freeze the Camera Foundation | CONSTRAINTS §30–32                                                      |
+| 8   | Operational decision records | `explainDecisions()` — reconstructions, consulted by nothing            |
+
+### Why decisions are reconstructed rather than recorded
+
+Rec 8 asks for explainability; rec 4 forbids persisting conclusions. Both are satisfied by deriving:
+every input is already in the archive, no code path consults a decision, and an explanation improves
+retroactively instead of being frozen in the words of whatever version wrote it. That is also what
+keeps the feature inside the freeze — it adds no runtime behaviour at all.
+
+### A pre-existing violation, named rather than quietly kept
+
+Rule 4 says never persist a summary. `Camera.health` is one — a coarse rollup stored since P1-4 for
+list views. It is recomputed from the latest measurement on every write and is never independently
+settable, but it _is_ stored. Deriving it touches a read path shared with other services, so it is a
+P-3 change and is recorded here rather than left for someone to find.
+
+### A defect the tests found
+
+P-2.2's de-duplication dropped **any** timeline entry carrying an archived `probeId` — which silently
+deleted the state changes those probes caused, the exact causal link the timeline exists to show.
+Only the `probe-succeeded`/`probe-failed` echo should be dropped.
+
 ## Gates
 
 P-2: contracts **+10 → 137 schemas**; Contracts 264 · Python 816 · camera 112 · console 67.
@@ -256,3 +292,8 @@ perception contracts untouched.
 P-2.2: **+9 → 149 generated schemas. Contracts 277 · Python 850 · camera 156 · console 76.** No new
 service, no new runtime layer, the five frozen perception contracts untouched. The operational
 evidence subsystem is complete; P-3 begins product functionality.
+
+P-2.3: **+5 → 154 generated schemas. Contracts 277 · Python 850 · camera 171 · console 79.** No new
+service, no new runtime layer, the five frozen perception contracts untouched. **The Camera
+Foundation is architecturally complete and frozen** (CONSTRAINTS §30–32); P-3 begins the operational
+hierarchy.

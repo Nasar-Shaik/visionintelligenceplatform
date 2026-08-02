@@ -27,6 +27,9 @@
  */
 import type {
   CameraProbeRecord,
+  ConfidencePoint,
+  ConfidenceTrend,
+  HealthTrendWindow,
   OperationalConfidence,
   OperationalConfidenceBand,
 } from '@vip/contracts';
@@ -166,4 +169,80 @@ export function operationalConfidence(input: ConfidenceInput): OperationalConfid
     bounded >= STABLE_SCORE ? 'stable' : bounded >= FAILING_SCORE ? 'intermittent' : 'failing';
 
   return { band, score: bounded, observations, basis: basis.slice(0, 6) };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Confidence over time (P-2.3, Architect rec 4)
+// ---------------------------------------------------------------------------------------------
+
+/** How many buckets a trend is cut into. Twelve reads at a glance and survives a narrow column. */
+export const TREND_BUCKETS = 12;
+
+export interface TrendInput {
+  cameraId: string;
+  window: HealthTrendWindow;
+  windowStart: Date;
+  windowEnd: Date;
+  /** Every probe in the window. Bucketed here rather than re-queried per bucket. */
+  probes: readonly CameraProbeRecord[];
+  /** Confidence over the whole window — what a single-number display shows. */
+  current: OperationalConfidence;
+  /** Per-bucket inputs the caller can supply; defaults treat the window as uniform. */
+  offlineCount?: number;
+  credentialFailures?: number;
+}
+
+/**
+ * Cut a window into buckets and score each one (rec 4).
+ *
+ * **The latest confidence answers the wrong question.** A camera reading 92% right now looks
+ * identical whether it has always been 92% or was 40% for three weeks and has just recovered — and
+ * only the second is a reason to send somebody to site. A trend makes the difference visible.
+ *
+ * **A bucket with too little evidence gets no score and is left as a gap.** Interpolating one would
+ * draw a confident line through a period nobody measured, which is the same lie as a lifetime
+ * average — just prettier.
+ */
+export function confidenceTrend(input: TrendInput): ConfidenceTrend {
+  const startMs = input.windowStart.getTime();
+  const spanMs = Math.max(1, input.windowEnd.getTime() - startMs);
+  const bucketMs = spanMs / TREND_BUCKETS;
+
+  const buckets: CameraProbeRecord[][] = Array.from({ length: TREND_BUCKETS }, () => []);
+  for (const probe of input.probes) {
+    const offset = Date.parse(probe.at) - startMs;
+    if (offset < 0 || offset > spanMs) continue;
+    const index = Math.min(TREND_BUCKETS - 1, Math.floor(offset / bucketMs));
+    (buckets[index] as CameraProbeRecord[]).push(probe);
+  }
+
+  const points: ConfidencePoint[] = buckets.map((probes, index) => {
+    const at = new Date(startMs + (index + 1) * bucketMs).toISOString();
+    const confidence = operationalConfidence({
+      probes,
+      // Per-bucket drop counts are not recoverable from the probe archive alone, so the bucket is
+      // scored on what it can actually see. Attributing the window's total drops to every bucket
+      // would make one bad hour look like a bad month.
+      offlineCount: 0,
+      credentialFailures: probes.filter((p) => p.failureCode === 'authentication-failure').length,
+      stateObservations: 0,
+      unexpectedCapabilityChanges: 0,
+      identityChanges: 0,
+    });
+    return {
+      at,
+      band: confidence.band,
+      ...(confidence.score !== undefined ? { score: confidence.score } : {}),
+      observations: confidence.observations,
+    };
+  });
+
+  return {
+    cameraId: input.cameraId,
+    window: input.window,
+    windowStart: input.windowStart.toISOString(),
+    windowEnd: input.windowEnd.toISOString(),
+    points,
+    current: input.current,
+  };
 }

@@ -4,7 +4,9 @@ import type {
   CameraCapabilities,
   CameraHealthReport,
   CameraHealthSummary,
+  CameraDecisionLog,
   CameraEvidenceTimeline,
+  ConfidenceTrend,
   CameraProbeHistory,
   CameraProbeMetrics,
   CameraProbeReport,
@@ -66,6 +68,10 @@ export const camerasApi = {
     http.get<CameraProbeMetrics>(`/camera/cameras/${id}/probes/metrics?window=${window}`),
   evidence: (id: string, window: HealthTrendWindow = 'month') =>
     http.get<CameraEvidenceTimeline>(`/camera/cameras/${id}/evidence?window=${window}`),
+  decisions: (id: string, window: HealthTrendWindow = 'month') =>
+    http.get<CameraDecisionLog>(`/camera/cameras/${id}/decisions?window=${window}`),
+  confidenceTrend: (id: string, window: HealthTrendWindow = 'month') =>
+    http.get<ConfidenceTrend>(`/camera/cameras/${id}/confidence?window=${window}`),
   fleetMetrics: (window: HealthTrendWindow = 'day') =>
     http.get<FleetProbeMetrics>(`/camera/cameras/metrics?window=${window}`),
   retire: (id: string) => http.post<Camera>(`/camera/cameras/${id}/retire`),

@@ -31,8 +31,9 @@
 
 ## AI Runtime evidence discipline (v1.0 closed 2026-08-01 — these are permanent)
 
-<!-- §25–29 extend the same discipline to devices and to the operational evidence layer (P-2 · P-2.1 ·
-     P-2.2). The operational evidence subsystem was declared complete and frozen at the P-2.2 review. -->
+<!-- §25–32 extend the same discipline to devices and to the operational evidence layer (P-2 · P-2.1 ·
+     P-2.2 · P-2.3). The Camera Foundation was declared architecturally complete and frozen at the
+     P-2.2 acceptance review; §30–32 are that freeze and the rules that survive it. -->
 
 > Recorded at the **AI-5e acceptance / AI Runtime Architecture v1.0 closure** review (Architect, 7
 > recommendations). The runtime architecture is now **frozen and closed**; it evolves through better
@@ -113,6 +114,27 @@
     `ai/inference/stream_probe.py` selects stages from the registry and never branches on a provider
     id; `tests/test_stream_probe.py::TestValidationProviders` asserts every provider answers the same
     stage list and that a newly registered one works without touching the engine._
+30. **Persist measurements; derive conclusions.** The platform stores observations and evidence —
+    probe reports, identity changes, capability reads, compatibility observations. It does **not**
+    store confidence, trends, health scores, decision records or summaries: those are computed from
+    the evidence on every read. A stored conclusion is a second copy that can drift from what it was
+    drawn from, and it freezes an explanation in the words of whatever version wrote it. — _enforced:
+    `domain/confidence.ts`, `domain/decisions.ts`, `domain/probe-metrics.ts` are pure functions over
+    stored records with no writer; an HTTP test asserts no derived field is ever persisted on a
+    camera. The one named exception is `Camera.health`, a coarse rollup predating this rule (ADR-0024
+    P-2.3 amendment)._
+31. **The Camera Foundation is frozen.** Discovery · camera identity · lifecycle · capability cache ·
+    probe pipeline · evidence archive · operational timeline · compatibility tracking are complete.
+    They evolve through **additive contracts only** — a new field, a new enum value, a new validation
+    provider, a new evidence type. A breaking change requires an ADR and a platform-wide
+    justification. Product work builds **on** this foundation, not into it. — _enforced: review; ADR
+    requirement; [ADR-0024](../adr/ADR-0024-camera-lifecycle-evidence-gate.md) and its amendments._
+32. **The unified evidence timeline is the only investigation API.** Every operational claim resolves
+    to evidence through one surface, and every entry carries the same chain-of-custody envelope
+    whatever produced it. A consumer must read the envelope rather than switch on the producer, so a
+    new evidence type appears without a consumer release. — _enforced:
+    `domain/evidence-timeline.ts`; the console's source and producer labels are lookups with a
+    fallback, guarded by a test that renders an evidence type the console has never heard of._
 
 ## Engineering process
 

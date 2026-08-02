@@ -25,7 +25,7 @@ export {
   assertOwned,
   type PlainObject,
 } from './guard.js';
-export { TenantRepository, type TenantScoped } from './repository.js';
+export { TenantRepository, type TenantScoped, type FindManyOptions } from './repository.js';
 
 /** Package version — bump per Constitution §7. */
 export const TENANCY_VERSION = '0.1.0';

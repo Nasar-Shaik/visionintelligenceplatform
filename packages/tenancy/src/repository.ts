@@ -10,6 +10,7 @@ import type {
   Document,
   Filter,
   OptionalUnlessRequiredId,
+  Sort,
   UpdateFilter,
   WithId,
 } from 'mongodb';
@@ -21,6 +22,13 @@ import {
   scopedPipeline,
   type PlainObject,
 } from './guard.js';
+
+/** Sorting and bounding pushed into the query, so a large collection is never loaded to be sliced. */
+export interface FindManyOptions<T> {
+  sort?: Partial<Record<keyof T & string, 1 | -1>>;
+  limit?: number;
+  skip?: number;
+}
 
 /** A tenant-scoped record: every persisted document carries its owning tenant. */
 export interface TenantScoped {
@@ -45,9 +53,24 @@ export class TenantRepository<T extends Document & TenantScoped> {
     return this.collection.findOne(scopedFilter(scope, filter as PlainObject) as Filter<T>);
   }
 
-  /** Find all matching documents within the scope. */
-  async findMany(scope: TenantScope, filter: Filter<T> = {}): Promise<WithId<T>[]> {
-    return this.collection.find(scopedFilter(scope, filter as PlainObject) as Filter<T>).toArray();
+  /**
+   * Find matching documents within the scope.
+   *
+   * `options` exists so callers can push sorting and bounding **into the store** rather than loading
+   * a collection and slicing it in memory. An unbounded `findMany` is fine for a hundred rows and is
+   * a denial of service at a hundred thousand — and the difference is invisible in a test fixture,
+   * which is exactly why the bound belongs in the query rather than in the caller's discipline.
+   */
+  async findMany(
+    scope: TenantScope,
+    filter: Filter<T> = {},
+    options: FindManyOptions<T> = {},
+  ): Promise<WithId<T>[]> {
+    let cursor = this.collection.find(scopedFilter(scope, filter as PlainObject) as Filter<T>);
+    if (options.sort) cursor = cursor.sort(options.sort as Sort);
+    if (options.skip !== undefined) cursor = cursor.skip(options.skip);
+    if (options.limit !== undefined) cursor = cursor.limit(options.limit);
+    return cursor.toArray();
   }
 
   /** Update one document within the scope; the update may not touch tenantId. Returns matched count. */

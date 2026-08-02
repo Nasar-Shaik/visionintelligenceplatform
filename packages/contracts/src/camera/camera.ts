@@ -290,6 +290,8 @@ export const CameraTimelineEntry = z.object({
   durationMs: z.number().nonnegative().optional(),
   /** The immutable probe report behind this entry, when one exists (P-2.2, Architect rec 1). */
   probeId: z.string().max(120).optional(),
+  /** Groups the entries of one logical change — a refresh and everything it moved (P-2.3 rec 5). */
+  changeSetId: z.string().max(120).optional(),
   /** Present on `state-changed` — the transition this entry records. */
   from: CameraLifecycleState.optional(),
   to: CameraLifecycleState.optional(),
@@ -1179,6 +1181,29 @@ export const CapabilityChange = z.object({
 export type CapabilityChange = z.infer<typeof CapabilityChange>;
 
 /**
+ * One capability refresh's changes, as a single logical event (P-2.3, Architect rec 5).
+ *
+ * A firmware update that moves the codec, the resolution, a profile and the frame rate produces four
+ * rows at the same instant. Presented as four unrelated lines they read as four problems; presented
+ * as one event with a named cause they read as what they are — *one upgrade, four consequences*. The
+ * grouping is what makes the difference visible, and it costs nothing because the refresh already
+ * knew all four belonged together.
+ */
+export const CapabilityChangeSet = z.object({
+  changeSetId: z.string().min(1).max(120),
+  at: IsoDateTime,
+  /** What accounted for the whole set — the same attribution every member carries. */
+  cause: CapabilityDriftCause,
+  /** `unexpected` when any member is: one unexplained codec change taints the set. */
+  drift: CapabilityDrift,
+  /** Firmware before and after, when the refresh observed a change. */
+  firmwareFrom: z.string().max(100).optional(),
+  firmwareTo: z.string().max(100).optional(),
+  changes: z.array(CapabilityChange).max(50).default([]),
+});
+export type CapabilityChangeSet = z.infer<typeof CapabilityChangeSet>;
+
+/**
  * Result of a capability read (P-2). Capabilities are **cached, not re-queried** — an ONVIF
  * negotiation is several round trips and a device that is asked for its profiles on every session
  * start is a device that will eventually refuse. They refresh only when asked, when stale, or when
@@ -1196,6 +1221,8 @@ export const CapabilityRefreshResult = z.object({
    * which is itself the useful answer most of the time.
    */
   changes: z.array(CapabilityChange).max(50).default([]),
+  /** The same changes as one logical event, with the cause that accounts for them (P-2.3 rec 5). */
+  changeSet: CapabilityChangeSet.optional(),
   /** Set when a refresh was warranted but could not be performed. */
   unavailable: z.string().max(500).optional(),
 });
@@ -1257,6 +1284,111 @@ export const OperationalConfidence = z.object({
   basis: z.array(z.string().max(160)).max(6).default([]),
 });
 export type OperationalConfidence = z.infer<typeof OperationalConfidence>;
+
+/** One point in a confidence trend — a confidence computed over one bucket of the window. */
+export const ConfidencePoint = z.object({
+  /** End of the bucket this point covers. */
+  at: IsoDateTime,
+  band: OperationalConfidenceBand,
+  /** Absent on `insufficient-evidence` — a gap in the line, not a zero (P-2.3 rec 4). */
+  score: z.number().min(0).max(100).optional(),
+  observations: z.number().int().nonnegative(),
+});
+export type ConfidencePoint = z.infer<typeof ConfidencePoint>;
+
+/**
+ * How a camera's reliability has moved (P-2.3, Architect rec 4).
+ *
+ * **The latest confidence answers the wrong question.** A camera reading 92% right now looks
+ * identical whether it has always been 92% or was 40% for three weeks and has just recovered — and
+ * the second is the one an operator planning a site visit needs to know about. A trend makes the
+ * difference visible; a single number cannot.
+ *
+ * Computed from the immutable archive on every read, like every other metric here, so the trend and
+ * the reports behind it can never disagree. **A bucket with too little evidence has no score at
+ * all** and is left as a gap: interpolating one would draw a confident line through a period nobody
+ * measured.
+ */
+export const ConfidenceTrend = z.object({
+  cameraId: z.string().min(1),
+  window: HealthTrendWindow,
+  windowStart: IsoDateTime,
+  windowEnd: IsoDateTime,
+  /** Oldest first, so it reads left to right. */
+  points: z.array(ConfidencePoint).max(60).default([]),
+  /** Confidence over the whole window — what a single-number display should show. */
+  current: OperationalConfidence,
+});
+export type ConfidenceTrend = z.infer<typeof ConfidenceTrend>;
+
+// ---------------------------------------------------------------------------------------------
+// Operational decision records (P-2.3, Architect rec 8) — explainability, not behaviour
+// ---------------------------------------------------------------------------------------------
+
+/** The automated decisions the platform makes about a camera. */
+export const OperationalDecisionKind = z.enum([
+  /** A lifecycle transition the platform applied — or deliberately did not apply. */
+  'lifecycle-state',
+  /** How a probe's outcome was classified. */
+  'probe-outcome',
+  /** Whether a capability refresh went back to the device. */
+  'capability-refresh',
+  /** How a capability change was attributed and whether it needs attention. */
+  'capability-drift',
+  /** What a firmware, codec or provider has been proven to do. */
+  'compatibility-status',
+  /** The operational confidence band, and what moved it. */
+  'confidence',
+]);
+export type OperationalDecisionKind = z.infer<typeof OperationalDecisionKind>;
+
+/** Who or what decided. */
+export const DecisionActor = z.enum(['runtime', 'camera-service', 'operator']);
+export type DecisionActor = z.infer<typeof DecisionActor>;
+
+/**
+ * Why the platform did what it did (P-2.3, Architect rec 8).
+ *
+ * **Explainability only — this introduces no runtime behaviour.** Nothing consults a decision record
+ * to decide anything; they are reconstructed from stored evidence so an operator can ask *why was
+ * this camera degraded?*, *why was this probe marked failed?*, *why did confidence drop?* and get the
+ * actual rule and the actual evidence rather than a guess.
+ *
+ * **Derived, never persisted** (rec 4). Every input is already in the archive, and a stored decision
+ * would be a second copy of a conclusion that could drift from the evidence it was drawn from — the
+ * precise failure the evidence layer exists to prevent. It also means an explanation improves
+ * retroactively when the explanation improves, instead of leaving old records phrased in the words
+ * of whatever version wrote them.
+ */
+export const OperationalDecision = z.object({
+  kind: OperationalDecisionKind,
+  at: IsoDateTime,
+  actor: DecisionActor,
+  /** What was decided, in the platform's own vocabulary — `degraded`, `failed`, `unsupported`. */
+  decision: z.string().min(1).max(120),
+  /** The rule that produced it, in the words an operator needs. */
+  reason: z.string().min(1).max(500),
+  /** The machine-readable reason, where the decision has one. */
+  reasonCode: TimelineReasonCode.optional(),
+  /**
+   * Evidence ids backing the decision — resolvable in the evidence timeline.
+   *
+   * A decision with no supporting evidence is an opinion, and the platform does not issue those.
+   */
+  supportingEvidence: z.array(z.string().max(200)).max(10).default([]),
+  /** The class of evidence the decision rests on. Absent when it rests on configuration alone. */
+  evidenceClass: EvidenceClass.optional(),
+});
+export type OperationalDecision = z.infer<typeof OperationalDecision>;
+
+/** Every explainable decision about one camera, most recent first. */
+export const CameraDecisionLog = z.object({
+  cameraId: z.string().min(1),
+  from: IsoDateTime,
+  to: IsoDateTime,
+  decisions: z.array(OperationalDecision).max(200).default([]),
+});
+export type CameraDecisionLog = z.infer<typeof CameraDecisionLog>;
 
 export const CameraHealthSummary = z.object({
   cameraId: z.string().min(1),
@@ -1389,6 +1521,21 @@ export const CameraProbeRecord = z.object({
   capabilitySnapshotAt: IsoDateTime.optional(),
   /** When the camera's identity last changed, as of this probe. */
   identitySnapshotAt: IsoDateTime.optional(),
+  /**
+   * The record this one corrects (P-2.3, Architect rec 1).
+   *
+   * **A correction is never an update.** When a report turns out to be wrong — a probe misattributed
+   * to the wrong device, a measurement invalidated by a runtime defect — the fix is a new record
+   * pointing back at the old one, and the old one stays exactly as it was written. Overwriting it
+   * would destroy the only evidence that the platform once believed something different, which is
+   * frequently the thing an investigation is actually about.
+   *
+   * Deliberately a **backward** pointer only: recording the correction on the superseded record
+   * would be a modification of stored evidence, which is the rule this field exists to keep.
+   */
+  supersedes: z.string().max(120).optional(),
+  /** Why the earlier record was superseded, in the operator's words. */
+  supersedesReason: z.string().max(300).optional(),
 });
 export type CameraProbeRecord = z.infer<typeof CameraProbeRecord>;
 
@@ -1536,6 +1683,13 @@ export const CameraEvidenceSource = z.enum([
   'probe',
   'compatibility',
   'configuration',
+  // Declared ahead of their producers (P-2.3, Architect rec 6). A consumer that already handles
+  // these cannot be broken by the slice that starts emitting them, and adding an enum value later
+  // is the one change to a published contract that is not purely additive for a strict parser.
+  'diagnostics',
+  'recovery',
+  'certification',
+  'session',
 ]);
 export type CameraEvidenceSource = z.infer<typeof CameraEvidenceSource>;
 
@@ -1544,16 +1698,104 @@ export const CameraEvidenceSeverity = z.enum(['info', 'notice', 'warning']);
 export type CameraEvidenceSeverity = z.infer<typeof CameraEvidenceSeverity>;
 
 /**
- * One event in a camera's life, whatever produced it (P-2.2, Architect rec 8).
+ * What *kind* of thing an evidence item is (P-2.3, Architect rec 2).
+ *
+ * Finer-grained than `CameraEvidenceSource`, which says which record it came from. The type is what
+ * a consumer keys behaviour off — "show me every probe report", "show me every identity change" —
+ * and it is what lets a **new evidence type appear in the timeline without a UI redesign** (rec 7):
+ * a renderer that switches on type must fall back, and one that reads the common envelope need not
+ * switch at all.
+ */
+export const EvidenceType = z.enum([
+  'probe-report',
+  'state-change',
+  'identity-change',
+  'capability-refresh',
+  'firmware-change',
+  'compatibility-observation',
+  'configuration-change',
+  'credential-rotation',
+]);
+export type EvidenceType = z.infer<typeof EvidenceType>;
+
+/** Which component produced a piece of evidence. */
+export const EvidenceProducer = z.enum(['camera-service', 'ai-runtime', 'discovery', 'operator']);
+export type EvidenceProducer = z.infer<typeof EvidenceProducer>;
+
+/**
+ * Where an investigator can go from one piece of evidence (P-2.3, Architect rec 3).
+ *
+ * **`rootCauseEvidenceId` is the field that shortens an investigation.** A camera that went offline,
+ * failed three probes and lost a stream profile produces five rows that look like five problems;
+ * they share one root, and following the pointer to it is the difference between reading a timeline
+ * and understanding it.
+ *
+ * `previousEvidenceId` / `nextEvidenceId` link **related** evidence — the previous item of the same
+ * type — not merely the adjacent row. "The probe before this one" is a question; "the row above" is
+ * a scroll position.
+ */
+export const EvidenceLinks = z.object({
+  cameraId: z.string().min(1),
+  /** The previous item of the same evidence type, when there is one. */
+  previousEvidenceId: z.string().max(200).optional(),
+  nextEvidenceId: z.string().max(200).optional(),
+  /** The earliest item in this entry's causal group — what actually started it. */
+  rootCauseEvidenceId: z.string().max(200).optional(),
+  /**
+   * What this entry went on to cause (P-2.3, Architect rec 2).
+   *
+   * Root-cause navigation has to work in both directions. Walking backwards answers "why did this
+   * happen?"; walking forwards answers "what did it break?" — which is the question asked when
+   * deciding whether an incident is over, and it is unanswerable from a backward chain alone.
+   */
+  causedEvidenceIds: z.array(z.string().max(200)).max(20).default([]),
+  /** The immutable probe report behind this entry. */
+  probeId: z.string().max(120).optional(),
+  /** When the capabilities in force at this moment were last read from the device. */
+  capabilitySnapshotAt: IsoDateTime.optional(),
+  /** Groups the rows of one logical change together (P-2.3 rec 5). */
+  changeSetId: z.string().max(120).optional(),
+});
+export type EvidenceLinks = z.infer<typeof EvidenceLinks>;
+
+/**
+ * One event in a camera's life, whatever produced it (P-2.2 rec 8, provenance added P-2.3 rec 2).
  *
  * Every entry answers the same three questions in the same fields: **what changed** (`summary`,
  * `field`, `from`/`to`), **when** (`at`), and **why** (`reasonCode`, plus the addressable evidence
- * in `probeId`). That uniformity is the point — an investigator should not have to know which of
- * four subsystems recorded a fact in order to read it.
+ * in `links`). That uniformity is the point — an investigator should not have to know which of four
+ * subsystems recorded a fact in order to read it, and **a fifth subsystem should not require a new
+ * renderer** (rec 7).
+ *
+ * The provenance block — `evidenceId` · `evidenceType` · `evidenceClass` · `producer` ·
+ * `producerVersion` · `runtimeVersion` · `at` · `correlationId` — is identical on every evidence
+ * type by construction, so a consumer can display, filter and correlate any of them without knowing
+ * what it is looking at.
  */
 export const CameraEvidenceEntry = z.object({
+  /**
+   * Stable identifier for this evidence item.
+   *
+   * **Derived deterministically from the record it came from**, never generated at read time: these
+   * items are merged from four stores on every request, and a random id would make every link in
+   * `EvidenceLinks` dangle the moment the page was refreshed.
+   */
+  evidenceId: z.string().min(1).max(200),
+  evidenceType: EvidenceType,
   at: IsoDateTime,
   source: CameraEvidenceSource,
+  /**
+   * Tenant that owns this evidence. Redundant with the request's own scoping and carried anyway:
+   * evidence gets exported, attached to tickets and quoted in reports, and a record that cannot say
+   * whose estate it describes is a record that will eventually be attributed to the wrong customer.
+   */
+  tenantId: TenantId,
+  /** The analysis session this evidence came from, when one produced it. */
+  sessionId: z.string().max(120).optional(),
+  producer: EvidenceProducer,
+  /** Version of whatever produced it — a probe version, a cache version. */
+  producerVersion: z.string().max(40).optional(),
+  runtimeVersion: z.string().max(40).optional(),
   /** What changed, in one already-resolved line. */
   summary: z.string().max(300),
   /** Why — machine-readable, so the timeline can be filtered and counted rather than only read. */
@@ -1567,10 +1809,10 @@ export const CameraEvidenceEntry = z.object({
   field: z.string().max(120).optional(),
   from: z.string().max(200).optional(),
   to: z.string().max(200).optional(),
-  /** The immutable probe report behind this entry — the evidence, addressable. */
-  probeId: z.string().max(120).optional(),
   correlationId: z.string().max(120).optional(),
   durationMs: z.number().nonnegative().optional(),
+  /** Where an investigator can go from here (P-2.3 rec 3). */
+  links: EvidenceLinks,
 });
 export type CameraEvidenceEntry = z.infer<typeof CameraEvidenceEntry>;
 
@@ -1596,7 +1838,7 @@ export const CameraEvidenceTimeline = z.object({
   to: IsoDateTime,
   entries: z.array(CameraEvidenceEntry).max(300).default([]),
   /** Which records contributed. A source missing here contributed nothing in this window. */
-  sources: z.array(CameraEvidenceSource).max(6).default([]),
+  sources: z.array(CameraEvidenceSource).max(10).default([]),
   /**
    * True when entries were dropped to fit the bound. The console must say so rather than let a
    * partial chronology read as a complete one.
@@ -1635,6 +1877,11 @@ export const FleetProbeMetrics = z.object({
   windowStart: IsoDateTime,
   windowEnd: IsoDateTime,
   cameras: z.number().int().nonnegative(),
+  /**
+   * True when the aggregate was computed over a bounded sample rather than the whole estate
+   * (P-2.3 rec 5). A sampled number presented as a census is worse than no number.
+   */
+  sampled: z.boolean().default(false),
   /** Cameras with at least one retained probe report in the window. */
   camerasProbed: z.number().int().nonnegative(),
   /** Cameras that have never been probed at all. The denominator nobody remembers to ask for. */

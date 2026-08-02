@@ -38,6 +38,7 @@ import {
   SEVERITY_KIND,
   analysisProfile,
 } from './cameraPresentation';
+import { EvidenceTimelinePanel } from './EvidenceTimelinePanel';
 import { ProbeHistoryPanel } from './ProbeHistoryPanel';
 import { ProbeResultPanel } from './ProbeResultPanel';
 import {
@@ -234,6 +235,8 @@ export function CameraDetailSheet({
           {probeResult ? <ProbeResultPanel probe={probeResult} /> : null}
 
           <ProbeHistoryPanel cameraId={camera.id} />
+
+          <EvidenceTimelinePanel cameraId={camera.id} />
 
           {camera.compatibility.length > 0 ? (
             <section className="space-y-2">

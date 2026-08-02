@@ -857,3 +857,166 @@ describe('probe archive (P-2.2)', () => {
     expect(probed).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// P-2.3 — the unified investigation timeline
+// ---------------------------------------------------------------------------------------------
+
+const ENVELOPE = {
+  tenantId: 'tnt_acme',
+  producer: 'camera-service',
+  evidence: 'measured',
+  severity: 'info',
+  reasonCode: 'derived',
+};
+
+function evidenceReturns(entries: unknown[], sources: string[]) {
+  server.use(
+    mswHttp.get('/api/camera/cameras/:id/evidence', () =>
+      HttpResponse.json({
+        success: true,
+        data: {
+          cameraId: 'cam_1',
+          from: '2026-07-03T00:00:00.000Z',
+          to: '2026-08-02T00:00:00.000Z',
+          entries,
+          sources,
+          truncated: false,
+        },
+      }),
+    ),
+  );
+}
+
+describe('evidence timeline (P-2.3)', () => {
+  it('renders an evidence type the console has never heard of', async () => {
+    authAs(['operator']);
+    listReturns([CAMERA]);
+    evidenceReturns(
+      [
+        {
+          ...ENVELOPE,
+          evidenceId: 'rec:1',
+          // Neither of these exists in the console's label maps. The unified timeline is the only
+          // investigation API (rec 6), so a producer that ships before a console release must still
+          // appear — reading its own name in words rather than a blank cell.
+          evidenceType: 'recovery-attempt',
+          source: 'recovery',
+          producer: 'ai-runtime',
+          at: '2026-08-01T10:00:00.000Z',
+          summary: 'session restarted after three consecutive decode failures',
+          links: { cameraId: 'cam_1', causedEvidenceIds: [] },
+        },
+      ],
+      ['recovery'],
+    );
+    renderWithProviders(<CamerasPage />, { store });
+    await openDetail();
+
+    expect(
+      await screen.findByText(/session restarted after three consecutive decode failures/),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('Recovery').length).toBeGreaterThan(0);
+    expect(screen.getByText('AI runtime')).toBeInTheDocument();
+  });
+
+  it('shows what an entry was caused by and what it went on to cause', async () => {
+    authAs(['operator']);
+    listReturns([CAMERA]);
+    evidenceReturns(
+      [
+        {
+          ...ENVELOPE,
+          evidenceId: 'tl:4:state-changed',
+          evidenceType: 'state-change',
+          source: 'lifecycle',
+          at: '2026-08-01T10:00:01.000Z',
+          summary: 'first-frame failed',
+          severity: 'warning',
+          links: {
+            cameraId: 'cam_1',
+            rootCauseEvidenceId: 'probe:prb_9',
+            causedEvidenceIds: [],
+          },
+        },
+        {
+          ...ENVELOPE,
+          evidenceId: 'probe:prb_9',
+          evidenceType: 'probe-report',
+          source: 'probe',
+          producer: 'ai-runtime',
+          at: '2026-08-01T10:00:00.000Z',
+          summary: 'probe failed: no-first-frame via rtsp',
+          severity: 'warning',
+          links: { cameraId: 'cam_1', causedEvidenceIds: ['tl:4:state-changed'] },
+        },
+      ],
+      ['lifecycle', 'probe'],
+    );
+    renderWithProviders(<CamerasPage />, { store });
+    await openDetail();
+
+    // Backwards answers "why did this happen"; forwards answers "what did it break".
+    expect(await screen.findByText(/caused by: probe failed: no-first-frame/)).toBeInTheDocument();
+    expect(screen.getByText(/led to 1 further event/)).toBeInTheDocument();
+  });
+
+  it('explains a decision and shows the evidence behind it', async () => {
+    authAs(['operator']);
+    listReturns([CAMERA]);
+    evidenceReturns(
+      [
+        {
+          ...ENVELOPE,
+          evidenceId: 'probe:prb_9',
+          evidenceType: 'probe-report',
+          source: 'probe',
+          producer: 'ai-runtime',
+          at: '2026-08-01T10:00:00.000Z',
+          summary: 'probe succeeded via rtsp',
+          links: { cameraId: 'cam_1', causedEvidenceIds: [] },
+        },
+      ],
+      ['probe'],
+    );
+    server.use(
+      mswHttp.get('/api/camera/cameras/:id/decisions', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            cameraId: 'cam_1',
+            from: '2026-07-03T00:00:00.000Z',
+            to: '2026-08-02T00:00:00.000Z',
+            decisions: [
+              {
+                kind: 'lifecycle-state',
+                at: '2026-08-01T10:00:00.000Z',
+                actor: 'camera-service',
+                decision: 'unchanged',
+                reason:
+                  'this probe measured a simulated source, not the camera. States that describe a physical device may only be entered from hardware evidence, so nothing moved',
+                supportingEvidence: ['probe:prb_9'],
+                evidenceClass: 'simulated',
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    const user = await openDetailWithRender();
+
+    await user.click(await screen.findByRole('button', { name: /why did the platform do this/i }));
+
+    // The negative control, made legible: without an explanation, a state that correctly refuses to
+    // move looks exactly like a bug.
+    expect(
+      await screen.findByText(/may only be entered from hardware evidence/),
+    ).toBeInTheDocument();
+    expect(screen.getByText('probe:prb_9')).toBeInTheDocument();
+  });
+});
+
+async function openDetailWithRender() {
+  renderWithProviders(<CamerasPage />, { store });
+  return openDetail();
+}

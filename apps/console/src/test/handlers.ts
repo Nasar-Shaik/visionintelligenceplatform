@@ -19,4 +19,18 @@ export const handlers: RequestHandler[] = [
       data: { cameraId: params.id, records: [], total: 0, retained: 0, evicted: 0 },
     }),
   ),
+  /** An empty evidence timeline (P-2.3) — read on every detail-sheet open. */
+  http.get('/api/camera/cameras/:id/evidence', ({ params }) =>
+    HttpResponse.json({
+      success: true,
+      data: {
+        cameraId: params.id,
+        from: '2026-07-03T00:00:00.000Z',
+        to: '2026-08-02T00:00:00.000Z',
+        entries: [],
+        sources: [],
+        truncated: false,
+      },
+    }),
+  ),
 ];

@@ -161,3 +161,52 @@ subsystem and closes it; P-3 is product functionality, not further infrastructur
 **The invariant this adds:** stored evidence is never modified. A correction is a new record;
 retention drops whole reports and says how many; and replay is a pure function over a stored record
 with no camera, network or probe port in scope — it _cannot_ become a live measurement.
+
+## Amendment (P-2.3, 2026-08-02) — chain of custody, and the Camera Foundation freeze
+
+The closing slice. Two acceptance messages arrived for P-2.2 with overlapping recommendations; both
+are folded in here.
+
+1. **Every evidence item carries the same chain-of-custody envelope** — `evidenceId` ·
+   `evidenceType` · `evidenceClass` · `source` · `tenantId` · `producer` · `producerVersion` ·
+   `runtimeVersion` · `at` · `correlationId` · `sessionId`. Identical on every type by construction.
+   `evidenceId` is **derived deterministically from the record it came from**, never generated at
+   read time: the timeline is merged from four stores on every request, and a generated id would make
+   every navigation link dangle on the next refresh.
+2. **Causation navigates in both directions.** Backwards (`rootCauseEvidenceId`) answers _why did
+   this happen_; forwards (`causedEvidenceIds`) answers _what did it break_, which is the question
+   that decides whether an incident is over and is unanswerable from a backward chain alone.
+   `previousEvidenceId`/`nextEvidenceId` link the previous item **of the same type** — "the probe
+   before this one" is a question; "the row above" is a scroll position.
+3. **Related capability changes are one logical event.** A firmware upgrade that moves the codec, the
+   resolution, a profile and the frame rate is _one upgrade with four consequences_; four unrelated
+   rows at the same instant read as four problems and lose the thing that explains them.
+4. **Nothing derived is persisted.** Confidence, trends, decisions and metrics are computed from the
+   archive on every read. A stored conclusion is a second copy that can drift from the evidence
+   behind it — the precise failure this layer exists to prevent — and deriving means an explanation
+   improves retroactively rather than leaving old rows phrased in the words of the version that wrote
+   them. _(One pre-existing exception is named rather than quietly kept: `Camera.health` is a coarse
+   rollup persisted since P1-4 for list views. It is recomputed from the latest measurement on every
+   write and is never independently settable, but it is a stored summary. Deriving it is a P-3 change
+   to a shared read path, not a P-2.3 one.)_
+5. **Operational decisions are explainable and reconstructed, not recorded.** `explainDecisions()`
+   answers _why was this camera degraded · why was this probe marked failed · why did confidence drop
+   · why is this firmware unsupported_, each pointing at evidence ids that resolve in the timeline.
+   **No code path consults a decision.** It introduces no runtime behaviour, which is what allows it
+   inside the freeze.
+6. **The unified timeline is the only investigation API.** Its consumers read the envelope rather
+   than switching on type, and the source enum carries `diagnostics`, `recovery`, `certification` and
+   `session` **ahead of their producers** — adding an enum value later is the one change to a
+   published contract that is not purely additive for a strict parser.
+7. **Fleet reads are bounded, indexed and honest about it.** Sorting and limiting moved into the
+   query (`TenantRepository.findMany` gained `sort`/`limit`/`skip`); the fleet aggregate counts
+   cameras rather than loading them and caps what it reads, and `FleetProbeMetrics.sampled` says
+   plainly when the caps bit. A sampled aggregate presented as a census is worse than no aggregate.
+
+**The Camera Foundation is frozen** (CONSTRAINTS §30): discovery · identity · lifecycle · capability
+cache · probe pipeline · evidence archive · operational timeline · compatibility tracking. Future
+work extends it through **additive contracts only**; a breaking change requires an ADR.
+
+**A defect the tests found:** the P-2.2 de-duplication dropped _any_ timeline entry carrying an
+archived `probeId`, which silently deleted the state changes those probes caused — the exact causal
+link the timeline exists to show. Only the `probe-succeeded`/`probe-failed` echo should be dropped.

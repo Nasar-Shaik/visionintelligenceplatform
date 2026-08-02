@@ -302,6 +302,41 @@ export function registerCameraRoutes(app: FastifyInstance, deps: CameraRoutesDep
     },
   );
 
+  /** How this camera's reliability has moved (P-2.3). Derived, never stored. */
+  app.get<{ Params: CameraParams; Querystring: { window?: string } }>(
+    '/cameras/:id/confidence',
+    { preHandler: auth.authorize('camera:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const window = parseWindow(request.query.window);
+      return reply.send(
+        success(
+          await service.confidenceTrend(scope, request.params.id, {
+            ...(window ? { window } : {}),
+          }),
+        ),
+      );
+    },
+  );
+
+  /**
+   * Why the platform did what it did (P-2.3). Explainability only — this route reconstructs
+   * decisions from stored evidence and changes nothing.
+   */
+  app.get<{ Params: CameraParams; Querystring: { window?: string } }>(
+    '/cameras/:id/decisions',
+    { preHandler: auth.authorize('camera:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const window = parseWindow(request.query.window);
+      return reply.send(
+        success(
+          await service.decisions(scope, request.params.id, { ...(window ? { window } : {}) }),
+        ),
+      );
+    },
+  );
+
   /** Every record this camera has, in one chronology (P-2.2). */
   app.get<{ Params: CameraParams; Querystring: { window?: string } }>(
     '/cameras/:id/evidence',

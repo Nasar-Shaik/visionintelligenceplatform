@@ -154,8 +154,12 @@ export interface FleetMetricsInput {
   window: HealthTrendWindow;
   windowStart: Date;
   windowEnd: Date;
-  /** Every camera in scope — including the ones nothing has ever probed. */
+  /** The camera page loaded — including the ones nothing has ever probed. */
   cameras: readonly { cameraId: string; firmware?: string; compatibilityStatuses: string[] }[];
+  /** Cameras in the tenant, counted rather than loaded. */
+  totalCameras?: number;
+  /** True when `cameras` or `records` was capped — the aggregate describes a sample. */
+  sampled?: boolean;
   records: readonly CameraProbeRecord[];
   /** Confidence scores for the cameras that had enough evidence to be given one. */
   confidenceScores: readonly number[];
@@ -191,9 +195,13 @@ export function fleetMetrics(input: FleetMetricsInput): FleetProbeMetrics {
     window: input.window,
     windowStart: input.windowStart.toISOString(),
     windowEnd: input.windowEnd.toISOString(),
-    cameras: input.cameras.length,
+    cameras: input.totalCameras ?? input.cameras.length,
+    sampled: input.sampled ?? false,
     camerasProbed: probedCameras.size,
-    camerasNeverProbed: input.cameras.filter((c) => !probedCameras.has(c.cameraId)).length,
+    camerasNeverProbed: Math.max(
+      0,
+      (input.totalCameras ?? input.cameras.length) - probedCameras.size,
+    ),
     probes: records.length,
     successes,
     failures,
