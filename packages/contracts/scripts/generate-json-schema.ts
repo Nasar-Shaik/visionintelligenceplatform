@@ -25,7 +25,7 @@ import { CapabilityDescriptor, CapabilityRegistryRecord } from '../src/capabilit
 import { TenantContext } from '../src/common/tenant-context.js';
 import { ApiError } from '../src/common/api-envelope.js';
 import { ConfigNode } from '../src/config/hierarchy.js';
-import { Tenant, OrgNode } from '../src/tenant/tenant.js';
+import { Tenant, OrgNode, OrgLocation, OrgTree } from '../src/tenant/tenant.js';
 import { User, Principal, TokenPair } from '../src/auth/auth.js';
 import {
   Camera,
@@ -190,6 +190,9 @@ const schemas: Record<string, z.ZodType> = {
   'config-node': ConfigNode,
   tenant: Tenant,
   'org-node': OrgNode,
+  // P-3: the resolved read models. Derived on read; the write model stays `org-node`.
+  'org-location': OrgLocation,
+  'org-tree': OrgTree,
   user: User,
   principal: Principal,
   'token-pair': TokenPair,

@@ -5,7 +5,13 @@
  * the endpoint-level fail-closed isolation gate (P1-1 acceptance).
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { CreateOrgNodeInput, CreateTenantInput, UpdateTenantInput } from '@vip/contracts';
+import {
+  CreateOrgNodeInput,
+  CreateTenantInput,
+  OrgNodeQuery,
+  UpdateOrgNodeInput,
+  UpdateTenantInput,
+} from '@vip/contracts';
 import { TenancyError, TenantScope } from '@vip/tenancy';
 import type { TenantService } from '../../application/tenant-service.js';
 import { AppError, badRequest } from '../../application/errors.js';
@@ -83,4 +89,74 @@ export function registerTenantRoutes(app: FastifyInstance, deps: TenantRoutesDep
     const input = parse(CreateOrgNodeInput, request.body);
     return reply.status(201).send(success(await service.createOrgNode(scope, input)));
   });
+
+  // The estate as a forest, resolved and ready to render (P-3). Static path, before `:nodeId`.
+  app.get<{ Params: TenantParams; Querystring: { under?: string } }>(
+    '/tenants/:tenantId/org-tree',
+    async (request, reply) => {
+      const scope = scopeFor(request, request.params.tenantId);
+      const under = request.query.under;
+      return reply.send(success(await service.orgTree(scope, under ? { under } : {})));
+    },
+  );
+
+  /*
+   * Resolved locations: breadcrumb, depth, label and permitted child types, served by the backend.
+   *
+   * These extend the existing `/org-nodes` resource rather than opening a parallel one — the same
+   * tree, read with its ancestry resolved. A second top-level noun for "the same thing but useful"
+   * is how an API starts sprawling.
+   */
+  app.get<{ Params: TenantParams; Querystring: Record<string, string | undefined> }>(
+    '/tenants/:tenantId/locations',
+    async (request, reply) => {
+      const scope = scopeFor(request, request.params.tenantId);
+      const { limit, includeArchived, ...rest } = request.query;
+      const query = parse(OrgNodeQuery, {
+        ...Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)),
+        ...(limit !== undefined ? { limit: Number(limit) } : {}),
+        includeArchived: includeArchived === 'true',
+      });
+      return reply.send(success(await service.locations(scope, query)));
+    },
+  );
+
+  app.get<{ Params: TenantParams & { nodeId: string } }>(
+    '/tenants/:tenantId/locations/:nodeId',
+    async (request, reply) => {
+      const scope = scopeFor(request, request.params.tenantId);
+      return reply.send(success(await service.location(scope, request.params.nodeId)));
+    },
+  );
+
+  // Rename and/or move. The node's `type` is immutable and is not accepted here.
+  app.patch<{ Params: TenantParams & { nodeId: string } }>(
+    '/tenants/:tenantId/org-nodes/:nodeId',
+    async (request, reply) => {
+      const scope = scopeFor(request, request.params.tenantId);
+      const patch = parse(UpdateOrgNodeInput, request.body);
+      return reply.send(success(await service.updateOrgNode(scope, request.params.nodeId, patch)));
+    },
+  );
+
+  /*
+   * Archive / restore rather than DELETE — the estate retires locations, it never removes them, so
+   * that historical evidence keeps resolving after a reorganisation. There is deliberately no
+   * `DELETE` route on this resource: its absence is the guarantee.
+   */
+  app.post<{ Params: TenantParams & { nodeId: string } }>(
+    '/tenants/:tenantId/org-nodes/:nodeId/archive',
+    async (request, reply) => {
+      const scope = scopeFor(request, request.params.tenantId);
+      return reply.send(success(await service.archiveOrgNode(scope, request.params.nodeId)));
+    },
+  );
+
+  app.post<{ Params: TenantParams & { nodeId: string } }>(
+    '/tenants/:tenantId/org-nodes/:nodeId/restore',
+    async (request, reply) => {
+      const scope = scopeFor(request, request.params.tenantId);
+      return reply.send(success(await service.restoreOrgNode(scope, request.params.nodeId)));
+    },
+  );
 }

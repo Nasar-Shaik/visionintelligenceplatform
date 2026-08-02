@@ -24,6 +24,19 @@ if (!globalThis.matchMedia) {
   })) as unknown as typeof globalThis.matchMedia;
 }
 
+/*
+ * jsdom implements neither the Pointer Capture API nor `scrollIntoView`, both of which Radix's
+ * Select uses when it opens. Without these, a listbox cannot be opened in a test at all — and the
+ * P-3 location picker is a Select, so "we cannot test it" would have meant "we do not test where a
+ * camera gets placed". These are the standard shims, not a workaround for our own code.
+ */
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => {};
+  Element.prototype.releasePointerCapture = () => {};
+}
+Element.prototype.scrollIntoView ??= () => {};
+
 // Contract-shaped gateway mocks (MSW). Unhandled requests fail loudly so a missing
 // mock is a test error, not a silent hang.
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));

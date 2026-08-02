@@ -9,11 +9,13 @@
  * backbone (subscribe to `tenant.hierarchy.changed`, P1-5), keeping the contexts independently
  * deployable. Enforcing existence is tracked as tech-debt until the backbone lands (ED-0024/TD-3).
  */
-import { CreateCameraInput } from '@vip/contracts';
+import { CAMERA_PAGE_LIMIT, CreateCameraInput } from '@vip/contracts';
 import type {
   BulkCreateCamerasInput,
   CameraDecisionLog,
   CameraEvidenceTimeline,
+  CameraPage,
+  CameraQuery,
   CapabilityChangeSet,
   ConfidenceTrend,
   CameraHealthSummary,
@@ -253,8 +255,38 @@ export class CameraService {
 
   /** List the caller tenant's cameras (guard-isolated). Credentials are never included. */
   async list(scope: TenantScope): Promise<Camera[]> {
-    const docs = await this.cameras.findMany(scope, {});
+    const docs = await this.cameras.findMany(scope, {}, { limit: CAMERA_PAGE_LIMIT });
     return docs.map((d) => toCamera(d as CameraDoc));
+  }
+
+  /**
+   * A bounded, filtered page of cameras (P-3).
+   *
+   * `zoneIds` arrives already resolved from the hierarchy — this service filters on it and never
+   * traverses it. Served by the existing `tenant_zone` index, so narrowing an estate of a hundred
+   * thousand cameras to one site is an indexed lookup rather than a scan.
+   */
+  async query(scope: TenantScope, query: CameraQuery): Promise<CameraPage> {
+    const filter: Record<string, unknown> = {};
+    if (query.zoneIds && query.zoneIds.length > 0) filter.zoneId = { $in: query.zoneIds };
+    if (query.status) filter.status = query.status;
+    if (query.lifecycle) filter['lifecycle.state'] = query.lifecycle;
+    if (query.search) {
+      filter.name = { $regex: query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+    }
+    if (query.cursor) filter._id = { $gt: query.cursor };
+
+    const docs = (await this.cameras.findMany(scope, filter, {
+      sort: { _id: 1 },
+      limit: query.limit + 1,
+    })) as CameraDoc[];
+
+    const page = docs.slice(0, query.limit);
+    const last = page.at(-1);
+    return {
+      cameras: page.map((doc) => toCamera(doc)),
+      ...(docs.length > query.limit && last ? { nextCursor: last._id } : {}),
+    };
   }
 
   /** Get one camera within scope, or 404 (also the cross-tenant response — no existence leak). */

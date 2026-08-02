@@ -31,14 +31,35 @@ context is taken from `x-tenant-id` + `x-principal-id` headers (the seam the gat
 Every tenant-addressed route refuses a path that names a different tenant than the caller's
 context — **cross-tenant → 403, fail-closed**.
 
-| Method + path                     | Purpose                        | Context | Cross-tenant |
-| --------------------------------- | ------------------------------ | ------- | ------------ |
-| `POST /tenants`                   | provision a tenant + org root  | —       | —            |
-| `GET /tenants/:id`                | get the caller's tenant        | req'd   | 403          |
-| `PATCH /tenants/:id`              | update name / lifecycle        | req'd   | 403          |
-| `GET /tenants/:id/org-nodes`      | list the tenant's org nodes    | req'd   | 403          |
-| `POST /tenants/:id/org-nodes`     | create an org node             | req'd   | 403          |
-| `GET /health` `/ready` `/metrics` | liveness / readiness / metrics | —       | —            |
+| Method + path                      | Purpose                        | Context | Cross-tenant |
+| ---------------------------------- | ------------------------------ | ------- | ------------ |
+| `POST /tenants`                    | provision a tenant + org root  | —       | —            |
+| `GET /tenants/:id`                 | get the caller's tenant        | req'd   | 403          |
+| `PATCH /tenants/:id`               | update name / lifecycle        | req'd   | 403          |
+| `GET /tenants/:id/org-nodes`       | list the tenant's org nodes    | req'd   | 403          |
+| `POST /tenants/:id/org-nodes`      | create an org node             | req'd   | 403          |
+| `GET /tenants/:id/org-tree`        | the estate as a forest (P-3)   | req'd   | 403          |
+| `GET /tenants/:id/locations`       | resolved locations, paged      | req'd   | 403          |
+| `GET /tenants/:id/locations/:id`   | one resolved location          | req'd   | 403          |
+| `PATCH /tenants/:id/org-nodes/:id` | rename and/or move             | req'd   | 403          |
+| `POST …/org-nodes/:id/archive`     | retire a location + subtree    | req'd   | 403          |
+| `POST …/org-nodes/:id/restore`     | bring one back                 | req'd   | 403          |
+| `GET /health` `/ready` `/metrics`  | liveness / readiness / metrics | —       | —            |
+
+### The estate (P-3)
+
+**There is no `DELETE` on a location, deliberately.** Evidence and audit records reference locations
+by id for as long as they are retained; archiving retires a location and its subtree while leaving
+every historical reference resolvable. See
+[ADR-0025](../../docs/adr/ADR-0025-organization-hierarchy.md).
+
+`/locations` reads are **resolved by the service**: each carries its `breadcrumb`, `depth`, `label`
+and `allowedChildTypes`. A client must not walk `parentId` to rebuild any of them — the containment
+rules live in `domain/hierarchy.ts` and nowhere else.
+
+Traversal is never recursive over the store: ancestry is materialized (`path`, multikey-indexed) and
+`depth` is indexed, so a subtree is one lookup and a page of locations costs three queries whatever
+the size of the estate.
 
 Responses use the `@vip/contracts` envelope: `{ success, data }` or `{ success:false, error }`.
 

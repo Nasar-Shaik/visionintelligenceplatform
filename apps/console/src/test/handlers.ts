@@ -33,4 +33,120 @@ export const handlers: RequestHandler[] = [
       },
     }),
   ),
+
+  /**
+   * A small estate (P-3): Acme › EMEA › London › Lobby, plus a second region.
+   *
+   * A default rather than a per-test fixture because the location picker and the camera list both
+   * read the tree on every render, and every field here — breadcrumb, label, depth,
+   * `allowedChildTypes` — is one the **server** computes. Building them by hand in the fixture is
+   * what makes the tests meaningful: if the console ever started deriving them, the fixture would
+   * stop being what the assertions depend on.
+   */
+  http.get('/api/tenant/tenants/:tenantId/org-tree', () =>
+    HttpResponse.json({ success: true, data: ORG_TREE }),
+  ),
+  http.get('/api/tenant/tenants/:tenantId/locations/:nodeId', ({ params }) => {
+    const found = FLAT_LOCATIONS.find((node) => node.id === params.nodeId);
+    return found
+      ? HttpResponse.json({ success: true, data: found })
+      : HttpResponse.json(
+          { success: false, error: { code: 'not_found', message: 'not found' } },
+          { status: 404 },
+        );
+  }),
+  http.get('/api/tenant/tenants/:tenantId/locations', () =>
+    HttpResponse.json({ success: true, data: { locations: FLAT_LOCATIONS } }),
+  ),
 ];
+
+const AT = '2026-08-02T00:00:00.000Z';
+
+function location(
+  id: string,
+  type: string,
+  name: string,
+  parentId: string | null,
+  path: string[],
+  breadcrumb: Array<{ id: string; type: string; name: string }>,
+  allowedChildTypes: string[],
+  hasChildren: boolean,
+) {
+  return {
+    id,
+    tenantId: 'tnt_1',
+    parentId,
+    type,
+    name,
+    path,
+    status: 'active',
+    createdAt: AT,
+    updatedAt: AT,
+    breadcrumb,
+    depth: breadcrumb.length,
+    label: [...breadcrumb.map((crumb) => crumb.name), name].join(' › '),
+    allowedChildTypes,
+    hasChildren,
+  };
+}
+
+const ORG = location('on_org', 'org', 'Acme', null, [], [], ['region', 'site', 'zone'], true);
+const ORG_CRUMB = { id: 'on_org', type: 'org', name: 'Acme' };
+const EMEA = location(
+  'on_emea',
+  'region',
+  'EMEA',
+  'on_org',
+  ['on_org'],
+  [ORG_CRUMB],
+  ['site', 'zone'],
+  true,
+);
+const EMEA_CRUMB = { id: 'on_emea', type: 'region', name: 'EMEA' };
+const LONDON = location(
+  'on_london',
+  'site',
+  'London',
+  'on_emea',
+  ['on_org', 'on_emea'],
+  [ORG_CRUMB, EMEA_CRUMB],
+  ['building', 'floor', 'zone'],
+  true,
+);
+const LOBBY = location(
+  'on_lobby',
+  'zone',
+  'Lobby',
+  'on_london',
+  ['on_org', 'on_emea', 'on_london'],
+  [ORG_CRUMB, EMEA_CRUMB, { id: 'on_london', type: 'site', name: 'London' }],
+  [],
+  false,
+);
+const APAC = location(
+  'on_apac',
+  'region',
+  'APAC',
+  'on_org',
+  ['on_org'],
+  [ORG_CRUMB],
+  ['site', 'zone'],
+  false,
+);
+
+const FLAT_LOCATIONS = [ORG, EMEA, LONDON, LOBBY, APAC];
+
+const ORG_TREE = {
+  roots: [
+    {
+      ...ORG,
+      children: [
+        { ...APAC, children: [] },
+        { ...EMEA, children: [{ ...LONDON, children: [{ ...LOBBY, children: [] }] }] },
+      ],
+    },
+  ],
+  nodeCount: 5,
+  orphaned: [],
+  truncated: false,
+};

@@ -2,6 +2,7 @@ import {
   Activity,
   Bell,
   Camera,
+  Building2,
   HeartPulse,
   LayoutDashboard,
   MonitorPlay,
@@ -38,6 +39,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
       { to: '/live', label: 'Live Monitoring', icon: MonitorPlay, permission: 'camera:read' },
       { to: '/cameras', label: 'Cameras', icon: Camera, permission: 'camera:read' },
+      { to: '/locations', label: 'Locations', icon: Building2, permission: 'camera:read' },
     ],
   },
   {

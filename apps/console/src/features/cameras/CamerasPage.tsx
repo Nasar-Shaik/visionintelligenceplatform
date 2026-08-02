@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Camera as CameraIcon, Plus, ScanSearch } from 'lucide-react';
-import type { Camera, CameraHealthStatus, CameraLifecycleState } from '@vip/contracts';
+import type { Camera, CameraHealthStatus, CameraLifecycleState, OrgTreeNode } from '@vip/contracts';
 import { usePermission } from '@/app/hooks';
 import {
   Badge,
@@ -42,6 +42,9 @@ import {
   matchesSearch,
 } from './cameraPresentation';
 import { useCameras, useDeleteCamera } from './useCameras';
+import { LocationPicker } from '@/features/organization/LocationPicker';
+import { findNode, subtreeIds } from '@/features/organization/orgPresentation';
+import { useOrgTree } from '@/features/organization/useOrganization';
 
 const HEALTH_FILTERS: Array<CameraHealthStatus | 'all'> = [
   'all',
@@ -82,17 +85,44 @@ export function CamerasPage() {
   const [search, setSearch] = useState('');
   const [health, setHealth] = useState<CameraHealthStatus | 'all'>('all');
   const [lifecycle, setLifecycle] = useState<CameraLifecycleState | 'all' | 'active'>('active');
+  const [location, setLocation] = useState<string>('all');
   const [adding, setAdding] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [selected, setSelected] = useState<Camera | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Camera | null>(null);
 
   const cameras = query.data ?? [];
+
+  /*
+   * "Everything under this site" resolved by the backend (P-3). The subtree comes from the tree the
+   * server built; the console filters on the resulting id set and never walks the hierarchy itself.
+   */
+  const tree = useOrgTree();
+  const locationScope = useMemo(() => {
+    if (location === 'all') return null;
+    const node = findNode(tree.data?.roots ?? [], location);
+    return node ? new Set(subtreeIds(node)) : null;
+  }, [location, tree.data]);
+
+  /** Zone id → the full path the server resolved. A raw id in a table tells an operator nothing. */
+  const locationLabels = useMemo(() => {
+    const labels = new Map<string, string>();
+    const walk = (nodes: OrgTreeNode[]): void => {
+      for (const node of nodes) {
+        labels.set(node.id, node.label);
+        walk(node.children);
+      }
+    };
+    walk(tree.data?.roots ?? []);
+    return labels;
+  }, [tree.data]);
+
   const visible = useMemo(
     () =>
       cameras.filter(
         (camera) =>
           matchesSearch(camera, search) &&
+          (locationScope === null || locationScope.has(camera.zoneId)) &&
           (health === 'all' || camera.health.status === health) &&
           (lifecycle === 'all'
             ? true
@@ -100,12 +130,8 @@ export function CamerasPage() {
               ? camera.lifecycle.state !== 'retired'
               : camera.lifecycle.state === lifecycle),
       ),
-    [cameras, search, health, lifecycle],
+    [cameras, search, health, lifecycle, locationScope],
   );
-
-  // The default zone until the org-hierarchy picker lands (tracked with the Tenant context). Named
-  // rather than hidden, so it is obvious this is a placeholder and not a silent assumption.
-  const zoneId = 'on_default';
 
   const confirmDelete = () => {
     if (!pendingDelete) return;
@@ -141,6 +167,14 @@ export function CamerasPage() {
       />
 
       <FilterBar search={search} onSearchChange={setSearch} searchPlaceholder="Search cameras…">
+        <div className="w-64">
+          <LocationPicker
+            value={location}
+            onChange={setLocation}
+            anyOption="All locations"
+            placeholder="All locations"
+          />
+        </div>
         <Select
           value={lifecycle}
           onValueChange={(v) => setLifecycle(v as CameraLifecycleState | 'all' | 'active')}
@@ -212,7 +246,7 @@ export function CamerasPage() {
                 <TableHead>Camera</TableHead>
                 <TableHead>Lifecycle</TableHead>
                 <TableHead>Health</TableHead>
-                <TableHead>Zone</TableHead>
+                <TableHead>Location</TableHead>
                 <TableHead>Capabilities</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
@@ -249,7 +283,9 @@ export function CamerasPage() {
                       label={HEALTH_LABEL[camera.health.status]}
                     />
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{camera.zoneId}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {locationLabels.get(camera.zoneId) ?? '—'}
+                  </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {capabilitySummary(camera.capabilities) || '—'}
                   </TableCell>
@@ -265,8 +301,8 @@ export function CamerasPage() {
         )}
       </QueryBoundary>
 
-      <AddCameraDialog open={adding} onOpenChange={setAdding} zoneId={zoneId} />
-      <DiscoveryDialog open={discovering} onOpenChange={setDiscovering} zoneId={zoneId} />
+      <AddCameraDialog open={adding} onOpenChange={setAdding} />
+      <DiscoveryDialog open={discovering} onOpenChange={setDiscovering} />
       <CameraDetailSheet
         camera={selected}
         onClose={() => setSelected(null)}

@@ -8,6 +8,7 @@
 import type { FastifyInstance } from 'fastify';
 import {
   BulkCreateCamerasInput,
+  CameraQuery,
   CameraValidationInput,
   CreateCameraInput,
   DiscoverCamerasInput,
@@ -28,6 +29,16 @@ interface CameraParams {
   id: string;
 }
 
+/** `?zoneId=a&zoneId=b` arrives as a string or an array depending on how many were supplied. */
+interface CameraListQuery {
+  zoneId?: string | string[];
+  status?: string;
+  lifecycle?: string;
+  search?: string;
+  limit?: string;
+  cursor?: string;
+}
+
 /**
  * Named trend windows only. An arbitrary hour count would quietly reinstate the lifetime average
  * these windows exist to prevent — a year of uptime hiding last night's outage.
@@ -46,10 +57,40 @@ export function registerCameraRoutes(app: FastifyInstance, deps: CameraRoutesDep
     return reply.status(201).send(success(await service.create(scope, input)));
   });
 
-  app.get('/cameras', { preHandler: auth.authorize('camera:read') }, async (request, reply) => {
-    const scope = scopeOf(request.principal!.tenantId);
-    return reply.send(success(await service.list(scope)));
-  });
+  /*
+   * List cameras. Filtered and paginated when asked; the whole (bounded) inventory when not.
+   *
+   * The unfiltered response stays a bare array so every existing consumer keeps working — the paged
+   * envelope appears only for a caller that asked a question needing one. Extending the existing
+   * resource rather than adding `/cameras/search` keeps one way to ask for cameras.
+   */
+  app.get<{ Querystring: CameraListQuery }>(
+    '/cameras',
+    { preHandler: auth.authorize('camera:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const { zoneId, status, lifecycle, search, limit, cursor } = request.query;
+      const filtered =
+        zoneId !== undefined ||
+        status !== undefined ||
+        lifecycle !== undefined ||
+        search !== undefined ||
+        limit !== undefined ||
+        cursor !== undefined;
+      if (!filtered) return reply.send(success(await service.list(scope)));
+
+      const zoneIds = zoneId === undefined ? undefined : Array.isArray(zoneId) ? zoneId : [zoneId];
+      const query = parseBody(CameraQuery, {
+        ...(zoneIds ? { zoneIds } : {}),
+        ...(status ? { status } : {}),
+        ...(lifecycle ? { lifecycle } : {}),
+        ...(search ? { search } : {}),
+        ...(limit !== undefined ? { limit: Number(limit) } : {}),
+        ...(cursor ? { cursor } : {}),
+      });
+      return reply.send(success(await service.query(scope, query)));
+    },
+  );
 
   // Bulk onboarding — the DVR/NVR case (P-1). Static path, before `/cameras/:id`.
   app.post(

@@ -55,4 +55,13 @@ async function ensureIndexes(
   // Tenant-leading indexes so every query is served by a tenant-scoped index (Law 5).
   await orgNodes.createIndex({ tenantId: 1, parentId: 1 }, { name: 'tenant_parent' });
   await orgNodes.createIndex({ tenantId: 1, type: 1 }, { name: 'tenant_type' });
+  /*
+   * The three P-3 access patterns, each an index rather than a walk (rec 6):
+   *  - `path` is multikey: "everything under this node" is one indexed lookup at any depth.
+   *  - `depth` serves the shallowest-first tree read, so a truncated estate is complete from the top.
+   *  - `status` keeps archived locations out of working views without scanning them.
+   */
+  await orgNodes.createIndex({ tenantId: 1, path: 1 }, { name: 'tenant_path' });
+  await orgNodes.createIndex({ tenantId: 1, depth: 1, _id: 1 }, { name: 'tenant_depth' });
+  await orgNodes.createIndex({ tenantId: 1, status: 1, _id: 1 }, { name: 'tenant_status' });
 }

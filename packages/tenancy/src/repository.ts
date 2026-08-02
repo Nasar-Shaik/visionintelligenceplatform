@@ -83,6 +83,45 @@ export class TenantRepository<T extends Document & TenantScoped> {
     return res.matchedCount;
   }
 
+  /** Update every matching document within the scope; the update may not touch tenantId. */
+  async updateMany(
+    scope: TenantScope,
+    filter: Filter<T>,
+    update: UpdateFilter<T>,
+  ): Promise<number> {
+    guardUpdate(scope, update as PlainObject);
+    const res = await this.collection.updateMany(
+      scopedFilter(scope, filter as PlainObject) as Filter<T>,
+      update,
+    );
+    return res.modifiedCount;
+  }
+
+  /**
+   * Apply many *different* updates in one round trip, each scope-guarded.
+   *
+   * The case this exists for is a subtree whose members each need a distinct new value — moving a
+   * branch of a hierarchy rewrites every descendant's ancestry to something different. Issuing that
+   * as N awaited `updateOne` calls is N round trips and, worse, N chances to be interrupted halfway
+   * and leave the tree describing two different shapes.
+   */
+  async bulkUpdate(
+    scope: TenantScope,
+    updates: ReadonlyArray<{ filter: Filter<T>; update: UpdateFilter<T> }>,
+  ): Promise<number> {
+    if (updates.length === 0) return 0;
+    for (const { update } of updates) guardUpdate(scope, update as PlainObject);
+    const res = await this.collection.bulkWrite(
+      updates.map(({ filter, update }) => ({
+        updateOne: {
+          filter: scopedFilter(scope, filter as PlainObject) as Filter<T>,
+          update: update as UpdateFilter<T>,
+        },
+      })),
+    );
+    return res.modifiedCount;
+  }
+
   /** Delete one document within the scope. Returns deleted count. */
   async deleteOne(scope: TenantScope, filter: Filter<T> = {}): Promise<number> {
     const res = await this.collection.deleteOne(

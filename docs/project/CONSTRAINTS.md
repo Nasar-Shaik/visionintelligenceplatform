@@ -151,6 +151,31 @@
     reading, because every one of them exists where the alternative had already failed silently. —
     _enforced: review; [DoD](DEFINITION_OF_DONE.md)._
 
+## Product layer (from P-3 — these govern everything built on the frozen foundations)
+
+35. **Read [PRODUCT_PRINCIPLES](PRODUCT_PRINCIPLES.md) before adding a product feature.** Customer
+    workflows first · configuration over customization · industry-neutral core · multi-tenant by
+    default · explainability before automation · evidence before assumptions · simple workflows ·
+    progressive disclosure · consistent experience · security by default. A feature must answer:
+    _can a customer understand the value of this in a demonstration?_ — and if not, the justification
+    is written down rather than assumed. — _enforced: review; [DoD](DEFINITION_OF_DONE.md)._
+36. **No industry noun ever enters a type name.** There is no `RetailCamera`, `HospitalZone`,
+    `FactoryRule` or `SchoolBehavior`, and there never will be. Industry solutions are configuration,
+    profiles and templates over the identical generic platform — a retail and a hospital deployment
+    run the same code and differ in their data. — _enforced: review; the AI-4 behavior profiles are
+    the pattern._
+37. **The backend owns traversal and derivation; the console renders.** Breadcrumbs, labels, depth,
+    permitted child types and every other derived value are computed server-side and returned
+    resolved. A client that re-derives a rule will disagree with the service the first time the rule
+    changes — the P-2 failure-headline defect, exactly. — _enforced:
+    [ADR-0025](../adr/ADR-0025-organization-hierarchy.md); `domain/hierarchy.ts`; console tests that
+    assert the rendered options are the ones the server sent._
+38. **Structural records are archived, never deleted.** Locations, and anything else evidence
+    references by id, are retired rather than removed: archiving cascades to the subtree and leaves
+    every historical reference resolving. No `DELETE` route exists on such a resource — its absence
+    is the guarantee. — _enforced: [ADR-0025](../adr/ADR-0025-organization-hierarchy.md); an HTTP
+    test asserts the route is a 404 and a console test asserts no delete control exists._
+
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._

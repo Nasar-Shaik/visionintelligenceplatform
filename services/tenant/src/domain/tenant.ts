@@ -7,6 +7,7 @@ import type {
   CreateOrgNodeInput,
   CreateTenantInput,
   OrgNode,
+  OrgNodeStatus,
   OrgNodeType,
   Tenant,
   TenantStatus,
@@ -24,13 +25,26 @@ export interface TenantDoc extends TenantScoped {
   updatedAt: string;
 }
 
-/** MongoDB-persisted org-hierarchy node. `_id` is the node id. */
+/**
+ * MongoDB-persisted org-hierarchy node. `_id` is the node id.
+ *
+ * `path` and `depth` are the materialized ancestry (P-3 rec 6): together they turn "everything under
+ * this site" and "the shallowest N nodes" into indexed queries instead of recursive walks. They are
+ * *structure*, not a conclusion — the distinction Foundation Principle 2 draws.
+ *
+ * `status`, `archivedAt` and `depth` are optional on read because documents written before P-3 do
+ * not carry them. Every reader defaults rather than assuming; that is what additive means in a
+ * store, as opposed to in a schema.
+ */
 export interface OrgNodeDoc extends TenantScoped {
   _id: string;
   parentId: string | null;
   type: OrgNodeType;
   name: string;
   path: string[];
+  depth?: number;
+  status?: OrgNodeStatus;
+  archivedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -68,6 +82,8 @@ export function newOrgRoot(tenantId: string, name: string, id: string, at: Date)
     type: 'org',
     name,
     path: [],
+    depth: 0,
+    status: 'active',
     createdAt: ts,
     updatedAt: ts,
   };
@@ -82,13 +98,16 @@ export function newOrgNode(
   at: Date,
 ): OrgNodeDoc {
   const ts = at.toISOString();
+  const path = parent ? [...parent.path, parent._id] : [];
   return {
     _id: id,
     tenantId,
     parentId: input.parentId,
     type: input.type,
     name: input.name,
-    path: parent ? [...parent.path, parent._id] : [],
+    path,
+    depth: path.length,
+    status: 'active',
     createdAt: ts,
     updatedAt: ts,
   };
@@ -116,7 +135,12 @@ export function toTenant(doc: TenantDoc): Tenant {
   };
 }
 
-/** Map a persisted org node to its public contract shape. */
+/**
+ * Map a persisted org node to its public contract shape.
+ *
+ * `status` defaults rather than being assumed present: a node written before P-3 is an active node,
+ * not an invalid one.
+ */
 export function toOrgNode(doc: OrgNodeDoc): OrgNode {
   return {
     id: doc._id,
@@ -125,6 +149,8 @@ export function toOrgNode(doc: OrgNodeDoc): OrgNode {
     type: doc.type,
     name: doc.name,
     path: doc.path,
+    status: doc.status ?? 'active',
+    ...(doc.archivedAt ? { archivedAt: doc.archivedAt } : {}),
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };

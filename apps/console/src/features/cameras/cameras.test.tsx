@@ -251,11 +251,18 @@ describe('discovery dialog', () => {
 
     expect(await screen.findByText('Axis P3245')).toBeInTheDocument();
     await userEvent.click(screen.getByLabelText('Select Axis P3245'));
+
+    // P-3: discovery finds a camera on the network; only the operator knows where it physically is.
+    await userEvent.click(screen.getByRole('combobox', { name: /location/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /Lobby/ }));
+
     await userEvent.click(screen.getByRole('button', { name: /add 1 camera/i }));
 
     await waitFor(() => expect(onboarded).not.toBeNull());
     const payload = onboarded as { cameras: Array<Record<string, unknown>> };
     expect(payload.cameras[0]!.streamUrl).toBe(DEVICE.suggestedStreamUrl);
+    // Placed where the operator said, not in a hardcoded default.
+    expect(payload.cameras[0]!.zoneId).toBe('on_lobby');
     // Capabilities travel with the camera so the runtime READS them instead of probing the device.
     expect(payload.cameras[0]!.capabilities).toMatchObject({ onvif: true });
   });

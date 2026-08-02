@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Activity, Archive, KeyRound, PlugZap, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import type { Camera, CapabilityChange, StreamProbeResult } from '@vip/contracts';
 import { usePermission } from '@/app/hooks';
+import { useLocation } from '@/features/organization/useOrganization';
 import { formatTimestamp } from '@/lib/format';
 import {
   Alert,
@@ -106,7 +107,9 @@ export function CameraDetailSheet({
             <code className="break-all text-xs">{camera.streamUrl}</code>
           </Field>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Zone">{camera.zoneId}</Field>
+            <Field label="Location">
+              <CameraLocation zoneId={camera.zoneId} />
+            </Field>
             <Field label="Status">
               <Badge variant={camera.status === 'enabled' ? 'success' : 'neutral'}>
                 {camera.status}
@@ -556,5 +559,28 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <div className="text-xs font-medium uppercase tracking-wide text-text-subtle">{label}</div>
       <div className="text-sm text-foreground">{children}</div>
     </div>
+  );
+}
+
+/**
+ * Where this camera is, as the estate describes it.
+ *
+ * The full path is fetched by id and rendered as the server resolved it — including for an archived
+ * location, which is exactly when an operator most needs to know where something used to be. A raw
+ * `zoneId` is shown only if the lookup fails, because a broken reference should be visible.
+ */
+function CameraLocation({ zoneId }: { zoneId: string }) {
+  const location = useLocation(zoneId);
+  if (location.isPending) return <span className="text-muted-foreground">…</span>;
+  if (!location.data) return <code className="text-xs">{zoneId}</code>;
+  return (
+    <span className="text-sm">
+      {location.data.label}
+      {location.data.status === 'archived' ? (
+        <Badge variant="neutral" className="ml-2">
+          Archived
+        </Badge>
+      ) : null}
+    </span>
   );
 }

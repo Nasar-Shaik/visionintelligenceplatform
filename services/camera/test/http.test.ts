@@ -23,13 +23,35 @@ import { buildServer } from '../src/transport/server.js';
 const SECRET = 'test-secret-at-least-16-chars';
 const INTERNAL_KEY = 'internal-key-at-least-16-chars';
 
+/**
+ * Exactly the operators the service issues: `$gte` (the fleet window), and — from P-3 — `$in`,
+ * `$gt` and `$regex` for the location filter, cursor and name search. Anything else throws rather
+ * than silently matching, so a fake that has drifted from the service fails loudly.
+ */
 function matches(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
-  return Object.entries(filter).every(([k, v]) => {
-    // The one operator the service uses — the fleet query's window bound on `at`.
-    if (v && typeof v === 'object' && '$gte' in (v as Record<string, unknown>)) {
-      return String(doc[k]) >= String((v as { $gte: unknown }).$gte);
+  return Object.entries(filter).every(([key, expected]) => {
+    const actual = key.includes('.')
+      ? key.split('.').reduce<unknown>((acc, part) => (acc as Record<string, unknown>)?.[part], doc)
+      : doc[key];
+    if (expected && typeof expected === 'object' && !Array.isArray(expected)) {
+      return Object.entries(expected as Record<string, unknown>).every(([op, operand]) => {
+        switch (op) {
+          case '$gte':
+            return String(actual) >= String(operand);
+          case '$gt':
+            return String(actual) > String(operand);
+          case '$in':
+            return (operand as unknown[]).includes(actual);
+          case '$regex':
+            return new RegExp(operand as string, 'i').test(String(actual ?? ''));
+          case '$options':
+            return true;
+          default:
+            throw new Error(`memoryCollection: unsupported operator ${op}`);
+        }
+      });
     }
-    return doc[k] === v;
+    return actual === expected;
   });
 }
 
@@ -1320,5 +1342,114 @@ describe('investigation surface (P-2.3)', () => {
     // `sampled` is what stops a bounded read being presented as a complete one at fleet scale.
     expect(fleet.sampled).toBe(false);
     expect(fleet.cameras).toBe(1);
+  });
+});
+
+/**
+ * The estate reaches the inventory (P-3).
+ *
+ * What these protect is a boundary as much as a feature: the Camera Service filters by a **set of
+ * zone ids** and never learns what a site is. Subtree resolution happens in the Tenant context,
+ * where the tree lives, and arrives here as data.
+ */
+describe('camera queries by location', () => {
+  const at = (zoneId: string, name: string, url: string) => ({
+    ...validCamera,
+    zoneId,
+    name,
+    streamUrl: url,
+  });
+
+  async function estate(t: string): Promise<void> {
+    await create(t, at('on_lobby', 'Lobby', 'rtsp://a.local:554/1'));
+    await create(t, at('on_lobby', 'Lobby door', 'rtsp://a.local:554/2'));
+    await create(t, at('on_dock', 'Dock', 'rtsp://b.local:554/1'));
+    await create(t, at('on_other', 'Elsewhere', 'rtsp://c.local:554/1'));
+  }
+
+  it('returns the whole inventory as a bare array when nothing is asked of it', async () => {
+    const t = await token(TENANT, ['admin']);
+    await estate(t);
+    const res = await app.inject({ method: 'GET', url: '/cameras', headers: auth(t) });
+    expect(Array.isArray(res.json().data)).toBe(true);
+    expect(res.json().data).toHaveLength(4);
+  });
+
+  it('filters by a set of zones — the resolved subtree', async () => {
+    const t = await token(TENANT, ['admin']);
+    await estate(t);
+    const res = await app.inject({
+      method: 'GET',
+      url: '/cameras?zoneId=on_lobby&zoneId=on_dock',
+      headers: auth(t),
+    });
+    expect(res.statusCode).toBe(200);
+    const names = res.json().data.cameras.map((c: { name: string }) => c.name);
+    expect(names.sort()).toEqual(['Dock', 'Lobby', 'Lobby door']);
+  });
+
+  it('accepts a single zone without an array', async () => {
+    const t = await token(TENANT, ['admin']);
+    await estate(t);
+    const res = await app.inject({
+      method: 'GET',
+      url: '/cameras?zoneId=on_dock',
+      headers: auth(t),
+    });
+    expect(res.json().data.cameras).toHaveLength(1);
+  });
+
+  it('pages with a stable cursor', async () => {
+    const t = await token(TENANT, ['admin']);
+    await estate(t);
+    const first = await app.inject({ method: 'GET', url: '/cameras?limit=2', headers: auth(t) });
+    expect(first.json().data.cameras).toHaveLength(2);
+    const cursor = first.json().data.nextCursor;
+    expect(cursor).toBeDefined();
+
+    const second = await app.inject({
+      method: 'GET',
+      url: `/cameras?limit=2&cursor=${cursor}`,
+      headers: auth(t),
+    });
+    const ids = new Set([
+      ...first.json().data.cameras.map((c: { id: string }) => c.id),
+      ...second.json().data.cameras.map((c: { id: string }) => c.id),
+    ]);
+    expect(ids.size).toBe(4);
+    expect(second.json().data.nextCursor).toBeUndefined();
+  });
+
+  it('searches by name literally, not as a pattern', async () => {
+    const t = await token(TENANT, ['admin']);
+    await estate(t);
+    const hit = await app.inject({ method: 'GET', url: '/cameras?search=lobby', headers: auth(t) });
+    expect(hit.json().data.cameras).toHaveLength(2);
+
+    const injected = await app.inject({
+      method: 'GET',
+      url: `/cameras?search=${encodeURIComponent('.*')}`,
+      headers: auth(t),
+    });
+    expect(injected.json().data.cameras).toHaveLength(0);
+  });
+
+  it('refuses an unbounded zone filter', async () => {
+    const t = await token(TENANT, ['admin']);
+    const many = Array.from({ length: 201 }, (_, i) => `zoneId=on_${i}`).join('&');
+    const res = await app.inject({ method: 'GET', url: `/cameras?${many}`, headers: auth(t) });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('never crosses tenants, however it is filtered', async () => {
+    const tA = await token(TENANT, ['admin']);
+    const tB = await token('tnt_other', ['admin']);
+    await estate(tA);
+    const res = await app.inject({
+      method: 'GET',
+      url: '/cameras?zoneId=on_lobby',
+      headers: auth(tB),
+    });
+    expect(res.json().data.cameras).toHaveLength(0);
   });
 });

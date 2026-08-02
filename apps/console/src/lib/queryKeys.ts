@@ -7,6 +7,15 @@ export const queryKeys = {
   auth: {
     me: () => ['auth', 'me'] as const,
   },
+  // P-3. The estate. A move rewrites descendants and an archive cascades, so writes invalidate
+  // `all()` rather than a node — the set of changed nodes is the traversal the server just did.
+  organization: {
+    all: () => ['organization'] as const,
+    tree: (under?: string) => ['organization', 'tree', under ?? null] as const,
+    locations: (params?: Record<string, unknown>) =>
+      ['organization', 'locations', params ?? {}] as const,
+    location: (id: string) => ['organization', 'location', id] as const,
+  },
   cameras: {
     all: () => ['cameras'] as const,
     list: (params?: Record<string, unknown>) => ['cameras', 'list', params ?? {}] as const,

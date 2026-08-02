@@ -23,6 +23,8 @@ import {
   toast,
 } from '@/ui';
 import { DVR_TEMPLATES, dvrChannels } from './cameraPresentation';
+import { LocationPicker } from '@/features/organization/LocationPicker';
+import { isCameraPlaceable } from '@/features/organization/orgPresentation';
 import { useCreateCamera, useCreateCameras } from './useCameras';
 
 /**
@@ -38,11 +40,9 @@ import { useCreateCamera, useCreateCameras } from './useCameras';
 export function AddCameraDialog({
   open,
   onOpenChange,
-  zoneId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  zoneId: string;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -59,10 +59,10 @@ export function AddCameraDialog({
             <TabsTrigger value="dvr">DVR / NVR channels</TabsTrigger>
           </TabsList>
           <TabsContent value="single">
-            <SingleCameraForm zoneId={zoneId} onDone={() => onOpenChange(false)} />
+            <SingleCameraForm onDone={() => onOpenChange(false)} />
           </TabsContent>
           <TabsContent value="dvr">
-            <DvrChannelForm zoneId={zoneId} onDone={() => onOpenChange(false)} />
+            <DvrChannelForm onDone={() => onOpenChange(false)} />
           </TabsContent>
         </Tabs>
       </DialogContent>
@@ -70,8 +70,9 @@ export function AddCameraDialog({
   );
 }
 
-function SingleCameraForm({ zoneId, onDone }: { zoneId: string; onDone: () => void }) {
+function SingleCameraForm({ onDone }: { onDone: () => void }) {
   const create = useCreateCamera();
+  const [zoneId, setZoneId] = useState<string | undefined>(undefined);
   const [name, setName] = useState('');
   const [streamUrl, setStreamUrl] = useState('rtsp://');
   const [username, setUsername] = useState('');
@@ -85,6 +86,10 @@ function SingleCameraForm({ zoneId, onDone }: { zoneId: string; onDone: () => vo
       setError(
         'Remove the username and password from the URL and enter them below — credentials are vaulted separately and never stored in a URL.',
       );
+      return;
+    }
+    if (!zoneId) {
+      setError('Choose where this camera is before adding it.');
       return;
     }
     const input: CreateCameraInput = {
@@ -105,6 +110,15 @@ function SingleCameraForm({ zoneId, onDone }: { zoneId: string; onDone: () => vo
 
   return (
     <div className="space-y-3 pt-3">
+      <div className="space-y-1">
+        <Label htmlFor="camera-location">Location</Label>
+        <LocationPicker
+          id="camera-location"
+          value={zoneId}
+          onChange={setZoneId}
+          selectable={isCameraPlaceable}
+        />
+      </div>
       <div className="space-y-1">
         <Label htmlFor="camera-name">Name</Label>
         <Input
@@ -159,7 +173,8 @@ function SingleCameraForm({ zoneId, onDone }: { zoneId: string; onDone: () => vo
   );
 }
 
-function DvrChannelForm({ zoneId, onDone }: { zoneId: string; onDone: () => void }) {
+function DvrChannelForm({ onDone }: { onDone: () => void }) {
+  const [zoneId, setZoneId] = useState<string | undefined>(undefined);
   const createMany = useCreateCameras();
   const [namePrefix, setNamePrefix] = useState('Channel');
   const [baseUrl, setBaseUrl] = useState('rtsp://');
@@ -172,9 +187,19 @@ function DvrChannelForm({ zoneId, onDone }: { zoneId: string; onDone: () => void
       ? customTemplate
       : (DVR_TEMPLATES.find((t) => t.id === templateId)?.template ?? '');
 
-  const preview = dvrChannels({ namePrefix, zoneId, baseUrl, pathTemplate: template, channels });
+  const preview = dvrChannels({
+    namePrefix,
+    zoneId: zoneId ?? '',
+    baseUrl,
+    pathTemplate: template,
+    channels,
+  });
 
   const submit = () => {
+    if (!zoneId) {
+      toast.error('Choose where these channels are before adding them.');
+      return;
+    }
     createMany.mutate(preview, {
       onSuccess: (res) => {
         if (res.failed === 0) {
@@ -197,6 +222,15 @@ function DvrChannelForm({ zoneId, onDone }: { zoneId: string; onDone: () => void
 
   return (
     <div className="space-y-3 pt-3">
+      <div className="space-y-1">
+        <Label htmlFor="dvr-location">Location</Label>
+        <LocationPicker
+          id="dvr-location"
+          value={zoneId}
+          onChange={setZoneId}
+          selectable={isCameraPlaceable}
+        />
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label htmlFor="dvr-prefix">Name prefix</Label>

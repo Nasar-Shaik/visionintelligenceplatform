@@ -23,6 +23,8 @@ import {
   toast,
 } from '@/ui';
 import { capabilitySummary } from './cameraPresentation';
+import { LocationPicker } from '@/features/organization/LocationPicker';
+import { isCameraPlaceable } from '@/features/organization/orgPresentation';
 import { useCreateCameras, useDiscoverCameras } from './useCameras';
 
 /**
@@ -44,13 +46,13 @@ import { useCreateCameras, useDiscoverCameras } from './useCameras';
 export function DiscoveryDialog({
   open,
   onOpenChange,
-  zoneId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  zoneId: string;
 }) {
   const discover = useDiscoverCameras();
+  // Discovery finds cameras on the network; only the operator knows where they physically are.
+  const [zoneId, setZoneId] = useState<string | undefined>(undefined);
   const onboard = useCreateCameras();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [timeoutSeconds, setTimeoutSeconds] = useState(3);
@@ -87,6 +89,10 @@ export function DiscoveryDialog({
   };
 
   const submit = () => {
+    if (!zoneId) {
+      toast.error('Choose where these cameras are before onboarding them.');
+      return;
+    }
     const cameras: CreateCameraInput[] = onboardable
       .filter((d) => selected.has(d.endpoint))
       .map(toCreateInput(zoneId));
@@ -186,15 +192,25 @@ export function DiscoveryDialog({
           </div>
         ) : null}
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={selected.size === 0 || onboard.isPending}>
-            {onboard.isPending
-              ? 'Adding…'
-              : `Add ${selected.size} camera${selected.size === 1 ? '' : 's'}`}
-          </Button>
+        <DialogFooter className="items-center gap-2 sm:justify-between">
+          <div className="w-72 text-left">
+            <LocationPicker
+              value={zoneId}
+              onChange={setZoneId}
+              selectable={isCameraPlaceable}
+              placeholder="Where are these cameras?"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button onClick={submit} disabled={selected.size === 0 || onboard.isPending}>
+              {onboard.isPending
+                ? 'Adding…'
+                : `Add ${selected.size} camera${selected.size === 1 ? '' : 's'}`}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

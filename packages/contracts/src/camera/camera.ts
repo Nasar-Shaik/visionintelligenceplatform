@@ -703,6 +703,40 @@ export const UpdateCameraInput = z
   });
 export type UpdateCameraInput = z.infer<typeof UpdateCameraInput>;
 
+/** Maximum cameras returned by one list request. */
+export const CAMERA_PAGE_LIMIT = 500;
+
+/** Maximum zones one list request may filter by — a subtree wider than this is filtered further up. */
+export const CAMERA_ZONE_FILTER_LIMIT = 200;
+
+/**
+ * A bounded camera query (P-3).
+ *
+ * `zoneIds` is how the estate reaches the inventory **without either side learning the other's
+ * model**. The hierarchy is owned by the Tenant context and the Camera Service must not traverse it
+ * (`docs/architecture/PLATFORM_BOUNDARIES.md` rule 4): asking for "every camera under this site"
+ * therefore resolves the subtree where the tree lives, and arrives here as a set of zone ids — a
+ * filter, not a hierarchy. The Camera Service still does not know what a site is, and that is the
+ * property worth keeping.
+ */
+export const CameraQuery = z.object({
+  zoneIds: z.array(z.string().min(1)).max(CAMERA_ZONE_FILTER_LIMIT).optional(),
+  status: CameraStatus.optional(),
+  lifecycle: CameraLifecycleState.optional(),
+  /** Case-insensitive substring match on the camera name. */
+  search: z.string().min(1).max(200).optional(),
+  limit: z.number().int().positive().max(CAMERA_PAGE_LIMIT).default(CAMERA_PAGE_LIMIT),
+  cursor: z.string().min(1).optional(),
+});
+export type CameraQuery = z.infer<typeof CameraQuery>;
+
+/** One page of cameras. `nextCursor` is absent when the page is the last one. */
+export const CameraPage = z.object({
+  cameras: z.array(Camera),
+  nextCursor: z.string().min(1).optional(),
+});
+export type CameraPage = z.infer<typeof CameraPage>;
+
 /** Response of `GET /cameras/:id/health`. */
 export const CameraHealthReport = CameraHealth.extend({
   cameraId: z.string().min(1),
