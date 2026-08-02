@@ -2,6 +2,7 @@ import type {
   CreateRuleInput,
   Rule,
   RuleDryRunResult,
+  RuleValidationReport,
   RuleVersionRecord,
   UpdateRuleInput,
 } from '@vip/contracts';
@@ -22,4 +23,9 @@ export const rulesApi = {
   versions: (id: string) => http.get<RuleVersionRecord[]>(`/rules/rules/${id}/versions`),
   dryRun: (id: string, event: EventEnvelope) =>
     http.post<RuleDryRunResult>(`/rules/rules/${id}/dry-run`, { event }),
+  /**
+   * Check a rule's references (P-4). A **GET**: it reads and reports, writes nothing and changes no
+   * lifecycle, so an editor can call it freely while the author is still deciding.
+   */
+  validation: (id: string) => http.get<RuleValidationReport>(`/rules/rules/${id}/validation`),
 };

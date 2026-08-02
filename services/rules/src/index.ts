@@ -25,9 +25,17 @@ async function main(): Promise<void> {
   const bus = await NatsEventBus.connect({ servers: config.nats.url, name: 'rules' });
   const store = new MongoRuleStore({ rules: mongo.rules, versions: mongo.versions });
   const state = new InMemoryRuleStateStore();
+  /*
+   * The engine is constructed after the HTTP server (it needs the metrics registry), so authoring
+   * writes reach its compiled-rule cache through a late-bound reference rather than a construction
+   * order dependency. Without this, a rule an operator just saved is invisible to the engine until
+   * the compiled set expires — "saved" followed by nothing happening, which reads as a broken product.
+   */
+  const engineRef: { current?: RuleEngine } = {};
   const ruleService = new RuleService({
     store,
     dedupWindowMs: config.rules.candidateDedupWindowMs,
+    onRulesChanged: (tenantId) => engineRef.current?.invalidate(tenantId),
   });
 
   const readiness = new ReadinessRegistry();
@@ -53,6 +61,7 @@ async function main(): Promise<void> {
     log: (level, msg, fields) => loggerRef.current?.[level]({ ...fields }, msg),
   });
 
+  engineRef.current = engine;
   await engine.start();
   app.log.info('rule engine consumer started');
 

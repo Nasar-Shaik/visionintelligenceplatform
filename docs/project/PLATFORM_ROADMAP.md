@@ -20,8 +20,8 @@ layer above is complete.
 └──────────────────────────────────────────────────────────────────────┘
                                   ↓
 ┌─ Product Layer ────────────────────────────────────── STARTED ───────┐
-│  ✓ Location Management (P-3, frozen)                                 │
-│    Rules · Incidents · Evidence Player · Dashboards · Administration  │
+│  ✓ Location Management (P-3, frozen)   ✓ Rule Designer (P-4)         │
+│    Incidents · Evidence Player · Dashboards · Administration          │
 └──────────────────────────────────────────────────────────────────────┘
                                   ↓
 ┌─ Business Layer ───────────────────────────────────────── PLANNED ───┐

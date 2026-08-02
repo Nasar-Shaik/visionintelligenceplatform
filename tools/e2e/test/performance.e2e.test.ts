@@ -69,6 +69,7 @@ async function baseline(
     categories: [],
     severity: 'medium',
     actions: [{ type: 'raise-incident' }],
+    scope: { nodeIds: [], cameraIds: [] },
   });
 
   const latencies: number[] = [];

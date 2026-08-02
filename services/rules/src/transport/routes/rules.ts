@@ -56,6 +56,19 @@ export function registerRuleRoutes(app: FastifyInstance, deps: RuleRoutesDeps): 
     },
   );
 
+  /*
+   * Validate a rule's references (P-4). A **GET**: it reads and reports, changes no lifecycle and
+   * writes nothing, so it is safe to poll from an editor and safe to retry.
+   */
+  app.get<{ Params: RuleParams }>(
+    '/rules/:id/validation',
+    { preHandler: auth.authorize('rule:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      return reply.send(success(await service.validate(scope, request.params.id)));
+    },
+  );
+
   app.post<{ Params: RuleParams }>(
     '/rules/:id/dry-run',
     { preHandler: auth.authorize('rule:read') },

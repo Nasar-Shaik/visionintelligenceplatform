@@ -32,7 +32,15 @@ function asComparable(v: unknown): number | string | undefined {
   return undefined;
 }
 
-function evaluatePredicate(leaf: RulePredicate, envelope: EventEnvelope): boolean {
+/**
+ * Evaluate one leaf.
+ *
+ * Exported so the explainer (`explain.ts`) can report **the same** verdict the engine reached rather
+ * than a second implementation of it. Two interpreters would drift, and the explanation would
+ * eventually describe a decision the engine did not make — which is worse than no explanation,
+ * because it is believed.
+ */
+export function evaluatePredicate(leaf: RulePredicate, envelope: EventEnvelope): boolean {
   const actual = getField(envelope, leaf.field);
   const expected = leaf.value;
 

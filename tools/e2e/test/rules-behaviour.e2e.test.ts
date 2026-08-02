@@ -24,6 +24,7 @@ const personSecurityRule: CreateRuleInput = {
   categories: [],
   severity: 'high',
   actions: [{ type: 'raise-incident' }],
+  scope: { nodeIds: [], cameraIds: [] },
 };
 
 describe('rule conflict — one event matches multiple rules', () => {

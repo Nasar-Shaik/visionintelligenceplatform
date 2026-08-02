@@ -91,6 +91,56 @@ export type RuleAction = z.infer<typeof RuleAction>;
 export const RuleLifecycleState = z.enum(['draft', 'validated', 'enabled', 'disabled', 'archived']);
 export type RuleLifecycleState = z.infer<typeof RuleLifecycleState>;
 
+/**
+ * **Where a rule applies** (P-4) — authored intent, expressed against the frozen Location Hierarchy.
+ *
+ * A scope is a set of **node ids** (any level: org, region, site, building, floor, zone) and/or a set
+ * of **camera ids**. A node includes everything beneath it, so "the London site" is one id rather
+ * than the forty zones under it — and stays correct as zones are added.
+ *
+ * An empty scope means **tenant-wide**, which is the right default for a small customer and a
+ * deliberate choice for a large one. It is never implicit: the console shows what a rule covers.
+ *
+ * This is intent, not evaluation. What the engine matches against is `ResolvedRuleScope` — see there
+ * for why the two are separate.
+ */
+export const RuleScope = z.object({
+  /** Hierarchy nodes this rule covers, including their descendants. */
+  nodeIds: z.array(z.string().min(1)).max(200).default([]),
+  /** Individual cameras this rule covers, regardless of where they sit. */
+  cameraIds: z.array(z.string().min(1)).max(500).default([]),
+});
+export type RuleScope = z.infer<typeof RuleScope>;
+
+/**
+ * A rule's scope **resolved to the leaf ids an event can be matched against**, snapshotted at
+ * validation time.
+ *
+ * Two reasons this is stored rather than recomputed:
+ *
+ * 1. **Evaluation must not query.** Matching an event against "everything under the London site" has
+ *    to be a set membership test — the engine sees millions of events and a lookup per event per rule
+ *    is the shape that does not survive contact with production.
+ * 2. **A version must mean one thing forever.** The resolution is part of the immutable rule version,
+ *    so an incident raised six months ago can be shown the exact set of zones its rule covered *then*.
+ *    Recomputing would silently rewrite the past — the same failure E-1 records for evidence.
+ *
+ * The cost is **staleness**: zones added under a scoped node after resolution are not covered until
+ * the rule is re-validated. That is visible (`resolvedAt`, and the console says so) rather than
+ * silent, and revalidation is one click. See ADR-0026.
+ */
+export const ResolvedRuleScope = z.object({
+  /** Every zone id the scope covers, expanded from the authored nodes. Empty = tenant-wide. */
+  zoneIds: z.array(z.string().min(1)).default([]),
+  /** Camera ids the scope covers directly. */
+  cameraIds: z.array(z.string().min(1)).default([]),
+  /** True when the authored scope was empty — the rule applies everywhere in the tenant. */
+  tenantWide: z.boolean().default(true),
+  /** When the expansion was computed. A hierarchy change after this is not reflected. */
+  resolvedAt: IsoDateTime,
+});
+export type ResolvedRuleScope = z.infer<typeof ResolvedRuleScope>;
+
 /** A persisted, versioned rule (owned by the rules context). */
 export const Rule = z.object({
   id: z.string().min(1),
@@ -114,6 +164,10 @@ export const Rule = z.object({
   /** Severity carried onto the incident candidate. */
   severity: EventPriority.default('medium'),
   actions: z.array(RuleAction).min(1),
+  /** Where this rule applies (P-4). Absent/empty = tenant-wide. */
+  scope: RuleScope.default({ nodeIds: [], cameraIds: [] }),
+  /** The scope expanded to leaf ids, snapshotted at validation. Absent until first validated. */
+  resolvedScope: ResolvedRuleScope.optional(),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   createdBy: z.string().optional(),
@@ -132,6 +186,7 @@ export const CreateRuleInput = z.object({
   window: RuleWindow.optional(),
   severity: EventPriority.default('medium'),
   actions: z.array(RuleAction).min(1),
+  scope: RuleScope.default({ nodeIds: [], cameraIds: [] }),
 });
 export type CreateRuleInput = z.infer<typeof CreateRuleInput>;
 
@@ -147,8 +202,143 @@ export const UpdateRuleInput = z.object({
   window: RuleWindow.optional(),
   severity: EventPriority.optional(),
   actions: z.array(RuleAction).min(1).optional(),
+  scope: RuleScope.optional(),
 });
 export type UpdateRuleInput = z.infer<typeof UpdateRuleInput>;
+
+/**
+ * What a validation check looked at (P-4).
+ *
+ * Declared as a closed set **ahead of the checks that use it**, for the reason the evidence sources
+ * were: adding a value to a published enum is not purely additive for a strict parser, so the values
+ * a future check will need are declared now rather than added later.
+ */
+export const RuleReferenceKind = z.enum([
+  'location',
+  'camera',
+  'event-type',
+  'category',
+  'behavior',
+  'composite',
+  'schedule',
+  'output',
+  'action',
+]);
+export type RuleReferenceKind = z.infer<typeof RuleReferenceKind>;
+
+/** Severity of a validation finding. Only `error` blocks activation. */
+export const RuleIssueSeverity = z.enum(['error', 'warning', 'info']);
+export type RuleIssueSeverity = z.infer<typeof RuleIssueSeverity>;
+
+/** One thing wrong with a rule, named precisely enough to fix without guessing. */
+export const RuleValidationIssue = z.object({
+  code: z.string().min(1).max(60),
+  severity: RuleIssueSeverity,
+  kind: RuleReferenceKind,
+  message: z.string().min(1).max(400),
+  /** The id or field the issue is about, when there is one. */
+  ref: z.string().max(200).optional(),
+});
+export type RuleValidationIssue = z.infer<typeof RuleValidationIssue>;
+
+/**
+ * The outcome of validating a rule (P-4). **A rule cannot be enabled without a passing report.**
+ *
+ * `verified` is the field that matters and the one that is easy to get wrong. A reference check needs
+ * the context that owns the thing referenced; when that context is unreachable, the honest answer is
+ * **"not verified"** — never "valid". A rule that goes live because a check could not run is exactly
+ * the failure the platform's evidence discipline exists to prevent, applied to configuration instead
+ * of to devices ([FOUNDATION_PRINCIPLES §3](../../../docs/project/FOUNDATION_PRINCIPLES.md)).
+ */
+export const RuleValidationReport = z.object({
+  ruleId: z.string().min(1),
+  /** The rule version this report describes. A later version needs its own report. */
+  ruleVersion: z.number().int().min(1),
+  /** No `error`-severity issues **and** every check actually ran. */
+  valid: z.boolean(),
+  /** Every reference check completed. False when a provider was unavailable. */
+  verified: z.boolean(),
+  issues: z.array(RuleValidationIssue).default([]),
+  /** Which reference kinds were actually checked — the rest were not looked at. */
+  checked: z.array(RuleReferenceKind).default([]),
+  checkedAt: IsoDateTime,
+});
+export type RuleValidationReport = z.infer<typeof RuleValidationReport>;
+
+/**
+ * One node of an evaluated condition tree, with what was actually seen (P-4).
+ *
+ * Explainability is not a log line. An operator asking _why did this rule not fire_ needs the specific
+ * leaf that failed and the value it compared against — "confidence 0.71 is not ≥ 0.8" ends the
+ * conversation, while "condition did not match" starts an investigation.
+ *
+ * Traces are **derived on demand**, never stored: the same rule as
+ * [Foundation Principle 2](../../../docs/project/FOUNDATION_PRINCIPLES.md), and what lets an
+ * explanation improve retroactively rather than being frozen in the words of the version that wrote
+ * it.
+ */
+export interface ConditionTrace {
+  readonly kind: 'predicate' | 'all' | 'any' | 'not';
+  readonly passed: boolean;
+  /** Leaf only: the dotted field path that was read. */
+  readonly field?: string | undefined;
+  readonly op?: RuleOperator | undefined;
+  /** Leaf only: what the rule expected, and what the event actually carried. */
+  readonly expected?: unknown;
+  readonly actual?: unknown;
+  /** Why this node came out as it did, in words an operator can act on. */
+  readonly reason: string;
+  readonly children?: readonly ConditionTrace[] | undefined;
+}
+
+export const ConditionTrace: z.ZodType<ConditionTrace> = z.lazy(() =>
+  z.object({
+    kind: z.enum(['predicate', 'all', 'any', 'not']),
+    passed: z.boolean(),
+    field: z.string().optional(),
+    op: RuleOperator.optional(),
+    expected: z.unknown().optional(),
+    actual: z.unknown().optional(),
+    reason: z.string(),
+    children: z.array(ConditionTrace).optional(),
+  }),
+);
+
+/**
+ * Why a rule did or did not fire for one event (P-4).
+ *
+ * The stages are listed in the order they are applied, each with its own verdict, so the **first**
+ * `false` is the answer. A rule that is scoped to the wrong site and also has a failing condition
+ * should report the scope — fixing the condition would not have helped.
+ */
+export const RuleExplanation = z.object({
+  ruleId: z.string().min(1),
+  ruleVersion: z.number().int().min(1),
+  ruleName: z.string(),
+  matched: z.boolean(),
+  /** The stage that decided the outcome. `matched` when every stage passed. */
+  decidedBy: z.enum(['lifecycle', 'scope', 'prefilter', 'condition', 'window', 'matched']),
+  /** One line an operator can read without knowing the rule's internals. */
+  summary: z.string().min(1).max(400),
+  stages: z.object({
+    lifecyclePassed: z.boolean(),
+    scopePassed: z.boolean(),
+    prefilterPassed: z.boolean(),
+    conditionPassed: z.boolean(),
+    windowPassed: z.boolean(),
+  }),
+  /** The condition tree with per-node outcomes. Absent when the rule has no condition. */
+  condition: ConditionTrace.optional(),
+  /** For a windowed rule: how many matches were counted, and how many were needed. */
+  window: z
+    .object({
+      counted: z.number().int().min(0),
+      required: z.number().int().min(1),
+      withinSeconds: z.number().int().min(1),
+    })
+    .optional(),
+});
+export type RuleExplanation = z.infer<typeof RuleExplanation>;
 
 /** One immutable audit record of a rule change (the versioning/audit trail). */
 export const RuleVersionRecord = z.object({
@@ -211,12 +401,14 @@ export type RuleDryRunInput = z.infer<typeof RuleDryRunInput>;
 
 export const RuleDryRunResult = z.object({
   matched: z.boolean(),
-  /** Step-by-step outcome for authoring feedback. */
+  /** Step-by-step outcome for authoring feedback. Superseded by `explanation`; kept for consumers. */
   evaluation: z.object({
     prefilterPassed: z.boolean(),
     conditionPassed: z.boolean(),
     windowPassed: z.boolean(),
   }),
+  /** The full trace: which stage decided, and which leaf failed with what value (P-4). */
+  explanation: RuleExplanation.optional(),
   /** The candidate that WOULD be raised (never emitted during a dry-run). */
   candidate: IncidentCandidate.optional(),
 });

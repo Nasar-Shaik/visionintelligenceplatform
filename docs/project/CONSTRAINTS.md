@@ -206,6 +206,23 @@
     migration path. — _enforced: [Foundation Principle 11](FOUNDATION_PRINCIPLES.md); contract tests
     parse a pre-change record and assert the default; review._
 
+43. **Rules are configuration, never code.** The Rule Designer produces a declarative predicate tree
+    evaluated by a bounded, sandboxed interpreter — no code generation, no expression evaluation, no
+    business logic embedded in the runtime. Configuration is consumed by the runtime; it never
+    modifies it. — _enforced: `domain/condition.ts` (data-only operators, no regex, prototype-safe
+    field access); [ADR-0026](../adr/ADR-0026-rule-scope-validation-and-explainability.md)._
+44. **A check that could not run is not a check that passed.** Reference validation reports `valid`
+    and `verified` separately, and a rule is never activated on an unverified check. When the context
+    that owns a referenced thing is unreachable, the answer is "not verified" — never "fine". This is
+    [Foundation Principle 3](FOUNDATION_PRINCIPLES.md) applied to configuration instead of devices. —
+    _enforced: `domain/validation.ts`; ports default to unavailable; tests assert a location-scoped
+    rule cannot be enabled with no hierarchy configured._
+45. **Nothing in an event-evaluation path may query.** Rule scope, ordering and bounds are resolved
+    when a rule is validated and compiled per tenant; evaluating an event touches no store. A lookup
+    there is a query per rule per event — the shape that survives a fixture and not production. —
+    _enforced: `application/compiled-rules.ts`; a test counts store calls across 1,000 events and
+    asserts one._
+
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._

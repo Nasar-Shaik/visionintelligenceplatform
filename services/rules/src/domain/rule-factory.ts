@@ -5,7 +5,13 @@
  * `lifecycle-changed` (vs `updated`) so the audit trail distinguishes operational transitions from
  * content edits (P1-7 rec 3). No I/O here — the store persists what this returns.
  */
-import type { CreateRuleInput, Rule, RuleVersionRecord, UpdateRuleInput } from '@vip/contracts';
+import type {
+  CreateRuleInput,
+  ResolvedRuleScope,
+  Rule,
+  RuleVersionRecord,
+  UpdateRuleInput,
+} from '@vip/contracts';
 
 export interface FactoryDeps {
   now: () => Date;
@@ -31,6 +37,7 @@ export function newRule(
     categories: input.categories,
     severity: input.severity,
     actions: input.actions,
+    scope: input.scope,
     createdAt: at,
     updatedAt: at,
   };
@@ -47,6 +54,14 @@ export function applyUpdate(
   patch: UpdateRuleInput,
   deps: FactoryDeps,
   actor?: string,
+  /**
+   * The scope expansion computed for this update, when there is one.
+   *
+   * Applied **in the same version bump** as the content it belongs to, so the immutable snapshot
+   * records the rule and the zones it covered together. Attaching it afterwards would leave a version
+   * in the audit trail whose stored expansion belonged to a different edit.
+   */
+  resolution?: ResolvedRuleScope,
 ): { rule: Rule; version: RuleVersionRecord } {
   const at = deps.now().toISOString();
   const rule: Rule = { ...existing, version: existing.version + 1, updatedAt: at };
@@ -58,6 +73,17 @@ export function applyUpdate(
   if (patch.categories !== undefined) rule.categories = patch.categories;
   if (patch.condition !== undefined) rule.condition = patch.condition;
   if (patch.window !== undefined) rule.window = patch.window;
+  /*
+   * Re-scoping invalidates the resolution: the stored expansion belongs to the *previous* scope, and
+   * carrying it forward would leave the engine matching zones the author just removed. Dropped here
+   * rather than recomputed, because expanding needs the hierarchy and this module is pure — the rule
+   * simply becomes unresolved until it is validated again, which is also what blocks re-enabling it.
+   */
+  if (patch.scope !== undefined) {
+    rule.scope = patch.scope;
+    delete rule.resolvedScope;
+  }
+  if (resolution !== undefined) rule.resolvedScope = resolution;
   if (patch.severity !== undefined) rule.severity = patch.severity;
   if (patch.actions !== undefined) rule.actions = patch.actions;
 

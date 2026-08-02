@@ -3,7 +3,13 @@
  * same versioning/audit behaviour as the Mongo adapter (shared domain factory), so the CRUD + engine
  * logic is provable without a database.
  */
-import type { CreateRuleInput, Rule, RuleVersionRecord, UpdateRuleInput } from '@vip/contracts';
+import type {
+  CreateRuleInput,
+  ResolvedRuleScope,
+  Rule,
+  RuleVersionRecord,
+  UpdateRuleInput,
+} from '@vip/contracts';
 import { TenancyError, type TenantScope } from '@vip/tenancy';
 import { applyUpdate, newRule, versionRecord } from '../domain/rule-factory.js';
 import { byEvaluationOrder } from '../domain/rule-evaluator.js';
@@ -60,10 +66,17 @@ export class InMemoryRuleStore implements RuleStore {
     id: string,
     patch: UpdateRuleInput,
     actor?: string,
+    resolution?: ResolvedRuleScope,
   ): Promise<Rule | null> {
     const idx = this.rules.findIndex((r) => r.id === id && this.ownedBy(scope, r));
     if (idx === -1) return null;
-    const { rule, version } = applyUpdate(this.rules[idx]!, patch, this.factoryDeps, actor);
+    const { rule, version } = applyUpdate(
+      this.rules[idx]!,
+      patch,
+      this.factoryDeps,
+      actor,
+      resolution,
+    );
     if (rule.tenantId !== scope.tenantId) throw new TenancyError('cross-tenant write refused');
     this.rules[idx] = rule;
     this.versions.push(version);

@@ -31,6 +31,8 @@ import {
   toast,
 } from '@/ui';
 import { RuleDryRunPanel } from './RuleDryRunPanel';
+import { RuleScopeField } from './RuleScopeField';
+import { RuleValidationPanel } from './RuleValidationPanel';
 import { RuleVersionsSheet } from './RuleVersionsSheet';
 import { RULE_LIFECYCLES, lifecyclePresentation } from './lifecycle';
 import {
@@ -255,6 +257,26 @@ export function RuleEditorPage() {
                   />
                 </Field>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Where — the frozen Location Hierarchy, consumed not redesigned (P-4) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Where</CardTitle>
+              <CardDescription>
+                Which parts of the estate this rule watches. A location includes everything beneath
+                it.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Controller
+                control={control}
+                name="scopeNodeIds"
+                render={({ field }) => (
+                  <RuleScopeField nodeIds={field.value} onChange={field.onChange} />
+                )}
+              />
             </CardContent>
           </Card>
 
@@ -484,6 +506,11 @@ export function RuleEditorPage() {
 
         {isEdit && id ? (
           <aside className="space-y-6">
+            <Card>
+              <CardContent className="pt-6">
+                <RuleValidationPanel ruleId={id} />
+              </CardContent>
+            </Card>
             <RuleDryRunPanel ruleId={id} />
           </aside>
         ) : null}

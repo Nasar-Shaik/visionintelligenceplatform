@@ -43,6 +43,12 @@ export const ruleFormSchema = z
     /** 'inherit' = use the rule severity; otherwise an EventPriority. */
     actionSeverity: z.string(),
     actionEventType: z.string(),
+    /**
+     * Where the rule applies (P-4). Empty = tenant-wide, which is the honest default: a rule that
+     * names nowhere applies everywhere, and the editor says so rather than leaving it implicit.
+     */
+    scopeNodeIds: z.array(z.string()),
+    scopeCameraIds: z.array(z.string()),
   })
   .superRefine((v, ctx) => {
     for (const t of parseEventTypes(v.eventTypesText)) {
@@ -136,6 +142,8 @@ export const DEFAULT_RULE_FORM: RuleFormValues = {
   actionTitle: '',
   actionSeverity: 'inherit',
   actionEventType: '',
+  scopeNodeIds: [],
+  scopeCameraIds: [],
 };
 
 /** Hydrate the form from a persisted rule (edit mode). */
@@ -159,6 +167,9 @@ export function ruleToFormValues(rule: Rule): RuleFormValues {
     actionTitle: isRaise ? (action.title ?? '') : '',
     actionSeverity: isRaise ? (action.severity ?? 'inherit') : 'inherit',
     actionEventType: action?.type === 'emit-event' ? action.eventType : '',
+    // A rule written before P-4 carries no scope; an absent scope has always meant tenant-wide.
+    scopeNodeIds: rule.scope?.nodeIds ?? [],
+    scopeCameraIds: rule.scope?.cameraIds ?? [],
   };
 }
 
@@ -185,6 +196,7 @@ export function toRuleInput(v: RuleFormValues): CreateRuleInput {
     categories: v.categories,
     severity: v.severity,
     actions: [buildAction(v)],
+    scope: { nodeIds: v.scopeNodeIds, cameraIds: v.scopeCameraIds },
   };
   const description = v.description.trim();
   if (description) input.description = description;

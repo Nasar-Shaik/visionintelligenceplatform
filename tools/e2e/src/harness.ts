@@ -132,7 +132,14 @@ export class PlatformHarness {
     // rules — consume t.*.event.>, evaluate, publish incident.candidate + rule.matched
     this.ruleStore = new InMemoryRuleStore({ now, newId });
     this.ruleState = new InMemoryRuleStateStore();
-    this.ruleService = new RuleService({ store: this.ruleStore, now, newId });
+    // Authoring writes drop the engine's compiled-rule cache, exactly as the real service wires it.
+    const engineRef: { current?: RuleEngine } = {};
+    this.ruleService = new RuleService({
+      store: this.ruleStore,
+      now,
+      newId,
+      onRulesChanged: (tenantId) => engineRef.current?.invalidate(tenantId),
+    });
     this.ruleEngine = new RuleEngine({
       bus: this.bus,
       store: this.ruleStore,
@@ -142,6 +149,7 @@ export class PlatformHarness {
       now,
       newId,
     });
+    engineRef.current = this.ruleEngine;
 
     // workflow — consume incident.candidate, idempotently promote, publish incident.raised
     this.incidentStore = new InMemoryIncidentStore();

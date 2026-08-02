@@ -14,6 +14,7 @@ import {
   Label,
   Textarea,
 } from '@/ui';
+import { RuleExplanationView } from './RuleExplanationView';
 import { useDryRunRule } from './useRules';
 
 const SAMPLE_EVENT = JSON.stringify(
@@ -122,11 +123,15 @@ export function RuleDryRunPanel({ ruleId }: { ruleId: string }) {
                 {result.matched ? 'Matched' : 'No match'}
               </Badge>
             </div>
-            <ul className="space-y-1">
-              <Check ok={result.evaluation.prefilterPassed} label="Pre-filter passed" />
-              <Check ok={result.evaluation.conditionPassed} label="Condition passed" />
-              <Check ok={result.evaluation.windowPassed} label="Window threshold met" />
-            </ul>
+            {result.explanation ? (
+              <RuleExplanationView explanation={result.explanation} />
+            ) : (
+              <ul className="space-y-1">
+                <Check ok={result.evaluation.prefilterPassed} label="Pre-filter passed" />
+                <Check ok={result.evaluation.conditionPassed} label="Condition passed" />
+                <Check ok={result.evaluation.windowPassed} label="Window threshold met" />
+              </ul>
+            )}
             {result.candidate ? (
               <p className="text-xs text-muted-foreground">
                 Would raise:{' '}

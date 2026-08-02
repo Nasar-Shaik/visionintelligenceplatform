@@ -5,7 +5,13 @@
  * tenants; `listEnabled` returns only `lifecycle === 'enabled'` rules for the engine.
  */
 import type { Collection } from 'mongodb';
-import type { CreateRuleInput, Rule, RuleVersionRecord, UpdateRuleInput } from '@vip/contracts';
+import type {
+  CreateRuleInput,
+  ResolvedRuleScope,
+  Rule,
+  RuleVersionRecord,
+  UpdateRuleInput,
+} from '@vip/contracts';
 import { TenantRepository, type TenantScope } from '@vip/tenancy';
 import { applyUpdate, newRule, versionRecord } from '../domain/rule-factory.js';
 import { notFound } from '../application/errors.js';
@@ -70,10 +76,11 @@ export class MongoRuleStore implements RuleStore {
     id: string,
     patch: UpdateRuleInput,
     actor?: string,
+    resolution?: ResolvedRuleScope,
   ): Promise<Rule | null> {
     const existing = await this.get(scope, id);
     if (!existing) return null;
-    const { rule, version } = applyUpdate(existing, patch, this.factoryDeps, actor);
+    const { rule, version } = applyUpdate(existing, patch, this.factoryDeps, actor, resolution);
     const matched = await this.rules.updateOne(scope, { id } as never, { $set: rule } as never);
     if (matched === 0) return null;
     await this.versions.insertOne(scope, version as Omit<RuleVersionRecord, 'tenantId'>);

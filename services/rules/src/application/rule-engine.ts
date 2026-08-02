@@ -24,7 +24,9 @@ import {
   type Subscription,
 } from '@vip/messaging';
 import { TenantScope } from '@vip/tenancy';
-import { byEvaluationOrder, evaluateRule } from '../domain/rule-evaluator.js';
+import { evaluateRule } from '../domain/rule-evaluator.js';
+import { matchesScope } from '../domain/scope.js';
+import { RuleSetCache } from './compiled-rules.js';
 import {
   buildIncidentCandidate,
   buildRuleMatch,
@@ -43,6 +45,8 @@ export interface RuleEngineDeps {
   state: RuleStateStore;
   maxRulesPerEvent: number;
   candidateDedupWindowMs: number;
+  /** How long a compiled rule set may be served before it is rebuilt (P-4). */
+  ruleCacheTtlMs?: number;
   metrics?: RuleMetrics;
   now?: () => Date;
   newId?: () => string;
@@ -56,6 +60,8 @@ export class RuleEngine {
   private readonly state: RuleStateStore;
   private readonly maxRulesPerEvent: number;
   private readonly dedupWindowMs: number;
+  /** Compiled, scope-expanded rules per tenant — so evaluating an event touches no store (P-4). */
+  private readonly compiled: RuleSetCache;
   private readonly metrics: RuleMetrics | undefined;
   private readonly now: () => Date;
   private readonly newId: () => string;
@@ -69,6 +75,11 @@ export class RuleEngine {
     this.state = deps.state;
     this.maxRulesPerEvent = deps.maxRulesPerEvent;
     this.dedupWindowMs = deps.candidateDedupWindowMs;
+    this.compiled = new RuleSetCache({
+      store: deps.store,
+      maxRulesPerEvent: deps.maxRulesPerEvent,
+      ...(deps.ruleCacheTtlMs !== undefined ? { ttlMs: deps.ruleCacheTtlMs } : {}),
+    });
     this.metrics = deps.metrics;
     this.now = deps.now ?? (() => new Date());
     this.newId = deps.newId ?? (() => crypto.randomUUID());
@@ -88,6 +99,11 @@ export class RuleEngine {
 
   async stop(): Promise<void> {
     await this.sub?.stop();
+  }
+
+  /** Drop a tenant's compiled rules so an authoring change takes effect immediately (P-4). */
+  invalidate(tenantId: string): void {
+    this.compiled.invalidate(tenantId);
   }
 
   async onMessage(msg: BusMessage): Promise<void> {
@@ -125,16 +141,22 @@ export class RuleEngine {
     }
   }
 
-  /** Evaluate one event against the tenant's enabled rules; publish matches + candidates. */
+  /**
+   * Evaluate one event against the tenant's enabled rules; publish matches + candidates.
+   *
+   * The rules arrive **compiled** — ordered, bounded, and with their location scopes expanded into
+   * hash sets — so this path issues no query and does no sorting. Scope is checked first because it is
+   * the cheapest discriminator and the one that rejects most events in a large estate: a rule for one
+   * site should cost almost nothing on an event from another.
+   */
   async evaluate(envelope: EventEnvelope): Promise<void> {
     const endTimer = this.metrics?.evaluationDuration.startTimer();
     const scope = TenantScope.fromTenantId(envelope.tenantId);
-    const rules = (await this.store.listEnabled(scope))
-      .sort(byEvaluationOrder)
-      .slice(0, this.maxRulesPerEvent);
+    const compiled = await this.compiled.get(scope);
 
-    for (const rule of rules) {
+    for (const { rule, scope: ruleScope } of compiled.rules) {
       this.metrics?.rulesEvaluated.inc();
+      if (!matchesScope(ruleScope, envelope)) continue;
       const { matched } = evaluateRule(rule, envelope);
       if (!matched) continue;
 

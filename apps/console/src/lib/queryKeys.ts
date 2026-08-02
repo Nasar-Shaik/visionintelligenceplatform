@@ -35,6 +35,8 @@ export const queryKeys = {
     all: () => ['rules'] as const,
     list: (params?: Record<string, unknown>) => ['rules', 'list', params ?? {}] as const,
     detail: (id: string) => ['rules', 'detail', id] as const,
+    // P-4. Keyed apart from the rule: re-checking references must not refetch the rule itself.
+    validation: (id: string) => ['rules', 'validation', id] as const,
   },
   incidents: {
     all: () => ['incidents'] as const,
