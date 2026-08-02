@@ -297,3 +297,20 @@ P-2.3: **+5 → 154 generated schemas. Contracts 277 · Python 850 · camera 171
 service, no new runtime layer, the five frozen perception contracts untouched. **The Camera
 Foundation is architecturally complete and frozen** (CONSTRAINTS §30–32); P-3 begins the operational
 hierarchy.
+
+---
+
+## 🔒 Camera Foundation v1.0 — FROZEN (2026-08-02)
+
+The P-2 series is closed. The foundation is a **stable platform dependency**, not an area for
+continued feature development.
+
+- [CAMERA_FOUNDATION_V1](../architecture/CAMERA_FOUNDATION_V1.md) — the freeze record: what is
+  frozen, what may change without ceremony, what needs an ADR, and the intended (unimplemented)
+  direction toward a universal evidence envelope, a platform-wide timeline and an asset model.
+- [FOUNDATION_PRINCIPLES](../project/FOUNDATION_PRINCIPLES.md) — mandatory reading before modifying
+  any foundation.
+- [PLATFORM_BOUNDARIES](../architecture/PLATFORM_BOUNDARIES.md) — permanent component ownership.
+- [CONSTRAINTS §25–34](../project/CONSTRAINTS.md) · [ED-0051](../project/ENGINEERING_DECISION_LOG.md).
+
+**P-3 consumes this foundation. P-3 does not redesign it.**

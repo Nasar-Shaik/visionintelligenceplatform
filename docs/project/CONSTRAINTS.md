@@ -31,9 +31,10 @@
 
 ## AI Runtime evidence discipline (v1.0 closed 2026-08-01 — these are permanent)
 
-<!-- §25–32 extend the same discipline to devices and to the operational evidence layer (P-2 · P-2.1 ·
-     P-2.2 · P-2.3). The Camera Foundation was declared architecturally complete and frozen at the
-     P-2.2 acceptance review; §30–32 are that freeze and the rules that survive it. -->
+<!-- §25–34 extend the same discipline to devices and to the operational evidence layer (P-2 · P-2.1 ·
+     P-2.2 · P-2.3). **Camera Foundation v1.0 is FROZEN** (2026-08-02) — see
+     docs/architecture/CAMERA_FOUNDATION_V1.md. §30–34 are that freeze, the rules that survive it, and
+     the rule that protects it from the product layers built on top. -->
 
 > Recorded at the **AI-5e acceptance / AI Runtime Architecture v1.0 closure** review (Architect, 7
 > recommendations). The runtime architecture is now **frozen and closed**; it evolves through better
@@ -135,6 +136,20 @@
     new evidence type appears without a consumer release. — _enforced:
     `domain/evidence-timeline.ts`; the console's source and producer labels are lookups with a
     fallback, guarded by a test that renders an evidence type the console has never heard of._
+33. **Product layers consume foundations; they never redesign them.** P-3's organisation hierarchy
+    depends on the Camera Foundation exactly as Rules, Evidence and the Runtime already do — through
+    its contracts, as a stable platform dependency. A camera does not learn about sites; a site
+    references cameras. When a product layer cannot express something, the answer is an **additive
+    contract with an ADR**, never a convenient change to a frozen subsystem: the first exception
+    granted is the one that ends the freeze. — _enforced: review; ADR requirement;
+    [CAMERA_FOUNDATION_V1](../architecture/CAMERA_FOUNDATION_V1.md);
+    [PLATFORM_BOUNDARIES](../architecture/PLATFORM_BOUNDARIES.md)._
+34. **Read [FOUNDATION_PRINCIPLES](FOUNDATION_PRINCIPLES.md) before modifying a foundation.** Ten
+    principles — persist measurements · derive conclusions · evidence before decisions · deterministic
+    runtime · contract-first · architecture freeze · additive evolution · explainability ·
+    replayability · auditability — each with the enforcement point that keeps it real. Mandatory
+    reading, because every one of them exists where the alternative had already failed silently. —
+    _enforced: review; [DoD](DEFINITION_OF_DONE.md)._
 
 ## Engineering process
 

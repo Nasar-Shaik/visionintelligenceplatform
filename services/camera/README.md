@@ -241,8 +241,15 @@ later is the one contract change that is not purely additive for a strict parser
 aggregate counts cameras rather than loading them, and `FleetProbeMetrics.sampled` says when the caps
 bit. A sampled aggregate presented as a census is worse than no aggregate.
 
-> **🔒 The Camera Foundation is frozen** ([CONSTRAINTS §31](../../docs/project/CONSTRAINTS.md)):
-> discovery · identity · lifecycle · capability cache · probe pipeline · evidence archive ·
+> ## 🔒 Camera Foundation v1.0 — FROZEN
+>
+> Discovery · identity · lifecycle · capability cache · probe pipeline · evidence archive ·
 > operational timeline · compatibility tracking. Extend through **additive contracts only** — a new
 > field, a new enum value, a new validation provider, a new evidence type. A breaking change requires
 > an ADR.
+>
+> **Before you change anything in here, read
+> [FOUNDATION_PRINCIPLES](../../docs/project/FOUNDATION_PRINCIPLES.md).** The freeze record, and what
+> may change without ceremony, is [CAMERA_FOUNDATION_V1](../../docs/architecture/CAMERA_FOUNDATION_V1.md).
+> Ownership boundaries: [PLATFORM_BOUNDARIES](../../docs/architecture/PLATFORM_BOUNDARIES.md).
+> Rules: [CONSTRAINTS §25–34](../../docs/project/CONSTRAINTS.md).

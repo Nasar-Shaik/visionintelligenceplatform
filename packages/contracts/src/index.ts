@@ -13,6 +13,7 @@ export * from './common/tenant-context.js';
 export * from './common/api-envelope.js';
 // the platform's one evidence vocabulary — shared by certification (AI-5e) and the camera lifecycle (P-2)
 export * from './common/evidence.js';
+export * from './common/foundations.js';
 
 // tenant + org hierarchy (P1-1)
 export * from './tenant/tenant.js';
