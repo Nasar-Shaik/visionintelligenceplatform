@@ -128,6 +128,44 @@ shape instead of inventing a parallel one.
 - **Non-camera assets.** The hierarchy assumes nothing about what stands in a place. A door controller
   or an alarm panel references a node id exactly as a camera does.
 
+## Addendum — P-3 acceptance hardening (2026-08-02)
+
+Accepted at review with fifteen recommendations, folded in as **verification and governance**; no
+runtime behaviour changed and no capability was added.
+
+**Three index defects found by making coverage checkable.** Index specifications became data
+(`adapters/indexes.ts`) and a test now asserts that every read the service issues has an index whose
+prefix serves its equality keys and whose _next_ key serves its sort. That check found three reads
+whose filter was indexed and whose sort was not — each a blocking in-memory sort, each invisible
+against a test fixture: the camera location filter (`tenant_zone` lacked `_id`), the subtree tree read
+(no index served `path` + `depth`), and the unfiltered paged camera listing (no index at all). Fixed
+by `tenant_zone` gaining `_id`, a new `tenant_path_depth`, and a new `tenant_cursor`. Recorded as
+[CONSTRAINTS §40](../project/CONSTRAINTS.md): _an index is not coverage until a query plan says so._
+
+**Depth is bounded by containment, not by convention.** `canContain` requires strictly increasing
+rank, so a root-to-leaf chain draws from eight values and cannot exceed eight nodes. That is what
+makes the depth-recursive helpers safe at any estate size, and it is now asserted rather than assumed.
+
+**Historical location resolution is a named gap, not a future nicety.** Evidence recorded in Zone A
+resolves to Zone B after the camera moves. Every reference survives — no link dangles — but the answer
+changes, which for an investigation is worse than an error. Neither half of the cause is in the
+hierarchy: a camera's `zoneId` is mutable, and a location's ancestry is current. The fix is to freeze
+`zoneId` and its `path` **on the evidence record at write time**, an additive Evidence-context change.
+The test asserting today's behaviour is written so that fixing it breaks the test.
+
+**Twelve invariants** now define the subsystem, each asserted by a test, and the **algorithmic
+complexity** of every core operation is documented as an architectural expectation —
+[HIERARCHY_FOUNDATION_V1](../architecture/HIERARCHY_FOUNDATION_V1.md).
+
+**The subsystem is named the Location Hierarchy** in documentation, because it models the physical
+world rather than organizational ownership. The code keeps its `Org*` names: renaming published
+contracts and routes is the one change the freeze forbids without an ADR, and clarity of prose does
+not buy a breaking change.
+
+**Frozen: Location Hierarchy v1.0**, additive-only, breaking changes by ADR — the same governance as
+Platform Core, AI Runtime, Operational Runtime and the Camera Foundation, and the first product-layer
+subsystem to receive it.
+
 ## Out of scope for P-3
 
 RBAC · bulk import · templates · geospatial coordinates · floor plans · capacity or occupancy

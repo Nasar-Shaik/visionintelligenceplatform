@@ -4,9 +4,10 @@
  * handed to @vip/tenancy repositories by the composition root — no other module talks to the driver
  * (STORAGE_ARCHITECTURE).
  */
-import { MongoClient, type Collection, type Db } from 'mongodb';
+import { MongoClient, type Collection, type Db, type IndexSpecification } from 'mongodb';
 import type { CameraDoc } from '../domain/camera.js';
 import type { ProbeRecordDoc } from '../domain/probe-archive.js';
+import { CAMERA_INDEXES, PROBE_INDEXES } from './indexes.js';
 
 export interface MongoAdapter {
   client: MongoClient;
@@ -53,16 +54,23 @@ async function ensureIndexes(
   cameras: Collection<CameraDoc>,
   probes: Collection<ProbeRecordDoc>,
 ): Promise<void> {
-  // A stream URL is unique within a tenant (idempotent onboarding / duplicate → 409). Tenant-leading
-  // so the index is tenant-scoped (Law 5); the same URL may legitimately exist in another tenant.
-  await cameras.createIndex(
-    { tenantId: 1, streamUrl: 1 },
-    { unique: true, name: 'uniq_tenant_stream' },
-  );
-  // Subtree/listing queries by location, tenant-scoped.
-  await cameras.createIndex({ tenantId: 1, zoneId: 1 }, { name: 'tenant_zone' });
+  /*
+   * Created from the declared specs so the code and the coverage test cannot disagree. Every index
+   * is tenant-leading (Law 5); every camera index ends in `_id`, the cursor key — see `indexes.ts`
+   * for why the trailing key decides whether paging costs O(page) or O(matches).
+   */
+  for (const spec of CAMERA_INDEXES) {
+    if (spec.implicit) continue; // `_id_` is created by MongoDB; declared only so coverage sees it.
+    const keys = Object.fromEntries(spec.keys.map((key) => [key, 1]));
+    await cameras.createIndex(
+      keys as IndexSpecification,
+      spec.unique ? { unique: true, name: spec.name } : { name: spec.name },
+    );
+  }
   // P-2.2: probe history is read newest-first per camera, and aggregated per tenant for the fleet
   // view. Descending on `at` so both reads walk the index rather than sorting a scan.
-  await probes.createIndex({ tenantId: 1, cameraId: 1, at: -1 }, { name: 'tenant_camera_at' });
-  await probes.createIndex({ tenantId: 1, at: -1 }, { name: 'tenant_at' });
+  for (const spec of PROBE_INDEXES) {
+    const keys = Object.fromEntries(spec.keys.map((key) => [key, key === 'at' ? -1 : 1]));
+    await probes.createIndex(keys as IndexSpecification, { name: spec.name });
+  }
 }

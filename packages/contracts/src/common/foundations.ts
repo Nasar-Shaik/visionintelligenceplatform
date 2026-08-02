@@ -78,6 +78,24 @@ export const FOUNDATIONS: readonly Foundation[] = [
     frozenAt: '2026-08-02',
     record: 'docs/architecture/CAMERA_FOUNDATION_V1.md',
   },
+  {
+    /*
+     * The first **product-layer** subsystem to be frozen (P-3), and frozen for the same reason the
+     * foundations were: everything else attaches to it. Rules, incidents, permissions, analytics,
+     * notifications and reports all reference a location, and a subsystem that keeps moving is one
+     * nobody can build on.
+     *
+     * Named "Location Hierarchy" here — it models the physical world rather than organizational
+     * ownership. The code keeps its `Org*` names: renaming published contracts is the one change the
+     * freeze forbids without an ADR, and clarity of prose does not buy a breaking change.
+     */
+    name: 'Location Hierarchy',
+    version: '1.0',
+    status: 'frozen',
+    evolution: 'additive-only',
+    frozenAt: '2026-08-02',
+    record: 'docs/architecture/HIERARCHY_FOUNDATION_V1.md',
+  },
 ] as const;
 
 /** Look up a foundation by name. For tooling and documentation generation — never for a decision. */

@@ -38,13 +38,14 @@ layer above is complete.
 
 ## Foundation Layer — complete, frozen
 
-| Foundation              | Version | Frozen     | Record                                                          |
-| ----------------------- | ------- | ---------- | --------------------------------------------------------------- |
-| **Platform Core**       | 1.0     | 2026-07-01 | [PHASE1_EXIT_REVIEW](PHASE1_EXIT_REVIEW.md)                     |
-| **AI Runtime**          | 1.0     | 2026-08-01 | [CONSTRAINTS §18–24](CONSTRAINTS.md)                            |
-| **Operational Runtime** | 1.0     | 2026-08-01 | [CONSTRAINTS §18–24](CONSTRAINTS.md) · AI-5a baseline           |
-| **Camera Foundation**   | 1.0     | 2026-08-02 | [CAMERA_FOUNDATION_V1](../architecture/CAMERA_FOUNDATION_V1.md) |
-| **Evidence Foundation** | 1.0     | 2026-08-02 | [CAMERA_FOUNDATION_V1](../architecture/CAMERA_FOUNDATION_V1.md) |
+| Foundation              | Version | Frozen     | Record                                                                |
+| ----------------------- | ------- | ---------- | --------------------------------------------------------------------- |
+| **Platform Core**       | 1.0     | 2026-07-01 | [PHASE1_EXIT_REVIEW](PHASE1_EXIT_REVIEW.md)                           |
+| **AI Runtime**          | 1.0     | 2026-08-01 | [CONSTRAINTS §18–24](CONSTRAINTS.md)                                  |
+| **Operational Runtime** | 1.0     | 2026-08-01 | [CONSTRAINTS §18–24](CONSTRAINTS.md) · AI-5a baseline                 |
+| **Camera Foundation**   | 1.0     | 2026-08-02 | [CAMERA_FOUNDATION_V1](../architecture/CAMERA_FOUNDATION_V1.md)       |
+| **Evidence Foundation** | 1.0     | 2026-08-02 | [CAMERA_FOUNDATION_V1](../architecture/CAMERA_FOUNDATION_V1.md)       |
+| **Location Hierarchy**  | 1.0     | 2026-08-02 | [HIERARCHY_FOUNDATION_V1](../architecture/HIERARCHY_FOUNDATION_V1.md) |
 
 Also declared in code as governance metadata: `FOUNDATIONS` in `@vip/contracts`. Nothing branches on
 it, and a test enforces that nothing can.
@@ -59,14 +60,35 @@ it, and a test enforces that nothing can.
 The layer where a customer sees value. Every item consumes the foundations; none of them redesigns
 one.
 
-| Slice   | Feature                    | Status      | Delivers                                                       |
-| ------- | -------------------------- | ----------- | -------------------------------------------------------------- |
-| **P-3** | **Organization Hierarchy** | in progress | The customer's physical world: where every camera actually is. |
-| P-4     | Rules                      | planned     | Rule designer over the frozen behavior contracts.              |
-| P-5     | Incidents                  | planned     | Workflow, assignment, resolution, escalation.                  |
-| P-6     | Evidence Player            | planned     | Investigation: play the evidence, not just read about it.      |
-| P-7     | Dashboards                 | planned     | Operational and estate-level views, analytics.                 |
-| P-8     | Administration             | planned     | Users, roles, permissions, tenant settings, onboarding.        |
+| Slice   | Feature                | Status    | Delivers                                                       |
+| ------- | ---------------------- | --------- | -------------------------------------------------------------- |
+| **P-3** | **Location Hierarchy** | ✅ frozen | The customer's physical world: where every camera actually is. |
+| P-4     | Rules                  | planned   | Rule designer over the frozen behavior contracts.              |
+| P-5     | Incidents              | planned   | Workflow, assignment, resolution, escalation.                  |
+| P-6     | Evidence Player        | planned   | Investigation: play the evidence, not just read about it.      |
+| P-7     | Dashboards             | planned   | Operational and estate-level views, analytics.                 |
+| P-8     | Administration         | planned   | Users, roles, permissions, tenant settings, onboarding.        |
+
+### What the platform can now support
+
+With the Location Hierarchy frozen, the platform supports — verified, not asserted:
+
+| Capability                        | Where it is proven                                                                |
+| --------------------------------- | --------------------------------------------------------------------------------- |
+| **Enterprise organizations**      | Eight levels, skippable; 101,001 nodes in one tenant built in one pass            |
+| **Multi-site deployments**        | `under()` at any level, one indexed lookup                                        |
+| **Multi-building deployments**    | Full `org → … → zone` depth, with breadth at every level                          |
+| **Large camera estates**          | Cursor-paged, index-covered reads; 1,000,000-camera target reviewed               |
+| **Historical evidence**           | Ids survive rename, move, archive and restore; archived nodes resolve             |
+| **Operational monitoring**        | Location-scoped camera queries, without either context learning the other's model |
+| **Future non-camera assets**      | The hierarchy stores no occupancy and names no device type                        |
+| **Future enterprise integration** | Additive metadata and external references verified additive                       |
+| **Future product capabilities**   | P-4 rule scoping verified against the frozen contracts                            |
+
+One requirement from the P-3 review is **not** met and is carried forward:
+evidence resolves a location's ancestry as it is _now_, not as it was when the event occurred. The
+fix belongs in the Evidence context and needs no hierarchy change —
+[HIERARCHY_FOUNDATION_V1](../architecture/HIERARCHY_FOUNDATION_V1.md).
 
 ### Why the hierarchy comes first
 

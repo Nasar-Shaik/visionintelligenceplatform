@@ -176,6 +176,23 @@
     is the guarantee. — _enforced: [ADR-0025](../adr/ADR-0025-organization-hierarchy.md); an HTTP
     test asserts the route is a 404 and a console test asserts no delete control exists._
 
+39. **The Location Hierarchy is frozen (v1.0, 2026-08-02).** Twelve invariants define it — one
+    parent · no cycles · valid path · correct depth · depth bounded at 7 by containment · immutable
+    id and type · editable name · containment preserved · backend-owned traversal · no deletion ·
+    occupant independence · tenant isolation. It evolves by **addition only**; a breaking change
+    needs an ADR. Product layers reference locations by id and never reshape them. — _enforced:
+    [HIERARCHY_FOUNDATION_V1](../architecture/HIERARCHY_FOUNDATION_V1.md);
+    [ADR-0025](../adr/ADR-0025-organization-hierarchy.md); `hierarchy-invariants.test.ts` asserts
+    every invariant; `FOUNDATIONS` in `@vip/contracts`._
+40. **An index is not coverage until a query plan says so.** Index specifications are declared as
+    data and every read the service issues is checked against them: equality keys must occupy a
+    contiguous index prefix and the sort key must be the next key. "We created indexes" and "the
+    planner will use them" are different claims, and only the second one survives production — the
+    P-3 review found three reads whose filter was indexed and whose sort was not, each an in-memory
+    sort that is invisible against a fixture. — _enforced: `adapters/indexes.ts` in the tenant and
+    camera services; `index-coverage.test.ts` in both, which fails when a query pattern is added
+    without a covering index._
+
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._

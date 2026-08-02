@@ -3,8 +3,9 @@
  * index creation, and a readiness ping. Collections are handed to @vip/tenancy repositories by
  * the composition root — no other module talks to the driver directly (STORAGE_ARCHITECTURE).
  */
-import { MongoClient, type Collection, type Db } from 'mongodb';
+import { MongoClient, type Collection, type Db, type IndexSpecification } from 'mongodb';
 import type { OrgNodeDoc, TenantDoc } from '../domain/tenant.js';
+import { ORG_NODE_INDEXES } from './indexes.js';
 
 export interface MongoAdapter {
   client: MongoClient;
@@ -52,16 +53,15 @@ async function ensureIndexes(
 ): Promise<void> {
   // Slug is globally unique in the tenant registry.
   await tenants.createIndex({ slug: 1 }, { unique: true, name: 'uniq_slug' });
-  // Tenant-leading indexes so every query is served by a tenant-scoped index (Law 5).
-  await orgNodes.createIndex({ tenantId: 1, parentId: 1 }, { name: 'tenant_parent' });
-  await orgNodes.createIndex({ tenantId: 1, type: 1 }, { name: 'tenant_type' });
+
   /*
-   * The three P-3 access patterns, each an index rather than a walk (rec 6):
-   *  - `path` is multikey: "everything under this node" is one indexed lookup at any depth.
-   *  - `depth` serves the shallowest-first tree read, so a truncated estate is complete from the top.
-   *  - `status` keeps archived locations out of working views without scanning them.
+   * Location-hierarchy indexes, created from the declared specs so the code and the coverage test
+   * cannot disagree. Every one is tenant-leading (Law 5) and ends in `_id` (the cursor) — see
+   * `indexes.ts` for why the trailing key is load-bearing rather than cosmetic.
    */
-  await orgNodes.createIndex({ tenantId: 1, path: 1 }, { name: 'tenant_path' });
-  await orgNodes.createIndex({ tenantId: 1, depth: 1, _id: 1 }, { name: 'tenant_depth' });
-  await orgNodes.createIndex({ tenantId: 1, status: 1, _id: 1 }, { name: 'tenant_status' });
+  for (const spec of ORG_NODE_INDEXES) {
+    if (spec.implicit) continue; // `_id_` is created by MongoDB; declared only so coverage sees it.
+    const keys = Object.fromEntries(spec.keys.map((key) => [key, 1]));
+    await orgNodes.createIndex(keys as IndexSpecification, { name: spec.name });
+  }
 }

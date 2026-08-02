@@ -1,6 +1,6 @@
 # P-3 — Organization Hierarchy
 
-**Status:** code + tests complete · ⏳ awaiting architectural review
+**Status:** ✅ ACCEPTED (Architect, 2026-08-02) · hardening complete · **Location Hierarchy v1.0 FROZEN**
 **Authorized:** 2026-08-02 (Architect, P-3 approval)
 **Layer:** Product — the first slice built on the frozen foundations.
 
@@ -123,10 +123,73 @@ panel, IoT sensor, barrier).
 RBAC · bulk import · templates · geospatial coordinates · floor plans · capacity modelling ·
 cross-tenant federation · bulk camera reassignment.
 
+---
+
+## Acceptance hardening (2026-08-02)
+
+Approved with fifteen recommendations, folded in as verification and governance. **No runtime
+behaviour changed; no capability was added.**
+
+### What the verification found
+
+| #   | Finding                                                                    | Outcome                   |
+| --- | -------------------------------------------------------------------------- | ------------------------- |
+| 1   | `tenant_zone` lacked `_id` — the location filter's sort was done in memory | fixed                     |
+| 2   | The subtree tree read had no index serving `path` + `depth`                | `tenant_path_depth` added |
+| 3   | The unfiltered paged camera listing had no covering index                  | `tenant_cursor` added     |
+| 4   | Evidence resolves a location's ancestry as it is **now**, not as it was    | **carried forward**       |
+
+Findings 1–3 came from making index coverage _checkable_ rather than reviewable: specs are declared as
+data and a test asserts the planner can serve each query without a blocking sort. None had been caught
+by review, and none is visible against a test fixture.
+
+### What was verified
+
+- **Twelve invariants**, each asserted by a test — including that containment **bounds depth at 7**,
+  which is what makes the depth-recursive helpers safe at any estate size.
+- **Move integrity at every level** — zone, floor, building, site, branch, country, region — plus a
+  chain of moves and a 10,000-node subtree move, each checking ancestry, breadcrumbs, paths,
+  descendants and references.
+- **Enterprise scale**: a 101,001-node single-tenant estate built in one pass; growth confirmed
+  linear rather than quadratic; breadcrumb cost independent of estate size.
+- **Six future query verbs** (`path` · `ancestors` · `descendants`/`under` · `within` · `siblings` ·
+  `children`, plus `level`) answerable from indexed fields already stored — none implemented.
+- **Additive evolution** for location metadata and external references — none implemented.
+- **Asset neutrality**: no occupancy field, no device word in the vocabulary; any occupant attaches
+  by reference.
+- **Bulk-import reuse**: byte-identical validation from CSV, Excel, ERP, AD, REST or HR; 10,000 rows
+  with no store access.
+- **P-4 readiness**: a rule scopes to a node id and resolves its zones with one indexed predicate.
+  **No hierarchy contract change is required for P-4.**
+
+### Complexity, as an architectural expectation
+
+`lookup` O(1) · `breadcrumb` O(d≤7) · `subtree` O(log n + k) · `page` O(log n + p) · `tree` O(n) ·
+`move` O(k) · `rename` O(1) · `camera by location` O(log n + p). Full table in
+[HIERARCHY_FOUNDATION_V1](../architecture/HIERARCHY_FOUNDATION_V1.md).
+
+### 🔒 Frozen
+
+```
+Foundation:  Location Hierarchy      Version:   1.0
+Status:      FROZEN                  Evolution: Additive only
+Frozen:      2026-08-02              Breaking:  ADR required
+```
+
+Declared in `FOUNDATIONS` (`@vip/contracts`) and recorded in
+[HIERARCHY_FOUNDATION_V1](../architecture/HIERARCHY_FOUNDATION_V1.md). The first **product-layer**
+subsystem to be frozen — for the same reason the foundations were: everything else attaches to it.
+
 ## Carried forward
 
+- **Historical location resolution** (P-3 review rec 4). Evidence recorded in Zone A resolves to
+  Zone B after the camera moves. No reference dangles; the _answer_ changes. The fix freezes `zoneId`
+  and its `path` on the evidence record at write time — an additive **Evidence-context** change
+  needing no hierarchy change. The test asserting today's behaviour fails when it is fixed.
 - `Camera.health` is a stored summary that Foundation Principle 2 forbids (ED-0050/0051). Still open;
   it touches a shared read path.
+- **Unanchored substring search is not index-served.** Bounded, but a scan at extreme scale; the
+  mitigation is a text index or anchored prefix search, neither needing a model change.
 - Camera groups (P-1 rec 5) · installer diagnostics report (rec 6) · broader onboarding UX (rec 9).
 
 ## Related
