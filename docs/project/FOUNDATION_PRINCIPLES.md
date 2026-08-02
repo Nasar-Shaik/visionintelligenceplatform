@@ -3,11 +3,11 @@
 **Mandatory reading before modifying any frozen foundation.**
 
 Status: permanent · Established G-1 → P-2.3 · Recorded 2026-08-02 at the Camera Foundation v1.0
-freeze.
+freeze · §11 added at the P-3 Location Hierarchy freeze.
 
 ---
 
-These ten principles are what the platform learned building its foundations. They are not style
+These eleven principles are what the platform learned building its foundations. They are not style
 preferences. Each one exists because the alternative failed, or would have failed silently in a way
 nobody would have caught until a customer did.
 
@@ -139,6 +139,28 @@ _Enforced:_ `CONSTRAINTS §32` · `domain/evidence-timeline.ts` · consumers rea
 than switching on the producer, guarded by a test that renders an evidence type the console has never
 heard of.
 
+## 11. Additive migration
+
+Every evolution of a frozen foundation answers three questions **before** it is written:
+
+1. **Can existing data still be read?** A new field is optional or defaulted. A reader never requires
+   what an older writer could not have written.
+2. **Can an existing deployment upgrade without rebuilding?** No collection rewrite, no re-index of a
+   billion documents at boot, no offline step.
+3. **Is the migration additive?** If it is not, it is an ADR — and the ADR carries the migration path,
+   rather than noting that one will be needed.
+
+A platform that cannot be upgraded in place is one whose customers stay on old versions, and every
+version they stay on is a version that has to keep being supported. The cost of getting this wrong is
+paid for years, by people who did not make the choice.
+
+The pattern in the code: `OrgNodeDoc.status`, `depth` and `archivedAt` are optional **on read** and
+written on every new record, because documents written before P-3 do not carry them. Every reader
+defaults rather than assuming. That is what additive means in a **store**, as opposed to in a schema.
+
+_Enforced:_ `CONSTRAINTS §42` · contract tests parse a pre-change record and assert the default ·
+review.
+
 ---
 
 ## The order of work
@@ -156,8 +178,7 @@ the work from P-3 onward is customer-facing product built **on** them, not into 
 2. Does it persist a conclusion? (Principle 2 — derive it instead.)
 3. Does it let something be claimed without the evidence class to support it? (Principle 3.)
 4. Does it introduce a non-deterministic seam into a test path? (Principle 4.)
-5. Does it create a second way to say something the platform already says? (Principle 5, 10.)
-6. Could the need be met by consuming the foundation rather than changing it? Usually yes — and
+5. Could the need be met by consuming the foundation rather than changing it? Usually yes — and
    "usually yes" is why the freeze holds.
 
 ## Related

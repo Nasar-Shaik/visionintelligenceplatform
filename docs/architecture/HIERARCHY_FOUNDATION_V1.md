@@ -142,6 +142,78 @@ Two of these are load-bearing and easy to lose:
 
 ---
 
+# Performance budgets
+
+**Engineering budgets, not guarantees.** They exist so a regression has a number to fail against and
+so a reviewer has something to ask about — not as an SLA, and not as a promise to any customer.
+
+Server-side, warm cache, p95, an estate within the enterprise target (§ Enterprise scale):
+
+| Operation                   | Budget          | Notes                                                      |
+| --------------------------- | --------------- | ---------------------------------------------------------- |
+| Breadcrumb / `location(id)` | **< 5 ms**      | Two indexed reads: the node, then its ancestors by `$in`.  |
+| Camera lookup by id         | **< 10 ms**     | One unique-index read.                                     |
+| Cameras under a subtree     | **< 50 ms**     | Subtree resolve + one `$in` page. Two round trips.         |
+| Locations page (200)        | **< 50 ms**     | Three queries: page, ancestors, child-existence.           |
+| Tree generation             | **linear in n** | Bounded by the 5,000-node ceiling; one query, one pass.    |
+| Archive / restore a subtree | **< 200 ms**    | One `updateMany` over the multikey index.                  |
+| Move a subtree (≤ 1,000)    | **< 500 ms**    | One `bulkWrite`.                                           |
+| Move a subtree (10,000)     | **maintenance** | Not an interactive operation. Expect seconds; plan for it. |
+| Substring search            | **unbudgeted**  | Not index-served. Bounded result, unbounded work.          |
+
+Two of these are statements of intent rather than measurements:
+
+- **A 10,000-node move is a maintenance operation.** It is correct, atomic in one write and tested —
+  but it is a reorganisation of a customer's estate, not a click. Treating it as interactive is how it
+  ends up behind a spinner with no progress and no cancel.
+- **Substring search is deliberately unbudgeted.** Giving a number to work that is O(tenant nodes)
+  would imply an index that does not exist.
+
+---
+
+# Benchmark notes — read before quoting a number
+
+The scale figures in this document come from **deterministic unit tests over synthetic data**, not
+from a production benchmark. They are worth exactly what that implies, and no more.
+
+**What was measured.** Pure in-memory algorithmic behaviour: tree assembly, path rewriting, breadcrumb
+resolution and subtree predicates over generated `OrgNodeDoc` objects.
+
+**Dataset shape.** Uniform and synthetic — 1,000 branches × 100 zones, every node identical in size,
+ids short and sequential, names short and ASCII. A real estate is lumpy: a few large sites, many tiny
+ones, long names, unicode, and depth varying across branches.
+
+**Hardware.** Whatever ran the suite — developer laptop or CI runner. **Not** pinned, **not** recorded,
+**not** comparable between runs. The AI-5a benchmark harness exists precisely because that kind of
+comparison needs a fingerprint; this is not that harness, and its numbers must never be pasted into a
+performance claim.
+
+**Assumptions.** Everything fits in memory. No serialization. No network. No concurrency. No other
+tenant competing for the same cache.
+
+**What was NOT measured, and therefore is not known:**
+
+- **Any real MongoDB behaviour** — no query plans were captured, no `explain()` was run, no index was
+  exercised against a server. Index _coverage_ is proven by a model of the planner's rules
+  ([INDEX_POLICY](../project/INDEX_POLICY.md)), which is a much weaker claim than a measured plan.
+- Disk, cache pressure, or what happens when a multikey index no longer fits in RAM.
+- Write throughput, or the cost the seven camera indexes add to a probe-heavy workload.
+- Concurrency: simultaneous moves, a move racing a read, or lock contention on a large `bulkWrite`.
+- End-to-end latency. Nothing here includes HTTP, auth, serialization or the gateway.
+- Anything at all about 1,000,000 cameras. The camera-side figure is a **reviewed design target**, not
+  a measurement.
+
+**The assertions are shaped accordingly.** The scale tests assert _shape_ — that growth is linear
+rather than quadratic, that resolution cost is independent of estate size, that a move produces one
+batch — with deliberately generous absolute bounds. They exist to catch an accidental O(n²), not to
+benchmark a host. A tightened bound here would fail on a loaded CI machine and teach everyone to
+ignore it.
+
+**Before a performance claim reaches a customer**, it needs the AI-5a harness: pinned hardware, a
+recorded fingerprint, a baseline and a regression comparison (CONSTRAINTS §23).
+
+---
+
 # Index coverage report
 
 Generated from the declared specs in `src/adapters/indexes.ts` and asserted by
@@ -214,10 +286,11 @@ device word anywhere in its vocabulary. A camera, an NVR, a DVR, a door controll
 fire panel, an IoT sensor or a parking barrier all attach the same way: by referencing a node id.
 Adding an occupant type requires **no change to the hierarchy at all**.
 
-## Future query verbs
+## Future query catalog
 
-Every verb the review named is answerable from fields already stored **and already indexed**, with no
-new field, collection, join or recursive read:
+**Status: Future Extension — none implemented.** Maintained as a catalog so the milestone that wants
+one extends a known shape. Every verb is answerable from fields already stored **and already
+indexed**, with no new field, collection, join or recursive read:
 
 | Verb                        | The query                                | Index           |
 | --------------------------- | ---------------------------------------- | --------------- |
@@ -228,8 +301,17 @@ new field, collection, join or recursive read:
 | `siblings()`                | `parentId: node.parentId, _id ≠ node.id` | `tenant_parent` |
 | `children()`                | `parentId: nodeId`                       | `tenant_parent` |
 | `level(n)`                  | `depth: n`                               | `tenant_depth`  |
+| `nearest(node, type)`       | the last `path` entry of that type       | — (no query)    |
+| `root(node)`                | `node.path[0] ?? node.id`                | — (no query)    |
+| `isWithin(a, b)`            | `a.path.includes(b.id)`                  | — (no query)    |
 
-None is implemented. The verification is that implementing one is a read, not a redesign.
+`nearest()` earns a note: "the nearest enclosing building" looks like a search and is not one. Ancestry
+is ordered root-first, and each type appears at most once in a chain because containment forbids a
+type inside itself — so the answer is a scan of at most seven ids already in hand.
+
+The verification is that implementing any of these is **a read, not a redesign**. Each would arrive as
+a query parameter on the existing `/locations` resource rather than as a new endpoint
+([PRODUCT_PRINCIPLES §8](../project/PRODUCT_PRINCIPLES.md) — avoid endpoint proliferation).
 
 ## Enterprise scale
 

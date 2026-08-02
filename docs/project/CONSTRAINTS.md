@@ -193,6 +193,19 @@
     camera services; `index-coverage.test.ts` in both, which fails when a query pattern is added
     without a covering index._
 
+41. **Public contracts are frozen; documentation terminology is not.** Vocabulary may improve
+    independently of published names — the subsystem frozen as `OrgNode` / `/org-nodes` is _called_
+    the Location Hierarchy, and the code keeps its names. **Cosmetic API renames are forbidden:** a
+    rename breaks every consumer, every stored document and every integration, in exchange for a
+    clearer word. A genuinely misleading name is an ADR with a migration path, not a find-and-replace.
+    — _enforced: review; [FOUNDATIONS](FOUNDATIONS.md); the freeze records._
+42. **Every foundation change answers the three migration questions.** Can existing data still be
+    read · can an existing deployment upgrade without rebuilding · is the migration additive. A field
+    added is optional or defaulted, and a reader defaults rather than assuming — that is what additive
+    means in a **store** as opposed to in a schema. If any answer is no, it is an ADR carrying the
+    migration path. — _enforced: [Foundation Principle 11](FOUNDATION_PRINCIPLES.md); contract tests
+    parse a pre-change record and assert the default; review._
+
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._

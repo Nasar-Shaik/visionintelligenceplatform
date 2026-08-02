@@ -20,19 +20,24 @@ Human-facing program **policy, decisions, and reference** (governance suite, dep
 
 > Permanent engineering policy. Every slice updates the applicable files before it is [Done](DEFINITION_OF_DONE.md). See also the reusable [templates](../templates/).
 
-| File                                                                               | Purpose                                             |
-| ---------------------------------------------------------------------------------- | --------------------------------------------------- |
-| [ENGINEERING_DECISION_LOG.md](ENGINEERING_DECISION_LOG.md)                         | All engineering decisions (append-only)             |
-| [RISK_REGISTER.md](RISK_REGISTER.md)                                               | Risks: impact/probability/severity/mitigation       |
-| [ASSUMPTIONS.md](ASSUMPTIONS.md)                                                   | Working assumptions + validation method             |
-| [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)                                             | Surfaced uncertainty awaiting decision              |
-| [CONSTRAINTS.md](CONSTRAINTS.md)                                                   | Hard rules future engineers must never violate      |
-| [FOUNDATION_PRINCIPLES.md](FOUNDATION_PRINCIPLES.md)                               | **Mandatory reading before modifying a foundation** |
-| [../architecture/PLATFORM_BOUNDARIES.md](../architecture/PLATFORM_BOUNDARIES.md)   | Permanent component ownership                       |
-| [../architecture/CAMERA_FOUNDATION_V1.md](../architecture/CAMERA_FOUNDATION_V1.md) | Camera Foundation v1.0 freeze record                |
-| [DEFINITION_OF_DONE.md](DEFINITION_OF_DONE.md)                                     | The per-slice DoD checklist                         |
-| [QUALITY_GATES.md](QUALITY_GATES.md)                                               | Per-sprint PASS/FAIL scorecard                      |
-| [API_INVENTORY.md](API_INVENTORY.md)                                               | Every API endpoint across services                  |
-| [../testing/](../testing/)                                                         | Per-slice PO-executable test scenarios              |
-| [../tracker/REVIEW_HISTORY.md](../tracker/REVIEW_HISTORY.md)                       | Per-slice review + Architect handoff                |
-| [../templates/](../templates/)                                                     | Reusable documentation templates                    |
+| File                                                                                     | Purpose                                                       |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| [ENGINEERING_DECISION_LOG.md](ENGINEERING_DECISION_LOG.md)                               | All engineering decisions (append-only)                       |
+| [RISK_REGISTER.md](RISK_REGISTER.md)                                                     | Risks: impact/probability/severity/mitigation                 |
+| [ASSUMPTIONS.md](ASSUMPTIONS.md)                                                         | Working assumptions + validation method                       |
+| [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md)                                                   | Surfaced uncertainty awaiting decision                        |
+| [CONSTRAINTS.md](CONSTRAINTS.md)                                                         | Hard rules future engineers must never violate                |
+| [FOUNDATIONS.md](FOUNDATIONS.md)                                                         | **The canonical register of frozen foundations — start here** |
+| [FOUNDATION_PRINCIPLES.md](FOUNDATION_PRINCIPLES.md)                                     | **Mandatory reading before modifying a foundation**           |
+| [PRODUCT_PRINCIPLES.md](PRODUCT_PRINCIPLES.md)                                           | **Mandatory reading before adding a product feature**         |
+| [PLATFORM_ROADMAP.md](PLATFORM_ROADMAP.md)                                               | The four layers and what sits in each (governance)            |
+| [INDEX_POLICY.md](INDEX_POLICY.md)                                                       | When an index exists, when it must not, write cost            |
+| [../architecture/PLATFORM_BOUNDARIES.md](../architecture/PLATFORM_BOUNDARIES.md)         | Permanent component ownership                                 |
+| [../architecture/CAMERA_FOUNDATION_V1.md](../architecture/CAMERA_FOUNDATION_V1.md)       | Camera Foundation v1.0 freeze record                          |
+| [../architecture/HIERARCHY_FOUNDATION_V1.md](../architecture/HIERARCHY_FOUNDATION_V1.md) | Location Hierarchy v1.0 freeze record                         |
+| [DEFINITION_OF_DONE.md](DEFINITION_OF_DONE.md)                                           | The per-slice DoD checklist                                   |
+| [QUALITY_GATES.md](QUALITY_GATES.md)                                                     | Per-sprint PASS/FAIL scorecard                                |
+| [API_INVENTORY.md](API_INVENTORY.md)                                                     | Every API endpoint across services                            |
+| [../testing/](../testing/)                                                               | Per-slice PO-executable test scenarios                        |
+| [../tracker/REVIEW_HISTORY.md](../tracker/REVIEW_HISTORY.md)                             | Per-slice review + Architect handoff                          |
+| [../templates/](../templates/)                                                           | Reusable documentation templates                              |

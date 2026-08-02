@@ -14,14 +14,14 @@ Each layer is built on the one above it and never reaches past it. A layer is en
 layer above is complete.
 
 ```
-┌─ Foundation Layer ─────────────────────────────── COMPLETE · FROZEN ─┐
-│  Platform Core · AI Runtime · Operational Runtime                    │
-│  Camera Foundation · Evidence Foundation                             │
+┌─ Foundation Layer ─────────────────────── COMPLETE · SIX FROZEN ─────┐
+│  ✓ Platform Core   ✓ AI Runtime        ✓ Operational Runtime         │
+│  ✓ Camera          ✓ Evidence          ✓ Location Hierarchy          │
 └──────────────────────────────────────────────────────────────────────┘
                                   ↓
-┌─ Product Layer ────────────────────────────────────── IN PROGRESS ───┐
-│  Organization Hierarchy · Rules · Incidents                          │
-│  Evidence Player · Dashboards · Administration                       │
+┌─ Product Layer ────────────────────────────────────── STARTED ───────┐
+│  ✓ Location Management (P-3, frozen)                                 │
+│    Rules · Incidents · Evidence Player · Dashboards · Administration  │
 └──────────────────────────────────────────────────────────────────────┘
                                   ↓
 ┌─ Business Layer ───────────────────────────────────────── PLANNED ───┐
@@ -35,6 +35,12 @@ layer above is complete.
 ```
 
 ---
+
+> **Where the project stands.** The infrastructure layer is complete and six foundations are frozen.
+> The first product slice — Location Management — is delivered and itself frozen. **Next: P-4, product
+> features.** From here, development is customer-facing capability rather than architectural work.
+>
+> Canonical register: [FOUNDATIONS](FOUNDATIONS.md).
 
 ## Foundation Layer — complete, frozen
 
@@ -146,6 +152,21 @@ solution cannot be expressed as configuration, the generic model is missing a kn
 knob is the work, not adding the solution.
 
 ---
+
+## The P-4 guardrail
+
+**P-4 consumes the Location Hierarchy exactly as it exists today.**
+
+A rule scopes to a **node id** and resolves the zones beneath it with one indexed predicate. That is
+verified — `hierarchy-invariants.test.ts › "P-4 readiness"` asserts a rule needs no hierarchy field,
+contract or route that does not already exist.
+
+Any modification to a hierarchy contract requires, in order: **an ADR · architectural review ·
+approval**. Not one of the three is optional, and "P-4 would be easier if" is not a reason — the first
+exception granted is the one that ends the freeze ([CONSTRAINTS §33](CONSTRAINTS.md)).
+
+The same guardrail applies to every other frozen foundation P-4 touches: the behaviour contracts, the
+evidence envelope and the camera model are all consumed, never reshaped.
 
 ## What this roadmap does not do
 
