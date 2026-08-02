@@ -13,6 +13,7 @@ import type {
   CameraOperationalHealth,
   CameraTimelineEntry,
   CapabilityCache,
+  CompatibilityRecord,
   CameraMetadata,
   CameraProtocol,
   CameraStatus,
@@ -54,6 +55,10 @@ export interface CameraDoc extends TenantScoped {
   capabilityCache?: CapabilityCache;
   /** Last measured device health (P-2). Absent means nothing has ever probed this camera. */
   operational?: CameraOperationalHealth;
+  /** Compatibility history (P-2.2). Every condition this camera has run under. */
+  compatibility?: CompatibilityRecord[];
+  /** Probes ever run (P-2.2). Monotonic — distinct from how many reports are still retained. */
+  probeCount?: number;
   /** Sealed credentials envelope (@vip/crypto), or null when none are vaulted. Never returned. */
   credentialCipher: string | null;
   createdAt: string;
@@ -66,6 +71,8 @@ export interface Clock {
 
 export interface IdGen {
   cameraId(): string;
+  /** Identifier for one immutable probe report (P-2.2). */
+  probeId(): string;
 }
 
 const DEFAULT_CAPTURE: CaptureProfile = { ptz: false };
@@ -266,6 +273,8 @@ export function toCamera(doc: CameraDoc): Camera {
     identityHistory: doc.identityHistory ?? [],
     ...(doc.capabilityCache ? { capabilityCache: doc.capabilityCache } : {}),
     ...(doc.operational ? { operational: doc.operational } : {}),
+    compatibility: doc.compatibility ?? [],
+    probeCount: doc.probeCount ?? 0,
     hasCredentials: doc.credentialCipher !== null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,

@@ -4,7 +4,12 @@ import type {
   CameraCapabilities,
   CameraHealthReport,
   CameraHealthSummary,
+  CameraEvidenceTimeline,
+  CameraProbeHistory,
+  CameraProbeMetrics,
   CameraProbeReport,
+  FleetProbeMetrics,
+  ProbeReplay,
   HealthTrendWindow,
   CapabilityRefreshResult,
   CameraValidationInput,
@@ -50,6 +55,19 @@ export const camerasApi = {
     ),
   healthSummary: (id: string, window: HealthTrendWindow = 'day') =>
     http.get<CameraHealthSummary>(`/camera/cameras/${id}/health/summary?window=${window}`),
+  // P-2.2 — the immutable probe archive. Every one of these is a GET: they read stored evidence and
+  // contact no camera. `replay` in particular must never become a POST, because a support engineer
+  // reading a week-old failure would then be re-testing a camera that has since been rebooted.
+  probes: (id: string, limit = 50) =>
+    http.get<CameraProbeHistory>(`/camera/cameras/${id}/probes?limit=${limit}`),
+  replayProbe: (id: string, probeId: string) =>
+    http.get<ProbeReplay>(`/camera/cameras/${id}/probes/${probeId}`),
+  probeMetrics: (id: string, window: HealthTrendWindow = 'day') =>
+    http.get<CameraProbeMetrics>(`/camera/cameras/${id}/probes/metrics?window=${window}`),
+  evidence: (id: string, window: HealthTrendWindow = 'month') =>
+    http.get<CameraEvidenceTimeline>(`/camera/cameras/${id}/evidence?window=${window}`),
+  fleetMetrics: (window: HealthTrendWindow = 'day') =>
+    http.get<FleetProbeMetrics>(`/camera/cameras/metrics?window=${window}`),
   retire: (id: string) => http.post<Camera>(`/camera/cameras/${id}/retire`),
   reinstate: (id: string) => http.post<Camera>(`/camera/cameras/${id}/reinstate`),
 };

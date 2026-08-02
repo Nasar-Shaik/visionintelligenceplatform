@@ -13,6 +13,7 @@ import {
   DiscoverCamerasInput,
   UpdateCameraInput,
 } from '@vip/contracts';
+import type { HealthTrendWindow } from '@vip/contracts';
 import { TenantScope } from '@vip/tenancy';
 import type { CameraService } from '../../application/camera-service.js';
 import type { Auth } from '../plugins/auth.js';
@@ -25,6 +26,14 @@ export interface CameraRoutesDeps {
 
 interface CameraParams {
   id: string;
+}
+
+/**
+ * Named trend windows only. An arbitrary hour count would quietly reinstate the lifetime average
+ * these windows exist to prevent — a year of uptime hiding last night's outage.
+ */
+function parseWindow(requested: string | undefined): HealthTrendWindow | undefined {
+  return (['hour', 'day', 'week', 'month'] as const).find((w) => w === requested);
 }
 
 export function registerCameraRoutes(app: FastifyInstance, deps: CameraRoutesDeps): void {
@@ -78,6 +87,22 @@ export function registerCameraRoutes(app: FastifyInstance, deps: CameraRoutesDep
     const input = parseBody(CameraValidationInput, request.body);
     return success(service.validateConfig(input));
   });
+
+  /**
+   * Fleet-wide probe performance (P-2.2). Static path, declared before `/cameras/:id` so it is not
+   * captured by the param route.
+   */
+  app.get<{ Querystring: { window?: string } }>(
+    '/cameras/metrics',
+    { preHandler: auth.authorize('camera:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const window = parseWindow(request.query.window);
+      return reply.send(
+        success(await service.fleetProbeMetrics(scope, { ...(window ? { window } : {}) })),
+      );
+    },
+  );
 
   app.get<{ Params: CameraParams }>(
     '/cameras/:id',
@@ -191,8 +216,7 @@ export function registerCameraRoutes(app: FastifyInstance, deps: CameraRoutesDep
     { preHandler: auth.authorize('camera:read') },
     async (request, reply) => {
       const scope = scopeOf(request.principal!.tenantId);
-      const requested = request.query.window;
-      const window = (['hour', 'day', 'week', 'month'] as const).find((w) => w === requested);
+      const window = parseWindow(request.query.window);
       return reply.send(
         success(
           await service.healthSummary(scope, request.params.id, {
@@ -222,6 +246,74 @@ export function registerCameraRoutes(app: FastifyInstance, deps: CameraRoutesDep
     async (request, reply) => {
       const scope = scopeOf(request.principal!.tenantId);
       return reply.send(success(await service.reinstate(scope, request.params.id)));
+    },
+  );
+
+  // --- P-2.2: the immutable probe archive ---
+
+  /**
+   * A camera's retained probe reports (P-2.2). `camera:read` — this contacts nothing and changes
+   * nothing; it is the archive being read back.
+   */
+  app.get<{ Params: CameraParams; Querystring: { limit?: string } }>(
+    '/cameras/:id/probes',
+    { preHandler: auth.authorize('camera:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const limit = Number.parseInt(request.query.limit ?? '', 10);
+      return reply.send(
+        success(
+          await service.probeHistory(scope, request.params.id, {
+            ...(Number.isFinite(limit) ? { limit } : {}),
+          }),
+        ),
+      );
+    },
+  );
+
+  // Per-camera probe performance. Declared before `/probes/:probeId` so `metrics` is not read as an id.
+  app.get<{ Params: CameraParams; Querystring: { window?: string } }>(
+    '/cameras/:id/probes/metrics',
+    { preHandler: auth.authorize('camera:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const window = parseWindow(request.query.window);
+      return reply.send(
+        success(
+          await service.probeMetrics(scope, request.params.id, { ...(window ? { window } : {}) }),
+        ),
+      );
+    },
+  );
+
+  /**
+   * Replay one stored probe (P-2.2). A **GET**, deliberately: nothing is measured, nothing is
+   * contacted and nothing is written — it reconstructs stored evidence, and modelling it as a POST
+   * would imply an action against the camera that this route is specifically incapable of.
+   */
+  app.get<{ Params: CameraParams & { probeId: string } }>(
+    '/cameras/:id/probes/:probeId',
+    { preHandler: auth.authorize('camera:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      return reply.send(
+        success(await service.replay(scope, request.params.id, request.params.probeId)),
+      );
+    },
+  );
+
+  /** Every record this camera has, in one chronology (P-2.2). */
+  app.get<{ Params: CameraParams; Querystring: { window?: string } }>(
+    '/cameras/:id/evidence',
+    { preHandler: auth.authorize('camera:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const window = parseWindow(request.query.window);
+      return reply.send(
+        success(
+          await service.evidence(scope, request.params.id, { ...(window ? { window } : {}) }),
+        ),
+      );
     },
   );
 

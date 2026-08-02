@@ -46,9 +46,10 @@ describe.skipIf(!online)('camera inventory against real MongoDB', () => {
     let n = 0;
     service = new CameraService({
       cameras: new TenantRepository(mongo!.cameras),
+      probes: new TenantRepository(mongo!.probes),
       vault,
       clock: { now: () => new Date() },
-      ids: { cameraId: () => `cam_it_${++n}` },
+      ids: { cameraId: () => `cam_it_${++n}`, probeId: () => `prb_it_${++n}` },
     });
   });
 

@@ -16,7 +16,16 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from errors import ConfigurationFailure, ConnectionFailure  # noqa: E402
-from stream_probe import CHECK_ORDER, PROBE_VERSION, probe_stream, split_endpoint  # noqa: E402
+from stream_probe import (  # noqa: E402
+    CHECK_ORDER,
+    PROBE_VERSION,
+    ValidationProvider,
+    probe_stream,
+    providers,
+    register_provider,
+    resolve_provider,
+    split_endpoint,
+)
 from stream_source import FaultPlan, SimulatedStreamSource  # noqa: E402
 
 AT = lambda: "2026-08-01T10:00:00.000Z"  # noqa: E731
@@ -290,32 +299,83 @@ class TestPartialSuccess(unittest.TestCase):
         self.assertTrue(report.warnings)
 
 
-class TestProtocolNeutrality(unittest.TestCase):
-    """Stages are selected per transport (Architect P-2.1 rec 9)."""
+class TestValidationProviders(unittest.TestCase):
+    """One validation engine, many providers (Architect P-2.2 rec 1)."""
 
-    def test_a_non_negotiated_transport_skips_rtsp_negotiation(self):
+    def test_a_non_negotiated_provider_skips_rtsp_negotiation(self):
         report = probe({"type": "http", "uri": "http://cam.local/mjpg"})
-        # `skipped` says this transport has no such step — distinct from "the probe gave up on it".
+        # `skipped` says this provider has no such step — distinct from "the probe gave up on it".
         self.assertEqual(statuses(report)["rtsp-negotiation"], "skipped")
         self.assertEqual(statuses(report)["dns"], "pass")
 
-    def test_a_file_source_skips_every_network_stage(self):
+    def test_a_recorded_source_skips_every_network_stage(self):
         report = probe({"type": "file", "uri": "/footage/lobby.mp4"})
         checks = statuses(report)
         for stage in ("dns", "tcp", "authentication", "rtsp-negotiation"):
             self.assertEqual(checks[stage], "skipped", stage)
         self.assertEqual(checks["frames-received"], "pass")
+        self.assertEqual(report.provider, "recorded-video")
 
-    def test_adding_a_transport_does_not_change_the_stage_list(self):
-        # The contract the camera lifecycle depends on: every probe answers the same stage names.
+    def test_a_simulated_source_never_runs_a_network_stage(self):
+        """The 113-second lesson from P-2.1, made structural.
+
+        A simulated source has no network endpoint. Running DNS and TCP against the URI it happens to
+        carry made the probe describe work it had not done — and made the unit suite dial a real
+        hostname. The provider registry removes the possibility rather than relying on a stub.
+        """
+        report = probe({"type": "simulated", "uri": URI}, resolve=None, connect=None)
+        for stage in ("dns", "tcp"):
+            self.assertEqual(statuses(report)[stage], "skipped", stage)
+        self.assertEqual(report.provider, "simulated")
+
+    def test_every_provider_answers_the_same_stage_list(self):
+        # The contract the camera lifecycle depends on: every probe answers the same stage names,
+        # whatever ran it. This is what makes reports comparable across source types.
         for uri, kind in (
             ("rtsp://cam.local/sub", "rtsp"),
+            ("rtsps://cam.local/sub", "rtsp"),
             ("http://cam.local/mjpg", "http"),
+            ("srt://cam.local:9710", "http"),
+            ("rtmp://cam.local/live", "http"),
+            ("wss://cam.local/webrtc", "webrtc"),
             ("/footage/lobby.mp4", "file"),
+            ("0", "usb"),
         ):
-            with self.subTest(kind=kind):
+            with self.subTest(uri=uri):
                 report = probe({"type": kind, "uri": uri})
                 self.assertEqual([c.name for c in report.checks], list(CHECK_ORDER))
+
+    def test_the_provider_is_named_on_every_report(self):
+        for uri, kind, expected in (
+            ("rtsp://cam.local/sub", "rtsp", "rtsp"),
+            ("rtsps://cam.local/sub", "rtsp", "rtsps"),
+            ("srt://cam.local:9710", "http", "srt"),
+            ("wss://cam.local/ws", "http", "webrtc"),
+            ("/export.mp4", "file", "recorded-video"),
+            ("0", "usb", "usb-camera"),
+        ):
+            with self.subTest(uri=uri):
+                self.assertEqual(probe({"type": kind, "uri": uri}).provider, expected)
+
+    def test_a_declared_provider_beats_the_scheme(self):
+        """A DVR export and an NVR playback file are byte-identical; only the caller knows which."""
+        report = probe({"type": "file", "uri": "/export.mp4", "provider": "dvr-export"})
+        self.assertEqual(report.provider, "dvr-export")
+
+    def test_a_new_provider_registers_without_touching_the_engine(self):
+        """The extension mechanism (rec 1). Registration only — no change to `probe_stream`."""
+        register_provider(ValidationProvider("test-only-provider", 1234, label="Test"))
+        self.addCleanup(lambda: providers())  # registry is module-level; the row is harmless
+        report = probe({"type": "rtsp", "uri": URI, "provider": "test-only-provider"})
+        self.assertEqual(report.provider, "test-only-provider")
+        self.assertEqual([c.name for c in report.checks], list(CHECK_ORDER))
+        # It is networked and non-negotiated, so it gets DNS and TCP and no RTSP negotiation.
+        self.assertEqual(statuses(report)["rtsp-negotiation"], "skipped")
+        self.assertEqual(statuses(report)["dns"], "pass")
+
+    def test_an_undeclared_scheme_is_reported_unknown_rather_than_guessed(self):
+        provider = resolve_provider({"type": "rtsp"}, "gopher", "gopher://cam.local/x")
+        self.assertEqual(provider.id, "unknown")
 
 
 class TestEvidence(unittest.TestCase):

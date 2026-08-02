@@ -113,3 +113,51 @@ Accepted with P-2, and refined in the same review. Three changes to what is writ
 Ingestion starts reporting continuously (`source: 'ingestion'`). At that point `monitoring` should be
 driven by the session supervisor rather than by an operator-initiated probe, and the transition map
 gains an automated writer — which is worth an amendment, not a new decision.
+
+## Amendment (P-2.2, 2026-08-02) — the operational evidence layer
+
+Accepted with P-2.1 and extended in the same review. P-2.2 completes the operational evidence
+subsystem and closes it; P-3 is product functionality, not further infrastructure.
+
+1. **Probe reports are immutable evidence in their own store.** They were an overwritten field
+   (`Camera.operational`); they are now append-only records in `camera_probes`, keyed by probe id and
+   ordered by a per-camera `sequence`. The service has no update path against that collection.
+   Retention is bounded per camera and the count of aged-out reports travels with every read, so a
+   trimmed archive can never read as a complete one.
+   - **`sequence`, not the timestamp, is the order.** Two probes land in the same millisecond
+     routinely (a retry, a scheduled sweep), and sorting on time alone left the `previousProbeId`
+     chain — the thing "when did this start failing?" walks — down to whatever the storage engine
+     returned. Caught by a test, not by review.
+2. **The transport table became a validation provider registry.** RTSP, HTTP, WebRTC, SRT, a recorded
+   DVR export, an NVR playback file, a USB camera and an edge stream are all validated by the one
+   staged pipeline; `register_provider(...)` declares what stages each has, and the engine never
+   learns their names. A source type with its own probe would grow its own private definition of
+   "connected", which is what the lifecycle's evidence gate exists to prevent.
+   - Consequence worth naming: a **simulated** or **USB** source no longer runs the DNS and TCP
+     stages at all. It never touched a network, and reporting those as measured was the probe
+     describing work it had not done.
+3. **Drift is classified, not merely listed.** A change carries a `direction`, an attributable
+   `cause` and an `expected`/`unexpected` verdict. Codec, resolution, FPS, stream profiles and
+   anything security-classed stay **unexpected even under a firmware upgrade** — nobody upgrades a
+   camera intending to lose a stream profile, and "explained by the upgrade" is exactly how the one
+   event worth investigating stops being investigated.
+4. **Operational confidence is a device reliability score and never an AI confidence.** Computed from
+   availability, failure frequency, probe success, capability stability, identity stability and
+   recent recovery — never from a single probe, enforced by two floors rather than by a comment.
+   `insufficient-evidence` is a band with **no score at all**.
+5. **Compatibility is a register keyed by (dimension, value)**, covering firmware, runtime version,
+   ONVIF version, codec, provider and edge profile. Older rows are never overwritten or removed, and
+   `unsupported` is earned only by a **device-side** failure under hardware evidence — a DNS failure,
+   a dead switch port or a wrong password says nothing about a vendor's firmware.
+6. **Four write models, one read model.** The Architect's closing recommendation was a single
+   `OperationalTimeline`. The decision taken is to **unify the reading and keep the writing
+   separate**: the four records have different bounds (50 / 30 / 200 / 60), different keys (time,
+   attribute, sequence, dimension-value) and different retention rules, and one physical log would
+   force a single rule onto all four — either discarding probe evidence to keep the timeline small,
+   or letting a camera that reconnects every thirty seconds bury a firmware change under ten thousand
+   identical rows. `GET /cameras/:id/evidence` merges them on read, at the cost of one sort and with
+   no second copy of any fact that could drift from the first.
+
+**The invariant this adds:** stored evidence is never modified. A correction is a new record;
+retention drops whole reports and says how many; and replay is a pure function over a stored record
+with no camera, network or probe port in scope — it _cannot_ become a live measurement.

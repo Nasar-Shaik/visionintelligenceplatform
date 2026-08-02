@@ -19,7 +19,10 @@ import { HttpStreamProbe, UnavailableStreamProbe } from './application/stream-pr
 import { buildServer } from './transport/server.js';
 
 const clock = { now: () => new Date() };
-const ids = { cameraId: () => `cam_${randomUUID().replace(/-/g, '')}` };
+const ids = {
+  cameraId: () => `cam_${randomUUID().replace(/-/g, '')}`,
+  probeId: () => `prb_${randomUUID().replace(/-/g, '')}`,
+};
 
 async function main(): Promise<void> {
   loadDotEnv(); // load .env into process.env once (no-op in prod / tests)
@@ -65,6 +68,10 @@ async function main(): Promise<void> {
 
   const service = new CameraService({
     cameras: new TenantRepository(mongo.cameras),
+    // P-2.2: the immutable probe archive. Its own collection rather than an array on the camera —
+    // probe reports are ~2 KB each and a camera probed every five minutes would otherwise grow its
+    // own document past what a single record should ever hold.
+    probes: new TenantRepository(mongo.probes),
     vault,
     clock,
     ids,

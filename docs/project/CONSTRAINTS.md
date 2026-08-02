@@ -31,6 +31,9 @@
 
 ## AI Runtime evidence discipline (v1.0 closed 2026-08-01 — these are permanent)
 
+<!-- §25–29 extend the same discipline to devices and to the operational evidence layer (P-2 · P-2.1 ·
+     P-2.2). The operational evidence subsystem was declared complete and frozen at the P-2.2 review. -->
+
 > Recorded at the **AI-5e acceptance / AI Runtime Architecture v1.0 closure** review (Architect, 7
 > recommendations). The runtime architecture is now **frozen and closed**; it evolves through better
 > models, faster implementations and hardware integrations — **not through structural expansion**.
@@ -88,6 +91,28 @@
     and the camera lifecycle alike. A second evidence vocabulary would drift, and a drifted evidence
     vocabulary is how a simulation starts counting as a measurement somewhere nobody is looking. —
     _enforced: one definition, imported not re-exported, so the barrel exports exactly one; review._
+27. **Stored evidence is never modified.** A probe report is written once and read thereafter: there
+    is no update path against the probe archive, a correction is a **new** record, and retention
+    drops whole reports while reporting how many it dropped. The same rule governs identity history
+    and the compatibility register — older rows survive the conditions that produced them, because
+    "it worked on V5.7.9 and has failed since V5.8.0" _is_ the diagnosis and a current-status field
+    erases it. — _enforced: `services/camera/src/domain/probe-archive.ts` exposes no mutator;
+    `CameraService.archive()` only ever inserts; `CameraProbeHistory.evicted` makes a trimmed archive
+    self-declaring; `test/evidence.test.ts` + the P-2.2 HTTP tests._
+28. **Replay reconstructs, it never re-measures.** Reconstructing a stored probe contacts nothing:
+    `replayProbe()` is a pure function over a record, with no camera, network or probe port in scope,
+    and its route is a `GET`. Support work happens days after a failure, frequently on a camera since
+    power-cycled into working — re-probing then measures a different moment and answers "it works
+    now", which closes the ticket without explaining anything. — _enforced: the function's signature;
+    `GET /cameras/:id/probes/:probeId`; an HTTP test that counts probe invocations across a replay._
+29. **One validation engine, many providers.** Every source type the platform validates — RTSP, HTTP,
+    WebRTC, SRT, recorded video, DVR export, NVR playback, USB camera, edge stream — runs the same
+    staged pipeline. A new source type is a `register_provider(...)` row declaring which stages it
+    has, never a second validation path. Two validation paths would grow two definitions of
+    "connected", which is precisely what §25 exists to prevent. — _enforced:
+    `ai/inference/stream_probe.py` selects stages from the registry and never branches on a provider
+    id; `tests/test_stream_probe.py::TestValidationProviders` asserts every provider answers the same
+    stage list and that a newly registered one works without touching the engine._
 
 ## Engineering process
 

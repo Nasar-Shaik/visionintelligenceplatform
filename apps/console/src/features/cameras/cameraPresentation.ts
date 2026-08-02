@@ -1,13 +1,19 @@
 import type {
   Camera,
   CameraCapabilities,
+  CameraEvidenceSource,
   CameraHealthStatus,
   CameraLifecycleState,
   CapabilityCache,
   CapabilityChangeSeverity,
+  CapabilityDrift,
+  CompatibilityStatus,
   IdentityConfidence,
+  OperationalConfidenceBand,
+  ProbeOutcome,
   StreamProbeCheck,
   StreamProbeFailureCode,
+  ValidationProvider,
 } from '@vip/contracts';
 import type { StatusKind } from '@/lib/status';
 
@@ -255,6 +261,91 @@ export const CONFIDENCE_LABEL: Record<IdentityConfidence, string> = {
   medium: 'Matched by hardware address',
   low: 'Matched by network address only',
   unknown: 'No reliable identifier',
+};
+
+/**
+ * Drift → design-system token (P-2.2). `expected` is deliberately `idle` rather than `ok`: a change
+ * that was accounted for is not good news, it is merely explained.
+ */
+export const DRIFT_KIND: Record<CapabilityDrift, StatusKind> = {
+  expected: 'idle',
+  unexpected: 'warn',
+};
+
+export const DRIFT_LABEL: Record<CapabilityDrift, string> = {
+  expected: 'Expected',
+  unexpected: 'Unexpected',
+};
+
+/** Operational confidence → token. Never used for AI confidence; they are different measurements. */
+export const CONFIDENCE_BAND_KIND: Record<OperationalConfidenceBand, StatusKind> = {
+  stable: 'ok',
+  intermittent: 'warn',
+  failing: 'error',
+  'insufficient-evidence': 'idle',
+};
+
+export const CONFIDENCE_BAND_LABEL: Record<OperationalConfidenceBand, string> = {
+  stable: 'Stable',
+  intermittent: 'Intermittent',
+  failing: 'Frequently failing',
+  'insufficient-evidence': 'Not enough evidence',
+};
+
+/** Compatibility status → token. `pending-validation` is idle: nothing has been claimed either way. */
+export const COMPATIBILITY_KIND: Record<CompatibilityStatus, StatusKind> = {
+  supported: 'ok',
+  'pending-validation': 'idle',
+  unsupported: 'error',
+};
+
+export const COMPATIBILITY_LABEL: Record<CompatibilityStatus, string> = {
+  supported: 'Supported',
+  'pending-validation': 'Pending validation',
+  unsupported: 'Unsupported',
+};
+
+export const PROBE_OUTCOME_KIND: Record<ProbeOutcome, StatusKind> = {
+  succeeded: 'ok',
+  failed: 'error',
+  // A probe that could not run measured nothing. That is neither a pass nor a camera fault.
+  unavailable: 'idle',
+};
+
+export const PROBE_OUTCOME_LABEL: Record<ProbeOutcome, string> = {
+  succeeded: 'Succeeded',
+  failed: 'Failed',
+  unavailable: 'Could not run',
+};
+
+/** Which record an evidence entry came from. */
+export const EVIDENCE_SOURCE_LABEL: Record<CameraEvidenceSource, string> = {
+  lifecycle: 'State',
+  identity: 'Identity',
+  capability: 'Capabilities',
+  probe: 'Probe',
+  compatibility: 'Compatibility',
+  configuration: 'Configuration',
+};
+
+/** How each validation provider should be named to an operator. */
+export const PROVIDER_LABEL: Record<ValidationProvider, string> = {
+  rtsp: 'RTSP',
+  rtsps: 'RTSP over TLS',
+  rtmp: 'RTMP',
+  rtmps: 'RTMP over TLS',
+  http: 'HTTP / MJPEG',
+  https: 'HTTPS / MJPEG',
+  srt: 'SRT',
+  webrtc: 'WebRTC',
+  'onvif-pullpoint': 'ONVIF PullPoint',
+  'recorded-video': 'Recorded video',
+  'dvr-export': 'DVR export',
+  'nvr-playback': 'NVR playback',
+  'usb-camera': 'USB camera',
+  'edge-stream': 'Edge stream',
+  simulated: 'Simulated source',
+  unknown: 'Unknown source',
 };
 
 /** Format a stage duration the way an installer reads it. */

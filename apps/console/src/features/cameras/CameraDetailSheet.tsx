@@ -24,6 +24,10 @@ import {
   toast,
 } from '@/ui';
 import {
+  COMPATIBILITY_KIND,
+  COMPATIBILITY_LABEL,
+  DRIFT_KIND,
+  DRIFT_LABEL,
   FRESHNESS_KIND,
   FRESHNESS_LABEL,
   HEALTH_KIND,
@@ -34,6 +38,7 @@ import {
   SEVERITY_KIND,
   analysisProfile,
 } from './cameraPresentation';
+import { ProbeHistoryPanel } from './ProbeHistoryPanel';
 import { ProbeResultPanel } from './ProbeResultPanel';
 import {
   useCameraLifecycleAction,
@@ -228,6 +233,37 @@ export function CameraDetailSheet({
           ) : null}
           {probeResult ? <ProbeResultPanel probe={probeResult} /> : null}
 
+          <ProbeHistoryPanel cameraId={camera.id} />
+
+          {camera.compatibility.length > 0 ? (
+            <section className="space-y-2">
+              <h3 className="text-xs font-medium uppercase tracking-wide text-text-subtle">
+                Compatibility
+              </h3>
+              {/* Every condition this camera has run under, not only the current one (P-2.2 rec 5).
+                  A camera that worked on V5.7.9 and has failed since V5.8.0 is telling a story that
+                  a single current-status field erases — and the story is the diagnosis. */}
+              <ul className="space-y-1">
+                {camera.compatibility.map((row) => (
+                  <li
+                    key={`${row.dimension}:${row.value}`}
+                    className="flex items-baseline gap-2 text-xs"
+                  >
+                    <StatusIndicator
+                      status={COMPATIBILITY_KIND[row.status]}
+                      label={COMPATIBILITY_LABEL[row.status]}
+                    />
+                    <span className="text-text-subtle">{row.dimension}</span>
+                    <span className="font-mono">{row.value}</span>
+                    <span className="ml-auto text-text-subtle">
+                      {row.successfulProbes}✓ / {row.failedProbes}✗
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
           <section className="space-y-2">
             <h3 className="text-xs font-medium uppercase tracking-wide text-text-subtle">
               Capabilities
@@ -279,6 +315,22 @@ export function CameraDetailSheet({
                     <span className="text-text-subtle">
                       {change.from ?? '(none)'} → {change.to ?? '(removed)'}
                     </span>
+                    {/* P-2.2 rec 3. `unexpected` is the whole point of the row: a codec that moved
+                        with nothing to account for it means the device was reconfigured by somebody
+                        outside this platform. */}
+                    <StatusIndicator
+                      status={DRIFT_KIND[change.drift]}
+                      label={
+                        change.drift === 'unexpected' && change.cause !== 'unexplained'
+                          ? `${DRIFT_LABEL[change.drift]} · after ${change.cause.replace('-', ' ')}`
+                          : change.drift === 'unexpected'
+                            ? `${DRIFT_LABEL[change.drift]} · unexplained`
+                            : DRIFT_LABEL[change.drift]
+                      }
+                    />
+                    {change.direction === 'reduced' ? (
+                      <Badge variant="outline">reduced</Badge>
+                    ) : null}
                   </li>
                 ))}
               </ul>

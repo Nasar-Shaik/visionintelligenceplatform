@@ -110,6 +110,39 @@ export function useRefreshCapabilities() {
   });
 }
 
+/**
+ * A camera's retained probe reports (P-2.2).
+ *
+ * `staleTime: Infinity` on a replay is not a caching optimisation — a stored report cannot change,
+ * so refetching one could only ever return the same bytes or reveal that the archive was mutated.
+ */
+export function useProbeHistory(id: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.cameras.probes(id ?? ''),
+    queryFn: () => camerasApi.probes(id as string),
+    enabled: Boolean(id) && enabled,
+  });
+}
+
+/** Reconstruct one stored probe. Contacts no camera. */
+export function useProbeReplay(id: string | undefined, probeId: string | null) {
+  return useQuery({
+    queryKey: queryKeys.cameras.replay(id ?? '', probeId ?? ''),
+    queryFn: () => camerasApi.replayProbe(id as string, probeId as string),
+    enabled: Boolean(id) && Boolean(probeId),
+    staleTime: Infinity,
+  });
+}
+
+/** Every record this camera has, in one chronology (P-2.2). */
+export function useCameraEvidence(id: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.cameras.evidence(id ?? ''),
+    queryFn: () => camerasApi.evidence(id as string),
+    enabled: Boolean(id) && enabled,
+  });
+}
+
 /** Retire (decommission, keeping the record) or reinstate a camera. */
 export function useCameraLifecycleAction() {
   const qc = useQueryClient();

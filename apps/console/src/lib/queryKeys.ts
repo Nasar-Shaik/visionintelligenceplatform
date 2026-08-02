@@ -11,6 +11,11 @@ export const queryKeys = {
     all: () => ['cameras'] as const,
     list: (params?: Record<string, unknown>) => ['cameras', 'list', params ?? {}] as const,
     detail: (id: string) => ['cameras', 'detail', id] as const,
+    // P-2.2. Probe reports are immutable, so a fetched report never needs refetching — only the
+    // *list* grows. Keyed separately from the camera so probing does not invalidate a replay.
+    probes: (id: string) => ['cameras', 'probes', id] as const,
+    replay: (id: string, probeId: string) => ['cameras', 'probes', id, probeId] as const,
+    evidence: (id: string) => ['cameras', 'evidence', id] as const,
   },
   events: {
     all: () => ['events'] as const,

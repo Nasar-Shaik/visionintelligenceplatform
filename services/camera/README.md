@@ -49,9 +49,14 @@ headers). Every route is **permission-gated** (deny-by-default via
 | POST   | `/cameras/:id/disable`              | **G-1** Set status `disabled`                        | `camera:update` |
 | POST   | `/cameras/:id/probe`                | **P-2** Test the connection against the device       | `camera:update` |
 | POST   | `/cameras/:id/capabilities/refresh` | **P-2** Re-read capabilities (`?force=true`)         | `camera:update` |
-| GET    | `/cameras/:id/health/summary`       | **P-2** Trends over the timeline (`?windowHours=`)   | `camera:read`   |
+| GET    | `/cameras/:id/health/summary`       | **P-2** Trends over the timeline (`?window=`)        | `camera:read`   |
 | POST   | `/cameras/:id/retire`               | **P-2** Decommission, keeping the record             | `camera:update` |
 | POST   | `/cameras/:id/reinstate`            | **P-2** Return a retired camera to service           | `camera:update` |
+| GET    | `/cameras/:id/probes`               | **P-2.2** Retained probe reports (`?limit=`)         | `camera:read`   |
+| GET    | `/cameras/:id/probes/metrics`       | **P-2.2** Probe performance (`?window=`)             | `camera:read`   |
+| GET    | `/cameras/:id/probes/:probeId`      | **P-2.2** Replay a stored report — contacts nothing  | `camera:read`   |
+| GET    | `/cameras/:id/evidence`             | **P-2.2** Every record, one chronology (`?window=`)  | `camera:read`   |
+| GET    | `/cameras/metrics`                  | **P-2.2** Fleet probe performance (`?window=`)       | `camera:read`   |
 | GET    | `/health` `/ready` `/metrics` `/`   | liveness / readiness / metrics / info                | —               |
 
 Publishes `camera.registered`, `camera.updated`, `camera.removed`, `camera.health.checked` via a
@@ -165,3 +170,44 @@ on every upgrade.
 **Device identity is appended to, never overwritten** (`CameraIdentityHistory`). "When did this
 camera become a different device?" is unanswerable the moment a serial number is overwritten in
 place.
+
+## The operational evidence layer (P-2.2)
+
+A probe is **evidence**, not the latest reading. Reports live in their own append-only collection
+(`camera_probes`), and **there is no update path against it** — `domain/probe-archive.ts` exposes no
+mutator and `CameraService.archive()` only ever inserts. A correction is a new record. Retention is
+bounded per camera and `CameraProbeHistory.evicted` reports what was dropped, so a trimmed archive
+can never read as a complete one ([CONSTRAINTS §27](../../docs/project/CONSTRAINTS.md)).
+
+Records are ordered by a per-camera **`sequence`**, not by timestamp. Two probes land in the same
+millisecond routinely — a retry, a scheduled sweep — and a time sort leaves their order, and the
+`previousProbeId` chain that "when did this start failing?" walks, down to the storage engine.
+
+**Replay reconstructs; it never re-measures** (§28). `replayProbe()` is pure and has no camera,
+network or probe port in scope, and its route is a `GET`. Support work happens days after a failure,
+often on a camera since power-cycled into working — re-probing then measures a different moment.
+
+**One validation engine, many providers** (§29). The runtime's `register_provider(...)` registry
+declares which stages each source type has: RTSP · HTTP · WebRTC · SRT · recorded video · DVR
+export · NVR playback · USB camera · edge stream. A new source type is a registration, never a second
+validation path — two paths would grow two definitions of "connected".
+
+**Drift classification** (`classifyDrift`) attributes each capability change to what was actually
+observed and decides whether it needs attention. Codec, resolution, FPS, stream profiles and anything
+security-classed stay `unexpected` **even under a firmware upgrade**: nobody upgrades a camera
+intending to lose a profile, and filing it under "explained" is how it stops being investigated.
+
+**Operational confidence** (`domain/confidence.ts`) is a _device reliability_ score and must never be
+rendered beside an AI confidence. It is never computed from a single probe — two floors enforce that,
+and `insufficient-evidence` carries no score at all.
+
+**The compatibility register** is keyed by (dimension, value) across firmware, runtime version, ONVIF
+version, codec, provider and edge profile. Older rows are never overwritten, and `unsupported` is
+claimed only for a **device-side** failure under hardware evidence: a DNS failure, a dead switch port
+or a wrong password says nothing whatsoever about a firmware.
+
+**Four write models, one read model.** The lifecycle timeline, identity history, probe archive and
+compatibility register have different bounds, keys and retention rules, so they stay separate on the
+write side; `GET /cameras/:id/evidence` merges them chronologically on read. The archive is
+authoritative for probes, so a lifecycle entry echoing an archived report is dropped from the merge
+rather than counted twice.

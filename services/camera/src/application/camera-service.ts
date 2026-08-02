@@ -12,10 +12,17 @@
 import { CreateCameraInput } from '@vip/contracts';
 import type {
   BulkCreateCamerasInput,
+  CameraEvidenceTimeline,
   CameraHealthSummary,
   CameraLifecycleState,
+  CameraProbeMetrics,
+  CameraProbeRecord,
   CameraProbeReport,
+  CameraProbeHistory,
   CameraTimelineEntry,
+  FleetProbeMetrics,
+  OperationalConfidence,
+  ProbeReplay,
   CapabilityRefreshResult,
   CameraIdentityChange,
   CapabilityChange,
@@ -69,7 +76,18 @@ import {
   matchDevice,
   mergeIdentity,
 } from '../domain/identity.js';
-import { diffCapabilities, highestSeverity } from '../domain/capability-diff.js';
+import { classifyDrift, diffCapabilities, highestSeverity } from '../domain/capability-diff.js';
+import {
+  buildProbeRecord,
+  replayProbe,
+  toProbeRecord,
+  PROBE_RETENTION,
+  type ProbeRecordDoc,
+} from '../domain/probe-archive.js';
+import { recordCompatibility } from '../domain/compatibility.js';
+import { operationalConfidence } from '../domain/confidence.js';
+import { fleetMetrics, inWindow, probeMetrics } from '../domain/probe-metrics.js';
+import { evidenceTimeline } from '../domain/evidence-timeline.js';
 import {
   capabilityRefreshDecision,
   declaredCache,
@@ -140,6 +158,12 @@ function summarizeChanges(changes: readonly CapabilityChange[]): string {
 
 export interface CameraServiceDeps {
   cameras: TenantRepository<CameraDoc>;
+  /**
+   * The immutable probe archive (P-2.2). **Required, not optional**: an evidence store that a
+   * deployment can forget to wire is one that will be forgotten, and the failure is silent — every
+   * probe would still work and the history would simply never exist.
+   */
+  probes: TenantRepository<ProbeRecordDoc>;
   vault: SecretBox;
   clock: Clock;
   ids: IdGen;
@@ -152,6 +176,7 @@ export interface CameraServiceDeps {
 
 export class CameraService {
   private readonly cameras: TenantRepository<CameraDoc>;
+  private readonly probes: TenantRepository<ProbeRecordDoc>;
   private readonly vault: SecretBox;
   private readonly clock: Clock;
   private readonly ids: IdGen;
@@ -161,6 +186,7 @@ export class CameraService {
 
   constructor(deps: CameraServiceDeps) {
     this.cameras = deps.cameras;
+    this.probes = deps.probes;
     this.vault = deps.vault;
     this.clock = deps.clock;
     this.ids = deps.ids;
@@ -497,13 +523,35 @@ export class CameraService {
     const lifecycle = doc.lifecycle ?? derivedLifecycle(doc.createdAt);
     const credentials = this.openCredentials(doc);
 
+    const probeId = this.ids.probeId();
+    const previous = await this.latestProbe(scope, cameraId);
     const outcome = await this.streamProbe.probe({
       protocol: doc.protocol,
       streamUrl: doc.streamUrl,
       ...(credentials ? { credentials } : {}),
       ...(doc.capabilities ? { capabilities: doc.capabilities } : {}),
     });
+    const at = this.clock.now();
+
     if (!outcome.result) {
+      // A probe that could not run is still recorded (P-2.2 rec 2). It measured nothing about the
+      // camera, and that is the point: a gap in the evidence with a timestamp on it is what lets
+      // somebody line "we stopped being able to test cameras" up against a deployment.
+      await this.archive(
+        scope,
+        buildProbeRecord({
+          probeId,
+          cameraId,
+          at,
+          doc,
+          result: null,
+          lifecycleBefore: lifecycle.state,
+          lifecycleAfter: lifecycle.state,
+          sequence: (doc.probeCount ?? 0) + 1,
+          previous,
+        }),
+        doc,
+      );
       return {
         cameraId,
         lifecycle,
@@ -512,7 +560,6 @@ export class CameraService {
     }
 
     const result = outcome.result;
-    const at = this.clock.now();
     const operational = healthFromProbe(result);
     const target = stateForProbe(result);
 
@@ -526,6 +573,10 @@ export class CameraService {
         reasonCode: reasonCodeForProbe(result),
         probeVersion: result.probeVersion,
         ...(result.correlationId ? { correlationId: result.correlationId } : {}),
+        // The report behind this line, addressable (P-2.2 rec 2). A timeline entry that describes a
+        // measurement without pointing at it makes the reader take the summary on trust.
+        probeId,
+        ...(result.totalMs !== undefined ? { durationMs: result.totalMs } : {}),
         detail: this.probeDetail(result),
       },
     ];
@@ -545,8 +596,21 @@ export class CameraService {
         ...(result.correlationId ? { correlationId: result.correlationId } : {}),
       });
       next = moved.lifecycle;
-      entries.push(moved.entry);
+      entries.push(moved.entry ? { ...moved.entry, probeId } : null);
     }
+
+    const record = buildProbeRecord({
+      probeId,
+      cameraId,
+      at,
+      doc,
+      result,
+      lifecycleBefore: lifecycle.state,
+      lifecycleAfter: next.state,
+      sequence: (doc.probeCount ?? 0) + 1,
+      previous,
+    });
+    await this.archive(scope, record, doc);
 
     const timeline = appendTimeline(doc.timeline ?? [], ...entries);
     await this.cameras.updateOne(
@@ -558,6 +622,10 @@ export class CameraService {
           timeline,
           operational,
           health: this.rollupHealth(operational, at),
+          // What this camera has now been proven to work under (P-2.2 rec 5). Folded here rather
+          // than derived on read because the register accumulates across probes that retention will
+          // eventually age out — the counters must outlive the reports that produced them.
+          compatibility: recordCompatibility(doc.compatibility ?? [], record),
           updatedAt: at.toISOString(),
         },
       },
@@ -568,6 +636,136 @@ export class CameraService {
       payload: { cameraId, status: this.rollupHealth(operational, at).status },
     });
     return { cameraId, probe: result, operational, lifecycle: next };
+  }
+
+  // --- P-2.2: the immutable probe archive ------------------------------------------------------
+
+  /**
+   * A camera's retained probe reports, most recent first (P-2.2 rec 2).
+   *
+   * `evicted` is what stops a trimmed archive from reading as a complete one: three retained reports
+   * from a camera with a hundred and forty probes behind it is a very different picture from three
+   * probes total, and the list alone cannot tell them apart.
+   */
+  async probeHistory(
+    scope: TenantScope,
+    cameraId: string,
+    options: { limit?: number } = {},
+  ): Promise<CameraProbeHistory> {
+    const doc = await this.require(scope, cameraId);
+    const records = await this.recordsFor(scope, cameraId);
+    const limit = Math.min(Math.max(options.limit ?? 50, 1), PROBE_RETENTION);
+    const total = doc.probeCount ?? records.length;
+    return {
+      cameraId,
+      records: records.slice(0, limit),
+      total,
+      retained: records.length,
+      evicted: Math.max(0, total - records.length),
+    };
+  }
+
+  /**
+   * Reconstruct one stored probe without contacting the camera (P-2.2 rec 6).
+   *
+   * The comparison against the preceding probe travels with it, because a replayed report on its own
+   * says what happened and the pair says what *changed* — and the change is what a support engineer
+   * opened the page to find.
+   */
+  async replay(scope: TenantScope, cameraId: string, probeId: string): Promise<ProbeReplay> {
+    await this.require(scope, cameraId);
+    const doc = (await this.probes.findOne(scope, { _id: probeId })) as ProbeRecordDoc | null;
+    if (!doc || doc.cameraId !== cameraId) throw notFound(`probe "${probeId}" not found`);
+    const record = toProbeRecord(doc);
+    const previous = record.previousProbeId
+      ? ((await this.probes.findOne(scope, {
+          _id: record.previousProbeId,
+        })) as ProbeRecordDoc | null)
+      : null;
+    return replayProbe(record, this.clock.now(), previous ? toProbeRecord(previous) : null);
+  }
+
+  /** Probe performance for one camera over a window (P-2.2 rec 7). Computed, never stored. */
+  async probeMetrics(
+    scope: TenantScope,
+    cameraId: string,
+    options: { window?: HealthTrendWindow } = {},
+  ): Promise<CameraProbeMetrics> {
+    const doc = await this.require(scope, cameraId);
+    const window = options.window ?? 'day';
+    const { windowStart, windowEnd } = this.windowFor(window);
+    return probeMetrics({
+      cameraId,
+      window,
+      windowStart,
+      windowEnd,
+      records: await this.recordsFor(scope, cameraId),
+      timeline: doc.timeline ?? [],
+    });
+  }
+
+  /**
+   * Every record a camera has, merged into one chronology (P-2.2 rec 8).
+   *
+   * The four stores stay separate on the write side — they have different bounds, keys and retention
+   * rules — and are merged here on read. See `domain/evidence-timeline.ts` for why that split is the
+   * right one rather than a compromise.
+   */
+  async evidence(
+    scope: TenantScope,
+    cameraId: string,
+    options: { window?: HealthTrendWindow } = {},
+  ): Promise<CameraEvidenceTimeline> {
+    const doc = await this.require(scope, cameraId);
+    const { windowStart, windowEnd } = this.windowFor(options.window ?? 'month');
+    return evidenceTimeline({
+      cameraId,
+      from: windowStart,
+      to: windowEnd,
+      timeline: doc.timeline ?? [],
+      identityHistory: doc.identityHistory ?? [],
+      probes: await this.recordsFor(scope, cameraId),
+      compatibility: doc.compatibility ?? [],
+    });
+  }
+
+  /**
+   * Probe performance across the whole tenant (P-2.2 rec 7) — the fleet dashboard's numbers.
+   *
+   * The same computation as the per-camera view over more records, so the dashboard and the camera
+   * page can never disagree. Cameras that have never been probed are counted explicitly: a fleet
+   * success rate computed over the handful anyone has tested is a green number describing a sample
+   * nobody chose.
+   */
+  async fleetProbeMetrics(
+    scope: TenantScope,
+    options: { window?: HealthTrendWindow } = {},
+  ): Promise<FleetProbeMetrics> {
+    const window = options.window ?? 'day';
+    const { windowStart, windowEnd } = this.windowFor(window);
+    const cameras = (await this.cameras.findMany(scope, {})) as CameraDoc[];
+    const records = ((await this.probes.findMany(scope, {})) as ProbeRecordDoc[]).map(
+      toProbeRecord,
+    );
+
+    const confidenceScores: number[] = [];
+    for (const camera of cameras) {
+      const score = this.confidenceFor(camera, records, windowStart, windowEnd).score;
+      if (score !== undefined) confidenceScores.push(score);
+    }
+
+    return fleetMetrics({
+      window,
+      windowStart,
+      windowEnd,
+      cameras: cameras.map((camera) => ({
+        cameraId: camera._id,
+        ...(camera.capabilityCache?.firmware ? { firmware: camera.capabilityCache.firmware } : {}),
+        compatibilityStatuses: (camera.compatibility ?? []).map((row) => row.status),
+      })),
+      records,
+      confidenceScores,
+    });
   }
 
   /**
@@ -629,7 +827,9 @@ export class CameraService {
       };
     }
 
+    const refreshStarted = this.clock.now();
     const found = await this.discovery.probe({ timeoutSeconds: 5, endpoint });
+    const refreshMs = Math.max(0, this.clock.now().getTime() - refreshStarted.getTime());
     const device = found.devices[0];
     if (!device) {
       const updated = recordRefresh(cache, { reason: decision.reason, refreshed: false, at });
@@ -653,7 +853,15 @@ export class CameraService {
     // The diff is the product of a refresh, not a side effect of it: "capabilities refreshed" tells
     // an operator nothing, while "codecs h264 → h265, sub.resolution 640x360 → 3840x2160" tells them
     // their decode cost just changed by an order of magnitude (P-2.1 rec 2).
-    const changes = diffCapabilities(doc.capabilities, device.capabilities);
+    const firmwareMoved = Boolean(firmware && cache.firmware && firmware !== cache.firmware);
+    // Classified, not just listed (P-2.2 rec 3). "Codecs changed" and "codecs changed and nothing
+    // explains it" are the same row until something attributes it, and only the second is a reason
+    // to go and look at the camera.
+    const changes = classifyDrift(diffCapabilities(doc.capabilities, device.capabilities), {
+      firmwareChanged: firmwareMoved,
+      firstObservation: doc.capabilities === undefined,
+    });
+    const unexpected = changes.filter((change) => change.drift === 'unexpected');
     const updatedCache = recordRefresh(cache, {
       reason: decision.reason,
       refreshed: true,
@@ -661,7 +869,6 @@ export class CameraService {
       source: 'onvif-directed',
       ...(firmware ? { firmware } : {}),
     });
-    const firmwareMoved = Boolean(firmware && cache.firmware && firmware !== cache.firmware);
     const timeline = appendTimeline(
       doc.timeline ?? [],
       ...(firmwareMoved
@@ -680,7 +887,13 @@ export class CameraService {
         kind: 'capability-refreshed' as const,
         evidence: 'measured' as const,
         reasonCode: reasonCodeForRefresh(decision.reason),
-        detail: changes.length > 0 ? summarizeChanges(changes) : 'no capabilities changed',
+        // Cost of the refresh, so "average capability refresh time" is measured rather than guessed
+        // at (P-2.2 rec 7).
+        durationMs: refreshMs,
+        detail:
+          changes.length > 0
+            ? `${unexpected.length > 0 ? 'unexpected' : 'expected'} ${summarizeChanges(changes)}`
+            : 'no capabilities changed',
       },
     );
 
@@ -751,16 +964,121 @@ export class CameraService {
   ): Promise<CameraHealthSummary> {
     const doc = await this.require(scope, cameraId);
     const window = options.window ?? 'day';
-    const windowEnd = this.clock.now();
-    const windowStart = new Date(windowEnd.getTime() - WINDOW_HOURS[window] * 3_600_000);
+    const { windowStart, windowEnd } = this.windowFor(window);
     const latency = doc.operational?.rtspLatencyMs;
-    return summarizeHealth({
+    const records = await this.recordsFor(scope, cameraId);
+    // Probe durations now come from the archive rather than from the single last measurement, so
+    // "average probe time" is an average rather than a sample of one wearing the word.
+    const probeSamples = records
+      .filter((record) => inWindow(record.at, windowStart, windowEnd))
+      .map((record) => record.result?.totalMs)
+      .filter((value): value is number => value !== undefined);
+    const summary = summarizeHealth({
       cameraId,
       timeline: doc.timeline ?? [],
       window,
       windowStart,
       windowEnd,
       ...(latency !== undefined ? { latencySamples: [latency] } : {}),
+      ...(probeSamples.length > 0 ? { probeSamples } : {}),
+    });
+    return { ...summary, confidence: this.confidenceFor(doc, records, windowStart, windowEnd) };
+  }
+
+  /**
+   * Append one record to the archive and advance the camera's probe counter.
+   *
+   * **There is no update path.** The archive is written with `insertOne` and read; nothing in this
+   * service issues an update or a `$set` against it. Eviction deletes the oldest records whole,
+   * which is a retention decision the history reports (`evicted`) — never an edit to what a report
+   * said.
+   */
+  private async archive(
+    scope: TenantScope,
+    record: CameraProbeRecord,
+    doc: CameraDoc,
+  ): Promise<void> {
+    const { probeId, ...rest } = record;
+    await this.probes.insertOne(scope, { _id: probeId, ...rest });
+    await this.cameras.updateOne(
+      scope,
+      { _id: record.cameraId },
+      { $set: { probeCount: (doc.probeCount ?? 0) + 1 } },
+    );
+    const retained = await this.recordsFor(scope, record.cameraId);
+    for (const stale of retained.slice(PROBE_RETENTION)) {
+      await this.probes.deleteOne(scope, { _id: stale.probeId });
+    }
+  }
+
+  /** A camera's records, newest first. Sorted here so the in-memory and Mongo paths agree exactly. */
+  private async recordsFor(scope: TenantScope, cameraId: string): Promise<CameraProbeRecord[]> {
+    const docs = (await this.probes.findMany(scope, { cameraId })) as ProbeRecordDoc[];
+    // Ordered by the per-camera sequence, not by timestamp: two probes in the same millisecond are
+    // ordinary (a retry, a scheduled sweep) and a time sort would leave their order to the storage
+    // engine — taking the `previousProbeId` chain with it.
+    return docs.map(toProbeRecord).sort((a, b) => b.sequence - a.sequence);
+  }
+
+  private async latestProbe(
+    scope: TenantScope,
+    cameraId: string,
+  ): Promise<CameraProbeRecord | null> {
+    return (await this.recordsFor(scope, cameraId))[0] ?? null;
+  }
+
+  private windowFor(window: HealthTrendWindow): { windowStart: Date; windowEnd: Date } {
+    const windowEnd = this.clock.now();
+    return {
+      windowStart: new Date(windowEnd.getTime() - WINDOW_HOURS[window] * 3_600_000),
+      windowEnd,
+    };
+  }
+
+  /**
+   * Operational confidence for one camera (P-2.2 rec 4) — never from a single probe.
+   *
+   * Assembled from four records rather than one because each catches something the others cannot: a
+   * camera can stay nominally online and fail every probe, pass every probe and still have dropped
+   * overnight, or work perfectly while its capabilities are rewritten underneath it.
+   */
+  private confidenceFor(
+    doc: CameraDoc,
+    records: readonly CameraProbeRecord[],
+    windowStart: Date,
+    windowEnd: Date,
+  ): OperationalConfidence {
+    const timeline = (doc.timeline ?? []).filter((entry) =>
+      inWindow(entry.at, windowStart, windowEnd),
+    );
+    const summary = summarizeHealth({
+      cameraId: doc._id,
+      timeline: doc.timeline ?? [],
+      window: 'day',
+      windowStart,
+      windowEnd,
+    });
+    return operationalConfidence({
+      ...(summary.availabilityPercent !== undefined
+        ? { availabilityPercent: summary.availabilityPercent }
+        : {}),
+      offlineCount: summary.offlineCount,
+      credentialFailures: summary.credentialFailures,
+      stateObservations: timeline.filter(
+        (entry) => entry.kind === 'state-changed' && entry.evidence === 'measured',
+      ).length,
+      probes: records.filter(
+        (r) => r.cameraId === doc._id && inWindow(r.at, windowStart, windowEnd),
+      ),
+      // Drift classification happens at refresh time and is recorded in the timeline's detail line;
+      // what is counted here is the refresh events themselves, which is the signal the confidence
+      // model wants — a device whose capabilities keep moving is a device to trust less.
+      unexpectedCapabilityChanges: timeline.filter(
+        (entry) => entry.kind === 'capability-refreshed' && entry.detail.startsWith('unexpected'),
+      ).length,
+      identityChanges: (doc.identityHistory ?? []).filter(
+        (change) => inWindow(change.at, windowStart, windowEnd) && change.from !== undefined,
+      ).length,
     });
   }
 

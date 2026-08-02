@@ -99,6 +99,20 @@ const CAMERA = {
     fps: 10,
     authentication: 'ok',
   },
+  // P-2.2: what this camera has been proven to work under, per axis value.
+  compatibility: [
+    {
+      dimension: 'firmware',
+      value: 'V5.7.3',
+      status: 'supported',
+      firstSeenAt: '2026-08-01T09:00:00.000Z',
+      lastSeenAt: '2026-08-01T10:00:00.000Z',
+      evidenceClass: 'hardware',
+      successfulProbes: 4,
+      failedProbes: 0,
+    },
+  ],
+  probeCount: 4,
   hasCredentials: true,
   createdAt: '2026-08-01T09:00:00.000Z',
   updatedAt: '2026-08-01T09:00:00.000Z',
@@ -190,7 +204,10 @@ describe('CamerasPage', () => {
 
     const sheet = await screen.findByRole('dialog');
     expect(within(sheet).getByText('DS-2CD2143G2')).toBeInTheDocument();
-    expect(within(sheet).getByText('V5.7.3')).toBeInTheDocument();
+    // Twice, for two different reasons (P-2.2): the firmware the device reports, and the firmware
+    // row in the compatibility register saying what has been measured under it.
+    expect(within(sheet).getAllByText('V5.7.3')).toHaveLength(2);
+    expect(within(sheet).getByText('Supported')).toBeInTheDocument();
     // The stream-profile table names `sub` as the analysed one.
     const rows = within(sheet).getAllByRole('row');
     const subRow = rows.find((r) => within(r).queryByText('sub'));
@@ -649,8 +666,25 @@ describe('capability cache and diff (P-2.1)', () => {
             reason: 'forced',
             refreshed: true,
             changes: [
-              { field: 'codecs', severity: 'major', from: 'h264', to: 'h265' },
-              { field: 'audio', severity: 'minor', from: 'false', to: 'true' },
+              // P-2.2: unexplained, and therefore unexpected — nothing accounts for a codec moving.
+              {
+                field: 'codecs',
+                severity: 'major',
+                from: 'h264',
+                to: 'h265',
+                direction: 'changed',
+                cause: 'unexplained',
+                drift: 'unexpected',
+              },
+              {
+                field: 'audio',
+                severity: 'minor',
+                from: 'false',
+                to: 'true',
+                direction: 'changed',
+                cause: 'firmware-upgrade',
+                drift: 'expected',
+              },
             ],
           },
         }),
@@ -678,5 +712,148 @@ describe('device identity history (P-2.1)', () => {
     expect(screen.getByText('urn:uuid:abc-123')).toBeInTheDocument();
     // "When did this camera become a different device?" is only answerable if the old value survives.
     expect(screen.getByText(/10\.0\.0\.60 → 10\.0\.0\.64/)).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// P-2.2 — the probe archive in the console
+// ---------------------------------------------------------------------------------------------
+
+const ARCHIVED_OK = {
+  probeId: 'prb_2',
+  cameraId: 'cam_1',
+  at: '2026-08-01T10:00:00.000Z',
+  sequence: 2,
+  outcome: 'succeeded',
+  evidenceClass: 'hardware',
+  probeVersion: '3',
+  provider: 'rtsp',
+  configuration: {
+    protocol: 'rtsp',
+    streamUrl: 'rtsp://10.0.0.64:554/Streaming/Channels/102',
+    provider: 'rtsp',
+    credentialsSupplied: true,
+    firmware: 'V5.7.3',
+  },
+  lifecycleBefore: 'degraded',
+  lifecycleAfter: 'connected',
+  previousProbeId: 'prb_1',
+  previousProbeAt: '2026-08-01T09:00:00.000Z',
+  previousOutcome: 'failed',
+  previousFailureCode: 'authentication-failure',
+};
+
+const ARCHIVED_FAILED = {
+  ...ARCHIVED_OK,
+  probeId: 'prb_1',
+  sequence: 1,
+  at: '2026-08-01T09:00:00.000Z',
+  outcome: 'failed',
+  failureCode: 'authentication-failure',
+  lifecycleBefore: 'configured',
+  lifecycleAfter: 'degraded',
+  previousProbeId: undefined,
+};
+
+function archiveReturns(records: unknown[], evicted = 0) {
+  server.use(
+    mswHttp.get('/api/camera/cameras/:id/probes', () =>
+      HttpResponse.json({
+        success: true,
+        data: {
+          cameraId: 'cam_1',
+          records,
+          total: records.length + evicted,
+          retained: records.length,
+          evicted,
+        },
+      }),
+    ),
+  );
+}
+
+describe('probe archive (P-2.2)', () => {
+  it('shows every probe a camera has had, not only the latest', async () => {
+    authAs(['operator']);
+    listReturns([CAMERA]);
+    archiveReturns([ARCHIVED_OK, ARCHIVED_FAILED]);
+    renderWithProviders(<CamerasPage />, { store });
+    await openDetail();
+
+    // Before the archive existed each probe overwrote the last, which made "was it always like
+    // this?" — the first question anyone asks about a slow camera — permanently unanswerable.
+    expect(await screen.findByText('2 probes')).toBeInTheDocument();
+    expect(screen.getByText(/rejected the credentials/i)).toBeInTheDocument();
+  });
+
+  it('says so when older reports have been aged out', async () => {
+    authAs(['operator']);
+    listReturns([CAMERA]);
+    archiveReturns([ARCHIVED_OK], 140);
+    renderWithProviders(<CamerasPage />, { store });
+    await openDetail();
+
+    // A list that simply stops would let "1 probe, successful" stand for a camera with 140 failures
+    // behind it.
+    expect(await screen.findByText(/showing 1 of 141 probes/i)).toBeInTheDocument();
+  });
+
+  it('replays a stored report and names what changed, without contacting the camera', async () => {
+    authAs(['operator']);
+    listReturns([CAMERA]);
+    archiveReturns([ARCHIVED_OK, ARCHIVED_FAILED]);
+    let probed = false;
+    server.use(
+      mswHttp.post('/api/camera/cameras/:id/probe', () => {
+        probed = true;
+        return HttpResponse.json({ success: true, data: {} });
+      }),
+      mswHttp.get('/api/camera/cameras/:id/probes/:probeId', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            probeId: 'prb_2',
+            cameraId: 'cam_1',
+            recordedAt: '2026-08-01T10:00:00.000Z',
+            replayedAt: '2026-08-08T10:00:00.000Z',
+            evidenceClass: 'hardware',
+            probeVersion: '3',
+            provider: 'rtsp',
+            outcome: 'succeeded',
+            configuration: ARCHIVED_OK.configuration,
+            stages: [
+              { name: 'dns', status: 'pass', measured: '10.0.0.64', durationMs: 12 },
+              { name: 'authentication', status: 'pass', durationMs: 90 },
+            ],
+            totalMs: 640,
+            warnings: [],
+            comparison: {
+              previousProbeId: 'prb_1',
+              previousAt: '2026-08-01T09:00:00.000Z',
+              outcomeChanged: true,
+              previousOutcome: 'failed',
+              previousFailureCode: 'authentication-failure',
+              stageChanges: [{ name: 'authentication', from: 'fail', to: 'pass' }],
+              configurationChanged: false,
+            },
+          },
+        }),
+      ),
+    );
+    renderWithProviders(<CamerasPage />, { store });
+    const user = await openDetail();
+
+    // Clicked by its accessible name rather than its rendered timestamp: the timestamp is
+    // locale-formatted, and a test that depends on the runner's locale is a flake waiting to happen.
+    const [succeeded] = await screen.findAllByRole('button', { name: /succeeded/i });
+    await user.click(succeeded!);
+
+    expect(await screen.findByText(/the camera was not contacted/i)).toBeInTheDocument();
+    // The comparison is the diagnosis: authentication used to fail and now passes.
+    expect(screen.getByText(/previously/i)).toBeInTheDocument();
+    expect(screen.getByText('fail → pass')).toBeInTheDocument();
+    // Support work happens days later, often on a camera since power-cycled into working. Replay
+    // must never quietly become a fresh measurement.
+    expect(probed).toBe(false);
   });
 });

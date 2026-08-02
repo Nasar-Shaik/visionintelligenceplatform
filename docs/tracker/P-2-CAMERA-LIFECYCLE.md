@@ -202,6 +202,49 @@ first. The diagram is right: a running analysis session **is** hardware evidence
 without anyone having pressed "test connection". Requiring a manual probe first would be the state
 machine disbelieving its own runtime. `configured → monitoring` is now legal.
 
+## P-2.2 — Operational Evidence (the final hardening slice before P-3)
+
+Approved mid-flight with ten refinements. **A probe stops being the latest reading and becomes a
+piece of evidence.**
+
+| Rec | Recommendation               | Where it landed                                                           |
+| --- | ---------------------------- | ------------------------------------------------------------------------- |
+| 1   | Validation Provider Registry | `register_provider(...)` in `stream_probe.py`; `ValidationProvider`       |
+| 2   | Immutable probe archive      | `camera_probes` collection; `domain/probe-archive.ts`; no update path     |
+| 3   | Drift classification         | `classifyDrift` — direction · cause · expected/unexpected                 |
+| 4   | Confidence from history      | `domain/confidence.ts`; two floors; never from a single probe             |
+| 5   | Compatibility registry       | `CompatibilityRecord` keyed by (dimension, value); rows never overwritten |
+| 6   | Probe replay                 | `replayProbe()` — pure, `GET`, no camera in scope                         |
+| 7   | Fleet metrics                | `GET /cameras/metrics`; the same computation as the per-camera view       |
+| 8   | Evidence timeline            | `GET /cameras/:id/evidence` — four write models, one read model           |
+| 9   | Architecture freeze          | Subsystem declared complete; P-3 is product, not infrastructure           |
+| 10  | Ownership boundaries         | Provider owns validation · service owns history · console renders         |
+
+### The recommendation that needed a decision
+
+The Architect recommended a single `OperationalTimeline` in place of four histories and left the call
+to us. **Unify the reading; keep the writing separate.** The four records have different bounds
+(50 · 30 · 200 · 60), different keys (time · attribute · sequence · dimension-value) and different
+retention rules. One physical log forces one rule onto all four: either probe evidence gets discarded
+to keep the timeline small, or a camera reconnecting every thirty seconds buries a firmware change
+under ten thousand identical rows. Merging on read costs one sort and duplicates no fact.
+
+### Two defects the tests found, not the review
+
+- **A timestamp is not a total order.** Two probes in the same millisecond left the `previousProbeId`
+  chain — the thing "when did this start failing?" walks — down to whatever the storage engine
+  returned. Fixed with a per-camera `sequence`.
+- **Confidence scored a single probe.** A probe produces both a report _and_ the transition it
+  causes, so counting "observations" let one probe look like two independent facts. Fixed by counting
+  only _measured_ state changes and requiring two hardware probes.
+
+### A behaviour change worth naming
+
+A **simulated** or **USB** source no longer runs the DNS and TCP stages: under the provider registry
+it has no network endpoint, so they are `skipped`. Previously the probe resolved and dialled whatever
+host the URI happened to carry — a report of work it had not done, and the root cause of P-2.1's
+113-second test suite.
+
 ## Gates
 
 P-2: contracts **+10 → 137 schemas**; Contracts 264 · Python 816 · camera 112 · console 67.
@@ -209,3 +252,7 @@ P-2: contracts **+10 → 137 schemas**; Contracts 264 · Python 816 · camera 11
 P-2.1: **+3 → 140 generated schemas. Contracts 277 · Python 845 · camera 129 · console 73.** Typecheck 28 · lint 20 · build 19 ·
 import-graph 0 violations · format clean. No new service, no new runtime layer, the five frozen
 perception contracts untouched.
+
+P-2.2: **+9 → 149 generated schemas. Contracts 277 · Python 850 · camera 156 · console 76.** No new
+service, no new runtime layer, the five frozen perception contracts untouched. The operational
+evidence subsystem is complete; P-3 begins product functionality.

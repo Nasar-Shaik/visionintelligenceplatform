@@ -22,9 +22,11 @@ Four properties carry the module:
    `simulated`, and the camera service refuses to call a camera `connected` on that however good the
    numbers look. Without this a demo environment reports an estate that does not exist.
 
-4. **Protocol-neutral staging** (rec 9). Stages are selected per scheme, so adding SRT or WebRTC is a
-   new entry in `_STAGES_FOR_SCHEME` — not a change to the camera lifecycle. A stage that does not
-   apply to a transport is `skipped`, which is distinct from both `fail` and `not-executed`.
+4. **One validation engine, many providers** (P-2.2). RTSP, HTTP, WebRTC, a recorded DVR export, an
+   NVR playback file, a USB camera and an edge stream are all validated by the pipeline below;
+   `register_provider` declares what stages each one has. Adding a source type is a registration, not
+   a new code path, and never a change to the camera lifecycle. A stage a provider does not have is
+   `skipped`, which is distinct from both `fail` and `not-executed`.
 
 Stdlib-only and deterministic: the resolver, the connector, the source builder and the clock are all
 injected, so unit tests run against a `SimulatedStreamSource` and never touch a network.
@@ -42,7 +44,12 @@ from stream_source import build_source, redact_uri
 
 # Bump when the probe's own measurement behaviour changes — what a stage means, where a timer starts.
 # Two reports are only comparable if you know whether the probe changed in between (rec 6/4).
-PROBE_VERSION = "2"
+#
+# 3 (P-2.2): stage applicability moved from a pair of ad-hoc scheme checks to the validation provider
+# registry below, and every report now names the provider that produced it. A simulated or USB source
+# no longer runs the DNS and TCP stages — it never touched a network, and reporting those as measured
+# was the probe describing work it did not do.
+PROBE_VERSION = "3"
 
 # The ordered stages. Order IS the contract: each depends on the one before it, so the first failure
 # in the list is always the thing to fix.
@@ -78,18 +85,117 @@ FAILURE_CODES = (
     "stream-interrupted",
 )
 
-# Which stages apply to which transport (rec 9). A stage absent here is `skipped` — the probe did not
-# decline to run it, the transport simply has no such step.
-_NEGOTIATED_SCHEMES = ("rtsp", "rtsps")
-_DEFAULT_PORTS = {
-    "rtsp": 554,
-    "rtsps": 322,
-    "rtmp": 1935,
-    "rtmps": 443,
-    "http": 80,
-    "https": 443,
-    "srt": 9710,
+# --- the validation provider registry ------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ValidationProvider:
+    """One kind of source the pipeline can validate (P-2.2, Architect rec 1).
+
+    **This registry is the extension mechanism, and the engine below never learns about its rows.**
+    Adding SRT, an NVR playback export or an edge stream is `register_provider(...)` — never a second
+    validation path. A source type with its own probe would grow its own private idea of what
+    "connected" means, and two definitions of connected is exactly what the lifecycle's evidence rule
+    exists to prevent.
+
+    Deliberately *providers*, not transports: a recorded DVR export and a USB camera are not
+    transports at all, and they still need validating through the same staged pipeline so their
+    reports can be read side by side with an RTSP one.
+
+    A stage a provider does not have is reported `skipped` — never `fail`, and never silently
+    omitted. "This provider has no RTSP negotiation" and "negotiation did not run" are different
+    facts, and a reader a year later cannot recover the difference from a missing row.
+    """
+
+    id: str
+    default_port: Optional[int] = None
+    #: Has an RTSP-style DESCRIBE/SETUP/PLAY step before media flows.
+    negotiated: bool = False
+    #: Reached over a network — has a name to resolve, a socket to open, an identity to present.
+    networked: bool = True
+    label: str = ""
+
+
+_PROVIDERS: Dict[str, ValidationProvider] = {}
+
+
+def register_provider(provider: ValidationProvider) -> ValidationProvider:
+    """Register a validation provider. Idempotent by id; later registration wins."""
+    _PROVIDERS[provider.id] = provider
+    return provider
+
+
+def providers() -> Tuple[ValidationProvider, ...]:
+    """Every registered provider, id-sorted. What `/capabilities` reports and tests enumerate."""
+    return tuple(sorted(_PROVIDERS.values(), key=lambda p: p.id))
+
+
+for _provider in (
+    ValidationProvider("rtsp", 554, negotiated=True, label="RTSP"),
+    ValidationProvider("rtsps", 322, negotiated=True, label="RTSP over TLS"),
+    ValidationProvider("rtmp", 1935, label="RTMP"),
+    ValidationProvider("rtmps", 443, label="RTMP over TLS"),
+    ValidationProvider("http", 80, label="HTTP / MJPEG"),
+    ValidationProvider("https", 443, label="HTTPS / MJPEG"),
+    ValidationProvider("srt", 9710, label="SRT"),
+    # WebRTC signalling rides a websocket and negotiates media inside it, so there is no separate
+    # RTSP-style negotiation stage to report on.
+    ValidationProvider("webrtc", 443, label="WebRTC"),
+    # ONVIF PullPoint is an HTTP SOAP subscription: the same stages as HTTP under a different name.
+    ValidationProvider("onvif-pullpoint", 80, label="ONVIF PullPoint"),
+    # Local sources. No name to resolve, no socket, no credentials presented to anything.
+    ValidationProvider("recorded-video", networked=False, label="Recorded video"),
+    ValidationProvider("dvr-export", networked=False, label="DVR export"),
+    ValidationProvider("nvr-playback", networked=False, label="NVR playback"),
+    ValidationProvider("usb-camera", networked=False, label="USB camera"),
+    ValidationProvider("edge-stream", networked=False, label="Edge stream"),
+    ValidationProvider("simulated", networked=False, label="Simulated source"),
+    # A source nobody has declared. Reported as `unknown` rather than guessed at: the probe still
+    # tries to open it, and saying so beats inventing a port and blaming the camera for not listening.
+    ValidationProvider("unknown", label="Unknown"),
+):
+    register_provider(_provider)
+
+# Declared source type → provider, for the source types that ARE the provider. Everything else
+# resolves by scheme. Consistent with `build_source`, which selects by declared type and never sniffs.
+_SOURCE_TYPE_PROVIDERS: Dict[str, str] = {
+    "simulated": "simulated",
+    "file": "recorded-video",
+    "usb": "usb-camera",
 }
+_SCHEME_PROVIDERS: Dict[str, str] = {
+    "rtsp": "rtsp",
+    "rtsps": "rtsps",
+    "rtmp": "rtmp",
+    "rtmps": "rtmps",
+    "http": "http",
+    "https": "https",
+    "srt": "srt",
+    "ws": "webrtc",
+    "wss": "webrtc",
+    "webrtc": "webrtc",
+    "onvif": "onvif-pullpoint",
+}
+
+
+def resolve_provider(config: Dict, scheme: str, uri: str) -> ValidationProvider:
+    """Select the provider for a probe.
+
+    Order: an explicit `provider` on the config, then the declared source type, then the URI scheme.
+    Declared beats derived at every step — a DVR export and an NVR playback are byte-identical files,
+    and only the caller knows which one it handed over.
+    """
+    declared = str(config.get("provider") or "").strip()
+    if declared in _PROVIDERS:
+        return _PROVIDERS[declared]
+    source_type = str(config.get("type", "")).strip()
+    by_type = _SOURCE_TYPE_PROVIDERS.get(source_type)
+    if by_type:
+        return _PROVIDERS[by_type]
+    by_scheme = _SCHEME_PROVIDERS.get(scheme)
+    if by_scheme:
+        return _PROVIDERS[by_scheme]
+    return _PROVIDERS["recorded-video" if not scheme and not uri.strip().isdigit() else "unknown"]
 
 # Substrings that mean "the device rejected who you say you are" rather than "the device is not
 # there". FFmpeg/OpenCV surface this as free text, so this is pattern-matching on error strings and
@@ -129,6 +235,9 @@ class ProbeReport:
     """The measured result of one probe. Mirrors the `StreamProbeResult` contract."""
 
     evidence_class: str
+    #: Which registered validation provider ran. Recorded so a stored report stays readable: a
+    #: `skipped` RTSP-negotiation row only makes sense once you know what kind of source it was.
+    provider: str = "unknown"
     reachable: bool = False
     frames_read: int = 0
     connect_ms: Optional[float] = None
@@ -156,6 +265,7 @@ class ProbeReport:
             "probedAt": self.probed_at,
             "probeVersion": self.probe_version,
             "evidenceClass": self.evidence_class,
+            "provider": self.provider,
             "reachable": self.reachable,
             "framesRead": self.frames_read,
             "authentication": self.authentication,
@@ -203,6 +313,12 @@ def _looks_like_negotiation_failure(message: str) -> bool:
     return any(marker in lowered for marker in _NEGOTIATION_MARKERS)
 
 
+def _default_port_for(scheme: str) -> Optional[int]:
+    """The port this scheme's provider listens on by default, or `None` when it has none."""
+    provider_id = _SCHEME_PROVIDERS.get(scheme)
+    return _PROVIDERS[provider_id].default_port if provider_id else None
+
+
 def split_endpoint(uri: str) -> Tuple[str, Optional[str], Optional[int]]:
     """`(scheme, host, port)` from a stream URI. Userinfo is stripped and never returned.
 
@@ -216,13 +332,13 @@ def split_endpoint(uri: str) -> Tuple[str, Optional[str], Optional[int]]:
     authority = remainder.split("/", 1)[0]
     if "@" in authority:
         authority = authority.rsplit("@", 1)[1]
-    host, port = authority, _DEFAULT_PORTS.get(scheme)
+    host, port = authority, _default_port_for(scheme)
     if ":" in authority and not authority.startswith("["):
         host, _, raw_port = authority.rpartition(":")
         try:
             port = int(raw_port)
         except ValueError:
-            host, port = authority, _DEFAULT_PORTS.get(scheme)
+            host, port = authority, _default_port_for(scheme)
     return scheme, (host or None), port
 
 
@@ -247,7 +363,7 @@ def _finalize(checks: List[ProbeCheck], detail: str, applicable: Tuple[str, ...]
 
     - **`not-executed` fill** makes the report diagnostic rather than accusatory: once DNS fails, the
       codec was not wrong — it was never looked at.
-    - **`skipped`** says a transport has no such stage (rec 9). An HTTP source has no RTSP
+    - **`skipped`** says the provider has no such stage (P-2.2). An HTTP source has no RTSP
       negotiation, and reporting that as "not executed" would imply the probe gave up on it.
     - **The sort** makes the list scannable. Stages are computed in whatever order is cheapest, and a
       list that reorders itself depending on how far the probe got cannot be read at a glance.
@@ -258,22 +374,34 @@ def _finalize(checks: List[ProbeCheck], detail: str, applicable: Tuple[str, ...]
             continue
         if name not in applicable:
             checks.append(
-                ProbeCheck(name, SKIPPED, detail="this transport has no such stage")
+                ProbeCheck(name, SKIPPED, detail="this source type has no such stage")
             )
         else:
             checks.append(ProbeCheck(name, NOT_EXECUTED, detail=detail))
     return sorted(checks, key=lambda c: CHECK_ORDER.index(c.name))
 
 
-def _applicable_stages(scheme: str, host: Optional[str]) -> Tuple[str, ...]:
-    """The stages this transport actually has (rec 9)."""
+def _applicable_stages(
+    provider: ValidationProvider, host: Optional[str], port: Optional[int]
+) -> Tuple[str, ...]:
+    """The stages this provider actually has — derived from the registry, not from the scheme.
+
+    The engine asks the provider what it has; it does not know the provider's name. That is what
+    makes a new provider a registration rather than a change here.
+    """
     stages = list(CHECK_ORDER)
-    if host is None:
-        # A file or device source has no network endpoint to resolve or connect to.
+    if not provider.networked or host is None:
+        # A recorded export, a USB camera or a simulated source has no endpoint to resolve, no socket
+        # to open and nothing to present credentials to.
         for name in ("dns", "tcp", "authentication", "rtsp-negotiation"):
             stages.remove(name)
-    elif scheme not in _NEGOTIATED_SCHEMES:
+        return tuple(stages)
+    if not provider.negotiated:
         stages.remove("rtsp-negotiation")
+    if port is None:
+        # A networked provider with no port to dial: the name still resolves, but there is no socket
+        # stage to run. Reporting it `skipped` says that; `not-executed` would imply the probe gave up.
+        stages.remove("tcp")
     return tuple(stages)
 
 
@@ -308,10 +436,12 @@ def probe_stream(
     source_type = str(config.get("type", "")).strip()
     uri = str(config.get("uri", ""))
     scheme, host, port = split_endpoint(uri)
-    applicable = _applicable_stages(scheme, host)
+    provider = resolve_provider(config, scheme, uri)
+    applicable = _applicable_stages(provider, host, port)
 
     report = ProbeReport(
         evidence_class=_evidence_for(source_type),
+        provider=provider.id,
         probed_at=timestamp,
         runtime_version=runtime_version,
         config_version=config.get("configVersion") or None,

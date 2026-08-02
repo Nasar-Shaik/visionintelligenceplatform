@@ -17,6 +17,7 @@ import { CameraService } from '../src/application/camera-service.js';
 import type { DiscoveryProbe, DiscoveryProvider } from '../src/application/discovery.js';
 import type { StreamProbe, StreamProbeOutcome } from '../src/application/stream-probe.js';
 import type { CameraDoc } from '../src/domain/camera.js';
+import type { ProbeRecordDoc } from '../src/domain/probe-archive.js';
 import { buildServer } from '../src/transport/server.js';
 
 const SECRET = 'test-secret-at-least-16-chars';
@@ -91,8 +92,11 @@ const DISCOVERED = {
 
 /** A stream probe the test controls — no runtime, no camera, no network. */
 class StubProbe implements StreamProbe {
+  /** Counted so a test can prove replay contacts nothing (P-2.2 rec 6). */
+  calls = 0;
   constructor(public outcome: StreamProbeOutcome) {}
   async probe(): Promise<StreamProbeOutcome> {
+    this.calls += 1;
     return this.outcome;
   }
 }
@@ -102,20 +106,52 @@ const HARDWARE_OK: StreamProbeOutcome = {
   result: {
     probedAt: '2026-07-28T00:00:00.000Z',
     evidenceClass: 'hardware',
+    probeVersion: '3',
+    runtimeVersion: '0.1.0',
+    provider: 'rtsp',
     reachable: true,
     framesRead: 3,
     firstFrameMs: 412,
+    totalMs: 640,
     fps: 10,
     resolution: '640x360',
     authentication: 'ok',
     checks: [
-      { name: 'reachability', status: 'pass' },
-      { name: 'authentication', status: 'pass' },
-      { name: 'stream-open', status: 'pass' },
-      { name: 'frames-received', status: 'pass', measured: '3 frames' },
+      { name: 'dns', status: 'pass', measured: '10.0.0.64', durationMs: 12 },
+      { name: 'tcp', status: 'pass', measured: '10.0.0.64:554', durationMs: 4 },
+      { name: 'authentication', status: 'pass', durationMs: 90 },
+      { name: 'stream-open', status: 'pass', durationMs: 90 },
+      { name: 'first-frame', status: 'pass', measured: '412 ms', durationMs: 412 },
+      { name: 'frames-received', status: 'pass', measured: '3 frames', durationMs: 420 },
     ],
     profiles: [],
     warnings: [],
+  },
+};
+
+/** A probe that reached the device and could not get a frame out of it — a device-side failure. */
+const HARDWARE_NO_FRAME: StreamProbeOutcome = {
+  result: {
+    probedAt: '2026-07-28T00:00:00.000Z',
+    evidenceClass: 'hardware',
+    probeVersion: '3',
+    runtimeVersion: '0.1.0',
+    provider: 'rtsp',
+    reachable: true,
+    framesRead: 0,
+    totalMs: 8100,
+    authentication: 'ok',
+    failureCode: 'no-first-frame',
+    checks: [
+      { name: 'dns', status: 'pass', durationMs: 11 },
+      { name: 'tcp', status: 'pass', durationMs: 5 },
+      { name: 'authentication', status: 'pass', durationMs: 80 },
+      { name: 'stream-open', status: 'pass', durationMs: 80 },
+      { name: 'first-frame', status: 'fail', measured: '0 frames' },
+    ],
+    profiles: [],
+    warnings: [],
+    error: 'the stream opened but produced no frames within 8s',
   },
 };
 
@@ -154,9 +190,10 @@ beforeEach(async () => {
   probe = new StubProbe(HARDWARE_OK);
   const service = new CameraService({
     cameras: new TenantRepository<CameraDoc>(memoryCollection<CameraDoc>()),
+    probes: new TenantRepository<ProbeRecordDoc>(memoryCollection<ProbeRecordDoc>()),
     vault: SecretBox.fromSecret(SECRET),
     clock: { now: () => new Date('2026-07-28T00:00:00.000Z') },
-    ids: { cameraId: () => `cam_${++n}` },
+    ids: { cameraId: () => `cam_${++n}`, probeId: () => `prb_${++n}` },
     discovery,
     probe,
   });
@@ -934,5 +971,229 @@ describe('device identity (P-2)', () => {
     const device = res.json().data.devices[0];
     expect(device.alreadyOnboarded).toBe(true);
     expect(device.addressChanged).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// P-2.2 — the immutable probe archive
+// ---------------------------------------------------------------------------------------------
+
+describe('immutable probe archive (P-2.2)', () => {
+  const onboard = async (t: string) => (await create(t)).json().data.id as string;
+
+  it('keeps every probe rather than overwriting the last one', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = await onboard(t);
+    await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+    probe.outcome = HARDWARE_NO_FRAME;
+    await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+
+    const res = await app.inject({ method: 'GET', url: `/cameras/${id}/probes`, headers: auth(t) });
+    expect(res.statusCode).toBe(200);
+    const history = res.json().data;
+    // Before P-2.2 the first report simply ceased to exist, which makes "was it always like this?"
+    // — the most common operational question there is — permanently unanswerable.
+    expect(history.total).toBe(2);
+    expect(history.retained).toBe(2);
+    expect(history.evicted).toBe(0);
+    expect(history.records.map((r: { outcome: string }) => r.outcome)).toEqual([
+      'failed',
+      'succeeded',
+    ]);
+    // Correlation: the newest points back at the one before it (rec 2).
+    expect(history.records[0].previousProbeId).toBe(history.records[1].probeId);
+    expect(history.records[0].previousOutcome).toBe('succeeded');
+  });
+
+  it("records the configuration each probe ran against, not the camera's current one", async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = await onboard(t);
+    await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+    await app.inject({
+      method: 'PATCH',
+      url: `/cameras/${id}`,
+      headers: auth(t),
+      payload: { streamUrl: 'rtsp://cam.local:554/main' },
+    });
+
+    const history = (
+      await app.inject({ method: 'GET', url: `/cameras/${id}/probes`, headers: auth(t) })
+    ).json().data;
+    // The stored report still says what was measured. Back-filling today's URL would silently
+    // rewrite history to match the present, and the comparison would be against a stream nobody ran.
+    expect(history.records[0].configuration.streamUrl).toBe('rtsp://cam.local:554/stream');
+  });
+
+  it('replays a stored probe without contacting the camera', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = await onboard(t);
+    await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+    const history = (
+      await app.inject({ method: 'GET', url: `/cameras/${id}/probes`, headers: auth(t) })
+    ).json().data;
+    const probeId = history.records[0].probeId;
+
+    const before = probe.calls;
+    const res = await app.inject({
+      method: 'GET',
+      url: `/cameras/${id}/probes/${probeId}`,
+      headers: auth(t),
+    });
+    expect(res.statusCode).toBe(200);
+    const replay = res.json().data;
+    // The whole point (rec 6): support work happens days later, often on a camera that has since
+    // been power-cycled into working. Re-probing then answers "it works now" and explains nothing.
+    expect(probe.calls).toBe(before);
+    expect(replay.stages.map((s: { name: string }) => s.name)).toEqual([
+      'dns',
+      'tcp',
+      'authentication',
+      'stream-open',
+      'first-frame',
+      'frames-received',
+    ]);
+    expect(replay.outcome).toBe('succeeded');
+    expect(replay.evidenceClass).toBe('hardware');
+    expect(replay.recordedAt).toBe('2026-07-28T00:00:00.000Z');
+  });
+
+  it('records a probe that could not run at all, so the gap has a timestamp', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = await onboard(t);
+    probe.outcome = { unavailable: 'no stream validator is configured' };
+    const res = await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+    expect(res.json().data.unavailable).toBe('no stream validator is configured');
+
+    const history = (
+      await app.inject({ method: 'GET', url: `/cameras/${id}/probes`, headers: auth(t) })
+    ).json().data;
+    expect(history.records[0].outcome).toBe('unavailable');
+    // It measured nothing about the camera — and must never claim otherwise.
+    expect(history.records[0].evidenceClass).toBe('simulated');
+    expect(history.records[0].result).toBeUndefined();
+  });
+
+  it('records what the camera has been proven to work under, and never from a simulation', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = await onboard(t);
+    await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+    let camera = (
+      await app.inject({ method: 'GET', url: `/cameras/${id}`, headers: auth(t) })
+    ).json().data;
+    const supported = camera.compatibility.find(
+      (row: { dimension: string }) => row.dimension === 'provider',
+    );
+    expect(supported).toMatchObject({ value: 'rtsp', status: 'supported', successfulProbes: 1 });
+    expect(
+      camera.compatibility.find(
+        (row: { dimension: string }) => row.dimension === 'runtime-version',
+      ),
+    ).toMatchObject({ value: '0.1.0', status: 'supported' });
+
+    // A device-side failure on hardware evidence is the only thing that earns `unsupported`.
+    probe.outcome = HARDWARE_NO_FRAME;
+    await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+    camera = (await app.inject({ method: 'GET', url: `/cameras/${id}`, headers: auth(t) })).json()
+      .data;
+    expect(
+      camera.compatibility.find((row: { dimension: string }) => row.dimension === 'provider')
+        .status,
+    ).toBe('unsupported');
+  });
+
+  it('never marks a firmware unsupported for a credential failure', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = await onboard(t);
+    probe.outcome = {
+      result: {
+        ...HARDWARE_NO_FRAME.result!,
+        failureCode: 'authentication-failure',
+        authentication: 'failed',
+      },
+    };
+    await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+    const camera = (
+      await app.inject({ method: 'GET', url: `/cameras/${id}`, headers: auth(t) })
+    ).json().data;
+    // A wrong password says nothing whatsoever about a vendor's firmware. Counting it would
+    // eventually brand a perfectly good release unsupported across an entire estate.
+    expect(
+      camera.compatibility.find((row: { dimension: string }) => row.dimension === 'provider')
+        .status,
+    ).toBe('pending-validation');
+  });
+
+  it('does not issue an operational confidence score from a single probe', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = await onboard(t);
+    await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+    const summary = (
+      await app.inject({ method: 'GET', url: `/cameras/${id}/health/summary`, headers: auth(t) })
+    ).json().data;
+    // A percentage computed from one observation is arithmetic wearing a uniform (rec 4).
+    expect(summary.confidence.band).toBe('insufficient-evidence');
+    expect(summary.confidence.score).toBeUndefined();
+  });
+
+  it('reports per-stage probe performance', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = await onboard(t);
+    await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+    const metrics = (
+      await app.inject({ method: 'GET', url: `/cameras/${id}/probes/metrics`, headers: auth(t) })
+    ).json().data;
+    expect(metrics.probes).toBe(1);
+    expect(metrics.successRatePercent).toBe(100);
+    expect(metrics.averageTotalMs).toBe(640);
+    expect(metrics.stages.find((s: { stage: string }) => s.stage === 'dns').averageMs).toBe(12);
+    expect(metrics.hardwareProbes).toBe(1);
+  });
+
+  it('merges every record into one chronology', async () => {
+    const t = await token(TENANT, ['admin']);
+    const id = await onboard(t);
+    await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+    const evidence = (
+      await app.inject({ method: 'GET', url: `/cameras/${id}/evidence`, headers: auth(t) })
+    ).json().data;
+    // One question, one chronology (rec 8) — assembled from four records that stay separate on the
+    // write side because they have four different retention rules.
+    expect(evidence.sources).toContain('probe');
+    expect(evidence.sources).toContain('lifecycle');
+    expect(evidence.entries.every((e: { at: string; summary: string }) => e.summary)).toBe(true);
+    // The probe appears once, not twice: the archive is authoritative and the timeline echo is dropped.
+    expect(evidence.entries.filter((e: { source: string }) => e.source === 'probe')).toHaveLength(
+      1,
+    );
+  });
+
+  it('counts the cameras nobody has ever probed in the fleet view', async () => {
+    const t = await token(TENANT, ['admin']);
+    const probed = await onboard(t);
+    await create(t, { ...validCamera, name: 'Never tested', streamUrl: 'rtsp://cam2.local/s' });
+    await app.inject({ method: 'POST', url: `/cameras/${probed}/probe`, headers: auth(t) });
+
+    const fleet = (
+      await app.inject({ method: 'GET', url: '/cameras/metrics', headers: auth(t) })
+    ).json().data;
+    expect(fleet.cameras).toBe(2);
+    expect(fleet.camerasProbed).toBe(1);
+    // The denominator nobody remembers to ask for. "100% probe success" over the one camera anyone
+    // tested is a green number describing a sample nobody chose.
+    expect(fleet.camerasNeverProbed).toBe(1);
+    expect(fleet.successRatePercent).toBe(100);
+  });
+
+  it("does not leak another tenant's probe reports", async () => {
+    const t = await token(TENANT, ['admin']);
+    const other = await token(OTHER, ['admin']);
+    const id = await onboard(t);
+    await app.inject({ method: 'POST', url: `/cameras/${id}/probe`, headers: auth(t) });
+    const res = await app.inject({
+      method: 'GET',
+      url: `/cameras/${id}/probes`,
+      headers: auth(other),
+    });
+    expect(res.statusCode).toBe(404);
   });
 });

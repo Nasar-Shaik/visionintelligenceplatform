@@ -280,6 +280,16 @@ export const CameraTimelineEntry = z.object({
    */
   probeVersion: z.string().max(20).optional(),
   correlationId: z.string().max(120).optional(),
+  /**
+   * Wall-clock cost of the operation this entry records, when it had one (P-2.2, Architect rec 8).
+   *
+   * Carried on the timeline rather than in a metrics store because the timeline is already the
+   * append-only record of what happened — a parallel store of the same events keyed by the same
+   * timestamps would be two sources of truth for one fact, and they would diverge.
+   */
+  durationMs: z.number().nonnegative().optional(),
+  /** The immutable probe report behind this entry, when one exists (P-2.2, Architect rec 1). */
+  probeId: z.string().max(120).optional(),
   /** Present on `state-changed` — the transition this entry records. */
   from: CameraLifecycleState.optional(),
   to: CameraLifecycleState.optional(),
@@ -516,6 +526,76 @@ export const CapabilityCache = z.object({
 export type CapabilityCache = z.infer<typeof CapabilityCache>;
 
 /**
+ * Whether the platform has actually got this camera working under a given condition (P-2.2, rec 5).
+ *
+ * The three values are deliberately the same vocabulary the device compatibility registry uses
+ * (`ai/inference/camera_registry.py`), and they are earned the same way — **from measured evidence,
+ * never from a version number**. `pending-validation` is the honest default and is where a row stays
+ * until hardware says otherwise.
+ */
+export const CompatibilityStatus = z.enum(['supported', 'pending-validation', 'unsupported']);
+export type CompatibilityStatus = z.infer<typeof CompatibilityStatus>;
+
+/**
+ * What a compatibility row is *about* (P-2.2, Architect rec 5).
+ *
+ * Firmware alone is not enough. A camera that broke after a runtime upgrade, a camera that works on
+ * H.264 and stalls on H.265, and a camera that works over RTSP and fails over the ONVIF PullPoint
+ * provider are three real support cases, and a firmware-only register files all three under the same
+ * unchanged version string.
+ */
+export const CompatibilityDimension = z.enum([
+  'firmware',
+  'runtime-version',
+  'onvif-version',
+  'codec',
+  'provider',
+  'edge-profile',
+]);
+export type CompatibilityDimension = z.infer<typeof CompatibilityDimension>;
+
+/**
+ * One condition this camera has run under, and what happened (P-2.2, Architect rec 5).
+ *
+ * **Only ever presenting the latest status is exactly what this must not do.** A camera that worked
+ * on V5.7.3, worked on V5.7.9 and has failed on every probe since V5.8.0 is telling a story that a
+ * single current-status field erases — and the story *is* the diagnosis. A row per (dimension,
+ * value) is what turns "this camera is broken" into "this camera broke when it was upgraded".
+ *
+ * **Older rows are never overwritten and never removed.** The counters accumulate, but the row for a
+ * firmware the camera has long since moved off stays exactly as it was left.
+ *
+ * `unsupported` is claimed narrowly: only a device-side failure under hardware evidence earns it. A
+ * DNS, TCP or credential failure says nothing whatsoever about a firmware or a codec, and letting
+ * those mark one unsupported would blame a vendor for a wrong password.
+ */
+export const CompatibilityRecord = z.object({
+  dimension: CompatibilityDimension,
+  /** The observed value — `V5.7.3`, `h265`, `rtsp`, `0.1.0`. */
+  value: z.string().min(1).max(120),
+  status: CompatibilityStatus,
+  firstSeenAt: IsoDateTime,
+  lastSeenAt: IsoDateTime,
+  /** What the status rests on. Below `hardware` nothing may be claimed beyond `pending-validation`. */
+  evidenceClass: EvidenceClass,
+  /** Hardware probes under this condition that read frames. */
+  successfulProbes: z.number().int().nonnegative().default(0),
+  /** Hardware probes under this condition that failed for a device-side reason. */
+  failedProbes: z.number().int().nonnegative().default(0),
+  /** The most recent probe report behind this row — the evidence, addressable. */
+  lastProbeId: z.string().max(120).optional(),
+  detail: z.string().max(300).optional(),
+});
+export type CompatibilityRecord = z.infer<typeof CompatibilityRecord>;
+
+/**
+ * A camera's compatibility history, oldest first. Bounded at 60 — six dimensions with ten observed
+ * values each is already a longer record than any camera's story needs.
+ */
+export const CameraCompatibilityHistory = z.array(CompatibilityRecord).max(60);
+export type CameraCompatibilityHistory = z.infer<typeof CameraCompatibilityHistory>;
+
+/**
  * A camera as persisted/returned. Tenant + zone scoped. Credentials are NOT present — only
  * `hasCredentials` reveals whether any are vaulted (Law 5 isolation + secret-safety).
  */
@@ -555,6 +635,17 @@ export const Camera = z.object({
    * is different from, and must never be rendered as, a camera that was probed and found offline.
    */
   operational: CameraOperationalHealth.optional(),
+  /**
+   * Compatibility history (P-2.2). Every firmware, runtime version, codec and provider this camera
+   * has run under, with what was measured for each — never collapsed to the current one.
+   */
+  compatibility: CameraCompatibilityHistory.default([]),
+  /**
+   * How many probes have ever been run against this camera (P-2.2). Monotonic, and deliberately
+   * distinct from the number of reports still retained: it is what lets the console say "showing 20
+   * of 143" instead of implying the archive is complete.
+   */
+  probeCount: z.number().int().nonnegative().default(0),
   hasCredentials: z.boolean(),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -830,6 +921,42 @@ export const StreamProbeFailureCode = z.enum([
 ]);
 export type StreamProbeFailureCode = z.infer<typeof StreamProbeFailureCode>;
 
+/**
+ * A registered **validation provider** — one kind of source the staged pipeline can validate
+ * (P-2.2, Architect rec 1).
+ *
+ * **The staged pipeline is the platform's one validation engine**, and this enum is how it stays
+ * that way. A new source type is an entry here plus a `register_provider(...)` row in the runtime
+ * declaring which stages it has — never a second validation path with its own idea of what
+ * "connected" means. That is also why `skipped` exists on a check: an HTTP source has no RTSP
+ * negotiation, and a provider-specific probe would express that by simply not having the stage,
+ * which is indistinguishable from a stage that silently stopped running.
+ *
+ * Deliberately *providers* rather than transports: a recorded DVR export, an NVR playback file and a
+ * USB camera are not transports at all, and they still have to be validated through the same
+ * pipeline so their reports can be read beside an RTSP one. The local providers have no DNS, TCP or
+ * authentication stage whatsoever.
+ */
+export const ValidationProvider = z.enum([
+  'rtsp',
+  'rtsps',
+  'rtmp',
+  'rtmps',
+  'http',
+  'https',
+  'srt',
+  'webrtc',
+  'onvif-pullpoint',
+  'recorded-video',
+  'dvr-export',
+  'nvr-playback',
+  'usb-camera',
+  'edge-stream',
+  'simulated',
+  'unknown',
+]);
+export type ValidationProvider = z.infer<typeof ValidationProvider>;
+
 export const StreamProbeCheckName = z.enum([
   /** The hostname resolved. Splitting this out sends someone to their DNS, not to their cabling. */
   'dns',
@@ -902,6 +1029,13 @@ export const StreamProbeResult = z.object({
   probeVersion: z.string().max(20).default('1'),
   /** Runtime build that ran the probe. */
   runtimeVersion: z.string().max(40).optional(),
+  /**
+   * Which validation provider ran the staged pipeline (P-2.2). Recorded so a report can be read
+   * correctly years later: a `skipped` RTSP-negotiation row means "this source type has no such
+   * stage", and without knowing the provider that is indistinguishable from a stage that was
+   * quietly dropped.
+   */
+  provider: ValidationProvider.optional(),
   /** Hash/label of the camera configuration probed, when the caller supplies one. */
   configVersion: z.string().max(64).optional(),
   /** The ordered check list — this is what the console renders. */
@@ -983,6 +1117,50 @@ export type CameraProbeReport = z.infer<typeof CameraProbeReport>;
 export const CapabilityChangeSeverity = z.enum(['minor', 'major', 'security']);
 export type CapabilityChangeSeverity = z.infer<typeof CapabilityChangeSeverity>;
 
+/**
+ * Which way a capability moved (P-2.2, Architect rec 3).
+ *
+ * `reduced` is the value this enum exists for. "Resolution changed" is a fact; "resolution reduced"
+ * is a **regression** — the device is now sending less than the platform was configured to analyse,
+ * and nobody upgrades a camera intending that. Direction is what lets a diff be ranked instead of
+ * merely listed.
+ */
+export const CapabilityChangeDirection = z.enum([
+  'added',
+  'removed',
+  'increased',
+  'reduced',
+  'changed',
+]);
+export type CapabilityChangeDirection = z.infer<typeof CapabilityChangeDirection>;
+
+/**
+ * What accounts for a capability change (P-2.2, Architect rec 3).
+ *
+ * The platform can only name a cause it actually observed: a firmware string that moved in the same
+ * read, or an operator write it performed itself. Everything else is `unexplained` — and
+ * `unexplained` is not a shrug, it is the finding. A camera whose codec changed with no firmware
+ * upgrade and no operator action was reconfigured by somebody outside this platform.
+ */
+export const CapabilityDriftCause = z.enum([
+  'firmware-upgrade',
+  'operator-update',
+  'first-observation',
+  'unexplained',
+]);
+export type CapabilityDriftCause = z.infer<typeof CapabilityDriftCause>;
+
+/**
+ * Whether a change was accounted for (P-2.2, Architect rec 3).
+ *
+ * `unexpected` is the highlight condition, and it is **not** simply "cause is unexplained": a
+ * *reduction* stays unexpected even under a firmware upgrade. Losing a stream profile or dropping
+ * from 1080p to VGA is a regression whoever ran the upgrade did not intend, and attributing it to
+ * the upgrade would file the one thing worth investigating under "explained".
+ */
+export const CapabilityDrift = z.enum(['expected', 'unexpected']);
+export type CapabilityDrift = z.infer<typeof CapabilityDrift>;
+
 export const CapabilityChange = z.object({
   /** Dotted path within `CameraCapabilities`, e.g. `codecs`, `streamProfiles.sub.resolution`. */
   field: z.string().min(1).max(120),
@@ -991,6 +1169,12 @@ export const CapabilityChange = z.object({
   from: z.string().max(200).optional(),
   /** Absent when the field was removed. */
   to: z.string().max(200).optional(),
+  /** Which way it moved (P-2.2). `changed` when the values are not comparable as magnitudes. */
+  direction: CapabilityChangeDirection.default('changed'),
+  /** What the platform can actually attribute the change to (P-2.2). */
+  cause: CapabilityDriftCause.default('unexplained'),
+  /** Whether it was accounted for. `unexpected` is what the console highlights (P-2.2). */
+  drift: CapabilityDrift.default('unexpected'),
 });
 export type CapabilityChange = z.infer<typeof CapabilityChange>;
 
@@ -1034,6 +1218,46 @@ export type CapabilityRefreshResult = z.infer<typeof CapabilityRefreshResult>;
 export const HealthTrendWindow = z.enum(['hour', 'day', 'week', 'month']);
 export type HealthTrendWindow = z.infer<typeof HealthTrendWindow>;
 
+/**
+ * How much the platform trusts this camera to keep working (P-2.2, Architect rec 4).
+ *
+ * **This is not AI confidence and must never be read as one.** AI confidence is a model's certainty
+ * about what it saw in a frame. This is an operational reliability score computed from measured
+ * device history — availability, how often it dropped, how often it was reachable but not serving,
+ * how often credentials were rejected. The two answer different questions for different people, and
+ * a dashboard that puts them in the same column will eventually have someone dismiss a detection
+ * because "the camera was only 72% confident".
+ *
+ * `insufficient-evidence` is a first-class band with **no score at all**. A percentage computed from
+ * two observations is arithmetic wearing a uniform, and the whole point of this platform's evidence
+ * discipline is not to issue those.
+ */
+export const OperationalConfidenceBand = z.enum([
+  /** Consistently reachable and serving. */
+  'stable',
+  /** Works, but has dropped or flapped within the window. */
+  'intermittent',
+  /** Failing often enough that an operator should not rely on it. */
+  'failing',
+  /** Not enough measured history in this window to say anything. */
+  'insufficient-evidence',
+]);
+export type OperationalConfidenceBand = z.infer<typeof OperationalConfidenceBand>;
+
+export const OperationalConfidence = z.object({
+  band: OperationalConfidenceBand,
+  /** 0–100. **Absent** on `insufficient-evidence` — the band is the whole answer there. */
+  score: z.number().min(0).max(100).optional(),
+  /** How many measured observations the score rests on. Always present, including when the score is not. */
+  observations: z.number().int().nonnegative(),
+  /**
+   * The reasons, in the operator's words — "dropped 3 times", "credentials rejected twice". A bare
+   * number invites an argument; the reasons behind it end one.
+   */
+  basis: z.array(z.string().max(160)).max(6).default([]),
+});
+export type OperationalConfidence = z.infer<typeof OperationalConfidence>;
+
 export const CameraHealthSummary = z.object({
   cameraId: z.string().min(1),
   window: HealthTrendWindow,
@@ -1054,5 +1278,386 @@ export const CameraHealthSummary = z.object({
   averageProbeMs: z.number().nonnegative().optional(),
   capabilityRefreshes: z.number().int().nonnegative(),
   firmwareChanges: z.number().int().nonnegative(),
+  /** Operational reliability over this window (P-2.2) — never an AI confidence. */
+  confidence: OperationalConfidence.optional(),
 });
 export type CameraHealthSummary = z.infer<typeof CameraHealthSummary>;
+
+// ---------------------------------------------------------------------------------------------
+// Immutable probe evidence: history, correlation, replay, metrics (P-2.2)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The configuration a probe actually ran against (P-2.2, Architect rec 1).
+ *
+ * Without this a stored report is unreadable a month later. "First frame took 4.1s" means one thing
+ * against a 4K main stream and something else entirely against a 640×360 sub-stream, and a camera
+ * that was reconfigured in between makes the two reports look like a regression when they measured
+ * different things. Snapshotted at probe time, never back-filled from the camera's current state —
+ * back-filling would silently rewrite history to match the present, which is the failure this whole
+ * subsystem exists to prevent.
+ *
+ * Carries `credentialsSupplied` as a boolean and never the credentials themselves.
+ */
+export const ProbeConfigurationSnapshot = z.object({
+  protocol: CameraProtocol,
+  /** Never credentialed — the same rule as `StreamUrl`, enforced by what writes this. */
+  streamUrl: z.string().max(2048),
+  provider: ValidationProvider.default('unknown'),
+  credentialsSupplied: z.boolean().default(false),
+  captureCodec: CameraCodec.optional(),
+  captureResolution: z
+    .string()
+    .regex(/^\d{2,5}x\d{2,5}$/, 'must be WIDTHxHEIGHT')
+    .optional(),
+  captureFps: z.number().int().min(1).max(120).optional(),
+  /** The named device profile requested, when one was. */
+  streamProfile: z.string().max(100).optional(),
+  /** Version of the capability payload the probe was run against. */
+  capabilityCacheVersion: z.number().int().min(1).optional(),
+  /** Firmware on file at probe time — what makes `FirmwareCompatibility` attributable. */
+  firmware: z.string().max(100).optional(),
+});
+export type ProbeConfigurationSnapshot = z.infer<typeof ProbeConfigurationSnapshot>;
+
+/** What a probe execution concluded. `unavailable` = no probe could be run at all. */
+export const ProbeOutcome = z.enum(['succeeded', 'failed', 'unavailable']);
+export type ProbeOutcome = z.infer<typeof ProbeOutcome>;
+
+/**
+ * One probe execution, as **immutable evidence** (P-2.2, Architect rec 1).
+ *
+ * Before this, each probe overwrote `Camera.operational` and the previous measurement ceased to
+ * exist. That makes the single most common operational question unanswerable: *was it always like
+ * this?* A camera taking 4 seconds to first frame is unremarkable if it always did and is an
+ * incident if it took 300ms last week — and the difference is only visible if last week's report
+ * still exists.
+ *
+ * Records are **appended and never mutated**. Retention is bounded per camera and reported
+ * explicitly (`CameraProbeHistory.evicted`), so the platform never implies it holds a complete
+ * archive it has trimmed.
+ *
+ * The full `result` is stored, which is what makes replay (rec 5) a pure function over stored
+ * evidence rather than a re-measurement wearing the old one's timestamp.
+ */
+export const CameraProbeRecord = z.object({
+  probeId: z.string().min(1).max(120),
+  cameraId: z.string().min(1),
+  at: IsoDateTime,
+  /**
+   * This camera's probe ordinal — 1 for its first ever probe.
+   *
+   * A timestamp is not a total order. Two probes can land in the same millisecond (a retry, a
+   * scheduled sweep, a test suite with a fixed clock), and sorting on time alone leaves their order
+   * — and therefore the `previousProbeId` chain that "when did this start failing?" walks — down to
+   * whatever the storage engine happened to return.
+   */
+  sequence: z.number().int().positive(),
+  outcome: ProbeOutcome,
+  /** The class of evidence — a report is only ever as strong as this (AI-5e, CONSTRAINTS §18). */
+  evidenceClass: EvidenceClass,
+  probeVersion: z.string().max(20).default('1'),
+  runtimeVersion: z.string().max(40).optional(),
+  /** Which registered validation provider produced this evidence. */
+  provider: ValidationProvider.default('unknown'),
+  /**
+   * Ties this measurement to the request that caused it, across services. Lifted onto the record
+   * rather than left inside `result` so it survives an `unavailable` outcome — the case where there
+   * is no result and correlating the gap with a deployment change is the entire investigation.
+   */
+  correlationId: z.string().max(120).optional(),
+  failureCode: StreamProbeFailureCode.optional(),
+  /** Device identity as it stood at probe time — which camera this measurement is *about*. */
+  identity: CameraDeviceIdentity.optional(),
+  configuration: ProbeConfigurationSnapshot,
+  /** The full staged report. Absent only on `unavailable`, where there was nothing to record. */
+  result: StreamProbeResult.optional(),
+  /** Lifecycle state before this probe, and after it moved (or did not). */
+  lifecycleBefore: CameraLifecycleState,
+  lifecycleAfter: CameraLifecycleState,
+  // --- correlation (Architect rec 2) -----------------------------------------------------------
+  /**
+   * The probe immediately before this one. A single pointer rather than an index because the chain
+   * is what an operator walks: "when did this start failing?" is answered by following it back to
+   * the last `succeeded`, and a list would have to be re-sorted to answer the same question.
+   */
+  previousProbeId: z.string().max(120).optional(),
+  previousProbeAt: IsoDateTime.optional(),
+  previousOutcome: ProbeOutcome.optional(),
+  previousFailureCode: StreamProbeFailureCode.optional(),
+  /** When capabilities were last read from the device, as of this probe. */
+  capabilitySnapshotAt: IsoDateTime.optional(),
+  /** When the camera's identity last changed, as of this probe. */
+  identitySnapshotAt: IsoDateTime.optional(),
+});
+export type CameraProbeRecord = z.infer<typeof CameraProbeRecord>;
+
+/**
+ * A camera's retained probe history, most recent first.
+ *
+ * **`evicted` is the honesty field.** Retention is bounded — a camera probed every five minutes
+ * produces a hundred thousand reports a year — and a list that simply stops without saying so would
+ * let a console render "3 probes, all successful" for a camera with a hundred failures behind them.
+ */
+export const CameraProbeHistory = z.object({
+  cameraId: z.string().min(1),
+  records: z.array(CameraProbeRecord).max(200).default([]),
+  /** Probes ever run against this camera. */
+  total: z.number().int().nonnegative(),
+  /** Reports retained right now. */
+  retained: z.number().int().nonnegative(),
+  /** Reports that existed and have been aged out. Non-zero means this view is partial. */
+  evicted: z.number().int().nonnegative(),
+});
+export type CameraProbeHistory = z.infer<typeof CameraProbeHistory>;
+
+/** How one stage's status moved between two probes. */
+export const ProbeStageChange = z.object({
+  name: StreamProbeCheckName,
+  from: z.enum(['pass', 'fail', 'warn', 'skipped', 'not-executed']),
+  to: z.enum(['pass', 'fail', 'warn', 'skipped', 'not-executed']),
+});
+export type ProbeStageChange = z.infer<typeof ProbeStageChange>;
+
+/**
+ * Two probes, compared (P-2.2, Architect rec 2).
+ *
+ * The comparison is the diagnosis. One failing probe says a camera is broken; the same probe against
+ * its predecessor says *authentication used to pass and now does not*, which names the change and
+ * usually the person who made it.
+ */
+export const ProbeComparison = z.object({
+  previousProbeId: z.string().max(120),
+  previousAt: IsoDateTime,
+  outcomeChanged: z.boolean(),
+  previousOutcome: ProbeOutcome,
+  previousFailureCode: StreamProbeFailureCode.optional(),
+  /** Positive = slower than last time. */
+  totalMsDelta: z.number().optional(),
+  firstFrameMsDelta: z.number().optional(),
+  /** Stages whose status differs. Empty means the two probes behaved identically stage for stage. */
+  stageChanges: z.array(ProbeStageChange).max(13).default([]),
+  /** True when the configuration also changed between the two — the confound worth naming first. */
+  configurationChanged: z.boolean().default(false),
+});
+export type ProbeComparison = z.infer<typeof ProbeComparison>;
+
+/**
+ * A stored probe, reconstructed **without contacting the camera** (P-2.2, Architect rec 5).
+ *
+ * Support work happens hours or days after the failure, usually from a different building, and
+ * frequently for a camera that has since been power-cycled into working again. Re-running the probe
+ * at that point measures a different moment and answers a different question. Replay reconstructs
+ * the stage order, the timings, the outputs, the failure point and the evidence class exactly as
+ * they were recorded — it is a pure function over stored evidence, and it cannot accidentally become
+ * a live measurement because it has no access to a camera at all.
+ */
+export const ProbeReplay = z.object({
+  probeId: z.string().min(1).max(120),
+  cameraId: z.string().min(1),
+  /** When the probe ran. */
+  recordedAt: IsoDateTime,
+  /** When this reconstruction was produced — never mistakable for the measurement's own timestamp. */
+  replayedAt: IsoDateTime,
+  evidenceClass: EvidenceClass,
+  probeVersion: z.string().max(20),
+  runtimeVersion: z.string().max(40).optional(),
+  provider: ValidationProvider.default('unknown'),
+  outcome: ProbeOutcome,
+  failureCode: StreamProbeFailureCode.optional(),
+  /** The stage the probe stopped at, when it failed. Absent on success. */
+  failedStage: StreamProbeCheckName.optional(),
+  configuration: ProbeConfigurationSnapshot,
+  identity: CameraDeviceIdentity.optional(),
+  /** The staged report exactly as recorded, in the order it was recorded. */
+  stages: z.array(StreamProbeCheck).default([]),
+  totalMs: z.number().nonnegative().optional(),
+  warnings: z.array(z.string().max(300)).max(10).default([]),
+  /** Comparison against the preceding probe, when there was one. */
+  comparison: ProbeComparison.optional(),
+});
+export type ProbeReplay = z.infer<typeof ProbeReplay>;
+
+/** Mean cost of one pipeline stage across a window. */
+export const ProbeStageMetric = z.object({
+  stage: StreamProbeCheckName,
+  averageMs: z.number().nonnegative(),
+  /** How many probes contributed. A one-sample average is reported as such, never as a trend. */
+  samples: z.number().int().positive(),
+});
+export type ProbeStageMetric = z.infer<typeof ProbeStageMetric>;
+
+/**
+ * Long-term probe performance for one camera (P-2.2, Architect rec 8).
+ *
+ * Computed from the retained reports on every read, never accumulated into stored counters. A stored
+ * average cannot be recomputed when the window changes and cannot be audited against the evidence it
+ * came from; deriving it means the number and the reports behind it can never disagree.
+ *
+ * These are per-camera and roll up to a fleet dashboard later — the aggregate is a different query
+ * over the same records, not a different metric.
+ */
+export const CameraProbeMetrics = z.object({
+  cameraId: z.string().min(1),
+  window: HealthTrendWindow,
+  windowStart: IsoDateTime,
+  windowEnd: IsoDateTime,
+  probes: z.number().int().nonnegative(),
+  successes: z.number().int().nonnegative(),
+  failures: z.number().int().nonnegative(),
+  /** Absent when no probe ran in the window — 0% and "never probed" are not the same claim. */
+  successRatePercent: z.number().min(0).max(100).optional(),
+  averageTotalMs: z.number().nonnegative().optional(),
+  averageFirstFrameMs: z.number().nonnegative().optional(),
+  /** Per-stage averages: which step of the pipeline the time is actually going into. */
+  stages: z.array(ProbeStageMetric).max(13).default([]),
+  /** Mean cost of a capability refresh, from the timeline. Absent when none was recorded. */
+  averageCapabilityRefreshMs: z.number().nonnegative().optional(),
+  /** How many of the contributing probes measured real hardware. Everything else proves the platform. */
+  hardwareProbes: z.number().int().nonnegative(),
+});
+export type CameraProbeMetrics = z.infer<typeof CameraProbeMetrics>;
+
+// ---------------------------------------------------------------------------------------------
+// The unified evidence timeline + fleet metrics (P-2.2, Architect rec 7 + rec 8)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Which record a piece of evidence came from.
+ *
+ * The platform keeps four write models — the lifecycle timeline, the identity history, the
+ * capability cache and the immutable probe archive — because they have genuinely different shapes,
+ * bounds and write paths. This enum is what lets them be *read* as one thing.
+ */
+export const CameraEvidenceSource = z.enum([
+  'lifecycle',
+  'identity',
+  'capability',
+  'probe',
+  'compatibility',
+  'configuration',
+]);
+export type CameraEvidenceSource = z.infer<typeof CameraEvidenceSource>;
+
+/** How loudly an entry should read. `warning` is for the things an operator must not scroll past. */
+export const CameraEvidenceSeverity = z.enum(['info', 'notice', 'warning']);
+export type CameraEvidenceSeverity = z.infer<typeof CameraEvidenceSeverity>;
+
+/**
+ * One event in a camera's life, whatever produced it (P-2.2, Architect rec 8).
+ *
+ * Every entry answers the same three questions in the same fields: **what changed** (`summary`,
+ * `field`, `from`/`to`), **when** (`at`), and **why** (`reasonCode`, plus the addressable evidence
+ * in `probeId`). That uniformity is the point — an investigator should not have to know which of
+ * four subsystems recorded a fact in order to read it.
+ */
+export const CameraEvidenceEntry = z.object({
+  at: IsoDateTime,
+  source: CameraEvidenceSource,
+  /** What changed, in one already-resolved line. */
+  summary: z.string().max(300),
+  /** Why — machine-readable, so the timeline can be filtered and counted rather than only read. */
+  reasonCode: TimelineReasonCode,
+  /** The strength of the claim behind this entry. */
+  evidence: LifecycleEvidence,
+  /** Present when a device was measured — absent on declared and administrative entries. */
+  evidenceClass: EvidenceClass.optional(),
+  severity: CameraEvidenceSeverity.default('info'),
+  /** The attribute, capability path or compatibility value this entry is about. */
+  field: z.string().max(120).optional(),
+  from: z.string().max(200).optional(),
+  to: z.string().max(200).optional(),
+  /** The immutable probe report behind this entry — the evidence, addressable. */
+  probeId: z.string().max(120).optional(),
+  correlationId: z.string().max(120).optional(),
+  durationMs: z.number().nonnegative().optional(),
+});
+export type CameraEvidenceEntry = z.infer<typeof CameraEvidenceEntry>;
+
+/**
+ * A camera's whole recorded life, in order (P-2.2, Architect rec 8).
+ *
+ * **This is a derived read model, not a fifth store.** The Architect's closing recommendation was to
+ * stop keeping four separate timelines; the decision taken here is to unify the *reading* and keep
+ * the *writing* separate, because the four records are not interchangeable: the probe archive is
+ * immutable and unbounded-in-principle, the lifecycle timeline is bounded at 50 so a flapping camera
+ * cannot grow its own document without limit, the identity history is bounded at 30 and keyed by
+ * attribute, and the compatibility register is keyed by (dimension, value) rather than by time.
+ * Collapsing them into one physical log would force a single retention rule onto all four — either
+ * throwing away probe evidence to keep the timeline small, or letting a camera that reconnects every
+ * thirty seconds bury a firmware change under ten thousand identical rows.
+ *
+ * Merging on read costs one sort and gives the operator the single chronology they actually want,
+ * with no second copy of any fact that could drift from the first.
+ */
+export const CameraEvidenceTimeline = z.object({
+  cameraId: z.string().min(1),
+  from: IsoDateTime,
+  to: IsoDateTime,
+  entries: z.array(CameraEvidenceEntry).max(300).default([]),
+  /** Which records contributed. A source missing here contributed nothing in this window. */
+  sources: z.array(CameraEvidenceSource).max(6).default([]),
+  /**
+   * True when entries were dropped to fit the bound. The console must say so rather than let a
+   * partial chronology read as a complete one.
+   */
+  truncated: z.boolean().default(false),
+});
+export type CameraEvidenceTimeline = z.infer<typeof CameraEvidenceTimeline>;
+
+/** One value and how often it occurs across a fleet — firmware versions, providers, statuses. */
+export const DistributionEntry = z.object({
+  value: z.string().min(1).max(120),
+  count: z.number().int().nonnegative(),
+});
+export type DistributionEntry = z.infer<typeof DistributionEntry>;
+
+/** How often one failure code occurred. */
+export const FailureDistributionEntry = z.object({
+  failureCode: StreamProbeFailureCode,
+  count: z.number().int().nonnegative(),
+});
+export type FailureDistributionEntry = z.infer<typeof FailureDistributionEntry>;
+
+/**
+ * Probe performance across a whole tenant (P-2.2, Architect rec 7).
+ *
+ * The same computation as `CameraProbeMetrics` over every camera in scope, so the fleet view and the
+ * camera view can never disagree — one is the other's aggregate, not a parallel implementation.
+ *
+ * **`camerasNeverProbed` is the field that keeps this honest.** A fleet dashboard reporting "98%
+ * probe success" across the four cameras anyone has ever tested, out of an estate of three hundred,
+ * is worse than no dashboard: it is a green number that describes a sample nobody chose. The count of
+ * cameras with no measured evidence at all travels beside every aggregate.
+ */
+export const FleetProbeMetrics = z.object({
+  window: HealthTrendWindow,
+  windowStart: IsoDateTime,
+  windowEnd: IsoDateTime,
+  cameras: z.number().int().nonnegative(),
+  /** Cameras with at least one retained probe report in the window. */
+  camerasProbed: z.number().int().nonnegative(),
+  /** Cameras that have never been probed at all. The denominator nobody remembers to ask for. */
+  camerasNeverProbed: z.number().int().nonnegative(),
+  probes: z.number().int().nonnegative(),
+  successes: z.number().int().nonnegative(),
+  failures: z.number().int().nonnegative(),
+  successRatePercent: z.number().min(0).max(100).optional(),
+  averageTotalMs: z.number().nonnegative().optional(),
+  /** Per-stage averages across the fleet: average DNS, average negotiation, average first frame. */
+  stages: z.array(ProbeStageMetric).max(13).default([]),
+  /** The failure an installer is most likely to be looking at today. Absent when nothing failed. */
+  mostCommonFailure: FailureDistributionEntry.optional(),
+  failureBreakdown: z.array(FailureDistributionEntry).max(9).default([]),
+  /** Firmware versions across the estate — the upgrade campaign, visible. */
+  firmwareDistribution: z.array(DistributionEntry).max(20).default([]),
+  /** Validation providers in use. */
+  providerDistribution: z.array(DistributionEntry).max(16).default([]),
+  /** Compatibility rows by status: supported / pending-validation / unsupported. */
+  compatibilityDistribution: z.array(DistributionEntry).max(3).default([]),
+  /** Mean operational confidence over the cameras that have enough evidence to have one. */
+  averageConfidence: z.number().min(0).max(100).optional(),
+  /** How many cameras contributed to `averageConfidence`. */
+  confidenceSamples: z.number().int().nonnegative().default(0),
+});
+export type FleetProbeMetrics = z.infer<typeof FleetProbeMetrics>;
