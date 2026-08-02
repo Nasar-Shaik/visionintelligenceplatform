@@ -94,6 +94,59 @@ export function applyUpdate(
   };
 }
 
+/**
+ * Restore an earlier version's **content** as a new version (P-4.1, Architect rec 7).
+ *
+ * Not an update. `UpdateRuleInput` cannot express "this field is now absent" — a patch omitting
+ * `condition` leaves the existing one in place — so rolling back through it would produce a rule that
+ * is the union of two versions and identical to neither. That is the worst possible outcome for a
+ * feature whose entire promise is "put it back the way it was".
+ *
+ * Three things are deliberately **not** restored:
+ *
+ * - **Identity and provenance** (`id`, `tenantId`, `createdAt`, `createdBy`) — it is the same rule.
+ * - **`version`** — history is appended to, never rewritten. Rolling back to v3 produces v9.
+ * - **`lifecycle`** — restoring content must not silently re-enable a rule an operator disabled, nor
+ *   disable one they are relying on. Lifecycle is where it is for a reason that has nothing to do with
+ *   which content version is loaded.
+ *
+ * The target's `resolvedScope` **is** carried across, which is what makes rollback instant: the
+ * expansion was computed when that version was validated and is part of it. The caller re-resolves
+ * only when the rule is live, where a stale expansion would matter.
+ */
+export function restoreVersion(
+  current: Rule,
+  target: Rule,
+  deps: FactoryDeps,
+  actor?: string,
+  resolution?: ResolvedRuleScope,
+): { rule: Rule; version: RuleVersionRecord } {
+  const at = deps.now().toISOString();
+  const rule: Rule = {
+    id: current.id,
+    tenantId: current.tenantId,
+    name: target.name,
+    lifecycle: current.lifecycle,
+    priority: target.priority,
+    version: current.version + 1,
+    eventTypes: [...target.eventTypes],
+    categories: [...target.categories],
+    severity: target.severity,
+    actions: [...target.actions],
+    scope: target.scope,
+    createdAt: current.createdAt,
+    updatedAt: at,
+  };
+  if (target.description !== undefined) rule.description = target.description;
+  if (target.condition !== undefined) rule.condition = target.condition;
+  if (target.window !== undefined) rule.window = target.window;
+  if (current.createdBy !== undefined) rule.createdBy = current.createdBy;
+  const restored = resolution ?? target.resolvedScope;
+  if (restored !== undefined) rule.resolvedScope = restored;
+
+  return { rule, version: versionRecord(rule, 'updated', actor, at) };
+}
+
 export function versionRecord(
   rule: Rule,
   changeKind: RuleVersionRecord['changeKind'],

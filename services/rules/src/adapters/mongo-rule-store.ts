@@ -13,7 +13,7 @@ import type {
   UpdateRuleInput,
 } from '@vip/contracts';
 import { TenantRepository, type TenantScope } from '@vip/tenancy';
-import { applyUpdate, newRule, versionRecord } from '../domain/rule-factory.js';
+import { applyUpdate, newRule, restoreVersion, versionRecord } from '../domain/rule-factory.js';
 import { notFound } from '../application/errors.js';
 import type { RuleStore } from '../application/ports.js';
 
@@ -25,6 +25,39 @@ export interface MongoRuleStoreDeps {
 }
 
 const STRIP = { projection: { _id: 0 } } as const;
+
+/** Every field a `Rule` may legitimately not have. */
+const OPTIONAL_RULE_FIELDS = [
+  'description',
+  'condition',
+  'window',
+  'resolvedScope',
+  'createdBy',
+] as const;
+
+/**
+ * The `$unset` that must accompany `$set` when writing a rule.
+ *
+ * `$set` with an object that *lacks* a key leaves the stored key untouched, so a field the domain
+ * removed survives in the database. That is not a cosmetic difference: `applyUpdate` deletes
+ * `resolvedScope` when a rule is re-scoped precisely so the engine stops matching the zones the author
+ * just removed, and without this the old expansion stays in Mongo and the rule keeps firing on them —
+ * silently, and in the direction of more alerts. Exported so the mapping can be proven without a
+ * database.
+ */
+export function unsetOf(rule: Rule): Record<string, ''> {
+  const unset: Record<string, ''> = {};
+  for (const field of OPTIONAL_RULE_FIELDS) {
+    if (rule[field] === undefined) unset[field] = '';
+  }
+  return unset;
+}
+
+/** `$set` plus the `$unset` for whatever this rule does not have. */
+function writeOf(rule: Rule): Record<string, unknown> {
+  const unset = unsetOf(rule);
+  return { $set: rule, ...(Object.keys(unset).length > 0 ? { $unset: unset } : {}) };
+}
 
 export class MongoRuleStore implements RuleStore {
   private readonly rules: TenantRepository<Rule>;
@@ -81,7 +114,23 @@ export class MongoRuleStore implements RuleStore {
     const existing = await this.get(scope, id);
     if (!existing) return null;
     const { rule, version } = applyUpdate(existing, patch, this.factoryDeps, actor, resolution);
-    const matched = await this.rules.updateOne(scope, { id } as never, { $set: rule } as never);
+    const matched = await this.rules.updateOne(scope, { id } as never, writeOf(rule) as never);
+    if (matched === 0) return null;
+    await this.versions.insertOne(scope, version as Omit<RuleVersionRecord, 'tenantId'>);
+    return rule;
+  }
+
+  async restore(
+    scope: TenantScope,
+    id: string,
+    target: Rule,
+    actor?: string,
+    resolution?: ResolvedRuleScope,
+  ): Promise<Rule | null> {
+    const existing = await this.get(scope, id);
+    if (!existing) return null;
+    const { rule, version } = restoreVersion(existing, target, this.factoryDeps, actor, resolution);
+    const matched = await this.rules.updateOne(scope, { id } as never, writeOf(rule) as never);
     if (matched === 0) return null;
     await this.versions.insertOne(scope, version as Omit<RuleVersionRecord, 'tenantId'>);
     return rule;

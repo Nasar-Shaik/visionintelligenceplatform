@@ -16,16 +16,23 @@
  * within a few seconds" is true without anyone reasoning about topology, and explicit invalidation on
  * a local write makes the common case immediate.
  */
-import type { Rule } from '@vip/contracts';
+import type { Rule, RuleCacheStats } from '@vip/contracts';
 import type { TenantScope } from '@vip/tenancy';
 import { byEvaluationOrder } from '../domain/rule-evaluator.js';
 import { compileScope, scopeOf, type CompiledScope } from '../domain/scope.js';
+import type { RuleCounter, RuleStatsRegistry } from './rule-stats.js';
 import type { RuleStore } from './ports.js';
 
 /** A rule with everything the hot path needs precomputed. */
 export interface CompiledRule {
   readonly rule: Rule;
   readonly scope: CompiledScope;
+  /**
+   * This rule's durable counters, resolved once here so the engine increments a field it already has
+   * (P-4.1). The counters are owned by the registry, not by the compiled set — otherwise every
+   * recompilation would reset them.
+   */
+  readonly stats?: RuleCounter | undefined;
 }
 
 export interface CompiledRuleSet {
@@ -39,6 +46,7 @@ export function compileRules(
   tenantId: string,
   rules: readonly Rule[],
   limit: number,
+  stats?: RuleStatsRegistry,
 ): CompiledRuleSet {
   const ordered = [...rules].sort(byEvaluationOrder).slice(0, limit);
   return {
@@ -47,6 +55,7 @@ export function compileRules(
     rules: ordered.map((rule) => ({
       rule,
       scope: compileScope(rule.resolvedScope, scopeOf(rule)),
+      stats: stats?.counterFor(tenantId, rule),
     })),
   };
 }
@@ -58,6 +67,8 @@ export interface RuleSetCacheDeps {
   ttlMs?: number;
   /** How many tenants to keep compiled. Bounded so one busy node cannot grow without limit. */
   maxTenants?: number;
+  /** Durable per-rule counters to attach at compile time (P-4.1). Absent = no per-rule stats. */
+  stats?: RuleStatsRegistry;
   now?: () => number;
 }
 
@@ -75,22 +86,37 @@ export class RuleSetCache {
   private readonly ttlMs: number;
   private readonly maxTenants: number;
   private readonly now: () => number;
+  private readonly stats: RuleStatsRegistry | undefined;
   private readonly sets = new Map<string, CompiledRuleSet>();
   /** In-flight compilations, so a burst of events for a cold tenant issues one query, not hundreds. */
   private readonly inFlight = new Map<string, Promise<CompiledRuleSet>>();
+  /** Operational counters (P-4.1, Architect rec 8). Read by `/rules/stats`, never by evaluation. */
+  private hits = 0;
+  private misses = 0;
+  private coalesced = 0;
+  private compilations = 0;
+  private evictions = 0;
+  private totalCompileMicros = 0;
+  private maxCompileMicros = 0;
+  private lastCompiledAt = 0;
 
   constructor(deps: RuleSetCacheDeps) {
     this.store = deps.store;
     this.limit = deps.maxRulesPerEvent;
     this.ttlMs = deps.ttlMs ?? 5_000;
     this.maxTenants = deps.maxTenants ?? 1_000;
+    this.stats = deps.stats;
     this.now = deps.now ?? (() => Date.now());
   }
 
   /** The tenant's compiled set, rebuilt if absent or stale. */
   async get(scope: TenantScope): Promise<CompiledRuleSet> {
     const cached = this.sets.get(scope.tenantId);
-    if (cached && this.now() - cached.compiledAt < this.ttlMs) return cached;
+    if (cached && this.now() - cached.compiledAt < this.ttlMs) {
+      this.hits += 1;
+      return cached;
+    }
+    this.misses += 1;
 
     /*
      * Coalesce concurrent misses. Without this, a cold tenant receiving a burst of events issues one
@@ -98,17 +124,52 @@ export class RuleSetCache {
      * exactly when load is highest.
      */
     const existing = this.inFlight.get(scope.tenantId);
-    if (existing) return existing;
+    if (existing) {
+      this.coalesced += 1;
+      return existing;
+    }
 
     const pending = this.compile(scope).finally(() => this.inFlight.delete(scope.tenantId));
     this.inFlight.set(scope.tenantId, pending);
     return pending;
   }
 
+  /**
+   * Compile a tenant's rules **now**, whatever the cache holds (P-4.1, Architect rec 5).
+   *
+   * Called after an authoring write so the first live event never pays the compilation. It replaces
+   * `invalidate` at the composition root: dropping the set leaves the next event to rebuild it, which
+   * is the one event most likely to be the one the author is watching for.
+   *
+   * Deliberately routed through `inFlight` rather than compiling directly, so a warm-up racing an
+   * event for the same tenant still issues one query.
+   */
+  async refresh(scope: TenantScope): Promise<CompiledRuleSet> {
+    const existing = this.inFlight.get(scope.tenantId);
+    if (existing) return existing;
+    const pending = this.compile(scope).finally(() => this.inFlight.delete(scope.tenantId));
+    this.inFlight.set(scope.tenantId, pending);
+    return pending;
+  }
+
   private async compile(scope: TenantScope): Promise<CompiledRuleSet> {
+    const startedAt = performance.now();
     const rules = await this.store.listEnabled(scope);
-    const set = { ...compileRules(scope.tenantId, rules, this.limit), compiledAt: this.now() };
+    const set = {
+      ...compileRules(scope.tenantId, rules, this.limit, this.stats),
+      compiledAt: this.now(),
+    };
     this.sets.set(scope.tenantId, set);
+    /*
+     * Timed around the store call as well as the compilation. The number an operator needs is "how
+     * long is a cold tenant's first event delayed", and excluding the query would answer a question
+     * nobody is asking.
+     */
+    const micros = (performance.now() - startedAt) * 1000;
+    this.compilations += 1;
+    this.totalCompileMicros += micros;
+    if (micros > this.maxCompileMicros) this.maxCompileMicros = micros;
+    this.lastCompiledAt = set.compiledAt;
     this.evictIfNeeded();
     return set;
   }
@@ -127,6 +188,27 @@ export class RuleSetCache {
     return this.sets.size;
   }
 
+  /** Cache health for one tenant on this node (Architect rec 8). */
+  statsFor(tenantId: string): RuleCacheStats {
+    const lookups = this.hits + this.misses;
+    const report: RuleCacheStats = {
+      tenants: this.sets.size,
+      rules: this.sets.get(tenantId)?.rules.length ?? 0,
+      hits: this.hits,
+      misses: this.misses,
+      coalesced: this.coalesced,
+      compilations: this.compilations,
+      evictions: this.evictions,
+      // Zero lookups is zero, never a fabricated 1 — an untested cache is not a perfect cache.
+      hitRatio: lookups > 0 ? this.hits / lookups : 0,
+      avgCompileMicros: this.compilations > 0 ? this.totalCompileMicros / this.compilations : 0,
+      maxCompileMicros: this.maxCompileMicros,
+    };
+    if (this.lastCompiledAt > 0)
+      report.lastCompiledAt = new Date(this.lastCompiledAt).toISOString();
+    return report;
+  }
+
   private evictIfNeeded(): void {
     if (this.sets.size <= this.maxTenants) return;
     let oldestKey: string | undefined;
@@ -137,6 +219,9 @@ export class RuleSetCache {
         oldestKey = tenantId;
       }
     }
-    if (oldestKey) this.sets.delete(oldestKey);
+    if (oldestKey) {
+      this.sets.delete(oldestKey);
+      this.evictions += 1;
+    }
   }
 }

@@ -194,20 +194,75 @@ describe('RuleService — scope, validation and activation (P-4)', () => {
     expect((await svc.get(scopeA, rule.id)).version).toBe(1);
   });
 
-  it('drops the expansion when the scope is re-authored, so it cannot go stale silently', async () => {
+  it('drops the expansion when a rule that is not live is re-scoped', async () => {
     const svc = scopedService();
     const rule = await svc.create(
       scopeA,
       personRuleInput({ lifecycle: 'draft', scope: { nodeIds: ['on_london'], cameraIds: [] } }),
     );
     const enabled = await svc.update(scopeA, rule.id, { lifecycle: 'enabled' });
-    expect(enabled.resolvedScope).toBeDefined();
+    expect(enabled.resolvedScope?.zoneIds).toEqual(['zone_1', 'zone_2']);
+    await svc.update(scopeA, rule.id, { lifecycle: 'disabled' });
 
     const rescoped = await svc.update(scopeA, rule.id, {
       scope: { nodeIds: ['on_empty'], cameraIds: [] },
     });
     // The old expansion belonged to the old scope; carrying it forward would match removed zones.
     expect(rescoped.resolvedScope).toBeUndefined();
+  });
+
+  /**
+   * The P-4.1 correction (Architect rec 5, extended).
+   *
+   * P-4 gated only the transition *into* enabled, which left the larger hole open: re-scoping a live
+   * rule was accepted without any check, and — because re-scoping drops the expansion by design — the
+   * rule went unresolved and matched **nothing**. A live rule silently stopped firing.
+   */
+  it('re-validates and re-resolves when a live rule is re-scoped, rather than silently unresolving it', async () => {
+    const svc = scopedService();
+    const rule = await svc.create(
+      scopeA,
+      personRuleInput({ lifecycle: 'draft', scope: { nodeIds: ['on_empty'], cameraIds: [] } }),
+    );
+    await svc.update(scopeA, rule.id, { lifecycle: 'enabled' });
+
+    const rescoped = await svc.update(scopeA, rule.id, {
+      scope: { nodeIds: ['on_london'], cameraIds: [] },
+    });
+    expect(rescoped.lifecycle).toBe('enabled');
+    // Resolved in the same version — never left unresolved, and never the *previous* scope's zones.
+    expect(rescoped.resolvedScope?.zoneIds).toEqual(['zone_1', 'zone_2']);
+  });
+
+  it('refuses to re-scope a live rule to a location that does not exist', async () => {
+    const svc = scopedService();
+    const rule = await svc.create(
+      scopeA,
+      personRuleInput({ lifecycle: 'draft', scope: { nodeIds: ['on_london'], cameraIds: [] } }),
+    );
+    await svc.update(scopeA, rule.id, { lifecycle: 'enabled' });
+
+    await expect(
+      svc.update(scopeA, rule.id, { scope: { nodeIds: ['on_ghost'], cameraIds: [] } }),
+    ).rejects.toThrow(/disable it first/);
+    // Refused, and the live rule is untouched — still covering the zones it did before.
+    expect((await svc.get(scopeA, rule.id)).resolvedScope?.zoneIds).toEqual(['zone_1', 'zone_2']);
+  });
+
+  it('lets the same broken change through when the rule is disabled in the same request', async () => {
+    const svc = scopedService();
+    const rule = await svc.create(
+      scopeA,
+      personRuleInput({ lifecycle: 'draft', scope: { nodeIds: ['on_london'], cameraIds: [] } }),
+    );
+    await svc.update(scopeA, rule.id, { lifecycle: 'enabled' });
+
+    // After this request there are no live events to protect, so the gate must not stand in the way.
+    const parked = await svc.update(scopeA, rule.id, {
+      lifecycle: 'disabled',
+      scope: { nodeIds: ['on_ghost'], cameraIds: [] },
+    });
+    expect(parked.lifecycle).toBe('disabled');
   });
 
   it('dry-runs against the scope and explains which stage decided', async () => {

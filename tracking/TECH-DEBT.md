@@ -38,9 +38,9 @@
 
 ## Resolved debt
 
-| ID           | Area | Resolution | Commit/PR | Date |
-| ------------ | ---- | ---------- | --------- | ---- |
-| _(none yet)_ |      |            |           |      |
+| ID                                                                                                 | Area | Resolution | Commit/PR | Date |
+| -------------------------------------------------------------------------------------------------- | ---- | ---------- | --------- | ---- |
+| _(none yet — TD-7's per-event query half was paid down in P-4; its Redis half remains open above)_ |      |            |           |      |
 
 ## Standing "intentional non-debt" (design choices that look like debt but are not)
 

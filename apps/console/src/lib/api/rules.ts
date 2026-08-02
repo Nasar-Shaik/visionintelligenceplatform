@@ -1,6 +1,7 @@
 import type {
   CreateRuleInput,
   Rule,
+  RuleAuditEntry,
   RuleDryRunResult,
   RuleValidationReport,
   RuleVersionRecord,
@@ -28,4 +29,12 @@ export const rulesApi = {
    * lifecycle, so an editor can call it freely while the author is still deciding.
    */
   validation: (id: string) => http.get<RuleValidationReport>(`/rules/rules/${id}/validation`),
+  /**
+   * The rule's history as **actions** rather than states (P-4.1) — derived server-side from the same
+   * immutable versions, so there is one record and it reads like a timeline.
+   */
+  audit: (id: string) => http.get<RuleAuditEntry[]>(`/rules/rules/${id}/audit`),
+  /** Restore an earlier version's content as a new version. History is appended to, never rewritten. */
+  rollback: (id: string, version: number) =>
+    http.post<Rule>(`/rules/rules/${id}/rollback`, { version }),
 };

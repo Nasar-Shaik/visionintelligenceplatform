@@ -10,7 +10,7 @@
  * the distinct `t.*.incident.>` / `t.*.rule.>` roots, so it can never trigger on its own output. It is
  * fail-closed: an envelope that does not satisfy the contract is dead-lettered, never evaluated.
  */
-import { EventEnvelope } from '@vip/contracts';
+import { EventEnvelope, type RuleCacheStats } from '@vip/contracts';
 import {
   ALL_EVENTS,
   AUTOMATION_STREAM,
@@ -27,6 +27,7 @@ import { TenantScope } from '@vip/tenancy';
 import { evaluateRule } from '../domain/rule-evaluator.js';
 import { matchesScope } from '../domain/scope.js';
 import { RuleSetCache } from './compiled-rules.js';
+import type { RuleStatsRegistry } from './rule-stats.js';
 import {
   buildIncidentCandidate,
   buildRuleMatch,
@@ -47,6 +48,8 @@ export interface RuleEngineDeps {
   candidateDedupWindowMs: number;
   /** How long a compiled rule set may be served before it is rebuilt (P-4). */
   ruleCacheTtlMs?: number;
+  /** Durable per-rule counters (P-4.1). Absent = no per-rule statistics on this node. */
+  stats?: RuleStatsRegistry;
   metrics?: RuleMetrics;
   now?: () => Date;
   newId?: () => string;
@@ -79,6 +82,7 @@ export class RuleEngine {
       store: deps.store,
       maxRulesPerEvent: deps.maxRulesPerEvent,
       ...(deps.ruleCacheTtlMs !== undefined ? { ttlMs: deps.ruleCacheTtlMs } : {}),
+      ...(deps.stats ? { stats: deps.stats } : {}),
     });
     this.metrics = deps.metrics;
     this.now = deps.now ?? (() => new Date());
@@ -104,6 +108,33 @@ export class RuleEngine {
   /** Drop a tenant's compiled rules so an authoring change takes effect immediately (P-4). */
   invalidate(tenantId: string): void {
     this.compiled.invalidate(tenantId);
+  }
+
+  /**
+   * Recompile a tenant's rules now (P-4.1, Architect rec 5) — the warm-up half of an authoring write.
+   *
+   * `invalidate` alone leaves the rebuild to the next event, which is exactly the event the author is
+   * watching for; that event pays a query it did not need to. Warming moves the cost onto the write,
+   * where someone is already waiting and a few milliseconds are invisible.
+   *
+   * Never throws. A warm-up is an optimisation, and a failed optimisation must not fail the save that
+   * triggered it — the set is already invalidated, so the worst case is the behaviour before this
+   * existed.
+   */
+  async warm(tenantId: string): Promise<void> {
+    try {
+      await this.compiled.refresh(TenantScope.fromTenantId(tenantId));
+    } catch (err) {
+      this.log('warn', 'rule set warm-up failed; the next event will compile', {
+        tenantId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /** Compiled-rule cache health for this node (Architect rec 8). */
+  cacheStats(tenantId: string): RuleCacheStats {
+    return this.compiled.statsFor(tenantId);
   }
 
   async onMessage(msg: BusMessage): Promise<void> {
@@ -151,14 +182,49 @@ export class RuleEngine {
    */
   async evaluate(envelope: EventEnvelope): Promise<void> {
     const endTimer = this.metrics?.evaluationDuration.startTimer();
+    // One clock read for the whole event: "last evaluated" to the millisecond is precision nobody uses.
+    const startedAtMs = this.now().getTime();
     const scope = TenantScope.fromTenantId(envelope.tenantId);
     const compiled = await this.compiled.get(scope);
 
-    for (const { rule, scope: ruleScope } of compiled.rules) {
+    for (const { rule, scope: ruleScope, stats } of compiled.rules) {
       this.metrics?.rulesEvaluated.inc();
+      if (stats) {
+        stats.evaluations += 1;
+        stats.lastEvaluatedAt = startedAtMs;
+      }
       if (!matchesScope(ruleScope, envelope)) continue;
-      const { matched } = evaluateRule(rule, envelope);
+
+      /*
+       * Timed only past the scope check (P-4.1). A rule the scope rejected did no work worth
+       * measuring, and reading the clock for it would put two `performance.now()` calls per rule per
+       * event into the path this whole design exists to keep empty.
+       */
+      const ruleStartedAt = stats ? performance.now() : 0;
+      let matched: boolean;
+      try {
+        ({ matched } = evaluateRule(rule, envelope));
+      } catch (err) {
+        // A throwing rule is a defect, not a match. Recorded, skipped, and the event continues.
+        if (stats) stats.failures += 1;
+        this.log('error', 'rule evaluation threw; skipping this rule', {
+          ruleId: rule.id,
+          eventId: envelope.id,
+          err: err instanceof Error ? err.message : String(err),
+        });
+        continue;
+      }
+      if (stats) {
+        const micros = (performance.now() - ruleStartedAt) * 1000;
+        stats.totalMicros += micros;
+        stats.timedEvaluations += 1;
+        if (micros > stats.maxMicros) stats.maxMicros = micros;
+      }
       if (!matched) continue;
+      if (stats) {
+        stats.matches += 1;
+        stats.lastMatchedAt = startedAtMs;
+      }
 
       // Windowed threshold (stateful) — applied AFTER a positive stateless match.
       let matchedCount = 1;

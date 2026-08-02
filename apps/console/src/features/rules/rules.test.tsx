@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { http as mswHttp, HttpResponse } from 'msw';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { permissionsForRoles } from '@vip/permissions';
 import { store } from '@/app/store';
@@ -377,5 +377,181 @@ describe('rule explanation (P-4)', () => {
 
     expect(await screen.findByText(/Did not fire — Location scope/)).toBeInTheDocument();
     expect(screen.getByText(/outside/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Version history and restore (P-4.1, Architect recs 7 + 12).
+ *
+ * The timeline is derived server-side, so what the console must get right is the reading: an action
+ * per entry, and a restore offered only where restoring means something.
+ */
+describe('rule history and restore (P-4.1)', () => {
+  const AUDIT = [
+    {
+      ruleId: 'rule-1',
+      version: 3,
+      action: 'enabled',
+      summary: 'the rule was enabled and is now evaluated against live events',
+      changedFields: ['lifecycle'],
+      actor: 'ops@tenant',
+      at: '2026-07-20T00:00:00.000Z',
+      contentHash: 'a'.repeat(64),
+    },
+    {
+      ruleId: 'rule-1',
+      version: 2,
+      action: 'updated',
+      summary: 'changed severity',
+      changedFields: ['severity'],
+      actor: 'ops@tenant',
+      at: '2026-07-10T00:00:00.000Z',
+      contentHash: 'b'.repeat(64),
+    },
+    {
+      ruleId: 'rule-1',
+      version: 1,
+      action: 'created',
+      summary: 'the rule was created',
+      changedFields: [],
+      at: '2026-07-01T00:00:00.000Z',
+      contentHash: 'c'.repeat(64),
+    },
+  ];
+
+  function mockAudit(onRollback?: (body: unknown) => void) {
+    server.use(
+      mswHttp.get('/api/rules/rules/:id', () => HttpResponse.json({ success: true, data: RULE })),
+      mswHttp.get('/api/rules/rules/:id/validation', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            ruleId: 'rule-1',
+            ruleVersion: 3,
+            valid: true,
+            verified: true,
+            issues: [],
+            checked: ['event-type'],
+            checkedAt: '2026-08-03T00:00:00.000Z',
+          },
+        }),
+      ),
+      mswHttp.get('/api/rules/rules/:id/audit', () =>
+        HttpResponse.json({ success: true, data: AUDIT }),
+      ),
+      mswHttp.post('/api/rules/rules/:id/rollback', async ({ request }) => {
+        onRollback?.(await request.json());
+        return HttpResponse.json({ success: true, data: { ...RULE, version: 4 } });
+      }),
+    );
+  }
+
+  it('reads the history as actions rather than states', async () => {
+    authAs(['admin']);
+    mockAudit();
+    renderWithProviders(<RuleEditorPage />, { store, route: '/rules/rule-1', path: '/rules/:id' });
+
+    await userEvent.click(await screen.findByRole('button', { name: /version history/i }));
+
+    // Scoped to the sheet: the editor's lifecycle picker also has an "Enabled" option.
+    const sheet = within(await screen.findByRole('dialog'));
+    expect(await sheet.findByText('Enabled')).toBeInTheDocument();
+    expect(sheet.getByText('Created')).toBeInTheDocument();
+    expect(sheet.getByText(/changed severity/)).toBeInTheDocument();
+  });
+
+  it('restores an earlier version, and does not offer it for a lifecycle-only entry', async () => {
+    authAs(['admin']);
+    let body: unknown = null;
+    mockAudit((received) => {
+      body = received;
+    });
+    renderWithProviders(<RuleEditorPage />, { store, route: '/rules/rule-1', path: '/rules/:id' });
+
+    await userEvent.click(await screen.findByRole('button', { name: /version history/i }));
+    const restores = await screen.findAllByRole('button', { name: /restore this version/i });
+
+    // v3 is the current version and an enable, not a content change — only v2 and v1 are restorable.
+    expect(restores).toHaveLength(2);
+
+    await userEvent.click(restores[0]!);
+    await waitFor(() => expect(body).toEqual({ version: 2 }));
+  });
+});
+
+/** The server-supplied evaluation tree (P-4.1, Architect rec 6). */
+describe('rule explanation tree (P-4.1)', () => {
+  it('renders the stages the server marked, rather than re-deciding them', async () => {
+    authAs(['admin']);
+    server.use(
+      mswHttp.get('/api/rules/rules/:id', () => HttpResponse.json({ success: true, data: RULE })),
+      mswHttp.get('/api/rules/rules/:id/validation', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            ruleId: 'rule-1',
+            ruleVersion: 3,
+            valid: true,
+            verified: true,
+            issues: [],
+            checked: ['event-type'],
+            checkedAt: '2026-08-03T00:00:00.000Z',
+          },
+        }),
+      ),
+      mswHttp.post('/api/rules/rules/:id/dry-run', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            matched: false,
+            evaluation: { prefilterPassed: true, conditionPassed: true, windowPassed: false },
+            explanation: {
+              ruleId: 'rule-1',
+              ruleVersion: 3,
+              ruleName: 'Loitering after hours',
+              matched: false,
+              decidedBy: 'window',
+              summary: '1 of 3 matching events within 60s — not enough yet',
+              stages: {
+                lifecyclePassed: true,
+                scopePassed: true,
+                prefilterPassed: true,
+                conditionPassed: true,
+                windowPassed: false,
+              },
+              tree: [
+                {
+                  stage: 'lifecycle',
+                  passed: true,
+                  decisive: false,
+                  reason: 'the rule is enabled',
+                },
+                { stage: 'scope', passed: true, decisive: false, reason: 'tenant-wide' },
+                { stage: 'prefilter', passed: true, decisive: false, reason: 'type matches' },
+                { stage: 'condition', passed: true, decisive: false, reason: 'all matched' },
+                {
+                  stage: 'window',
+                  passed: false,
+                  decisive: true,
+                  reason: '1 of 3 matching events within 60s — not enough yet',
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    );
+
+    renderWithProviders(<RuleEditorPage />, { store, route: '/rules/rule-1', path: '/rules/:id' });
+    await userEvent.click(await screen.findByRole('button', { name: /run dry run/i }));
+
+    expect(await screen.findByText(/Did not fire — Window threshold/)).toBeInTheDocument();
+
+    const stages = within(screen.getByLabelText('Evaluation stages'));
+    // Exactly one "decided here", on the stage the server said decided.
+    expect(stages.getAllByText('decided here')).toHaveLength(1);
+    expect(stages.getByText('Window threshold').closest('li')).toHaveTextContent('decided here');
+    // The lifecycle stage is filtered out of an authoring view — it is always true there.
+    expect(stages.queryByText('Enabled')).not.toBeInTheDocument();
   });
 });

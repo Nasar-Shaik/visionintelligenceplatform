@@ -31,6 +31,29 @@ export function useRuleVersions(id: string | undefined) {
   });
 }
 
+/**
+ * The rule's history as actions (P-4.1) — what the timeline renders.
+ *
+ * Distinct from `useRuleVersions`, which returns the raw immutable snapshots. Both read the same
+ * records; this one is the reading a person wants.
+ */
+export function useRuleAudit(id: string | undefined) {
+  return useQuery({
+    queryKey: [...queryKeys.rules.detail(id ?? ''), 'audit'] as const,
+    queryFn: () => rulesApi.audit(id as string),
+    enabled: Boolean(id),
+  });
+}
+
+/** Restore an earlier version's content. Creates a new version — nothing in the history is lost. */
+export function useRollbackRule(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (version: number) => rulesApi.rollback(id, version),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.rules.all() }),
+  });
+}
+
 export function useCreateRule() {
   const qc = useQueryClient();
   return useMutation({

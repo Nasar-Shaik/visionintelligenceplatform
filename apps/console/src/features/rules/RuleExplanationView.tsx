@@ -1,5 +1,5 @@
 import { CheckCircle2, XCircle } from 'lucide-react';
-import type { ConditionTrace, RuleExplanation } from '@vip/contracts';
+import type { ConditionTrace, RuleExplanation, StageTrace } from '@vip/contracts';
 import { Badge } from '@/ui';
 
 const STAGE_LABEL: Record<string, string> = {
@@ -22,6 +22,31 @@ function Stage({ ok, label, decisive }: { ok: boolean; label: string; decisive: 
       <span className={ok ? 'text-foreground' : 'font-medium text-foreground'}>{label}</span>
       {decisive ? <Badge variant="outline">decided here</Badge> : null}
     </li>
+  );
+}
+
+/**
+ * The stage list, from the server's own tree (P-4.1).
+ *
+ * The client used to re-derive which stage decided from the `stages` booleans, which meant the same
+ * ordering rule existed in two places and could disagree the first time either changed. The server now
+ * marks the decisive node, so this renders rather than re-decides.
+ */
+function StageList({ tree }: { tree: readonly StageTrace[] }) {
+  return (
+    <ul className="space-y-1" aria-label="Evaluation stages">
+      {tree
+        // The lifecycle stage is always true in an authoring dry-run; showing it is noise.
+        .filter((node) => node.stage !== 'lifecycle')
+        .map((node) => (
+          <Stage
+            key={node.stage}
+            ok={node.passed}
+            label={STAGE_LABEL[node.stage] ?? node.stage}
+            decisive={node.decisive}
+          />
+        ))}
+    </ul>
   );
 }
 
@@ -64,6 +89,13 @@ function Trace({ trace, depth = 0 }: { trace: ConditionTrace; depth?: number }) 
  */
 export function RuleExplanationView({ explanation }: { explanation: RuleExplanation }) {
   const { stages } = explanation;
+  /*
+   * Defaulted rather than assumed. The contract defaults `tree` to `[]` on parse, but this component
+   * renders whatever the API returned — and a service deployed before P-4.1 returns an explanation
+   * with no tree at all. Reading `.length` off that is a blank panel exactly when someone is trying to
+   * find out why their rule did not fire.
+   */
+  const tree = explanation.tree ?? [];
   return (
     <div className="space-y-3">
       <p className="text-sm">
@@ -74,28 +106,33 @@ export function RuleExplanationView({ explanation }: { explanation: RuleExplanat
         <span className="text-muted-foreground">{explanation.summary}</span>
       </p>
 
-      <ul className="space-y-1" aria-label="Evaluation stages">
-        <Stage
-          ok={stages.scopePassed}
-          label="Location scope"
-          decisive={explanation.decidedBy === 'scope'}
-        />
-        <Stage
-          ok={stages.prefilterPassed}
-          label="Event type and category"
-          decisive={explanation.decidedBy === 'prefilter'}
-        />
-        <Stage
-          ok={stages.conditionPassed}
-          label="Condition"
-          decisive={explanation.decidedBy === 'condition'}
-        />
-        <Stage
-          ok={stages.windowPassed}
-          label="Window threshold"
-          decisive={explanation.decidedBy === 'window'}
-        />
-      </ul>
+      {tree.length > 0 ? (
+        <StageList tree={tree} />
+      ) : (
+        // A service that predates the tree still explains itself — one fewer reason not to deploy.
+        <ul className="space-y-1" aria-label="Evaluation stages">
+          <Stage
+            ok={stages.scopePassed}
+            label="Location scope"
+            decisive={explanation.decidedBy === 'scope'}
+          />
+          <Stage
+            ok={stages.prefilterPassed}
+            label="Event type"
+            decisive={explanation.decidedBy === 'prefilter'}
+          />
+          <Stage
+            ok={stages.conditionPassed}
+            label="Condition"
+            decisive={explanation.decidedBy === 'condition'}
+          />
+          <Stage
+            ok={stages.windowPassed}
+            label="Window threshold"
+            decisive={explanation.decidedBy === 'window'}
+          />
+        </ul>
+      )}
 
       {explanation.condition ? (
         <div className="space-y-1">

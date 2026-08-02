@@ -1,6 +1,7 @@
 # P-4 — Rule Designer
 
-**Status:** code + tests complete · ⏳ awaiting architectural review
+**Status:** ✅ **ACCEPTED** (Architect, 2026-08-03) — 15 recommendations folded into
+[P-4.1](P-4.1-RULE-OPERATIONS.md), which also corrects two defects in what was approved here.
 **Authorized:** 2026-08-03 (Architect, P-4 authorization)
 **Layer:** Product Capability — built on six frozen foundations, redesigning none of them.
 
@@ -124,8 +125,16 @@ an evaluation cache exists, and the composition root is the one place that knows
 **[TD-7](../../tracking/TECH-DEBT.md) (second half)** — the engine no longer issues a `listEnabled`
 query per event.
 
+## Corrected in P-4.1
+
+Two defects in this slice were found while building [P-4.1](P-4.1-RULE-OPERATIONS.md) and are fixed
+there: the activation gate checked only the _transition_ into `enabled`, so editing a live rule was
+unchecked and re-scoping one silently took it to matching nothing; and the Mongo write used `$set`
+alone, so the `resolvedScope` this slice deliberately deletes on a re-scope survived in the database.
+
 ## Related
 
+- [ADR-0027](../adr/ADR-0027-rule-operations-diagnostics-and-portability.md) · [P-4.1](P-4.1-RULE-OPERATIONS.md)
 - [ADR-0026](../adr/ADR-0026-rule-scope-validation-and-explainability.md) · [CONSTRAINTS §43–45](../project/CONSTRAINTS.md)
 - [HIERARCHY_FOUNDATION_V1](../architecture/HIERARCHY_FOUNDATION_V1.md) — consumed, unchanged.
 - [FOUNDATIONS](../project/FOUNDATIONS.md) · [PRODUCT_PRINCIPLES](../project/PRODUCT_PRINCIPLES.md)

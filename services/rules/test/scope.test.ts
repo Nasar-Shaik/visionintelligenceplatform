@@ -16,7 +16,10 @@ import {
   type ReferenceFindings,
 } from '../src/domain/validation.js';
 import { compileRules } from '../src/application/compiled-rules.js';
-import { personEvent } from './helpers.js';
+import { RuleService } from '../src/application/rule-service.js';
+import { InMemoryRuleStore } from '../src/adapters/in-memory-rule-store.js';
+import { TenantScope } from '@vip/tenancy';
+import { personEvent, personRuleInput } from './helpers.js';
 
 const AT = new Date('2026-08-02T00:00:00.000Z');
 
@@ -367,5 +370,89 @@ describe('compiled rule sets', () => {
     const compiled = compileRules('tnt_a', [rule({ scope: scoped(['on_london']) })], 10);
     expect(compiled.rules[0]!.scope.unresolved).toBe(true);
     expect(matchesScope(compiled.rules[0]!.scope, personEvent())).toBe(false);
+  });
+});
+
+/**
+ * The structured evaluation tree (P-4.1, Architect rec 6).
+ *
+ * The tree is a **projection of the same evaluation** the summary is read from, not a second one. What
+ * these protect is that the two never disagree — a summary blaming the scope beside a tree whose scope
+ * node is green is worse than either alone, because a reader has no way to tell which is lying.
+ */
+describe('the evaluation tree', () => {
+  const stages = (over: Partial<Record<string, boolean>> = {}) => ({
+    lifecyclePassed: true,
+    scopePassed: true,
+    prefilterPassed: true,
+    conditionPassed: true,
+    windowPassed: true,
+    ...over,
+  });
+
+  const base = {
+    ruleId: 'r1',
+    ruleVersion: 1,
+    ruleName: 'r',
+    scopeReason: 'the rule applies tenant-wide',
+    prefilterReason: 'the event type and category match the rule',
+  };
+
+  it('reports every stage in the order the engine applies them', () => {
+    const result = explain({ ...base, stages: stages() });
+    expect(result.tree.map((node) => node.stage)).toEqual([
+      'lifecycle',
+      'scope',
+      'prefilter',
+      'condition',
+      'window',
+    ]);
+  });
+
+  it('marks exactly the stage that decided, and agrees with the summary', () => {
+    const result = explain({ ...base, stages: stages({ scopePassed: false }) });
+    const decisive = result.tree.filter((node) => node.decisive);
+    expect(decisive).toHaveLength(1);
+    expect(decisive[0]?.stage).toBe('scope');
+    expect(result.decidedBy).toBe('scope');
+    // The one-liner is the decisive node's reason — one source, two renderings.
+    expect(result.summary).toBe(decisive[0]?.reason);
+  });
+
+  it('marks the first failure decisive, not the last', () => {
+    const result = explain({
+      ...base,
+      stages: stages({ scopePassed: false, conditionPassed: false }),
+    });
+    expect(result.tree.find((node) => node.decisive)?.stage).toBe('scope');
+  });
+
+  it('marks nothing decisive on a match, because every stage was', () => {
+    const result = explain({ ...base, stages: stages() });
+    expect(result.tree.some((node) => node.decisive)).toBe(false);
+    expect(result.matched).toBe(true);
+  });
+
+  it('hangs the condition tree under its own stage, and nowhere else', () => {
+    const condition = explainCondition(
+      { field: 'confidence', op: 'gte', value: 0.8 },
+      personEvent({ confidence: 0.71 }),
+    );
+    const result = explain({ ...base, stages: stages({ conditionPassed: false }), condition });
+    const conditionNode = result.tree.find((node) => node.stage === 'condition');
+    expect(conditionNode?.children).toEqual([condition]);
+    expect(result.tree.filter((node) => node.children).length).toBe(1);
+  });
+
+  it('carries a tree through a dry-run, so a viewer has one shape to render', async () => {
+    const store = new InMemoryRuleStore({ now: () => AT });
+    const service = new RuleService({ store });
+    const rule = await service.create(TenantScope.fromTenantId('tnt_a'), personRuleInput());
+    const result = await service.dryRun(
+      TenantScope.fromTenantId('tnt_a'),
+      rule.id,
+      personEvent({ confidence: 0.2 }),
+    );
+    expect(result.explanation?.tree.find((n) => n.decisive)?.stage).toBe('condition');
   });
 });

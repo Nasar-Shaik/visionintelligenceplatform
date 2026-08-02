@@ -115,3 +115,194 @@ describe('CRUD + versioning', () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+/**
+ * P-4.1 operations routes.
+ *
+ * The route-level questions are the ones the service tests cannot answer: is the permission right, does
+ * a static path get mistaken for a rule id, and does an unimplemented thing say so honestly.
+ */
+describe('operations routes (P-4.1)', () => {
+  const adminToken = () => token('tnt_a', ['admin']);
+
+  it('serves the audit, dependencies and compilation of a rule', async () => {
+    const admin = await adminToken();
+    const rule = (await createRule(admin)).json().data;
+
+    const audit = await app.inject({
+      method: 'GET',
+      url: `/rules/${rule.id}/audit`,
+      headers: authHeader(admin),
+    });
+    expect(audit.statusCode).toBe(200);
+    expect(audit.json().data[0]).toMatchObject({ action: 'created', version: 1 });
+
+    const deps = await app.inject({
+      method: 'GET',
+      url: `/rules/${rule.id}/dependencies`,
+      headers: authHeader(admin),
+    });
+    expect(deps.json().data.dependencyHash).toMatch(/^[0-9a-f]{64}$/);
+
+    const compilation = await app.inject({
+      method: 'GET',
+      url: `/rules/${rule.id}/compilation`,
+      headers: authHeader(admin),
+    });
+    expect(compilation.json().data).toMatchObject({ ruleId: rule.id, engineVersion: '1.0.0' });
+  });
+
+  /** `/rules/dependents` must not be read as a rule id — a router that matched greedily would 404. */
+  it('resolves the static dependents path rather than treating it as a rule id', async () => {
+    const admin = await adminToken();
+    const rule = (
+      await createRule(admin, personRuleInput({ eventTypes: ['perception.person.detected'] }))
+    ).json().data;
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/rules/dependents?kind=event-type&ref=perception.person.detected',
+      headers: authHeader(admin),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.rules.map((r: { ruleId: string }) => r.ruleId)).toEqual([rule.id]);
+  });
+
+  it('rejects a dependents lookup with no kind or no ref', async () => {
+    const admin = await adminToken();
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/rules/dependents?ref=x',
+          headers: authHeader(admin),
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/rules/dependents?kind=location',
+          headers: authHeader(admin),
+        })
+      ).statusCode,
+    ).toBe(400);
+  });
+
+  it('rolls a rule back under rule:update, and refuses it to a viewer', async () => {
+    const admin = await adminToken();
+    const rule = (await createRule(admin)).json().data;
+    await app.inject({
+      method: 'PATCH',
+      url: `/rules/${rule.id}`,
+      headers: authHeader(admin),
+      payload: { severity: 'critical' },
+    });
+
+    const viewer = await token('tnt_a', ['viewer']);
+    const refused = await app.inject({
+      method: 'POST',
+      url: `/rules/${rule.id}/rollback`,
+      headers: authHeader(viewer),
+      payload: { version: 1 },
+    });
+    expect(refused.statusCode).toBe(403);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/rules/${rule.id}/rollback`,
+      headers: authHeader(admin),
+      payload: { version: 1 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toMatchObject({ version: 3, severity: 'high' });
+  });
+
+  it('simulates over supplied events and reports 501 for stored history', async () => {
+    const admin = await adminToken();
+    const rule = (await createRule(admin)).json().data;
+
+    const ok = await app.inject({
+      method: 'POST',
+      url: `/rules/${rule.id}/simulate`,
+      headers: authHeader(admin),
+      payload: { events: [personEvent()] },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().data).toMatchObject({ evaluated: 1, matched: 1 });
+
+    const replay = await app.inject({
+      method: 'POST',
+      url: `/rules/${rule.id}/simulate`,
+      headers: authHeader(admin),
+      payload: { range: { from: '2026-08-01T00:00:00.000Z', to: '2026-08-02T00:00:00.000Z' } },
+    });
+    expect(replay.statusCode).toBe(501);
+  });
+
+  it('round-trips an export through an import, landing as a draft', async () => {
+    const admin = await adminToken();
+    await createRule(admin, personRuleInput({ name: 'exported' }));
+
+    const exported = await app.inject({
+      method: 'GET',
+      url: '/rules/export',
+      headers: authHeader(admin),
+    });
+    expect(exported.statusCode).toBe(200);
+
+    const other = await token('tnt_b', ['admin']);
+    const imported = await app.inject({
+      method: 'POST',
+      url: '/rules/import',
+      headers: authHeader(other),
+      payload: exported.json().data,
+    });
+    expect(imported.json().data).toMatchObject({ imported: 1, rejected: 0 });
+
+    const listed = await app.inject({ method: 'GET', url: '/rules', headers: authHeader(other) });
+    expect(listed.json().data[0]).toMatchObject({ name: 'exported', lifecycle: 'draft' });
+  });
+
+  it('needs rule:create to import, because an import creates rules', async () => {
+    const admin = await adminToken();
+    await createRule(admin);
+    const pkg = (
+      await app.inject({ method: 'GET', url: '/rules/export', headers: authHeader(admin) })
+    ).json().data;
+
+    const viewer = await token('tnt_a', ['viewer']);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/rules/import',
+      headers: authHeader(viewer),
+      payload: pkg,
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('says it has no statistics rather than reporting zeroes, when nothing evaluates here', async () => {
+    const admin = await adminToken();
+    const res = await app.inject({
+      method: 'GET',
+      url: '/rules/stats',
+      headers: authHeader(admin),
+    });
+    expect(res.statusCode).toBe(501);
+  });
+
+  /**
+   * The crash guard. `RuleCondition` is recursive, so without this the body overflows the stack inside
+   * the Zod parser and the handler dies — an authenticated request taking a process with it.
+   */
+  it('refuses an absurdly nested body with a 400 rather than dying in the parser', async () => {
+    const admin = await adminToken();
+    let condition: unknown = { field: 'confidence', op: 'gte', value: 0.5 };
+    for (let i = 0; i < 5_000; i += 1) condition = { not: condition };
+
+    const res = await createRule(admin, personRuleInput({ condition: condition as never }));
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toMatch(/nested too deeply/);
+  });
+});

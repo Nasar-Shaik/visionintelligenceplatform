@@ -2,6 +2,15 @@
 
 > One rolling file, newest first. **Capture meaningful progress only — no exhaustive file lists** (those live in git history and per-slice [REVIEW_HISTORY](REVIEW_HISTORY.md)). One short entry per working day. Sign entries `[name · YYYY-MM-DD]`.
 
+## 2026-08-03
+
+- **P-4 Rule Designer ✅ ACCEPTED** by the Architect with 15 recommendations, folded into **P-4.1 — Rule Operations, Diagnostics & Portability**.
+- **P-4.1 built:** compilation fingerprints · dependency graph + reverse lookup · evaluation budgets with a pre-parse crash guard · per-rule runtime counters and cache observability · warm-up on write · structured stage tree · rollback · **derived** audit timeline (console: timeline + restore) · supplied-event simulation (replay honestly 501) · export/import · tenant-isolation suite · scale benchmark and a ratio-based regression gate. Everything derived, nothing stored, nothing read during evaluation.
+- **Three defects found in already-approved code**, each with a test that fails without the fix: editing an enabled rule bypassed the activation gate (a live rule could be re-scoped and silently stop firing); Mongo `$set` never removed a field the domain had deleted (a re-scoped rule kept firing on the **old** zones); a deeply nested body crashed the handler inside the recursive Zod parser.
+- **Gates:** rules 158 · console 109 · contracts 291 · camera 193 · tenant 144 · e2e 33 · typecheck 28 · lint 0 errors · build 19 · imports 0 violations · schemas 70 · format clean. Python (850) not run — no Python environment in this session, and no Python file changed.
+- **Next:** P-4.1 architectural review. Do not start P-5.
+- `[Claude · 2026-08-03]`
+
 ## 2026-08-01 — AI-5b ACCEPTED; AI-5c Scheduling & Resource Management
 
 - **AI-5b ✅ ACCEPTED** (Architect): "completes the transition from an offline batch runtime to a production-capable live inference runtime while fully respecting the frozen AI Runtime Architecture v1.0." The five-tier separation is confirmed as the **permanent production architecture**, and the `analyze_frame()` extraction was called out as an excellent architectural improvement (one execution path for batch and streaming ⇒ no feature divergence). 10 forward recommendations recorded and folded into AI-5c.

@@ -21,6 +21,8 @@ import type {
   RuleCondition,
   RuleExplanation,
   RulePredicate,
+  RuleStage,
+  StageTrace,
 } from '@vip/contracts';
 import { evaluatePredicate, getField } from './condition.js';
 
@@ -170,43 +172,77 @@ export interface ExplanationInput {
 export function explain(input: ExplanationInput): RuleExplanation {
   const { stages } = input;
 
-  const decided = ((): { decidedBy: RuleExplanation['decidedBy']; summary: string } => {
-    if (!stages.lifecyclePassed) {
-      return {
-        decidedBy: 'lifecycle',
-        summary: 'the rule is not enabled, so it was not evaluated',
-      };
-    }
-    if (!stages.scopePassed) return { decidedBy: 'scope', summary: input.scopeReason };
-    if (!stages.prefilterPassed) return { decidedBy: 'prefilter', summary: input.prefilterReason };
-    if (!stages.conditionPassed) {
-      const failure = input.condition ? firstFailure(input.condition) : undefined;
-      return {
-        decidedBy: 'condition',
-        summary: failure?.reason ?? input.condition?.reason ?? 'the condition did not match',
-      };
-    }
-    if (!stages.windowPassed) {
-      const w = input.window;
-      return {
-        decidedBy: 'window',
-        summary: w
-          ? `${w.counted} of ${w.required} matching events within ${w.withinSeconds}s — not enough yet`
-          : 'the windowed threshold was not reached',
-      };
-    }
-    return { decidedBy: 'matched', summary: 'every stage matched — the rule fired' };
-  })();
+  /*
+   * The stage list is built **once** and both answers are read off it: the one-line summary and the
+   * tree (P-4.1, Architect rec 6). Assembling them separately is how a summary that names the scope
+   * ends up beside a tree whose scope node is green — two descriptions of one evaluation that drift
+   * the first time either is edited.
+   */
+  const ordered: Array<{ stage: RuleStage; passed: boolean; reason: string }> = [
+    {
+      stage: 'lifecycle',
+      passed: stages.lifecyclePassed,
+      reason: stages.lifecyclePassed
+        ? 'the rule is enabled'
+        : 'the rule is not enabled, so it was not evaluated',
+    },
+    { stage: 'scope', passed: stages.scopePassed, reason: input.scopeReason },
+    { stage: 'prefilter', passed: stages.prefilterPassed, reason: input.prefilterReason },
+    {
+      stage: 'condition',
+      passed: stages.conditionPassed,
+      reason: conditionReason(input),
+    },
+    { stage: 'window', passed: stages.windowPassed, reason: windowReason(input) },
+  ];
+
+  const failure = ordered.find((stage) => !stage.passed);
+  const decidedBy: RuleExplanation['decidedBy'] = failure?.stage ?? 'matched';
+  const summary = failure?.reason ?? 'every stage matched — the rule fired';
+
+  /*
+   * Stages after the decisive one are still reported, with the verdict the caller supplied. Evaluation
+   * short-circuits and the caller may not have run them; what the tree must never do is invent a
+   * result. Marking the decisive node is what stops a reader mistaking a not-reached stage for a
+   * passing one — and on a match **no** node is decisive, because every stage was.
+   */
+  const tree: StageTrace[] = ordered.map((stage) => ({
+    stage: stage.stage,
+    passed: stage.passed,
+    decisive: stage.stage === failure?.stage,
+    reason: stage.reason,
+    ...(stage.stage === 'condition' && input.condition ? { children: [input.condition] } : {}),
+  }));
 
   return {
     ruleId: input.ruleId,
     ruleVersion: input.ruleVersion,
     ruleName: input.ruleName,
-    matched: decided.decidedBy === 'matched',
-    decidedBy: decided.decidedBy,
-    summary: decided.summary,
+    matched: decidedBy === 'matched',
+    decidedBy,
+    summary,
     stages,
+    tree,
     ...(input.condition ? { condition: input.condition } : {}),
     ...(input.window ? { window: input.window } : {}),
   };
+}
+
+/** The condition stage in one line — the first failing leaf when it failed, the root when it passed. */
+function conditionReason(input: ExplanationInput): string {
+  if (!input.condition) return 'the rule has no condition beyond its pre-filter';
+  if (input.stages.conditionPassed) return input.condition.reason;
+  return firstFailure(input.condition)?.reason ?? input.condition.reason;
+}
+
+function windowReason(input: ExplanationInput): string {
+  const w = input.window;
+  if (!w) {
+    return input.stages.windowPassed
+      ? 'the rule has no windowed threshold'
+      : 'the windowed threshold was not reached';
+  }
+  return input.stages.windowPassed
+    ? `${w.counted} of ${w.required} matching events within ${w.withinSeconds}s — the threshold is met`
+    : `${w.counted} of ${w.required} matching events within ${w.withinSeconds}s — not enough yet`;
 }

@@ -11,6 +11,7 @@ import type { IncidentCandidate } from '@vip/contracts';
 import { RuleEngine } from '../src/application/rule-engine.js';
 import { InMemoryRuleStore } from '../src/adapters/in-memory-rule-store.js';
 import { InMemoryRuleStateStore } from '../src/adapters/in-memory-rule-state.js';
+import { RuleStatsRegistry } from '../src/application/rule-stats.js';
 import { personEvent, personRuleInput } from './helpers.js';
 
 let bus: InMemoryEventBus;
@@ -145,5 +146,118 @@ describe('RuleEngine — event → match → incident candidate', () => {
     const consumed = bus.delivered.find((d) => d.subject.startsWith('t.tnt_a.event.perception'));
     expect(consumed?.disposition).toBe('term');
     expect(out.candidates).toHaveLength(0);
+  });
+});
+
+/**
+ * Per-rule counters and warm-up (P-4.1, Architect recs 3 + 5).
+ *
+ * These assert an **operational** property, so they go through the real engine rather than poking the
+ * registry: the value of a counter is that it reflects what the hot path actually did.
+ */
+describe('RuleEngine — runtime statistics and warm-up', () => {
+  let stats: RuleStatsRegistry;
+
+  async function startWithStats(): Promise<void> {
+    stats = new RuleStatsRegistry();
+    engine = new RuleEngine({
+      bus,
+      store,
+      state: new InMemoryRuleStateStore(),
+      maxRulesPerEvent: 100,
+      candidateDedupWindowMs: 60_000,
+      stats,
+      now: () => new Date('2026-07-29T22:00:00.500Z'),
+      newId: () => 'inc_1',
+    });
+    await engine.start();
+  }
+
+  it('counts evaluations and matches per rule, and times what it evaluated', async () => {
+    await store.create(scopeA, personRuleInput({ name: 'matches' }));
+    await store.create(
+      scopeA,
+      personRuleInput({
+        name: 'never',
+        condition: { field: 'confidence', op: 'gte', value: 0.99 },
+      }),
+    );
+    collect();
+    await startWithStats();
+    await emit();
+    await emit();
+
+    const byName = new Map(stats.snapshot('tnt_a').map((s) => [s.ruleName, s]));
+    expect(byName.get('matches')).toMatchObject({ evaluations: 2, matches: 2, failures: 0 });
+    // The distinction the platform could not previously draw: evaluated, but never matching.
+    expect(byName.get('never')).toMatchObject({ evaluations: 2, matches: 0 });
+    expect(byName.get('matches')?.lastMatchedAt).toBe('2026-07-29T22:00:00.500Z');
+    expect(byName.get('never')?.lastMatchedAt).toBeUndefined();
+    expect(byName.get('matches')?.avgEvaluationMicros).toBeGreaterThanOrEqual(0);
+  });
+
+  it('counts an event a rule’s scope rejected as an evaluation, but does not time it', async () => {
+    await store.create(
+      scopeA,
+      personRuleInput({ scope: { nodeIds: ['on_elsewhere'], cameraIds: [] } }),
+    );
+    collect();
+    await startWithStats();
+    await emit();
+
+    const [rule] = stats.snapshot('tnt_a');
+    expect(rule).toMatchObject({ evaluations: 1, matches: 0 });
+    // Never validated, so the scope is unresolved and matches nothing — no work worth timing.
+    expect(rule?.avgEvaluationMicros).toBe(0);
+  });
+
+  it('records a throwing rule as a failure and keeps evaluating the rest', async () => {
+    await store.create(scopeA, personRuleInput({ name: 'good', priority: 10 }));
+    const bad = await store.create(scopeA, personRuleInput({ name: 'bad', priority: 900 }));
+    // A condition that cannot be walked — a defect, whatever produced it.
+    Object.defineProperty(await store.get(scopeA, bad.id), 'condition', {
+      get() {
+        throw new Error('corrupt condition');
+      },
+    });
+
+    const out = collect();
+    await startWithStats();
+    await emit();
+
+    const byName = new Map(stats.snapshot('tnt_a').map((s) => [s.ruleName, s]));
+    expect(byName.get('bad')?.failures).toBe(1);
+    // The event is not lost and the healthy rule still fires.
+    expect(byName.get('good')?.matches).toBe(1);
+    expect(out.candidates).toHaveLength(1);
+  });
+
+  it('warms a tenant so the first live event does not pay the compilation', async () => {
+    await store.create(scopeA, personRuleInput());
+    collect();
+    await startWithStats();
+
+    await engine.warm('tnt_a');
+    expect(engine.cacheStats('tnt_a')).toMatchObject({ compilations: 1, rules: 1 });
+
+    await emit();
+    // The event was a hit, not a compilation — which is the whole point of warming.
+    expect(engine.cacheStats('tnt_a')).toMatchObject({ compilations: 1, hits: 1 });
+  });
+
+  it('never lets a failed warm-up escape into the write that triggered it', async () => {
+    const broken = {
+      async listEnabled() {
+        throw new Error('mongo is down');
+      },
+    } as unknown as typeof store;
+    engine = new RuleEngine({
+      bus,
+      store: broken,
+      state: new InMemoryRuleStateStore(),
+      maxRulesPerEvent: 100,
+      candidateDedupWindowMs: 60_000,
+    });
+    await expect(engine.warm('tnt_a')).resolves.toBeUndefined();
   });
 });

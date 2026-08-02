@@ -8,6 +8,8 @@ import type {
   CreateRuleInput,
   ResolvedRuleScope,
   Rule,
+  RuleCacheStats,
+  RuleRuntimeStats,
   RuleVersionRecord,
   UpdateRuleInput,
 } from '@vip/contracts';
@@ -29,6 +31,40 @@ export interface RuleStore {
   ): Promise<Rule | null>;
   remove(scope: TenantScope, id: string, actor?: string): Promise<boolean>;
   listVersions(scope: TenantScope, id: string): Promise<RuleVersionRecord[]>;
+  /**
+   * Replace a rule's content with an earlier version's, as a new version (P-4.1, Architect rec 7).
+   *
+   * Separate from `update` because a patch cannot express absence: rolling back through `update` would
+   * leave fields the target version did not have. See `restoreVersion`.
+   */
+  restore(
+    scope: TenantScope,
+    id: string,
+    target: Rule,
+    actor?: string,
+    resolution?: ResolvedRuleScope,
+  ): Promise<Rule | null>;
+}
+
+/**
+ * Live operational numbers, read by the diagnostics route (P-4.1, Architect recs 3 + 8).
+ *
+ * A **port supplied by the composition root**, not a dependency on the engine — for the same reason
+ * `onRulesChanged` is a callback: the authoring service must not know that an evaluation engine
+ * exists, let alone hold one. Absent in a deployment that runs authoring and evaluation as separate
+ * processes, where this node genuinely has no numbers to report, and the route says so rather than
+ * reporting zeroes as though they were measurements.
+ */
+export interface RuleDiagnostics {
+  node: string;
+  uptimeSeconds(): number;
+  /**
+   * Cache health, or `undefined` when this node is not evaluating — which includes the window before
+   * the engine has started. Optional in the return type rather than zeroed, because an unstarted
+   * engine and an idle one produce identical zeroes and only one of them is worth paging about.
+   */
+  cacheStats(tenantId: string): RuleCacheStats | undefined;
+  ruleStats(tenantId: string): RuleRuntimeStats[];
 }
 
 export interface RuleStateStore {

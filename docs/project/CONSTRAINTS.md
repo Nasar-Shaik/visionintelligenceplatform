@@ -223,6 +223,49 @@
     _enforced: `application/compiled-rules.ts`; a test counts store calls across 1,000 events and
     asserts one._
 
+46. **Diagnostics are derived, never stored.** Fingerprints, dependency graphs, complexity
+    measurements and audit timelines are computed from the record on demand — never persisted beside
+    the thing they describe, where they can end up disagreeing with it after a migration or a
+    restore. A fingerprint that can lie is worse than none, because it is trusted; recomputing is
+    microseconds and the recomputation _is_ the verification. Corollary: **one record of one truth** —
+    a parallel audit collection written by a second code path eventually contradicts the versions, and
+    a derived trail works retroactively on records written before anyone thought to record it. —
+    _enforced: [Foundation Principle 2](FOUNDATION_PRINCIPLES.md);
+    [ADR-0027](../adr/ADR-0027-rule-operations-diagnostics-and-portability.md); `domain/fingerprint.ts`,
+    `domain/audit.ts`; a test asserts a rule renamed or paused keeps its content hash._
+47. **What is put in front of live events is gated — not the transition that got it there.** A
+    validation gate keyed on a state _change_ misses the larger case: editing something already live.
+    P-4 gated activation and left re-scoping a running rule unchecked, which silently took it to
+    matching nothing. The gate fires whenever a request leaves a resource live with changed content,
+    however it arrived — and never when the request leaves it not-live, so a broken thing can always
+    be turned off or fixed-and-parked in one call. — _enforced: `rule-service.ts`;
+    [ADR-0027](../adr/ADR-0027-rule-operations-diagnostics-and-portability.md); tests assert
+    re-scoping a live rule re-resolves rather than unresolving, and that the same edit passes when it
+    also disables._
+48. **A domain that removes a field must have a store that removes it.** Mongo `$set` with an object
+    lacking a key leaves the stored key untouched, so a field deleted in the domain survives in the
+    database and the next reader sees stale truth. Every write of a document with optional fields
+    pairs `$set` with an `$unset` for what is absent. — _enforced: `writeOf`/`unsetOf` in
+    `mongo-rule-store.ts`; a unit test asserts the exact unset set; the round trip is covered by the
+    integration suite._
+49. **A recursive schema needs a crash guard that runs before it.** `RuleCondition`-shaped contracts
+    parse recursively, so a deeply nested body overflows the stack _inside the parser_ — before
+    validation, before any limit, before anything can report it. Depth is checked iteratively on the
+    raw body first; the meaningful limit is enforced afterwards with a number that means something to
+    an author. — _enforced: `domain/budget.ts` (`rawDepth`, `MAX_BODY_NESTING`); a route test posts a
+    5,000-deep body and asserts a 400._
+50. **Operational numbers are honest about their scope, and never fabricated.** Per-node counters say
+    which node; a hit ratio over zero lookups is zero, not one; a node that is not evaluating returns
+    501 rather than zeroes, because an unstarted engine and an idle one produce identical zeroes and
+    only one is worth paging about. Cluster totals come from the metrics pipeline, never from summing
+    per-node reports across a load balancer. — _enforced: `RuleStatsReport.node`;
+    `application/rule-stats.ts`; tests assert the zero-lookup ratio and the 501._
+51. **Benchmarks record a baseline, and gates assert a shape.** A recorded number is a comparison
+    point on the machine that produced it — never a threshold, never transferable. Regression gates
+    assert ratios (cost per unit stays flat as the count grows), which a loaded CI runner does not
+    move and a quadratic regression cannot pass. — _enforced:
+    [RULE_ENGINE_BASELINE](../architecture/RULE_ENGINE_BASELINE.md); `services/rules/test/scale.test.ts`._
+
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._

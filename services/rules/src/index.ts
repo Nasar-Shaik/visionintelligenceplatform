@@ -12,6 +12,7 @@ import { ReadinessRegistry } from './application/readiness.js';
 import { RuleService } from './application/rule-service.js';
 import { RuleEngine } from './application/rule-engine.js';
 import { RuleMetrics } from './application/metrics.js';
+import { RuleStatsRegistry } from './application/rule-stats.js';
 import { connectMongo } from './adapters/mongo.js';
 import { MongoRuleStore } from './adapters/mongo-rule-store.js';
 import { InMemoryRuleStateStore } from './adapters/in-memory-rule-state.js';
@@ -32,10 +33,32 @@ async function main(): Promise<void> {
    * the compiled set expires — "saved" followed by nothing happening, which reads as a broken product.
    */
   const engineRef: { current?: RuleEngine } = {};
+  /*
+   * Durable per-rule counters, owned here rather than by the engine: they must survive every
+   * recompilation of a tenant's rule set, and both the engine (which writes them) and the HTTP service
+   * (which reports them) need the same instance (P-4.1, Architect rec 3).
+   */
+  const ruleStats = new RuleStatsRegistry();
+  const node = process.env.HOSTNAME ?? 'rules';
   const ruleService = new RuleService({
     store,
     dedupWindowMs: config.rules.candidateDedupWindowMs,
-    onRulesChanged: (tenantId) => engineRef.current?.invalidate(tenantId),
+    /*
+     * Invalidate, then **warm** (Architect rec 5). Invalidating alone leaves the rebuild to the next
+     * event — which is the event the author is watching for. Warming moves the cost onto the write,
+     * where someone is already waiting and a few milliseconds are invisible. Not awaited: the save must
+     * not fail because an optimisation did, and `warm` never throws.
+     */
+    onRulesChanged: (tenantId) => {
+      engineRef.current?.invalidate(tenantId);
+      void engineRef.current?.warm(tenantId);
+    },
+    diagnostics: {
+      node,
+      uptimeSeconds: () => ruleStats.uptimeSeconds,
+      cacheStats: (tenantId) => engineRef.current?.cacheStats(tenantId),
+      ruleStats: (tenantId) => ruleStats.snapshot(tenantId),
+    },
   });
 
   const readiness = new ReadinessRegistry();
@@ -57,6 +80,7 @@ async function main(): Promise<void> {
     state,
     maxRulesPerEvent: config.rules.maxRulesPerEvent,
     candidateDedupWindowMs: config.rules.candidateDedupWindowMs,
+    stats: ruleStats,
     metrics: new RuleMetrics(registry),
     log: (level, msg, fields) => loggerRef.current?.[level]({ ...fields }, msg),
   });

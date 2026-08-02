@@ -11,7 +11,7 @@ import type {
   UpdateRuleInput,
 } from '@vip/contracts';
 import { TenancyError, type TenantScope } from '@vip/tenancy';
-import { applyUpdate, newRule, versionRecord } from '../domain/rule-factory.js';
+import { applyUpdate, newRule, restoreVersion, versionRecord } from '../domain/rule-factory.js';
 import { byEvaluationOrder } from '../domain/rule-evaluator.js';
 import type { RuleStore } from '../application/ports.js';
 
@@ -78,6 +78,27 @@ export class InMemoryRuleStore implements RuleStore {
       resolution,
     );
     if (rule.tenantId !== scope.tenantId) throw new TenancyError('cross-tenant write refused');
+    this.rules[idx] = rule;
+    this.versions.push(version);
+    return rule;
+  }
+
+  async restore(
+    scope: TenantScope,
+    id: string,
+    target: Rule,
+    actor?: string,
+    resolution?: ResolvedRuleScope,
+  ): Promise<Rule | null> {
+    const idx = this.rules.findIndex((r) => r.id === id && this.ownedBy(scope, r));
+    if (idx === -1) return null;
+    const { rule, version } = restoreVersion(
+      this.rules[idx]!,
+      target,
+      this.factoryDeps,
+      actor,
+      resolution,
+    );
     this.rules[idx] = rule;
     this.versions.push(version);
     return rule;

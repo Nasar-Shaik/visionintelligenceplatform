@@ -20,10 +20,12 @@ import {
   EVENT_CATALOG,
   isKnownEventType,
   type Rule,
+  type RuleLimits,
   type RuleReferenceKind,
   type RuleValidationIssue,
   type RuleValidationReport,
 } from '@vip/contracts';
+import { budgetChecks } from './budget.js';
 import { scopeOf } from './scope.js';
 
 /** What the reference providers found, gathered by the application layer. */
@@ -196,8 +198,14 @@ export function validateRule(
   rule: Rule,
   findings: ReferenceFindings,
   at: Date,
+  /** Deployment ceilings (P-4.1, Architect rec 4). Defaults to the documented set. */
+  limits?: RuleLimits,
 ): RuleValidationReport {
-  const issues = [...selfChecks(rule), ...referenceChecks(rule, findings)];
+  const issues = [
+    ...selfChecks(rule),
+    ...budgetChecks(rule, limits),
+    ...referenceChecks(rule, findings),
+  ];
 
   const authored = scopeOf(rule);
   const needed: RuleReferenceKind[] = ['event-type', 'category', 'action'];
