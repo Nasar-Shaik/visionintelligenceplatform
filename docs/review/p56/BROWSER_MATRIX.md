@@ -14,10 +14,9 @@ measured it is listed as **not measured**, never as "assumed to match".
 | `webkit`   | WebKit 26.5 (Playwright build)          | Playwright                                        |
 | `safari`   | **Safari 26.5.2** (the real browser)    | Opened manually; the page posted its results back |
 
-⚠️ **Microsoft Edge was not measured** — it is not installed on this machine and Playwright's
-`msedge` channel therefore could not launch. Edge is Chromium-derived _and ships different
-proprietary-codec licensing from the open-source build_, which is exactly the axis on which the
-engines below disagree, so its column would be a guess. It is left blank deliberately.
+⚠️ **Microsoft Edge was not measured in P-5.6** — it was not installed. **P-5.7 installed it and
+measured it**; see [`../p57/BROWSER_MATRIX.md`](../p57/BROWSER_MATRIX.md), which also re-runs the
+decode table against properly-encoded MP4s and **corrects two conclusions on this page**.
 
 ## `HTMLVideoElement.canPlayType`
 
@@ -111,6 +110,11 @@ CONSTRAINTS §88 and the shortfall band in the player.
 `avc1.42E01E` and then refused every actual H.264 file with `MEDIA_ERR_SRC_NOT_SUPPORTED`. Whatever
 the cause, the product-relevant conclusion holds: a positive probe cannot be relied on, only a
 negative one. This drives §87 and the `refused` failure classification.
+
+> ⚠️ **Superseded by P-5.7.** The decode table below was produced with Chromium-`MediaRecorder`
+> fragmented MP4. Re-measured against `libx264`/`libx265` files with a real `moov`, two of its
+> conclusions do not hold: damaged files **do** raise `MEDIA_ERR_DECODE`, and engines **agree** on
+> duration. See [`../p57/BROWSER_MATRIX.md`](../p57/BROWSER_MATRIX.md).
 
 **What this does not prove:** that Safari cannot play H.264 CCTV footage. These fixtures are
 Chromium-`MediaRecorder` fragmented MP4, which is not what an NVR exports, and Safari plays ordinary

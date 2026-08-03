@@ -2,7 +2,7 @@
   "name": "vision-intelligence-platform",
   "version": "1.0.0",
   "private": true,
-  "description": "Enterprise multi-tenant Vision Intelligence Platform (monorepo root). Architecture frozen v1.0 — see docs/.",
+  "description": "Enterprise multi-tenant Vision Intelligence Platform (monorepo root). Architecture frozen v1.0 \u2014 see docs/.",
   "type": "module",
   "packageManager": "pnpm@11.17.0",
   "engines": {
@@ -25,7 +25,8 @@
     "dev:all": "turbo run dev --concurrency=15",
     "dev:services": "turbo run dev --filter=./services/* --concurrency=12",
     "dev:web": "pnpm --filter @vip/console dev",
-    "seed": "pnpm --filter @vip/seed start"
+    "seed": "pnpm --filter @vip/seed start",
+    "seed:evidence": "pnpm --filter @vip/seed evidence"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

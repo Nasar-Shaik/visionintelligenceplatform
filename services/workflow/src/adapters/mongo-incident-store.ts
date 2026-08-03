@@ -17,6 +17,35 @@ export interface MongoIncidentStoreDeps {
 const STRIP = { projection: { _id: 0 } } as const;
 const DUPLICATE_KEY = 11000;
 
+/**
+ * Restore the collection fields a stored document may predate.
+ *
+ * ### ⚠️ A schema default is a promise about *parsing*, not about every document ever written
+ *
+ * `Incident` declares `history`, `assignments` and `notes` as arrays with `.default([])`, so
+ * anything the incident factory produces has them. A document written before a field existed — or
+ * by any writer that did not go through the factory — simply has no such key, and MongoDB returns
+ * it exactly as stored. Downstream code then reads `incident.notes.flatMap(...)` on `undefined`.
+ *
+ * Found by opening a real workspace against a real database: `buildTimeline` threw
+ * `Cannot read properties of undefined (reading 'map')`, the timeline route answered **500**, and
+ * the same missing field crashed the console's attachments panel hard enough to blank the whole
+ * page. Every test passed, because every fixture had the fields.
+ *
+ * ⚠️ Normalising **at the adapter** rather than at each call site is the point: the boundary where
+ * stored data becomes domain data is the one place that can make the guarantee once. Sprinkling
+ * `?.` through consumers fixes the two that crashed today and none of the ones written tomorrow.
+ */
+function hydrate<T extends Incident | null>(row: T): T {
+  if (row === null) return row;
+  return {
+    ...row,
+    history: row.history ?? [],
+    assignments: row.assignments ?? [],
+    notes: row.notes ?? [],
+  } as T;
+}
+
 function encodeCursor(incident: Incident): string {
   return Buffer.from(`${incident.raisedAt}|${incident.id}`, 'utf8').toString('base64url');
 }
@@ -53,17 +82,19 @@ export class MongoIncidentStore implements IncidentStore {
   }
 
   async get(scope: TenantScope, id: string): Promise<Incident | null> {
-    return this.incidents.collection.findOne(
+    const row = (await this.incidents.collection.findOne(
       { tenantId: scope.tenantId, id } as never,
       STRIP,
-    ) as Promise<Incident | null>;
+    )) as Incident | null;
+    return hydrate(row);
   }
 
   async getByDedupKey(scope: TenantScope, dedupKey: string): Promise<Incident | null> {
-    return this.incidents.collection.findOne(
+    const row = (await this.incidents.collection.findOne(
       { tenantId: scope.tenantId, 'source.dedupKey': dedupKey } as never,
       STRIP,
-    ) as Promise<Incident | null>;
+    )) as Incident | null;
+    return hydrate(row);
   }
 
   /**
@@ -101,11 +132,13 @@ export class MongoIncidentStore implements IncidentStore {
         ];
       }
     }
-    const rows = (await this.incidents.collection
-      .find(filter as never, STRIP)
-      .sort({ raisedAt: -1, id: -1 })
-      .limit(query.limit + 1)
-      .toArray()) as Incident[];
+    const rows = (
+      (await this.incidents.collection
+        .find(filter as never, STRIP)
+        .sort({ raisedAt: -1, id: -1 })
+        .limit(query.limit + 1)
+        .toArray()) as Incident[]
+    ).map((row) => hydrate(row));
 
     const hasMore = rows.length > query.limit;
     const items = hasMore ? rows.slice(0, query.limit) : rows;

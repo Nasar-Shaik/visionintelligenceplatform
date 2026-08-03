@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Camera, GitBranch, Hash, Layers } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Camera, GitBranch, Hash, Layers, Telescope } from 'lucide-react';
 import type { IncidentTransition } from '@vip/contracts';
 import { usePermission } from '@/app/hooks';
 import { ApiRequestError } from '@/lib/api/http';
@@ -209,8 +210,27 @@ export function IncidentDetailSheet({ incidentId, onClose }: IncidentDetailSheet
           ) : null}
         </SheetBody>
 
-        {incident && actions.length > 0 ? (
+        {incident ? (
           <SheetFooter>
+            {/*
+              ⚠️ The route into the Investigation Workspace, and the reason it exists.
+
+              `/workspace/:incidentId` has been routed since P-5.2 and **nothing in the product
+              linked to it**: no navigation entry, no action here. Five milestones of playback,
+              timeline, bookmarks, evidence chain and metadata were reachable only by typing a URL,
+              which means that to a customer they did not exist. Found by driving the operator
+              workflow end to end in a browser rather than by reading the router.
+
+              It leads the footer because investigating is what an operator does *before* deciding
+              to acknowledge or resolve — the destructive-ish lifecycle actions stay on the right.
+            */}
+            <Button asChild variant="secondary" size="sm">
+              <Link to={`/workspace/${incident.id}`}>
+                <Telescope className="mr-1 size-3.5" aria-hidden />
+                Open investigation
+              </Link>
+            </Button>
+            <div className="flex-1" />
             {actions.includes('acknowledge') && canAck ? (
               <Button variant="outline" size="sm" loading={acknowledge.isPending} onClick={runAck}>
                 Acknowledge

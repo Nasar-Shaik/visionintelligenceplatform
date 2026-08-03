@@ -74,6 +74,7 @@ import {
   failureCopy,
   sessionClock,
   sessionExpired,
+  videoTrackMissing,
   type PlaybackFailure,
 } from './recovery';
 import { recall, remember, restorablePosition } from './session-memory';
@@ -918,6 +919,14 @@ function EvidencePlayerImpl({
                 /* ⚠️ Adaptive: the real ratio is only knowable now. */
                 const ratio = video.videoWidth / Math.max(1, video.videoHeight);
                 setAspect(ratio < 0.9 ? 'portrait' : ratio < 1.5 ? 'classic' : 'video');
+                /*
+                 * ⚠️ The silent-black check. A browser with no decoder for the video track plays
+                 * the audio and reports zero width — no error, no warning, just a black picture
+                 * with a moving clock. See `videoTrackMissing`.
+                 */
+                if (videoTrackMissing(segment.contentType, video.videoWidth, isStill)) {
+                  setFailure('no-video');
+                }
                 /* Apply remembered preferences to the element now that it exists. */
                 video.playbackRate = rate;
                 video.volume = volume;

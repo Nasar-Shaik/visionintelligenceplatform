@@ -59,9 +59,26 @@ async function ensureIndexes(
    * cannot disagree. Every one is tenant-leading (Law 5) and ends in `_id` (the cursor) — see
    * `indexes.ts` for why the trailing key is load-bearing rather than cosmetic.
    */
+  /*
+   * ⚠️ A changed key set under an existing name is dropped and rebuilt, **because otherwise the
+   * service does not start.**
+   *
+   * Found by deploying against a database that had run an earlier build — the only way to find it,
+   * since every test runs against a fresh database. When `tenant_parent` gained its `_id` cursor
+   * key, MongoDB answered `IndexOptionsConflict` and the tenant service exited at boot. On a
+   * customer's machine that is an upgrade that takes the whole location hierarchy offline.
+   *
+   * Each old index is a strict prefix of its replacement, so nothing loses coverage during the
+   * rebuild. The evidence and events stores already did this; tenant and camera did not.
+   */
+  const existing = await orgNodes.indexes().catch(() => []);
   for (const spec of ORG_NODE_INDEXES) {
     if (spec.implicit) continue; // `_id_` is created by MongoDB; declared only so coverage sees it.
     const keys = Object.fromEntries(spec.keys.map((key) => [key, 1]));
+    const current = existing.find((index) => index.name === spec.name);
+    if (current && JSON.stringify(current.key) !== JSON.stringify(keys)) {
+      await orgNodes.dropIndex(spec.name);
+    }
     await orgNodes.createIndex(keys as IndexSpecification, { name: spec.name });
   }
 }

@@ -80,7 +80,42 @@ export function sessionExpired(clock: SessionClock | undefined, now: Date): bool
 }
 
 /** Why playback stopped, insofar as the browser told us. */
-export type PlaybackFailure = 'expired' | 'network' | 'decode' | 'aborted' | 'refused' | 'unknown';
+export type PlaybackFailure =
+  'expired' | 'network' | 'decode' | 'aborted' | 'refused' | 'no-video' | 'unknown';
+
+/**
+ * Did the **video track** fail to decode while the file otherwise played?
+ *
+ * ### ⚠️ The worst silent failure found in this whole subsystem
+ *
+ * Measured in P-5.7. Chromium 151 was handed a real H.265 clip with an AAC audio track. It did not
+ * error. It reported `readyState` fine, a 10 s duration, a running `currentTime` — and
+ * **`videoWidth === 0`**. It played the audio and dropped the video entirely.
+ *
+ * On screen that is a **black player with a moving scrubber and no message whatsoever**. An
+ * investigator reviewing a night-time corridor concludes the camera recorded darkness. There is no
+ * error event to classify, no failed request to retry, and — because the container opened and the
+ * codec probe may return `unknown` for a codec string the platform cannot translate — no earlier
+ * gate necessarily catches it.
+ *
+ * The check is one number, available the moment metadata loads: a source the session says is video,
+ * whose decoded frame is zero pixels wide, has no video.
+ *
+ * @param contentType the stored MIME type
+ * @param videoWidth the element's `videoWidth` after `loadedmetadata`
+ * @param isStill true when the session carries a snapshot rather than a clip
+ */
+export function videoTrackMissing(
+  contentType: string,
+  videoWidth: number,
+  isStill: boolean,
+): boolean {
+  /* A still image is drawn by an `<img>`; it has no media element to interrogate. */
+  if (isStill) return false;
+  if (!contentType.startsWith('video/')) return false;
+  /* ⚠️ `0` only. `NaN` or `undefined` means "not reported yet", which is not the same as "absent". */
+  return videoWidth === 0;
+}
 
 /**
  * Classify a `MediaError`.
@@ -180,6 +215,17 @@ export function failureCopy(failure: PlaybackFailure): FailureCopy {
         recoverable: true,
         action: 'Retry',
       };
+    case 'no-video':
+      return {
+        title: 'This browser decoded no video from this recording',
+        detail:
+          'The file opened and its audio is playing, but the video track produced no picture — ' +
+          'the browser is missing a decoder for it. A black player with a running clock is not an ' +
+          'empty recording. The evidence is intact; open it in another browser, or download the ' +
+          'original.',
+        /* ⚠️ Not recoverable here: a missing decoder is missing on the second attempt too. */
+        recoverable: false,
+      };
     case 'unknown':
     default:
       return {
@@ -196,22 +242,38 @@ export function failureCopy(failure: PlaybackFailure): FailureCopy {
 /**
  * Did playback end **before the record says the footage does**?
  *
- * ### ⚠️ The measurement behind this, and why it is not an alarm
+ * ### ⚠️ P-5.7 corrects what P-5.6 claimed here
  *
- * P-5.6 fed truncated and byte-corrupted H.264 files to Chromium, Chrome and Firefox. Every one of
- * them **played the file without raising a single error** and reported a duration roughly half the
- * original — 3.31 s where the intact file was 6.01 s. There is no `error` event, no warning, no
- * indication of any kind. An investigator watching a truncated clip sees it stop, concludes the
- * incident ended there, and is wrong.
+ * P-5.6 concluded that a damaged recording "plays with no error event of any kind". **That was
+ * wrong, and it was wrong because the fixtures were wrong.** Those files came from Chromium's
+ * `MediaRecorder` — fragmented MP4 with no duration index — so a truncated one simply ran out of
+ * data and stopped, which is not what a damaged NVR export does.
  *
- * So the check is not "did the browser complain" — it never will — but "did the media run out
- * early against the duration the evidence record declares".
+ * Re-measured in P-5.7 against `libx264`-encoded MP4s with a real `moov`, which is what a camera or
+ * an NVR actually writes:
  *
- * ⚠️ It fires **on the playhead reaching the end**, never on the reported `duration`, because
- * duration metadata is genuinely unreliable: measured across engines, the *same intact* fragmented
- * MP4 reported 6.01 s in Chrome, 3.45 s in Chromium and 1.19 s in Firefox. Comparing declared
- * duration against reported duration would cry wolf on every well-formed file. Where the playhead
- * stopped is a fact about what was decoded.
+ * | file | outcome |
+ * |---|---|
+ * | intact 10 s | `ended` at 10.0 s |
+ * | truncated to 55 % | **`MEDIA_ERR_DECODE` at 3.89 s** of a declared 10 s |
+ * | byte-corrupted mid-file | **`MEDIA_ERR_DECODE` at 2.25 s** |
+ *
+ * Identical in Chromium, Chrome and Edge. So the browser *does* complain, `classifyFailure` routes
+ * it to `decode`, and the operator is told the file is damaged and to check the integrity hash.
+ *
+ * P-5.6 also claimed engines disagree on duration for an intact file (6.01 / 3.45 / 1.19 s). That
+ * too was the fragmented-MP4 fixtures: with a proper `moov` every engine reports **10.0 s**, and the
+ * one-hour fixture reports **3600.0 s** everywhere.
+ *
+ * ### So why keep this check
+ *
+ * Because one silent case survived the re-measurement: a file truncated to **headers only** reports
+ * `videoWidth` 1280, a full 10 s duration, and fires `ended` normally having decoded nothing. More
+ * generally a source may legitimately hold less footage than its record claims. This is a cheap
+ * safety net over the declared duration, not — as P-5.6 had it — the only signal there is.
+ *
+ * ⚠️ It still fires on **where the playhead stopped**, never on the reported `duration`. Duration is
+ * a claim the container makes; the playhead is a fact about what was decoded.
  */
 export function endedEarly(
   reachedSeconds: number,

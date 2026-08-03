@@ -1122,3 +1122,88 @@ a measurement shows what the platform does, and then you have to ask what the me
 actually evidence of. `probably` was evidence of a parser's opinion, not of a decoder. A shorter
 duration was evidence of metadata, not of damage. A retained node count was evidence of nothing at
 all.
+
+## ED-0068 — P-5.7: the code was correct and the product did not work
+
+P-5.6 verified playback against files and a component harness and closed with everything green.
+P-5.7 deployed the whole stack — Mongo, MinIO, NATS, ten services, the console, seeded data — and
+used it in a browser. **Seven defects surfaced in the first twenty minutes**, and not one of them was
+a logic error. Every one lived in the gap between "the code is correct" and "the product works when
+you run it", which is a gap no unit test is shaped to cross.
+
+⚠️ **The worst of them: the Investigation Workspace was unreachable.** `/workspace/:incidentId` had
+been routed since P-5.2, and nothing in the product pointed at it — no navigation entry, no action on
+an incident. Five milestones of playback, timeline, bookmarks, evidence chain and metadata existed
+only for someone who knew the URL. Every test passed because every test navigated by importing the
+component. §96 now says the thing that should have been obvious: a feature that cannot be reached
+from the UI is not built.
+
+⚠️ **Two services would not start against a database with history.** Camera and tenant exited at boot
+with `IndexOptionsConflict`, because an index had gained its `_id` cursor key under an existing name.
+This is _structurally_ invisible to tests — they run against fresh databases — and it is an upgrade
+that takes a customer's fleet offline. The evidence and events stores already reconciled; the pattern
+simply had not been applied everywhere. §93.
+
+⚠️ **Playback could not work at all in the default configuration**, and the tempting fix was a
+security hole. The `local` storage provider presigns `{base}/{key}?expires=<epoch>` — no signature at
+all — and no route served it, so the player 404'd. Adding that route would have turned a broken demo
+into a **cross-tenant evidence leak**: any key plus any future timestamp reads any tenant's footage.
+Dev now runs MinIO, which signs for real and is what production runs. §95. The general shape: when a
+missing piece has an obvious quick fix, check what the quick fix grants.
+
+⚠️ **A schema default is a promise about parsing, not about stored data.** One incident document
+predating the `notes` field produced a 500 on the timeline route _and_ blanked the console's
+workspace. `.default([])` is true of everything the factory makes and false of everything written
+before the field existed. Fixed at the adapter — the single place where stored data becomes domain
+data — rather than at the two call sites that happened to crash. §92.
+
+⚠️ **Failures were not contained.** One panel's throw unmounted the whole workspace; one bad row
+blanked a whole page, because React Router's default boundary renders nothing in production. Both now
+degrade to a **failed** state that shows the message. The distinction matters: empty, unavailable and
+failed are three different sentences and an operator acts differently on each. §94.
+
+⚠️ **The product contradicted itself about its own health.** The workspace reported events, evidence
+and playback as "not configured for this deployment" while the console was successfully reading those
+same services. The workflow context had no URLs for its siblings and said so honestly — which is
+worse than useless when the honest answer is wrong about the deployment. §97.
+
+⚠️ **And the one found in the browser: a missing decoder shows black and says nothing.** Chromium
+handed a real H.265 clip played the AAC track and reported `videoWidth === 0` — no error, running
+clock, moving scrubber, black picture. An investigator reviewing a night-time corridor concludes the
+camera recorded darkness. §98.
+
+### Two P-5.6 conclusions were wrong, and the fixtures were why
+
+The dev stack's own ffmpeg container has `libx264` **and `libx265`**, which P-5.6 did not find. With
+properly-encoded MP4s:
+
+- **Damaged recordings do raise `MEDIA_ERR_DECODE`** — at 3.89 s and 2.25 s of a declared 10 s,
+  identically in Chromium, Chrome and Edge. P-5.6's "plays with no error of any kind" was an artefact
+  of Chromium-`MediaRecorder` fragmented MP4, which has no duration index and simply runs out.
+- **Engines agree on duration** — 10.00 s and 3600.0 s everywhere. P-5.6's 6.01 / 3.45 / 1.19 s
+  spread was the same fixture artefact.
+
+The design decision those observations justified — compare the playhead, not the reported duration —
+is unchanged and still correct. The _reasoning_ published for it was not, and is corrected in place
+rather than quietly amended. **Microsoft Edge was also installed and measured**, closing TD-30.
+
+⚠️ Three "defects" this milestone found in itself were **my own scaffolding**, not the product:
+events colliding on a unique `dedupKey` index (the real producer always sets one), incidents built
+with `source` instead of `triggeredBy`, and a cross-tenant assertion that expected a 403 where
+scoping-from-the-token is the correct behaviour. Each was checked before being reported. A
+verification milestone that reports its own harness bugs as product defects is worse than no
+verification, because it spends the reader's trust on noise.
+
+### What was refused
+
+**Production deployment was not verified and is not claimed.** No reverse proxy, HTTPS, CSP,
+compression or cache headers were exercised; the stack ran as `pnpm dev:*` against containerised
+infrastructure. Building a production deployment is infrastructure work, not implementation
+verification, and asserting it from a dev stack would be exactly the kind of claim this milestone
+exists to prevent. TD-32. **Still no CCTV hardware, and no browser plays RTSP** — unchanged, TD-27,
+TD-28.
+
+**The general lesson.** ED-0066: a screenshot shows what you shipped. ED-0067: a measurement shows
+what the platform does, and you must ask what it is evidence of. ED-0068: **a green suite shows that
+the code does what you told it to, and says nothing about whether anyone can get to it.** The only
+way to learn that is to deploy the thing and try to use it.

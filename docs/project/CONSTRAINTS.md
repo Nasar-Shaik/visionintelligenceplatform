@@ -530,6 +530,47 @@
     `MAX_DRAWN_MARKS`; `DENSITY_THRESHOLD` switches representation; tests assert the bound for
     10,000 marks._
 
+92. **A schema default is a promise about parsing, not about every document ever written.** A field
+    declared `.default([])` is present on everything the factory produces and absent from anything
+    written before it existed. Stored data becomes domain data at exactly one place — the adapter —
+    and that is where the shape is restored. Sprinkling `?.` through consumers fixes the two that
+    crashed today and none written tomorrow. — _enforced: `MongoIncidentStore.hydrate()`; found by a
+    500 on the timeline route and a blanked workspace, both from one missing `notes` key._
+93. **An index redefinition must reconcile, because the alternative is a service that will not
+    start.** Adding a cursor key to an existing index name is `IndexOptionsConflict` and MongoDB
+    refuses; on a deployment with history that is an upgrade which takes the context offline. Every
+    store drops and rebuilds a changed key set. ⚠️ No test can catch this — tests run against fresh
+    databases by construction. — _enforced: evidence, events, camera and tenant stores all reconcile._
+94. **A failure is contained at the smallest surface that can still explain itself.** One panel's
+    render error must not unmount the workspace, and one route's error must not blank the
+    application. Both now render a **failed** state — distinct from empty and from unavailable —
+    showing the message, because an operator who can quote it gets the problem fixed and one who can
+    only say "it went blank" cannot. — _enforced: `PanelBoundary` per panel; `RouteError` per route._
+95. **A signed URL without a signature is not a signed URL.** A presign that returns
+    `{base}/{key}?expires=<epoch>` grants any key to anyone who can guess a path, so no route may
+    serve it. Deployments — including development — use a provider that signs for real. ⚠️ The
+    tempting fix, serving the unsigned URL so playback stops 404ing, would have converted a broken
+    demo into a cross-tenant evidence leak. — _enforced: `EVIDENCE_STORAGE_PROVIDER=s3` in `.env` and
+    `.env.example`; the local provider stays for tests and is documented as not-for-production._
+96. **A feature that cannot be reached from the UI is not built.** A route with no navigation entry
+    and no action pointing at it does not exist for a customer, however complete its code and tests.
+    ⚠️ The Investigation Workspace was routed in P-5.2 and reachable only by typing a URL until
+    P-5.7 — five milestones of work, invisible. Every milestone ends by _using_ the product, not by
+    reading the router. — _enforced: the end-to-end operator workflow is driven in a browser against
+    a deployed stack; it navigates only by clicking._
+97. **Reported health must be measured against the deployment, never against configuration alone.**
+    The workspace declared events, evidence and playback "not configured for this deployment" while
+    the console was reading those services successfully — the product contradicting itself on
+    screen. Honest "not configured" reporting is only honest when the deployment is configured, so
+    the required URLs are documented in `.env.example` rather than left to be discovered. —
+    _enforced: `EVENTS_SERVICE_URL` / `EVIDENCE_SERVICE_URL` / `NOTIFY_SERVICE_URL`._
+98. **A missing decoder shows a black picture, not an error — so the platform checks the picture.**
+    Measured: a browser without a codec for the video track plays the **audio** and reports
+    `videoWidth === 0`, with no error event, a running clock and a moving scrubber. An investigator
+    reviewing night-time footage concludes the camera recorded darkness. — _enforced:
+    `videoTrackMissing()` after `loadedmetadata`; the overlay says a black player is not an empty
+    recording._
+
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._

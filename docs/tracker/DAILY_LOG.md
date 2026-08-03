@@ -215,3 +215,20 @@
 - UI review artifact from the real components playing real H.264: `docs/review/p56/`.
 - Gates: console **259** (+92) · contracts 499 · rules 206 · camera 193 · tenant 144 · workflow 136 · evidence 52 · gateway 42 · events 40 · media 38 · e2e 33 · permissions 28 · typecheck 28 · build 19 · integration 18 suites · lint 0 errors · imports 0 violations · schemas 70 · format clean · bundle budget OK.
 - `[Claude · 2026-08-04]`
+
+## 2026-08-04 (P-5.7 — production verification against the running product)
+
+- **The stack was deployed and used**, not simulated: Mongo, MinIO, NATS, ten services, the console, seeded data, a real browser. **Seven defects surfaced, none of them logic errors.**
+- ⚠️ **The Investigation Workspace was unreachable.** `/workspace/:incidentId` routed since P-5.2, with no nav entry and no action pointing at it — five milestones of work reachable only by typing a URL. Added an **Open investigation** action on the incident sheet and an **Investigations** nav entry (§96).
+- ⚠️ **Camera and tenant would not start** against a database with history — `IndexOptionsConflict` when an index gained its `_id` cursor key. Structurally invisible to tests, which run on fresh databases. Both now reconcile, as evidence and events already did (§93).
+- ⚠️ **Playback could not work in the default configuration**, and the obvious fix was a security hole: the `local` provider presigns `{base}/{key}?expires=<epoch>` with **no signature**, and nothing served it. Serving it would have leaked any tenant's evidence. Dev now uses MinIO, which signs for real (§95).
+- ⚠️ **One panel's throw blanked the workspace; one bad row blanked a page.** Added `PanelBoundary` per panel and `RouteError` per route — a **failed** state that shows the message, distinct from empty and unavailable (§94).
+- ⚠️ **The timeline route returned 500** from the same root cause: a document predating `notes`. Fixed at the storage boundary — a schema default is a promise about parsing, not about every document ever written (§92).
+- ⚠️ **The product contradicted itself about its own health**, reporting events/evidence/playback "not configured" while the console read them successfully. Service URLs now set and documented in `.env.example` (§97).
+- ⚠️ **A missing video decoder plays the audio and shows black** — `videoWidth === 0`, no error, running clock. Detected and named (§98).
+- ⚠️ **Two P-5.6 conclusions corrected.** The dev stack's ffmpeg has libx264 **and libx265**; with properly-encoded MP4s a damaged file **does** raise `MEDIA_ERR_DECODE` (3.89 s / 2.25 s of 10 s, identical across Chromium/Chrome/Edge) and engines **agree** on duration (10.00 s, 3600.0 s). Both earlier findings were fragmented-MP4 artefacts. **Edge installed and measured** — closes TD-30.
+- ⚠️ **Three "defects" were my own scaffolding**, checked before being reported: a unique `dedupKey` collision, incidents built with `source` instead of `triggeredBy`, and a cross-tenant assertion expecting 403 where scoping-from-the-token is correct.
+- Verified: operator workflow **14/14 browser-only**, zero console errors · security **19/19** incl. a planted foreign row sharing the incident id · resilience **5/5** (slow 3G, offline/online without refresh, backend stopped, post-logout storage clean) · 150 cameras / 5,000 incidents / 5,000 bookmarks / 50,001 events with every read **≤55 ms** · 40-cycle soak **+0.12 MB heap, +3 nodes, 0 listeners** · responsive at four widths, 1024 overflow fixed.
+- New: **`pnpm seed:evidence`** registers demo clips through the **real API**, so the custody chain is genuinely opened and the integrity hash genuinely computed.
+- ⚠️ **Not claimed: production deployment** — no proxy, HTTPS, CSP, compression or cache headers; the stack ran as `pnpm dev:*` (TD-32). **Still no CCTV hardware, and no browser plays RTSP** (TD-27/28).
+- `[Claude · 2026-08-04]`

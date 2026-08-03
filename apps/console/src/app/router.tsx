@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactElement } from 'react';
 import { createBrowserRouter } from 'react-router-dom';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { RouteError } from './RouteError';
 import { RequireAuth } from '@/features/auth/RequireAuth';
 import { AppShell } from '@/features/shell/AppShell';
 import { PageSkeleton } from '@/ui';
@@ -66,9 +67,17 @@ export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   {
     element: <RequireAuth />,
+    /*
+     * ⚠️ Without this, React Router's built-in fallback catches a route crash and renders a blank
+     * page — measured: one unexpected row shape turned the whole operator queue white, with no
+     * message and no way back. See `RouteError`. It sits inside the shell so a crashed page keeps
+     * its navigation.
+     */
+    errorElement: <RouteError />,
     children: [
       {
         element: <AppShell />,
+        errorElement: <RouteError />,
         children: [
           { index: true, element: route(<DashboardPage />) },
           {

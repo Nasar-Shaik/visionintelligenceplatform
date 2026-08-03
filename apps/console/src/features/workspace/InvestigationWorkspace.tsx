@@ -20,6 +20,7 @@ import { PanelFrame } from './PanelFrame';
 import { EvidenceSelectionProvider } from '@/features/playback/selection';
 import { CommandPalette } from './CommandPalette';
 import { PANEL_BODIES, type PanelContext } from './panels';
+import { PanelBoundary } from './PanelBoundary';
 import { resolveLayout, viewportTier, type ViewportTier } from './layout';
 import { useWorkspaceState } from './useWorkspaceState';
 import { useCommands, type CommandHandlers } from './useCommands';
@@ -36,10 +37,19 @@ function useViewportTier(): ViewportTier {
   return tier;
 }
 
+/*
+ * ⚠️ The side columns are fixed **only above `xl`**, and the centre has no minimum below it.
+ *
+ * Measured on a 1024×768 tablet: `w-80` (320 px) + `min-w-[480px]` + the 240 px shell sidebar is
+ * 1040 px of hard minimum inside 1024 px of viewport, so the workspace overflowed horizontally and
+ * the evidence and playback panels ran off the right edge — on the form factor an operator is most
+ * likely to carry. A minimum width is a promise the layout cannot always keep; below `xl` the
+ * columns shrink instead.
+ */
 const REGION_CLASS: Record<WorkspaceRegion, string> = {
-  left: 'flex w-80 flex-none flex-col gap-2 overflow-auto',
-  center: 'flex min-w-[480px] flex-1 flex-col gap-2 overflow-hidden',
-  right: 'flex w-96 flex-none flex-col gap-2 overflow-auto',
+  left: 'flex w-64 flex-none flex-col gap-2 overflow-auto xl:w-80',
+  center: 'flex min-w-0 flex-1 flex-col gap-2 overflow-hidden xl:min-w-[480px]',
+  right: 'flex w-80 flex-none flex-col gap-2 overflow-auto xl:w-96',
   bottom: 'flex flex-none gap-2 overflow-auto',
 };
 
@@ -147,7 +157,13 @@ export function InvestigationWorkspace() {
                       })
                     }
                   >
-                    <Body {...context} unavailableReason={resolved.unavailableReason} />
+                    {/*
+                      ⚠️ Each panel is contained. Without this, one panel's render error unmounts
+                      the whole route and the investigator gets a blank page — see `PanelBoundary`.
+                    */}
+                    <PanelBoundary title={resolved.panel.title}>
+                      <Body {...context} unavailableReason={resolved.unavailableReason} />
+                    </PanelBoundary>
                   </PanelFrame>
                 );
               })}
@@ -169,7 +185,9 @@ export function InvestigationWorkspace() {
                     workspace.setPanelState(resolved.panel.id, { collapsed: !resolved.collapsed })
                   }
                 >
-                  <Body {...context} unavailableReason={resolved.unavailableReason} />
+                  <PanelBoundary title={resolved.panel.title}>
+                    <Body {...context} unavailableReason={resolved.unavailableReason} />
+                  </PanelBoundary>
                 </PanelFrame>
               </div>
             );

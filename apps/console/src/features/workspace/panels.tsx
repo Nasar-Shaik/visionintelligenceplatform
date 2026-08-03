@@ -306,7 +306,16 @@ function Row({
 }
 function AttachmentsPanel({ incidentId, unavailableReason }: PanelContext) {
   const query = useIncident(incidentId);
-  const attachments = query.data?.notes.flatMap((note) => note.attachments) ?? [];
+  /*
+   * ⚠️ `notes?.` — the optional chain has to cover the array too.
+   *
+   * The contract declares `notes: z.array(...).default([])`, so it is never absent on anything the
+   * incident factory creates. A document written before the field existed has no `notes` key at
+   * all, the store returns it as stored, and `undefined.flatMap` threw — taking the **entire
+   * workspace** down, not just this panel. A default in a schema is a promise about parsing, not
+   * about every document that has ever been persisted.
+   */
+  const attachments = query.data?.notes?.flatMap((note) => note.attachments) ?? [];
   return (
     <QueryBoundary
       unavailableReason={unavailableReason}

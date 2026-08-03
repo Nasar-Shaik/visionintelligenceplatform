@@ -13,6 +13,7 @@ import {
   secondsRemaining,
   sessionClock,
   sessionExpired,
+  videoTrackMissing,
 } from './recovery';
 
 const at = (iso: string) => new Date(iso);
@@ -160,5 +161,38 @@ describe('⚠️ a positive capability probe is not a guarantee of decode', () =
     expect(copy.detail).toMatch(/advisory, not guarantees/);
     expect(copy.detail).toMatch(/evidence is intact/i);
     expect(copy.recoverable).toBe(true);
+  });
+});
+
+describe('⚠️ P-5.7 — a missing video decoder shows black and says nothing', () => {
+  /*
+   * Measured: Chromium 151 handed a real H.265 clip with an AAC track did not error. It reported a
+   * 10 s duration, a running currentTime, and `videoWidth === 0` — audio playing, video dropped.
+   * On screen: a black player with a moving scrubber and no message. An investigator reviewing a
+   * night-time corridor concludes the camera recorded darkness.
+   */
+  it('detects a video source that decoded no picture', () => {
+    expect(videoTrackMissing('video/mp4', 0, false)).toBe(true);
+  });
+
+  it('says nothing about a source that decoded fine', () => {
+    expect(videoTrackMissing('video/mp4', 1280, false)).toBe(false);
+  });
+
+  it('⚠️ says nothing about a still image, which has no media element to interrogate', () => {
+    expect(videoTrackMissing('image/jpeg', 0, true)).toBe(false);
+    expect(videoTrackMissing('video/mp4', 0, true)).toBe(false);
+  });
+
+  it('⚠️ treats "not reported" as unknown, never as absent', () => {
+    expect(videoTrackMissing('video/mp4', Number.NaN, false)).toBe(false);
+  });
+
+  it('tells the operator a black player is not an empty recording, and offers no retry', () => {
+    const copy = failureCopy('no-video');
+    expect(copy.detail).toMatch(/not an empty recording/i);
+    expect(copy.detail).toMatch(/evidence is intact/i);
+    /* A missing decoder is missing on the second attempt too. */
+    expect(copy.recoverable).toBe(false);
   });
 });
