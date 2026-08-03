@@ -33,7 +33,7 @@
  * that a reader is trusted to check.
  */
 import { z } from 'zod';
-import { IsoDateTime, TenantId } from '../common/primitives.js';
+import { IsoDateTime, TenantId, Uuid } from '../common/primitives.js';
 import { WorkspacePanelId, WorkspaceRegion } from './workspace.js';
 
 /**
@@ -76,10 +76,19 @@ export type WorkspaceTab = z.infer<typeof WorkspaceTab>;
 export const WorkspaceViewState = z.object({
   /** Seconds from the playback session's start. Meaningless without `selectedSource`, hence paired. */
   playbackPositionSeconds: z.number().min(0).optional(),
+  /**
+   * Playback rate the operator left it at (P-5.2 rec 4). Restored so a reviewer who works at 4×
+   * does not reset to 1× on every incident.
+   */
+  playbackRate: z.number().positive().max(64).optional(),
   /** Zoom factor on the timeline track. 1 = the full incident window. */
   timelineZoom: z.number().min(0.1).max(100).optional(),
+  /** Zoom factor on the evidence/playback viewport. 1 = fit. */
+  viewerZoom: z.number().min(0.1).max(32).optional(),
   /** Which evidence item is open in the viewer — an id, resolved on restore. */
   selectedEvidenceId: z.string().min(1).optional(),
+  /** Which camera's footage is showing — an id, resolved on restore (rec 4). */
+  selectedCameraId: z.string().min(1).optional(),
   /** Which incident is in focus — an id, resolved on restore. */
   currentIncidentId: z.string().min(1).optional(),
 });
@@ -108,9 +117,27 @@ export const WorkspaceUiState = z.object({
   filters: z.record(z.string(), z.unknown()).optional(),
   /** The free-text search box's contents. Text, not results. */
   searchQuery: z.string().max(500).optional(),
+  /**
+   * Bookmarks the operator has open in this session (P-5.2 rec 4) — **ids only**. The bookmark
+   * records themselves live in the Workflow context and are re-fetched; caching their labels here
+   * would put a copy of a mutable record in a browser, which is the one thing this contract exists
+   * to prevent.
+   */
+  bookmarkIds: z.array(Uuid).max(100).default([]),
   updatedAt: IsoDateTime,
 });
 export type WorkspaceUiState = z.infer<typeof WorkspaceUiState>;
+
+/*
+ * ⚠️ **`InvestigationSession` is the record above.** The P-5.2 review named the concept
+ * *InvestigationSession*, and it describes exactly what `WorkspaceUiState` already holds: the
+ * incident, the evidence ids, the selected camera, playback position and rate, filters, zoom, open
+ * panels, layout and bookmarks.
+ *
+ * A second exported type carrying the other name would be two schemas for one record — the
+ * duplicate source of truth that recommendation 17 of the same review warns against. The
+ * vocabulary is recorded here instead, so the name survives without the drift.
+ */
 
 /** Why a persisted reference did not survive the restore. */
 export const WorkspaceStateDropReason = z.enum([

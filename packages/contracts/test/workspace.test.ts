@@ -19,6 +19,7 @@ import {
   CommandRegistry,
   KeyChord,
   WORKSPACE_COMMANDS,
+  forbiddenBindings,
   hasModifier,
 } from '../src/workspace/commands.js';
 import {
@@ -302,5 +303,163 @@ describe('WorkspaceUiState — references, never records', () => {
     /* Bumping the layout must not discard saved sizes; bumping this must. */
     expect(WORKSPACE_STATE_SCHEMA_VERSION).toBe(1);
     expect(INVESTIGATION_WORKSPACE_LAYOUT.version).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// P-5.2 recs 1, 2, 5 — dock priority, multi-monitor reservation, and binding kinds.
+// ---------------------------------------------------------------------------------------------
+
+describe('P-5.2 rec 1 — responsive drop order is data, not a table in a document', () => {
+  it('gives every panel a priority', () => {
+    for (const p of INVESTIGATION_WORKSPACE_LAYOUT.panels) {
+      expect(p.priority, `${p.id} needs a drop priority`).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  /*
+   * ⚠️ A panel that cannot be hidden cannot be dropped. Without this rule the responsive behaviour
+   * contradicts itself, and the resolution is decided by whichever code path runs first.
+   */
+  it('⚠️ refuses a non-hideable panel that is not one of the first to survive', () => {
+    const result = WorkspaceLayout.safeParse({
+      version: 1,
+      panels: [{ ...panel, hideable: false, priority: 90 }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('drops the deferred panels first and the queue last', () => {
+    const byPriority = [...INVESTIGATION_WORKSPACE_LAYOUT.panels].sort(
+      (a, b) => a.priority - b.priority,
+    );
+    expect(byPriority[0]?.id).toBe('incident-queue');
+    expect(byPriority.at(-1)?.id).toBe('ai-recommendations');
+  });
+});
+
+describe('P-5.2 rec 2 — multi-monitor is reserved, and detaching is not floating', () => {
+  it('models detaching separately from floating', () => {
+    const evidence = INVESTIGATION_WORKSPACE_LAYOUT.panels.find((p) => p.id === 'evidence-viewer');
+    expect(evidence?.detachable).toBe(true);
+    const comments = INVESTIGATION_WORKSPACE_LAYOUT.panels.find((p) => p.id === 'comments');
+    /* Floating within the grid and crossing a window boundary are different problems. */
+    expect(comments?.detachable).toBe(false);
+    expect(comments?.floatable).toBe(false);
+  });
+
+  it('reserves detaching only for the panels a second monitor is actually for', () => {
+    const detachable = INVESTIGATION_WORKSPACE_LAYOUT.panels
+      .filter((p) => p.detachable)
+      .map((p) => p.id)
+      .sort();
+    expect(detachable).toEqual(['evidence-viewer', 'incident-queue', 'video-playback']);
+  });
+});
+
+describe('P-5.2 rec 5 — one registry, many bindings, and the AI boundary holds', () => {
+  it('defaults to the two surfaces that exist', () => {
+    const parsed = CommandRegistry.parse({
+      version: 1,
+      commands: [
+        {
+          id: 'search.open',
+          title: 'Search',
+          category: 'search',
+          scope: 'global',
+          permission: 'incident:read',
+        },
+      ],
+    });
+    expect(parsed.commands[0]?.bindings).toEqual(['keyboard', 'palette']);
+  });
+
+  /*
+   * ⚠️ The reason this rule is in the schema. P-5.1 locked the AI boundary in the permission catalog
+   * and a domain guard; a binding surface is a third way past both, and it is the one that reads
+   * like UI plumbing rather than like authorising an AI to close an incident.
+   */
+  it('⚠️ refuses an ai-assistant binding on a mutating command', () => {
+    const result = CommandRegistry.safeParse({
+      version: 1,
+      commands: [
+        {
+          id: 'incident.resolve',
+          title: 'Resolve Incident',
+          category: 'incident',
+          scope: 'workspace',
+          permission: 'incident:resolve',
+          mutates: true,
+          bindings: ['keyboard', 'palette', 'ai-assistant'],
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.error?.issues)).toContain('advisory');
+  });
+
+  it('⚠️ refuses an automation binding on a mutating command for the same reason', () => {
+    expect(forbiddenBindings(true, ['automation', 'keyboard'])).toEqual(['automation']);
+    expect(forbiddenBindings(false, ['automation', 'ai-assistant'])).toEqual([]);
+  });
+
+  it('allows an AI assistant to invoke read-only commands', () => {
+    const result = CommandRegistry.safeParse({
+      version: 1,
+      commands: [
+        {
+          id: 'search.incident',
+          title: 'Search Incidents',
+          category: 'search',
+          scope: 'global',
+          permission: 'incident:read',
+          mutates: false,
+          bindings: ['keyboard', 'palette', 'ai-assistant', 'voice'],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('binds no mutating command in the frozen registry to AI or automation', () => {
+    for (const command of WORKSPACE_COMMANDS.commands) {
+      expect(forbiddenBindings(command.mutates, command.bindings)).toEqual([]);
+    }
+  });
+});
+
+describe('P-5.2 rec 4 — the investigation session persists references and view state only', () => {
+  const state = {
+    schemaVersion: WORKSPACE_STATE_SCHEMA_VERSION,
+    tenantId: 'tnt_a',
+    principalId: 'usr_1',
+    layoutVersion: 1,
+    updatedAt: '2026-08-03T00:00:00.000Z',
+  };
+
+  it('carries playback rate, camera, zoom and bookmark ids', () => {
+    const parsed = WorkspaceUiState.parse({
+      ...state,
+      view: {
+        playbackRate: 4,
+        selectedCameraId: 'cam_1',
+        viewerZoom: 2,
+        currentIncidentId: 'inc_1',
+      },
+      bookmarkIds: ['11111111-1111-4111-8111-111111111111'],
+    });
+    expect(parsed.view.playbackRate).toBe(4);
+    expect(parsed.view.selectedCameraId).toBe('cam_1');
+    expect(parsed.bookmarkIds).toHaveLength(1);
+  });
+
+  /* ⚠️ Still no room for a record — bookmarks are ids, resolved on restore. */
+  it('⚠️ strips a cached bookmark record, keeping only the id', () => {
+    const parsed = WorkspaceUiState.parse({
+      ...state,
+      bookmarkIds: ['11111111-1111-4111-8111-111111111111'],
+      bookmarks: [{ id: 'x', label: 'suspect enters' }],
+    });
+    expect(parsed).not.toHaveProperty('bookmarks');
   });
 });

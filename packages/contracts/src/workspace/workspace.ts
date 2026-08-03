@@ -156,8 +156,32 @@ export const WorkspacePanel = z.object({
   collapsible: z.boolean().default(true),
   /** Whether the operator may remove it from the layout entirely. */
   hideable: z.boolean().default(true),
-  /** Whether it may be torn out into a floating window (a second monitor, in a control room). */
+  /**
+   * Whether it may float **within the workspace** — a draggable window over the dock grid, the way
+   * Grafana floats a panel for a closer look without giving up the surrounding context.
+   */
   floatable: z.boolean().default(false),
+  /**
+   * ⚠️ Whether it may be **detached into a separate OS window** — a second monitor, which is how
+   * control rooms actually work (P-5.2 rec 2). **Reserved: no runtime behaviour today.**
+   *
+   * Deliberately a different field from `floatable`, because they are different problems. Floating
+   * is a CSS position inside one document. Detaching crosses a window boundary: a second document
+   * with its own React root, its own query cache, and — the part that decides the design — **its own
+   * copy of nothing**. A detached panel re-fetches under the same principal and the same tenant; it
+   * never receives a serialised record through `postMessage`, because that is a cached business
+   * record living outside every permission check that guards it (§66).
+   */
+  detachable: z.boolean().default(false),
+  /**
+   * Responsive drop order (rec 1). **Lower survives longer**: when the viewport cannot hold every
+   * region, panels are collapsed, then tabbed, then dropped in **descending** priority.
+   *
+   * ⚠️ This exists so the responsive behaviour is *data* rather than a table in a design document.
+   * DESIGN_SYSTEM v2 §20 described the drop order in prose; prose cannot be checked, and the first
+   * panel added after it was written would have had no defined place in the sequence.
+   */
+  priority: z.number().int().min(0).max(100).default(50),
   /**
    * The stable key this panel's per-operator UI state is stored under.
    *
@@ -226,6 +250,18 @@ export const WorkspaceLayout = z
           path: ['panels'],
         });
       }
+      /*
+       * ⚠️ A panel that cannot be hidden cannot be dropped, so it must be one that survives longest.
+       * Without this, a non-hideable panel with a high priority produces a responsive rule that
+       * contradicts itself — and the resolution would be decided by whichever code path ran first.
+       */
+      if (!panel.hideable && panel.priority > 20) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `panel ${panel.id} cannot be hidden, so its priority must be <= 20 (is ${panel.priority})`,
+          path: ['panels'],
+        });
+      }
       if (panel.allowedRegions !== undefined && !panel.allowedRegions.includes(panel.region)) {
         ctx.addIssue({
           code: 'custom',
@@ -262,6 +298,8 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       collapsible: false,
       hideable: false,
       floatable: true,
+      detachable: true,
+      priority: 0,
       persistenceKey: 'vip.workspace.incident-queue',
     },
     {
@@ -279,6 +317,8 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       collapsible: true,
       hideable: true,
       floatable: false,
+      detachable: false,
+      priority: 80,
       persistenceKey: 'vip.workspace.saved-investigations',
     },
     {
@@ -295,6 +335,8 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       collapsible: true,
       hideable: true,
       floatable: false,
+      detachable: false,
+      priority: 50,
       persistenceKey: 'vip.workspace.filters',
     },
     {
@@ -310,6 +352,8 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       hideable: false,
       /* A second monitor showing the footage is how control rooms actually work. */
       floatable: true,
+      detachable: true,
+      priority: 5,
       persistenceKey: 'vip.workspace.evidence-viewer',
     },
     {
@@ -324,6 +368,8 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       collapsible: false,
       hideable: false,
       floatable: true,
+      detachable: true,
+      priority: 5,
       persistenceKey: 'vip.workspace.video-playback',
     },
     {
@@ -341,6 +387,8 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       collapsible: true,
       hideable: false,
       floatable: false,
+      detachable: false,
+      priority: 15,
       persistenceKey: 'vip.workspace.timeline',
     },
     {
@@ -358,6 +406,8 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       collapsible: false,
       hideable: false,
       floatable: false,
+      detachable: false,
+      priority: 10,
       persistenceKey: 'vip.workspace.incident-details',
     },
     {
@@ -374,6 +424,8 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       collapsible: true,
       hideable: true,
       floatable: false,
+      detachable: false,
+      priority: 40,
       persistenceKey: 'vip.workspace.rule-explanation',
     },
     {
@@ -390,6 +442,8 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       collapsible: true,
       hideable: true,
       floatable: false,
+      detachable: false,
+      priority: 35,
       persistenceKey: 'vip.workspace.assignments',
     },
     {
@@ -406,6 +460,8 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       collapsible: true,
       hideable: true,
       floatable: false,
+      detachable: false,
+      priority: 30,
       persistenceKey: 'vip.workspace.comments',
     },
     {
@@ -422,6 +478,8 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       collapsible: true,
       hideable: true,
       floatable: false,
+      detachable: false,
+      priority: 45,
       persistenceKey: 'vip.workspace.attachments',
     },
     {
@@ -445,6 +503,8 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       collapsible: true,
       hideable: true,
       floatable: false,
+      detachable: false,
+      priority: 85,
       persistenceKey: 'vip.workspace.ai-recommendations',
     },
     {
@@ -463,6 +523,8 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       collapsible: true,
       hideable: true,
       floatable: false,
+      detachable: false,
+      priority: 60,
       persistenceKey: 'vip.workspace.related-events',
     },
     {
@@ -480,6 +542,8 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       collapsible: true,
       hideable: true,
       floatable: false,
+      detachable: false,
+      priority: 65,
       persistenceKey: 'vip.workspace.related-incidents',
     },
     {
@@ -497,6 +561,8 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       collapsible: true,
       hideable: true,
       floatable: false,
+      detachable: false,
+      priority: 70,
       persistenceKey: 'vip.workspace.audit-trail',
     },
   ],

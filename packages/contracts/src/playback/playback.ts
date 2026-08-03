@@ -145,8 +145,28 @@ export const PlaybackMarker = z.object({
   at: IsoDateTime,
   /** Seconds from the session's `startedAt`. Negative is impossible; a marker outside is dropped. */
   offsetSeconds: z.number().nonnegative(),
+  /**
+   * End of the marked interval, when it has one (P-5.2 rec 3, "timeline ranges"). Loitering,
+   * tailgating and a queue building are **durations**, not instants — a point marker for a
+   * four-minute loiter puts one tick at the start and hides the thing being investigated.
+   * Absent ⇒ a point in time.
+   */
+  endAt: IsoDateTime.optional(),
+  endOffsetSeconds: z.number().nonnegative().optional(),
   label: z.string().min(1).max(200),
   severity: EventPriority.optional(),
+  /**
+   * Detector confidence in [0,1], for `kind: 'detection'`. ⚠️ **Absent means absent** — not zero and
+   * not certain. A detection rendered without its confidence is indistinguishable from an operator's
+   * own mark, which is how a 0.31 guess ends up cited as an observation.
+   */
+  confidence: z.number().min(0).max(1).optional(),
+  /**
+   * What produced an AI marker, so a wrong one is traceable. ⚠️ **Advisory only** — a detection
+   * marker never changes incident state, and no AI principal holds a permission that could
+   * (P-5.1's boundary, unchanged).
+   */
+  producer: z.object({ name: z.string().min(1), version: z.string().min(1) }).optional(),
   eventId: z.string().min(1).optional(),
   eventType: EventType.optional(),
   evidenceId: z.string().min(1).optional(),
@@ -337,3 +357,104 @@ export const CapturePlaybackSnapshotInput = z.object({
   attachToIncident: z.boolean().default(true),
 });
 export type CapturePlaybackSnapshotInput = z.infer<typeof CapturePlaybackSnapshotInput>;
+
+// ---------------------------------------------------------------------------------------------
+// P-5.2 rec 3 — multiple sources and synchronized playback.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * ⚠️ **How much the platform trusts a source's clock** — and the reason synchronized playback is
+ * not simply "line up the timestamps".
+ *
+ * Two cameras' timestamps come from **two different clocks**. A cheap IP camera with no NTP drifts
+ * by seconds a day; a camera that lost power comes back on a factory default. Aligning frames by
+ * their recorded times and presenting the result as *simultaneous* is a claim about those clocks,
+ * and it is the claim that decides whether a person appears at Door A before or after Door B.
+ *
+ * That is not a rendering detail. It is the difference between "the suspect left before the alarm"
+ * and "after", from the same footage. So the confidence is carried on every member of a sync group,
+ * and a group containing an unverified clock **says so** rather than drawing a confident wall.
+ */
+export const PlaybackClockConfidence = z.enum([
+  /** The source's clock is disciplined by NTP/PTP and the platform has verified it. */
+  'synchronised',
+  /** The device's own clock, unverified. The usual case for CCTV, and the reason this enum exists. */
+  'device-clock',
+  /** ⚠️ Not knowable — a legacy recording, or an upload with no clock provenance at all. */
+  'unknown',
+]);
+export type PlaybackClockConfidence = z.infer<typeof PlaybackClockConfidence>;
+
+export const PlaybackClockAccuracy = z.object({
+  confidence: PlaybackClockConfidence,
+  /** Known offset from platform time, in seconds. Positive means the source runs fast. */
+  offsetSeconds: z.number().optional(),
+  /**
+   * Worst-case misalignment. ⚠️ **Absent means unknown, never zero.** A `0` here asserts
+   * frame-accurate alignment, which is exactly the claim an unverified device clock cannot support.
+   */
+  maxSkewSeconds: z.number().min(0).optional(),
+});
+export type PlaybackClockAccuracy = z.infer<typeof PlaybackClockAccuracy>;
+
+/**
+ * Budget for a synchronized wall. Each member is a full session resolution — segments, markers and
+ * signed URLs — so nine members is nine fan-outs, and this number is the difference between a
+ * feature and an outage on the busiest screen in the product.
+ */
+export const PLAYBACK_SYNC_MAX_SOURCES = 9;
+
+export const PlaybackSyncMember = z.object({
+  session: PlaybackSession,
+  clock: PlaybackClockAccuracy,
+  /** Display order in the wall. Stable so a re-derivation does not reshuffle the operator's grid. */
+  order: z.number().int().min(0),
+});
+export type PlaybackSyncMember = z.infer<typeof PlaybackSyncMember>;
+
+/**
+ * Several sources played against **one wall clock** (rec 3).
+ *
+ * Every member's `offsetSeconds` is relative to this group's `startedAt`, not to its own session —
+ * that is what makes the sources comparable, and it is computed here rather than in the client so
+ * two consumers cannot disagree about the alignment.
+ *
+ * ⚠️ **`alignmentVerified` is false whenever any member's clock is not `synchronised`.** It is
+ * derived, not asserted, so a wall containing one unverified camera cannot present itself as
+ * verified — and the console renders the caveat beside the grid rather than in a tooltip nobody
+ * opens.
+ */
+export const PlaybackSyncGroup = z.object({
+  tenantId: TenantId,
+  incidentId: z.string().min(1).optional(),
+  startedAt: IsoDateTime,
+  endedAt: IsoDateTime,
+  durationSeconds: z.number().nonnegative(),
+  members: z.array(PlaybackSyncMember).min(1).max(PLAYBACK_SYNC_MAX_SOURCES),
+  /** ⚠️ Derived from the members' clocks. See the note above. */
+  alignmentVerified: z.boolean(),
+  /** Required when `alignmentVerified` is false — which member, and why it could not be verified. */
+  alignmentCaveat: z.string().min(1).max(300).optional(),
+  derivedAt: IsoDateTime,
+});
+export type PlaybackSyncGroup = z.infer<typeof PlaybackSyncGroup>;
+
+/** Ask for a synchronized wall over several sources sharing one time window. */
+export const PlaybackSyncQuery = z.object({
+  sources: z.array(PlaybackSource).min(1).max(PLAYBACK_SYNC_MAX_SOURCES),
+  from: IsoDateTime,
+  to: IsoDateTime,
+  include: z
+    .array(z.enum(['markers', 'bookmarks', 'annotations']))
+    .max(3)
+    .default([]),
+});
+export type PlaybackSyncQuery = z.infer<typeof PlaybackSyncQuery>;
+
+/**
+ * Whether a group's alignment can be claimed. Derived so the flag and the members cannot disagree
+ * (CONSTRAINTS §46) — one function, used by the service and asserted by a test.
+ */
+export function alignmentIsVerified(members: readonly PlaybackSyncMember[]): boolean {
+  return members.every((member) => member.clock.confidence === 'synchronised');
+}

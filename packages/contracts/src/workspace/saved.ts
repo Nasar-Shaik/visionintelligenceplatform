@@ -189,3 +189,45 @@ export const CreatePinInput = z.object({
   label: z.string().min(1).max(200).optional(),
 });
 export type CreatePinInput = z.infer<typeof CreatePinInput>;
+
+// ---------------------------------------------------------------------------------------------
+// P-5.2 rec 8 — saved work is four concepts, not one.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A named workspace layout an operator saved (rec 8).
+ *
+ * ⚠️ **Kept separate from `SavedSearch` and `SavedInvestigation` deliberately**, because the three
+ * have genuinely different lifecycles and merging them would give one record three reasons to
+ * change:
+ *
+ * | Concept                | Lifecycle                                                                    |
+ * | ---------------------- | ---------------------------------------------------------------------------- |
+ * | `SavedSearch`          | Dies when the query contract changes under it — it can go **stale**          |
+ * | `SavedInvestigation`   | Dies when the records it references are archived — it can lose **members**   |
+ * | `SavedWorkspaceLayout` | Dies when the **layout version** changes — it can gain **unknown panels**    |
+ * | Dashboard layout (Q-4) | Not this. A dashboard is a different surface with different widgets          |
+ *
+ * A merged "saved thing" would need all three failure modes on one record, and a reader would have
+ * to know which fields were meaningful for which kind — the shape that always ends up with a
+ * `type` discriminator and three optional halves.
+ *
+ * ⚠️ It stores **only presentation**, exactly like `WorkspaceUiState`: sizes, collapse, visibility,
+ * dock. There is no incident, no filter and no evidence id here, because a *layout* that carried an
+ * incident would silently reopen someone else's work when a colleague applied it.
+ */
+export const SavedWorkspaceLayout = z.object({
+  id: Uuid,
+  tenantId: TenantId,
+  name: z.string().min(1).max(120),
+  /** The layout version this was captured against — a panel added later is defaulted, not dropped. */
+  layoutVersion: z.number().int().min(1),
+  /** Per-panel presentation. Deliberately `unknown`-valued: this contract must not import the
+   * console's panel-state shape and become a second definition of it. */
+  panels: z.array(z.record(z.string(), z.unknown())).max(50).default([]),
+  visibility: SavedVisibility.default('private'),
+  ownerId: z.string().min(1),
+  createdAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+});
+export type SavedWorkspaceLayout = z.infer<typeof SavedWorkspaceLayout>;

@@ -49,6 +49,21 @@ export const JobKind = z.enum([
   'export.bulk',
   /** Cut a standalone media file for a `Clip` that is currently a time-range reference. */
   'clip.materialise',
+  // ---------------------------------------------------------------------------------------------
+  // Reserved (P-5.2 rec 7). **No worker submits or handles these.** Reserving a job *kind* is safe
+  // in a way that reserving a query filter is not (§58): an unsubmitted kind simply never appears,
+  // whereas an unpopulated filter always matches nothing while looking like it works.
+  // ---------------------------------------------------------------------------------------------
+  /** Ingest an operator-supplied file or archive. ⚠️ Reserved — the upload path is TD-9 G-2. */
+  'import.bulk',
+  /** Run a capability over stored media out of band. ⚠️ Reserved — AI Runtime v1.0 is closed; this
+   * submits work to the existing runtime and adds no new inference architecture. */
+  'ai.analyse',
+  /** Re-derive analytics over a historical window. ⚠️ Reserved. */
+  'analysis.offline',
+  /** Render media: transcode, stitch, burn in an overlay. ⚠️ Reserved — output is always a **new**
+   * artefact; nothing here rewrites stored evidence. */
+  'media.render',
 ]);
 export type JobKind = z.infer<typeof JobKind>;
 

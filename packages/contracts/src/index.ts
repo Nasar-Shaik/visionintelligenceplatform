@@ -88,9 +88,11 @@ export * from './workspace/workspace.js';
 export * from './workspace/commands.js';
 export * from './workspace/state.js';
 export * from './workspace/saved.js';
+export * from './workspace/extensions.js';
 
 // playback — recorded CCTV review (rec 2)
 export * from './playback/playback.js';
+export * from './playback/viewer.js';
 
 // background jobs — anything too slow to hold a request open (rec 4)
 export * from './jobs/job.js';

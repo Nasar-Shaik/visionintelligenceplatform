@@ -102,6 +102,73 @@ export function hasModifier(chord: string): boolean {
   return chord.includes('+');
 }
 
+// ---------------------------------------------------------------------------------------------
+// P-5.2 rec 5 — one command registry, many bindings.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * How a command can be invoked. **Reserved: only `keyboard` and `palette` are implemented.**
+ *
+ * The recommendation was "one command registry, many bindings" — keyboard, mouse, touch,
+ * automation, voice, AI assistant. Reserving the *kinds* here costs nothing and settles the shape;
+ * what it must not do is quietly widen who can do what.
+ *
+ * ### ⚠️ The one that changes a security boundary
+ *
+ * `ai-assistant` is the reason this enum needed a rule rather than a comment. P-5.1 froze the AI
+ * boundary — *AI may recommend, summarise, correlate, prioritise, suggest and explain; it may never
+ * assign, resolve, close, delete, modify or escalate* — and enforced it in the permission catalog
+ * and a domain guard. A binding surface is a **third** way in, and it is the one that looks
+ * harmless: "let the assistant run the Resolve command" reads like UI plumbing, not like granting
+ * an AI the ability to close an incident.
+ *
+ * So `CommandRegistry` **refuses** an `ai-assistant` or `automation` binding on any command with
+ * `mutates: true`. Not by convention, and not by prompt — the registry will not parse.
+ */
+export const CommandBindingKind = z.enum([
+  /** A key chord. Implemented. */
+  'keyboard',
+  /** Selected from the command palette. Implemented. */
+  'palette',
+  /** A toolbar button, context menu item or gesture. Reserved. */
+  'mouse',
+  /** A touch gesture on a tablet in the field. Reserved. */
+  'touch',
+  /** A configured automation acting on a policy someone wrote. ⚠️ Reserved; read-only commands. */
+  'automation',
+  /** Spoken, hands-free in a control room. Reserved. */
+  'voice',
+  /** ⚠️ An AI assistant. Reserved, and **read-only commands only** — see the note above. */
+  'ai-assistant',
+]);
+export type CommandBindingKind = z.infer<typeof CommandBindingKind>;
+
+/**
+ * Binding kinds that may **never** invoke a state-changing command. Exported as data so the rule is
+ * greppable and testable rather than buried in a refinement.
+ */
+export const NON_MUTATING_BINDING_KINDS: readonly CommandBindingKind[] = ['ai-assistant', 'automation'];
+
+/**
+ * Which invocation surfaces a command exposes. Absent ⇒ `['keyboard', 'palette']`, the two that
+ * exist today.
+ */
+export const CommandBindings = z.array(CommandBindingKind).min(1).max(7);
+export type CommandBindings = z.infer<typeof CommandBindings>;
+
+/**
+ * Does this command's binding set violate the AI boundary?
+ *
+ * Returns the offending kinds, so an error can name them. Empty means the command is safe.
+ */
+export function forbiddenBindings(
+  mutates: boolean,
+  bindings: readonly CommandBindingKind[] | undefined,
+): CommandBindingKind[] {
+  if (!mutates || bindings === undefined) return [];
+  return bindings.filter((kind) => NON_MUTATING_BINDING_KINDS.includes(kind));
+}
+
 export const WorkspaceCommand = z.object({
   id: CommandId,
   title: z.string().min(1).max(80),
@@ -129,6 +196,14 @@ export const WorkspaceCommand = z.object({
    * commands are registered (so the binding is reserved and cannot be reused) and **not shown**.
    */
   available: z.boolean().default(true),
+  /**
+   * Which invocation surfaces may run this (P-5.2 rec 5). Defaults to the two that exist.
+   *
+   * ⚠️ `ai-assistant` and `automation` are **refused on a mutating command** by `CommandRegistry`.
+   * See `CommandBindingKind` — a binding surface is a third way past the AI boundary, and it is the
+   * one that looks like UI plumbing rather than like granting an AI the ability to close an incident.
+   */
+  bindings: z.array(CommandBindingKind).min(1).max(7).default(['keyboard', 'palette']),
 });
 export type WorkspaceCommand = z.infer<typeof WorkspaceCommand>;
 
@@ -147,6 +222,20 @@ export const CommandRegistry = z
         ctx.addIssue({ code: 'custom', message: `duplicate command: ${command.id}` });
       }
       ids.add(command.id);
+
+      /*
+       * ⚠️ Rule 4 (P-5.2 rec 5) — the AI boundary, enforced a third time. P-5.1 locked it in the
+       * permission catalog and in a domain guard; a binding surface is the way past both, because
+       * "let the assistant run Resolve" reads like plumbing rather than like authorising an AI to
+       * close an incident.
+       */
+      const forbidden = forbiddenBindings(command.mutates, command.bindings);
+      if (forbidden.length > 0) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `${command.id} mutates state and must not be bound to ${forbidden.join(', ')} — AI and automation are advisory (P-5.1 boundary)`,
+        });
+      }
 
       if (command.shortcut === undefined) continue;
 
@@ -206,6 +295,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       mutates: false,
       shortcut: 'Mod+K',
       keywords: ['commands', 'actions', 'palette'],
+      bindings: ['keyboard', 'palette', 'mouse'],
       available: true,
     },
     {
@@ -217,6 +307,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       mutates: false,
       shortcut: 'Slash',
       keywords: ['find', 'lookup'],
+      bindings: ['keyboard', 'palette', 'mouse', 'voice', 'ai-assistant'],
       available: true,
     },
     {
@@ -227,6 +318,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       permission: 'camera:read',
       mutates: false,
       keywords: ['camera', 'device'],
+      bindings: ['keyboard', 'palette', 'mouse', 'voice', 'ai-assistant'],
       available: true,
     },
     {
@@ -237,6 +329,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       permission: 'incident:read',
       mutates: false,
       keywords: ['incident', 'alarm'],
+      bindings: ['keyboard', 'palette', 'mouse', 'voice', 'ai-assistant'],
       available: true,
     },
     {
@@ -247,6 +340,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       permission: 'rule:read',
       mutates: false,
       keywords: ['rule', 'policy'],
+      bindings: ['keyboard', 'palette', 'mouse', 'voice', 'ai-assistant'],
       available: true,
     },
     {
@@ -258,6 +352,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       mutates: false,
       shortcut: 'Mod+1',
       keywords: ['queue', 'list'],
+      bindings: ['keyboard', 'palette', 'mouse', 'touch', 'voice', 'ai-assistant'],
       available: true,
     },
     {
@@ -269,6 +364,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       mutates: false,
       shortcut: 'Mod+2',
       keywords: ['evidence', 'snapshot', 'clip'],
+      bindings: ['keyboard', 'palette', 'mouse', 'touch', 'voice', 'ai-assistant'],
       available: true,
     },
     {
@@ -280,6 +376,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       mutates: false,
       shortcut: 'Mod+3',
       keywords: ['video', 'footage', 'player'],
+      bindings: ['keyboard', 'palette', 'mouse', 'touch', 'voice', 'ai-assistant'],
       available: true,
     },
     {
@@ -291,6 +388,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       mutates: false,
       shortcut: 'Mod+4',
       keywords: ['timeline', 'history', 'narrative'],
+      bindings: ['keyboard', 'palette', 'mouse', 'touch', 'voice', 'ai-assistant'],
       available: true,
     },
     {
@@ -302,6 +400,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       mutates: false,
       shortcut: 'Space',
       keywords: ['play', 'pause', 'stop'],
+      bindings: ['keyboard', 'palette', 'mouse', 'touch', 'voice'],
       available: true,
     },
     {
@@ -313,6 +412,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       mutates: false,
       shortcut: 'ArrowLeft',
       keywords: ['step', 'back', 'rewind'],
+      bindings: ['keyboard', 'palette', 'mouse', 'touch', 'voice'],
       available: true,
     },
     {
@@ -324,6 +424,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       mutates: false,
       shortcut: 'ArrowRight',
       keywords: ['step', 'forward', 'advance'],
+      bindings: ['keyboard', 'palette', 'mouse', 'touch', 'voice'],
       available: true,
     },
     {
@@ -336,6 +437,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       mutates: true,
       shortcut: 'Mod+B',
       keywords: ['mark', 'save', 'moment'],
+      bindings: ['keyboard', 'palette', 'mouse'],
       available: false,
     },
     {
@@ -347,6 +449,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       mutates: true,
       shortcut: 'Mod+Shift+A',
       keywords: ['assign', 'owner', 'handover'],
+      bindings: ['keyboard', 'palette', 'mouse'],
       available: true,
     },
     {
@@ -358,6 +461,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       mutates: true,
       shortcut: 'Mod+Shift+R',
       keywords: ['resolve', 'complete', 'done'],
+      bindings: ['keyboard', 'palette', 'mouse'],
       available: true,
     },
     {
@@ -370,6 +474,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       mutates: true,
       shortcut: 'Mod+Shift+E',
       keywords: ['export', 'pdf', 'report', 'download'],
+      bindings: ['keyboard', 'palette', 'mouse'],
       available: false,
     },
   ],
