@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ShieldAlert } from 'lucide-react';
+import { IncidentStatus as IncidentStatusEnum } from '@vip/contracts';
 import type { IncidentStatus } from '@vip/contracts';
 import { formatTimestamp, timeAgo } from '@/lib/format';
 import { SEVERITY_ORDER, severityTokens } from '@/lib/severity';
@@ -29,7 +30,8 @@ import { INCIDENT_STATUS } from './status';
 import { IncidentDetailSheet } from './IncidentDetailSheet';
 import { useIncidentsInfinite } from './useIncidents';
 
-const STATUSES: IncidentStatus[] = ['raised', 'acknowledged', 'resolved', 'closed'];
+/** Derived from the contract, so a lifecycle state can never exist without a filter for it (G-1). */
+const STATUSES: IncidentStatus[] = IncidentStatusEnum.options;
 const POLL = { refetchInterval: 20_000 };
 
 /** Incident queue — filterable, cursor-paginated, with a lifecycle detail drawer (ack/resolve/close). */

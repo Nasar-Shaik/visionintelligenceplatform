@@ -2,6 +2,18 @@
 
 > One rolling file, newest first. **Capture meaningful progress only — no exhaustive file lists** (those live in git history and per-slice [REVIEW_HISTORY](REVIEW_HISTORY.md)). One short entry per working day. Sign entries `[name · YYYY-MM-DD]`.
 
+## 2026-08-03 (latest)
+
+- **P-4.2 ✅ ACCEPTED** by the Architect. The **P-5 architecture validation pass was accepted in full** and its six findings became **formal entry criteria**, with ten further recommendations.
+- **P-5.0 built — the gate before P-5, not P-5.** No workspace, no evidence viewer, no timeline, no collaboration UI, no reporting, no SLA. All six criteria met and tracked in a [readiness matrix](P-5-ENTRY-CRITERIA.md); G-6 (TD-20/E-1) carried, not blocking.
+- **Three places I did not do what the criteria said, each recorded.** `assigned` is an **operation, not a lifecycle state** — an incident can be assigned in any active state, and folding _whose is this_ into _where is this_ makes every pair of transitions look legal. The **behaviour** and **composite** search filters were **not built**, because `IncidentCandidate` carries no such id and a filter that always matches nothing reads as "there are none" (TD-23). And the lookup metrics emit **three of the four requested series**, because there is no cache and a `cache_hits_total` pinned at zero reads as a broken one.
+- **TD-22 paid in full, before the filters that needed it** — and the coverage model was **wrong the obvious way** first: the tenant-leading cursor index consumes the tenant and serves the sort for _every_ query, so an unindexed filter scored as "served" while walking every incident the tenant had raised. Coverage is now `covered`/`bounded`/`scan`, never `scan`, with a self-test proving the model catches both a missing index and one truncated before the cursor.
+- **Planner verification ran for real.** A MongoDB was reachable, so `explain()` confirmed all ten incident filters choose their declared index with no `SORT` stage and no `COLLSCAN` — and an integration test recreates the pre-P-5.0 event index shape to prove the boot-time reconcile works rather than failing the service.
+- **Three P1-5 event indexes were already wrong** — they stopped at `occurredAt` and abandoned the `(occurredAt, id)` sort every paged read performs. Fixed alongside `GET /events/:id`, which closes the gap that blocked the investigation workspace's flagship answer.
+- **Gates:** workflow 77 (+38) · events 40 (+7) · contracts 296 (+5) · rules 206 · camera 193 · tenant 144 · console 112 · gateway 42 · e2e 33 · typecheck 28 · integration **13 + 9 against a real MongoDB** · schemas 70.
+- **Next:** P-5.0 review. With it accepted, **P-5 — Incident Management** is unblocked.
+- `[Claude · 2026-08-03]`
+
 ## 2026-08-03 (later)
 
 - **P-4.1 ✅ ACCEPTED** by the Architect with 15 further recommendations, folded into **P-4.2 — The Rule Support Surface & the P-5 Contract**.

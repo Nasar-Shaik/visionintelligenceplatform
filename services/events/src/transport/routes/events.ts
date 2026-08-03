@@ -10,6 +10,7 @@ import { EventQuery, EventReplayRequest } from '@vip/contracts';
 import { TenantScope } from '@vip/tenancy';
 import type { EventQueryService } from '../../application/event-query-service.js';
 import type { Auth } from '../plugins/auth.js';
+import { notFound } from '../../application/errors.js';
 import { parseBody, success } from '../http.js';
 
 export interface EventRoutesDeps {
@@ -20,6 +21,28 @@ export interface EventRoutesDeps {
 export function registerEventRoutes(app: FastifyInstance, deps: EventRoutesDeps): void {
   const { service, auth } = deps;
   const scopeOf = (tenantId: string): TenantScope => TenantScope.fromTenantId(tenantId);
+
+  /**
+   * Fetch one event by id (P-5.0 entry criterion G-5).
+   *
+   * The gap this closes: an incident carries `triggeredBy.eventId`, and until now nothing could
+   * turn that id back into an event — `EventQuery` had no `id` filter and no by-id route existed.
+   * That blocked the investigation workspace's flagship answer, _why did this rule fire_, which
+   * needs the event to replay through `POST /rules/:id/simulate`.
+   *
+   * Additive only: `EventEnvelope` is a frozen AI Runtime v1.0 contract and is untouched. Another
+   * tenant's event is a 404, identical to one that never existed (no existence leak).
+   */
+  app.get<{ Params: { id: string } }>(
+    '/events/:id',
+    { preHandler: auth.authorize('event:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const envelope = await service.getById(scope, request.params.id);
+      if (!envelope) throw notFound(`event ${request.params.id} not found`);
+      return reply.send(success(envelope));
+    },
+  );
 
   app.get('/events', { preHandler: auth.authorize('event:read') }, async (request, reply) => {
     const scope = scopeOf(request.principal!.tenantId);

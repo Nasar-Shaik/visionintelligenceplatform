@@ -13,6 +13,8 @@ export class IncidentMetrics {
   readonly candidatesDeduplicated: Counter<string>;
   readonly transitions: Counter<string>;
   readonly promotionDuration: Histogram<string>;
+  readonly assignments: Counter<string>;
+  readonly notesAdded: Counter<string>;
 
   constructor(registry: Registry) {
     this.candidatesConsumed = new Counter({
@@ -40,6 +42,17 @@ export class IncidentMetrics {
       name: 'workflow_incident_transitions_total',
       help: 'Incident lifecycle transitions applied',
       labelNames: ['to'],
+      registers: [registry],
+    });
+    this.assignments = new Counter({
+      name: 'workflow_incident_assignments_total',
+      help: 'Incident assignments and un-assignments applied (P-5.0 G-2)',
+      labelNames: ['kind'],
+      registers: [registry],
+    });
+    this.notesAdded = new Counter({
+      name: 'workflow_incident_notes_total',
+      help: 'Operator notes appended to incidents (P-5.0 G-2)',
       registers: [registry],
     });
     this.promotionDuration = new Histogram({

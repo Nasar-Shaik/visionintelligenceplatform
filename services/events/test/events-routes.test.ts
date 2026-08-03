@@ -148,3 +148,105 @@ describe('POST /events/replay', () => {
     expect(replayed).toHaveLength(2);
   });
 });
+
+/**
+ * P-5.0 entry criterion G-5 — event retrieval by id.
+ *
+ * The gap: an incident carries `triggeredBy.eventId`, and nothing could turn that id back into an
+ * event. That blocked the investigation workspace's flagship answer, _why did this rule fire_,
+ * which replays the triggering event through the rule simulator.
+ */
+describe('GET /events/:id (P-5.0 G-5)', () => {
+  it('returns the envelope the incident’s triggeredBy.eventId points at', async () => {
+    const t = await token('tnt_a', ['admin']);
+    const list = await app.inject({ method: 'GET', url: '/events', headers: authHeader(t) });
+    const first = list.json().data.events[0];
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/events/${first.id}`,
+      headers: authHeader(t),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toEqual(first);
+  });
+
+  it('is a 404 for an unknown id — an expired event is absent, not an error', async () => {
+    const t = await token('tnt_a', ['admin']);
+    const res = await app.inject({
+      method: 'GET',
+      url: '/events/evt_does_not_exist',
+      headers: authHeader(t),
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  /** The isolation property that matters: another tenant's event is indistinguishable from absent. */
+  it('is a 404 — not a 403 — for another tenant’s event, so existence never leaks', async () => {
+    const a = await token('tnt_a', ['admin']);
+    const b = await token('tnt_b', ['admin']);
+    const theirs = (
+      await app.inject({ method: 'GET', url: '/events', headers: authHeader(b) })
+    ).json().data.events[0];
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/events/${theirs.id}`,
+      headers: authHeader(a),
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error?.code ?? res.json().code).toBe('not_found');
+  });
+
+  it('is denied without event:read, like every other read', async () => {
+    const res = await app.inject({ method: 'GET', url: '/events/evt_1' });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('counts lookups by outcome, and exposes no cache series (rec 4)', async () => {
+    const t = await token('tnt_a', ['admin']);
+    await app.inject({ method: 'GET', url: '/events/evt_1', headers: authHeader(t) });
+    await app.inject({ method: 'GET', url: '/events/nope', headers: authHeader(t) });
+
+    const metrics = (await app.inject({ method: 'GET', url: '/metrics' })).body;
+    expect(metrics).toMatch(/events_lookup_total\{outcome="found"[^}]*\} 1/);
+    expect(metrics).toMatch(/events_lookup_total\{outcome="not_found"[^}]*\} 1/);
+    expect(metrics).toContain('events_lookup_duration_seconds');
+    // There is no cache, so there are no cache counters. A series pinned at zero would read as a
+    // broken cache rather than an absent one.
+    expect(metrics).not.toContain('cache_hit');
+    expect(metrics).not.toContain('cache_miss');
+  });
+});
+
+describe('GET /events?correlationId= (P-5.0 G-5)', () => {
+  it('returns only the events on that correlation', async () => {
+    const t = await token('tnt_a', ['admin']);
+    const all = (await app.inject({ method: 'GET', url: '/events', headers: authHeader(t) })).json()
+      .data.events;
+    const correlationId = all[0].correlationId;
+    expect(correlationId).toBeTruthy();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/events?correlationId=${correlationId}`,
+      headers: authHeader(t),
+    });
+    expect(res.statusCode).toBe(200);
+    const events = res.json().data.events;
+    expect(events.length).toBeGreaterThan(0);
+    expect(events.every((e: { correlationId: string }) => e.correlationId === correlationId)).toBe(
+      true,
+    );
+  });
+
+  it('returns nothing for a correlation that does not exist', async () => {
+    const t = await token('tnt_a', ['admin']);
+    const res = await app.inject({
+      method: 'GET',
+      url: '/events?correlationId=corr-nobody',
+      headers: authHeader(t),
+    });
+    expect(res.json().data.events).toHaveLength(0);
+  });
+});

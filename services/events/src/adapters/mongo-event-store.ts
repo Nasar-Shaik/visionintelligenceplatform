@@ -54,6 +54,20 @@ export class MongoEventStore implements EventStore {
     }
   }
 
+  /**
+   * One envelope by id, tenant-scoped (P-5.0 G-5). Served by `tenant_event_id` — before that index
+   * existed this would have been a collection scan, which is why the index landed in the same slice
+   * as the route rather than after someone noticed.
+   */
+  async getById(scope: TenantScope, id: string): Promise<EventEnvelope | null> {
+    const rows = await this.repo.aggregate<EventEnvelope>(scope, [
+      { $match: { id } },
+      { $limit: 1 },
+      PROJECT_ENVELOPE,
+    ]);
+    return rows[0] ?? null;
+  }
+
   async query(
     scope: TenantScope,
     q: EventQuery,
@@ -62,6 +76,7 @@ export class MongoEventStore implements EventStore {
     if (q.type) match['type'] = q.type;
     if (q.cameraId) match['cameraId'] = q.cameraId;
     if (q.zoneId) match['zoneId'] = q.zoneId;
+    if (q.correlationId) match['correlationId'] = q.correlationId;
     if (q.from || q.to) {
       const range: PlainObject = {};
       if (q.from) range['$gte'] = q.from;

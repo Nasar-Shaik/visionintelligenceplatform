@@ -9,6 +9,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { ServiceConfig } from '../config/env.js';
 import { ReadinessRegistry } from '../application/readiness.js';
 import type { EventQueryService } from '../application/event-query-service.js';
+import { EventMetrics } from '../application/metrics.js';
 import { registerSecurity } from './plugins/security.js';
 import { registerMetrics } from './plugins/observability.js';
 import { createAuth, registerPrincipal } from './plugins/auth.js';
@@ -63,6 +64,8 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
   registerHealthRoutes(app, { readiness });
   registerMetricsRoute(app, registry);
   registerRootRoute(app, { name: config.serviceName, version: config.serviceVersion, startedAt });
+  // Lookup metrics can only be created once the registry exists (rec 4) — operational only.
+  opts.queryService.useMetrics(new EventMetrics(registry));
   registerEventRoutes(app, { service: opts.queryService, auth });
 
   return { app, readiness };

@@ -8,8 +8,12 @@
 import type { FastifyInstance } from 'fastify';
 import {
   AcknowledgeIncidentInput,
+  AddIncidentNoteInput,
+  AssignIncidentInput,
   CloseIncidentInput,
+  EscalateIncidentInput,
   IncidentQuery,
+  InvestigateIncidentInput,
   ResolveIncidentInput,
 } from '@vip/contracts';
 import { TenantScope } from '@vip/tenancy';
@@ -27,9 +31,23 @@ interface IncidentParams {
   id: string;
 }
 
+/**
+ * The raw query string. Every key is a string here and is handed to `IncidentQuery` to validate —
+ * `limit` is the only one that needs coercing, and an unknown key is dropped by the schema rather
+ * than silently widening the search.
+ */
 interface RawQuery {
   status?: string;
   severity?: string;
+  category?: string;
+  eventType?: string;
+  cameraId?: string;
+  zoneId?: string;
+  ruleId?: string;
+  correlationId?: string;
+  assignee?: string;
+  from?: string;
+  to?: string;
   limit?: string;
   cursor?: string;
 }
@@ -42,10 +60,8 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
     const scope = scopeOf(request.principal!.tenantId);
     const raw = request.query as RawQuery;
     const query = parseBody(IncidentQuery, {
-      status: raw.status,
-      severity: raw.severity,
+      ...raw,
       limit: raw.limit !== undefined ? Number(raw.limit) : undefined,
-      cursor: raw.cursor,
     });
     return reply.send(success(await service.list(scope, query)));
   });
@@ -90,6 +106,83 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
         request.principal!.principalId,
       );
       return reply.send(success(updated));
+    },
+  );
+
+  app.get<{ Params: IncidentParams }>(
+    '/incidents/:id/activity',
+    { preHandler: auth.authorize('incident:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      return reply.send(success(await service.activity(scope, request.params.id)));
+    },
+  );
+
+  app.post<{ Params: IncidentParams }>(
+    '/incidents/:id/investigate',
+    { preHandler: auth.authorize('incident:investigate') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const input = parseBody(InvestigateIncidentInput, request.body ?? {});
+      const updated = await service.investigate(
+        scope,
+        request.params.id,
+        input,
+        request.principal!.principalId,
+      );
+      return reply.send(success(updated));
+    },
+  );
+
+  app.post<{ Params: IncidentParams }>(
+    '/incidents/:id/escalate',
+    { preHandler: auth.authorize('incident:escalate') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const input = parseBody(EscalateIncidentInput, request.body ?? {});
+      const updated = await service.escalate(
+        scope,
+        request.params.id,
+        input,
+        request.principal!.principalId,
+      );
+      return reply.send(success(updated));
+    },
+  );
+
+  /**
+   * Assign or un-assign. **Not a lifecycle route** — the status is unchanged, which is why this is
+   * `/assign` rather than a transition alongside ack/resolve/close.
+   */
+  app.post<{ Params: IncidentParams }>(
+    '/incidents/:id/assign',
+    { preHandler: auth.authorize('incident:assign') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const input = parseBody(AssignIncidentInput, request.body ?? {});
+      const updated = await service.assign(
+        scope,
+        request.params.id,
+        input,
+        request.principal!.principalId,
+      );
+      return reply.send(success(updated));
+    },
+  );
+
+  app.post<{ Params: IncidentParams }>(
+    '/incidents/:id/notes',
+    { preHandler: auth.authorize('incident:comment') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const input = parseBody(AddIncidentNoteInput, request.body ?? {});
+      const updated = await service.addNote(
+        scope,
+        request.params.id,
+        input,
+        request.principal!.principalId,
+      );
+      return reply.status(201).send(success(updated));
     },
   );
 

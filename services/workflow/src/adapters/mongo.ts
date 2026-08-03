@@ -4,8 +4,9 @@
  * composition root — no other module talks to the driver. Uniqueness on `(tenantId, source.dedupKey)`
  * is what makes candidate promotion idempotent even across restarts / concurrent consumers.
  */
-import { MongoClient, type Collection, type Db } from 'mongodb';
+import { MongoClient, type Collection, type Db, type IndexSpecification } from 'mongodb';
 import type { Incident } from '@vip/contracts';
+import { INCIDENT_INDEXES } from './indexes.js';
 
 export interface MongoAdapter {
   client: MongoClient;
@@ -42,20 +43,27 @@ export async function connectMongo(opts: ConnectMongoOptions): Promise<MongoAdap
   };
 }
 
+/**
+ * Create every declared index. The set lives in `indexes.ts` as **data**, so the coverage test can
+ * read the same declaration the driver does — an index that exists only in this function is an
+ * index no test can reason about, which is how TD-22 happened.
+ *
+ * Directions: the cursor pair is descending (newest first) and equality keys ascending. Direction
+ * does not affect coverage for a uniformly-ordered sort — MongoDB walks an index backwards just as
+ * cheaply — but matching the sort exactly keeps the plan obvious in `explain()`.
+ *
+ * No **pre-existing** index changed shape here: the three P1-8 indexes are declared with exactly the
+ * keys and directions they were created with, so this is purely additive and needs no drop/rebuild
+ * reconcile (the events context does need one — see its `ensureIndexes`).
+ */
 async function ensureIndexes(incidents: Collection<Incident>): Promise<void> {
-  // One incident id per tenant (tenant-leading, Law 5).
-  await incidents.createIndex(
-    { tenantId: 1, id: 1 },
-    { unique: true, name: 'uniq_tenant_incident' },
-  );
-  // Idempotent promotion: at most one incident per (tenant, candidate dedup key).
-  await incidents.createIndex(
-    { tenantId: 1, 'source.dedupKey': 1 },
-    { unique: true, name: 'uniq_tenant_dedupkey' },
-  );
-  // List hot path: newest-first, filterable by status/severity.
-  await incidents.createIndex(
-    { tenantId: 1, raisedAt: -1, id: -1 },
-    { name: 'tenant_raisedAt_id' },
-  );
+  for (const spec of INCIDENT_INDEXES) {
+    if (spec.implicit) continue;
+    const keys: Record<string, 1 | -1> = {};
+    for (const key of spec.keys) keys[key] = spec.descending?.includes(key) ? -1 : 1;
+    await incidents.createIndex(keys as IndexSpecification, {
+      name: spec.name,
+      ...(spec.unique ? { unique: true } : {}),
+    });
+  }
 }

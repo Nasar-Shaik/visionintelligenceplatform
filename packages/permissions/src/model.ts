@@ -36,6 +36,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'stream:control',
     'incident:ack',
     'incident:resolve',
+    // P-5.0 G-1/G-2 — the investigation workflow is an operator's job, not an admin's.
+    'incident:investigate',
+    'incident:escalate',
+    'incident:assign',
+    'incident:comment',
     'notification:ack',
     'evidence:create',
     'evidence:update',

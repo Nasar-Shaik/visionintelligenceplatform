@@ -42,14 +42,30 @@ export class InMemoryIncidentStore implements IncidentStore {
     );
   }
 
+  /**
+   * The same search the Mongo adapter serves (P-5.0 G-3), so a test proving filter semantics here
+   * proves them for both. Kept as one predicate list in the same order as `IncidentQuery`, because a
+   * filter that exists in one adapter and not the other is a defect that only shows in production.
+   */
+  private matches(query: IncidentQuery, i: Incident): boolean {
+    return (
+      (query.status === undefined || i.status === query.status) &&
+      (query.severity === undefined || i.severity === query.severity) &&
+      (query.category === undefined || i.category === query.category) &&
+      (query.eventType === undefined || i.triggeredBy.eventType === query.eventType) &&
+      (query.cameraId === undefined || i.triggeredBy.cameraId === query.cameraId) &&
+      (query.zoneId === undefined || i.triggeredBy.zoneId === query.zoneId) &&
+      (query.ruleId === undefined || i.source.ruleId === query.ruleId) &&
+      (query.correlationId === undefined || i.correlationId === query.correlationId) &&
+      (query.assignee === undefined || i.assignee === query.assignee) &&
+      (query.from === undefined || i.raisedAt >= query.from) &&
+      (query.to === undefined || i.raisedAt < query.to)
+    );
+  }
+
   async list(scope: TenantScope, query: IncidentQuery): Promise<IncidentPage> {
     const rows = this.incidents
-      .filter(
-        (i) =>
-          this.owned(scope, i) &&
-          (query.status === undefined || i.status === query.status) &&
-          (query.severity === undefined || i.severity === query.severity),
-      )
+      .filter((i) => this.owned(scope, i) && this.matches(query, i))
       .sort((a, b) => b.raisedAt.localeCompare(a.raisedAt) || b.id.localeCompare(a.id));
 
     let start = 0;

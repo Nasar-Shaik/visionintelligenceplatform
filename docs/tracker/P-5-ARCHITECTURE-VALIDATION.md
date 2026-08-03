@@ -180,6 +180,12 @@ Recorded now, because each one is the path of least resistance at some point dur
 
 ---
 
+## ✅ Approved — 2026-08-03
+
+The Architect accepted this pass in full and made the six findings **formal entry criteria** for P-5.
+Their status is tracked in [P-5-ENTRY-CRITERIA](P-5-ENTRY-CRITERIA.md); all six are met (G-6 is
+carried, not blocking). What follows is the request as it was written.
+
 ## Approval requested
 
 Per the Architect's instruction, **P-5 is blocked on approval of the six items above.** They are all

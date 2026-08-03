@@ -130,3 +130,143 @@ describe('lifecycle transitions', () => {
     expect(raised.json().data.items[0].status).toBe('raised');
   });
 });
+
+/**
+ * P-5.0 entry criteria G-1 / G-2 / G-3 at the HTTP edge — the surface the investigation workspace
+ * will call. The service-level behaviour is proven in `incident-workflow.test.ts`; what is asserted
+ * here is the wiring: the routes exist, they are permission-gated separately from ack/resolve, and
+ * the search filters survive the query-string round trip.
+ */
+describe('P-5.0 · investigation routes', () => {
+  it('investigates and escalates, each behind its own permission', async () => {
+    const id = await seedIncident('tnt_a', 'p5|1');
+    const operator = await token('tnt_a', ['operator']);
+
+    const investigated = await app.inject({
+      method: 'POST',
+      url: `/incidents/${id}/investigate`,
+      headers: authHeader(operator),
+      payload: {},
+    });
+    expect(investigated.statusCode).toBe(200);
+    expect(investigated.json().data.status).toBe('investigating');
+
+    const escalated = await app.inject({
+      method: 'POST',
+      url: `/incidents/${id}/escalate`,
+      headers: authHeader(operator),
+      payload: { to: 'team:leads' },
+    });
+    expect(escalated.statusCode).toBe(200);
+    expect(escalated.json().data.escalation.to).toBe('team:leads');
+  });
+
+  it('refuses a viewer the investigation actions — read is not write', async () => {
+    const id = await seedIncident('tnt_a', 'p5|2');
+    const viewer = await token('tnt_a', ['viewer']);
+    for (const path of ['investigate', 'escalate', 'assign', 'notes']) {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/incidents/${id}/${path}`,
+        headers: authHeader(viewer),
+        payload: path === 'assign' ? { assignee: 'x' } : { body: 'x' },
+      });
+      expect(res.statusCode, `${path} must be denied to a viewer`).toBe(403);
+    }
+  });
+
+  it('assigns without moving the incident along the lifecycle', async () => {
+    const id = await seedIncident('tnt_a', 'p5|3');
+    const operator = await token('tnt_a', ['operator']);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/incidents/${id}/assign`,
+      headers: authHeader(operator),
+      payload: { assignee: 'priya' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toMatchObject({ assignee: 'priya', status: 'raised' });
+  });
+
+  it('appends a note with an evidence reference and returns 201', async () => {
+    const id = await seedIncident('tnt_a', 'p5|4');
+    const operator = await token('tnt_a', ['operator']);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/incidents/${id}/notes`,
+      headers: authHeader(operator),
+      payload: { body: 'clip reviewed', attachments: [{ kind: 'evidence', ref: 'evd_1' }] },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().data.notes).toHaveLength(1);
+  });
+
+  it('serves the derived activity log to anyone who may read the incident', async () => {
+    const id = await seedIncident('tnt_a', 'p5|5');
+    const operator = await token('tnt_a', ['operator']);
+    await app.inject({
+      method: 'POST',
+      url: `/incidents/${id}/assign`,
+      headers: authHeader(operator),
+      payload: { assignee: 'priya' },
+    });
+    const viewer = await token('tnt_a', ['viewer']);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/incidents/${id}/activity`,
+      headers: authHeader(viewer),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.entries.map((e: { kind: string }) => e.kind)).toEqual([
+      'transition',
+      'assignment',
+    ]);
+  });
+
+  it('rejects a body that violates the contract rather than storing it', async () => {
+    const id = await seedIncident('tnt_a', 'p5|6');
+    const operator = await token('tnt_a', ['operator']);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/incidents/${id}/notes`,
+      headers: authHeader(operator),
+      payload: { body: '' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('P-5.0 · the frozen search surface (G-3)', () => {
+  it('carries every filter through the query string', async () => {
+    await seedIncident('tnt_a', 'q|1');
+    const t = await token('tnt_a', ['operator']);
+    const url =
+      '/incidents?status=raised&severity=critical&category=perception' +
+      '&eventType=perception.person.detected&cameraId=cam_1&zoneId=zone_1' +
+      '&ruleId=rule_1&correlationId=corr-abc&limit=10';
+    const res = await app.inject({ method: 'GET', url, headers: authHeader(t) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.items).toHaveLength(1);
+  });
+
+  it('returns nothing when one filter in the set disagrees', async () => {
+    await seedIncident('tnt_a', 'q|2');
+    const t = await token('tnt_a', ['operator']);
+    const res = await app.inject({
+      method: 'GET',
+      url: '/incidents?cameraId=cam_1&zoneId=zone_elsewhere',
+      headers: authHeader(t),
+    });
+    expect(res.json().data.items).toHaveLength(0);
+  });
+
+  it('rejects an out-of-contract filter value instead of ignoring it', async () => {
+    const t = await token('tnt_a', ['operator']);
+    const res = await app.inject({
+      method: 'GET',
+      url: '/incidents?status=who-knows',
+      headers: authHeader(t),
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});

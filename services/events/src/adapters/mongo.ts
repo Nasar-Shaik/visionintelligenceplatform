@@ -5,8 +5,9 @@
  * The stored document is an `EventEnvelope` plus a `dedupKey`; the unique `{tenantId, dedupKey}`
  * index is what makes normalization idempotent (at-least-once safe).
  */
-import { MongoClient, type Collection, type Db } from 'mongodb';
+import { MongoClient, type Collection, type Db, type IndexSpecification } from 'mongodb';
 import type { EventEnvelope } from '@vip/contracts';
+import { EVENT_INDEXES } from './indexes.js';
 
 /** The persisted shape: the envelope + its dedup key (tenantId is already on the envelope). */
 export interface EventDoc extends EventEnvelope {
@@ -48,19 +49,30 @@ export async function connectMongo(opts: ConnectMongoOptions): Promise<MongoAdap
   };
 }
 
+/**
+ * Create every index declared in `indexes.ts`, reconciling names whose key set changed.
+ *
+ * ⚠️ **Three pre-existing indexes gained the cursor key `id` in P-5.0** (`tenant_occurredAt`,
+ * `tenant_type_time`, `tenant_camera_time`) — they stopped at `occurredAt` and so abandoned the
+ * `(occurredAt, id)` sort. Re-declaring an existing name with different keys is an
+ * `IndexOptionsConflict`, which would fail the service at boot, so a changed key set is dropped and
+ * rebuilt. Each old index is a strict prefix of its replacement, so nothing loses coverage — but
+ * the rebuild is real work on a large collection and is logged for exactly that reason.
+ */
 async function ensureIndexes(events: Collection<EventDoc>): Promise<void> {
-  // Idempotency + correlation dedup: one event per dedup key within a tenant. A duplicate insert
-  // (redelivery or a repeated subject inside the window) hits this and is collapsed (Law 5 leading).
-  await events.createIndex(
-    { tenantId: 1, dedupKey: 1 },
-    { unique: true, name: 'uniq_tenant_dedup' },
-  );
-  // Query/replay by time, tenant-scoped and newest-first.
-  await events.createIndex({ tenantId: 1, occurredAt: -1 }, { name: 'tenant_occurredAt' });
-  // Filtered queries by type / camera, tenant-scoped.
-  await events.createIndex({ tenantId: 1, type: 1, occurredAt: -1 }, { name: 'tenant_type_time' });
-  await events.createIndex(
-    { tenantId: 1, cameraId: 1, occurredAt: -1 },
-    { name: 'tenant_camera_time' },
-  );
+  const existing = await events.indexes().catch(() => []);
+  for (const spec of EVENT_INDEXES) {
+    if (spec.implicit) continue;
+    const keys: Record<string, 1 | -1> = {};
+    for (const key of spec.keys) keys[key] = spec.descending?.includes(key) ? -1 : 1;
+
+    const current = existing.find((index) => index.name === spec.name);
+    if (current && JSON.stringify(current.key) !== JSON.stringify(keys)) {
+      await events.dropIndex(spec.name);
+    }
+    await events.createIndex(keys as IndexSpecification, {
+      name: spec.name,
+      ...(spec.unique ? { unique: true } : {}),
+    });
+  }
 }

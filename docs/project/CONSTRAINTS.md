@@ -291,6 +291,30 @@
     integration and runbook in exchange for tidier prose — §41, applied to the refactor that most often
     forgets it. — _enforced: `rule-authoring.ts` / `rule-operations.ts`; a route test asserts every
     published path still resolves._
+56. **A state machine gains states, not adjectives.** Before adding a value to a lifecycle enum, ask
+    whether it answers _where is this_ or _whose is this / what is attached to this_. Only the first is
+    a state. Assignment, tagging and ownership are operations on an entity in a state — folding them in
+    makes every pair of transitions look legal and the table stops carrying information. — _enforced:
+    `IncidentStatus` excludes `assigned`; `ALLOWED_FROM` is asserted whole, so widening the lifecycle is
+    always a deliberate edit._
+57. **A terminal state is terminal for the whole record.** Once an entity reaches its closed/archived
+    end state, nothing may be appended — no transition, no assignment, no comment. "Retained for audit"
+    is only true if the record stops changing; one that keeps growing is still live under another name.
+    — _enforced: `refuseIfSealed`; tests assert a closed incident refuses notes and assignment._
+58. **A filter nobody can populate is worse than a missing one.** Do not add a query field whose data
+    no producer writes. It parses, it indexes, and it always matches nothing — which reads as "there are
+    none" rather than "this cannot be asked". Record the gap instead. — _enforced: `IncidentQuery` omits
+    behaviour/composite ids (TD-23); the frozen filter set is asserted in `incident.test.ts`._
+59. **An index only counts as narrowing if it consumes a key beyond the tenant.** A tenant-leading
+    cursor index serves the sort for _every_ query, so a naive coverage model marks an unindexed filter
+    as served while it walks the tenant's whole collection. Classify coverage as `covered` / `bounded` /
+    `scan`, and forbid `scan`. — _enforced: `services/workflow/test/index-coverage.test.ts`, including a
+    self-test that the model detects both a missing index and one truncated before the cursor._
+60. **Index declarations are data, and changing one is a migration.** Declare the index set in a module
+    a test can read, build the collection from that declaration, and reconcile a name whose key set
+    changed — re-declaring it is an `IndexOptionsConflict` that fails the service at boot. — _enforced:
+    `workflow/adapters/indexes.ts`, `events/adapters/indexes.ts`; an integration test recreates the old
+    index shape and asserts the service still starts._
 
 ## Engineering process
 

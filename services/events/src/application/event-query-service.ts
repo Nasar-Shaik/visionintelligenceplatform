@@ -5,10 +5,17 @@
  * by the service ceiling — and re-published with each envelope's id as the dedup id, so downstream
  * consumers absorb the replay idempotently.
  */
-import type { EventPage, EventQuery, EventReplayRequest, EventReplayResult } from '@vip/contracts';
+import type {
+  EventEnvelope,
+  EventPage,
+  EventQuery,
+  EventReplayRequest,
+  EventReplayResult,
+} from '@vip/contracts';
 import { eventSubject, type EventBus } from '@vip/messaging';
 import type { TenantScope } from '@vip/tenancy';
 import type { EventStore } from './ports.js';
+import type { EventMetrics } from './metrics.js';
 
 export interface EventQueryDeps {
   store: EventStore;
@@ -17,7 +24,33 @@ export interface EventQueryDeps {
 }
 
 export class EventQueryService {
+  private metrics: EventMetrics | undefined;
+
   constructor(private readonly deps: EventQueryDeps) {}
+
+  /**
+   * Attach the metrics collaborator after construction — the Prometheus registry only exists once
+   * the server is built, while this service is created by the composition root before it.
+   */
+  useMetrics(metrics: EventMetrics): void {
+    this.metrics = metrics;
+  }
+
+  /**
+   * One event by id (P-5.0 G-5) — what the investigation workspace calls to answer "why did this
+   * rule fire", having got `triggeredBy.eventId` from the incident. `null` is a legitimate answer:
+   * an event outside the retention window is gone, and that is not an error.
+   */
+  async getById(scope: TenantScope, id: string): Promise<EventEnvelope | null> {
+    const endTimer = this.metrics?.lookupDuration.startTimer();
+    try {
+      const envelope = await this.deps.store.getById(scope, id);
+      this.metrics?.lookups.inc({ outcome: envelope ? 'found' : 'not_found' });
+      return envelope;
+    } finally {
+      endTimer?.();
+    }
+  }
 
   async query(scope: TenantScope, q: EventQuery): Promise<EventPage> {
     const { events, nextCursor } = await this.deps.store.query(scope, q);

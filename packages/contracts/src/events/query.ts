@@ -9,12 +9,25 @@ import { z } from 'zod';
 import { EventType, IsoDateTime } from '../common/primitives.js';
 import { EventEnvelope } from './envelope.js';
 
-/** A bounded, tenant-scoped query over the event store. All filters are optional (AND-combined). */
+/**
+ * A bounded, tenant-scoped query over the event store. All filters are optional (AND-combined).
+ *
+ * ⚠️ **Every filter here has a declared covering index** (`services/events/src/adapters/indexes.ts`),
+ * proven by `test/index-coverage.test.ts`. Future filters the P-5 workspace may want — severity,
+ * rule id, behaviour id — remain **additive**: a new optional field plus its index plus a row in
+ * that test. None of them is added speculatively, because a filter nothing populates matches
+ * nothing while looking like it works.
+ */
 export const EventQuery = z.object({
   /** Restrict to one event type (e.g. `perception.person.detected`). */
   type: EventType.optional(),
   cameraId: z.string().min(1).optional(),
   zoneId: z.string().min(1).optional(),
+  /**
+   * The end-to-end correlation spine (P-5.0 entry criterion G-5) — "every event related to this
+   * incident". Backed by `tenant_correlation_time`; see `services/events/src/adapters/indexes.ts`.
+   */
+  correlationId: z.string().min(1).optional(),
   /** Inclusive lower bound on `occurredAt`. */
   from: IsoDateTime.optional(),
   /** Exclusive upper bound on `occurredAt`. */

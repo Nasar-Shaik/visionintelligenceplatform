@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "lint": "eslint src",
     "clean": "rm -rf dist",
-    "test:integration": "vitest run integration"
+    "test:integration": "vitest run integration",
+    "bench": "tsx bench/incident-search.bench.ts"
   },
   "dependencies": {
     "@fastify/helmet": "^13.1.0",

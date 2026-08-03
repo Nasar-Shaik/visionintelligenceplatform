@@ -5,7 +5,14 @@
  * `applyTransition` moves an incident along the (pre-validated) state machine, bumps the version, and
  * appends an immutable history entry. No I/O — the store persists what these return.
  */
-import type { Incident, IncidentCandidate, IncidentTransition } from '@vip/contracts';
+import type {
+  Incident,
+  IncidentAssignment,
+  IncidentAttachment,
+  IncidentCandidate,
+  IncidentNote,
+  IncidentTransition,
+} from '@vip/contracts';
 import { type IncidentAction, targetStatus } from './incident-state.js';
 
 export interface FactoryDeps {
@@ -13,11 +20,13 @@ export interface FactoryDeps {
   newId: () => string;
 }
 
-/** Input carried on a transition (who + optional note/resolution). */
+/** Input carried on a transition (who + optional note/resolution/escalation target). */
 export interface TransitionInput {
   by?: string | undefined;
   note?: string | undefined;
   resolution?: string | undefined;
+  /** Only meaningful for `escalate`: who now owns the outcome. */
+  escalateTo?: string | undefined;
 }
 
 /** Promote a candidate into a fresh `raised` incident (idempotency is the store's job via dedupKey). */
@@ -53,6 +62,10 @@ export function promoteFromCandidate(
     correlationId: candidate.correlationId ?? candidate.triggeredBy.eventId,
     causationId: candidate.id,
     history: [firstTransition],
+    // A fresh incident is unassigned with nothing said about it yet. Empty rather than absent, so
+    // every reader appends to an array that is always there (P-5.0 G-2).
+    assignments: [],
+    notes: [],
     raisedAt: at,
     updatedAt: at,
   };
@@ -86,6 +99,13 @@ export function applyTransition(
     history: [...incident.history, transition],
     updatedAt: at,
   };
+  /*
+   * The `<state>By`/`<state>At` pairs below are P1-8 contract and stay exactly as they are. They are
+   * deliberately **not extended** for the P-5.0 states: `history` already records who did what and
+   * when, and every denormalised copy is another field that can drift from it. `escalation` is the
+   * one exception, because "who was it handed to" is genuinely new information no transition
+   * carries — and it is queryable state, not a duplicate.
+   */
   if (action === 'acknowledge') {
     if (input.by !== undefined) next.acknowledgedBy = input.by;
     next.acknowledgedAt = at;
@@ -95,9 +115,76 @@ export function applyTransition(
     if (input.resolution !== undefined && input.resolution !== '') {
       next.resolution = input.resolution;
     }
-  } else {
+  } else if (action === 'close') {
     if (input.by !== undefined) next.closedBy = input.by;
     next.closedAt = at;
+  } else if (action === 'escalate') {
+    next.escalation = { at };
+    if (input.escalateTo !== undefined && input.escalateTo !== '') {
+      next.escalation.to = input.escalateTo;
+    }
+    if (input.by !== undefined) next.escalation.by = input.by;
   }
+  // `investigate` records itself in `history` and nowhere else — there is nothing extra to know.
   return next;
+}
+
+/** Input carried on an assignment. `to` absent means un-assign. */
+export interface AssignmentInput {
+  to?: string | undefined;
+  by?: string | undefined;
+  note?: string | undefined;
+}
+
+/**
+ * Assign (or un-assign) an incident. Bumps the version like any other persisted change and appends
+ * to the immutable `assignments` stream. Does **not** touch `status` — see `incident-state.ts`.
+ */
+export function applyAssignment(
+  incident: Incident,
+  input: AssignmentInput,
+  deps: FactoryDeps,
+): Incident {
+  const at = deps.now().toISOString();
+  const assignment: IncidentAssignment = { at };
+  if (incident.assignee !== undefined) assignment.from = incident.assignee;
+  if (input.to !== undefined) assignment.to = input.to;
+  if (input.by !== undefined) assignment.by = input.by;
+  if (input.note !== undefined && input.note !== '') assignment.note = input.note;
+
+  const next: Incident = {
+    ...incident,
+    version: incident.version + 1,
+    assignments: [...incident.assignments, assignment],
+    updatedAt: at,
+  };
+  if (input.to === undefined) delete next.assignee;
+  else next.assignee = input.to;
+  return next;
+}
+
+/** Input carried on a note. */
+export interface NoteInput {
+  body: string;
+  by?: string | undefined;
+  attachments?: readonly IncidentAttachment[] | undefined;
+}
+
+/** Append an operator note. Immutable once written — there is no edit and no delete, by design. */
+export function appendNote(incident: Incident, input: NoteInput, deps: FactoryDeps): Incident {
+  const at = deps.now().toISOString();
+  const note: IncidentNote = {
+    id: deps.newId(),
+    body: input.body,
+    at,
+    attachments: [...(input.attachments ?? [])],
+  };
+  if (input.by !== undefined) note.by = input.by;
+
+  return {
+    ...incident,
+    version: incident.version + 1,
+    notes: [...incident.notes, note],
+    updatedAt: at,
+  };
 }

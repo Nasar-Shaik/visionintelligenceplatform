@@ -15,7 +15,7 @@ import { EventEnvelope } from '../src/events/envelope.js';
 import { EventCatalogEntry } from '../src/events/catalog.js';
 import { EventQuery } from '../src/events/query.js';
 import { Rule, CreateRuleInput, IncidentCandidate, RuleDryRunResult } from '../src/rules/rules.js';
-import { Incident, IncidentQuery } from '../src/incidents/incident.js';
+import { Incident, IncidentActivity, IncidentQuery } from '../src/incidents/incident.js';
 import {
   Notification,
   NotificationChannel,
@@ -180,6 +180,8 @@ const schemas: Record<string, z.ZodType> = {
   'rule-dry-run-result': RuleDryRunResult,
   incident: Incident,
   'incident-query': IncidentQuery,
+  // P-5.0 G-2 — derived on read from the incident's three append-only streams, never stored.
+  'incident-activity': IncidentActivity,
   notification: Notification,
   'notification-channel': NotificationChannel,
   'create-channel-input': CreateChannelInput,

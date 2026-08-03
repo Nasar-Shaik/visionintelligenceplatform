@@ -8,16 +8,28 @@
  */
 import type {
   AcknowledgeIncidentInput,
+  AddIncidentNoteInput,
+  AssignIncidentInput,
   CloseIncidentInput,
+  EscalateIncidentInput,
   Incident,
+  IncidentActivity,
   IncidentCandidate,
   IncidentPage,
   IncidentQuery,
+  InvestigateIncidentInput,
   ResolveIncidentInput,
 } from '@vip/contracts';
 import type { TenantScope } from '@vip/tenancy';
-import { canApply, type IncidentAction } from '../domain/incident-state.js';
-import { applyTransition, promoteFromCandidate } from '../domain/incident-factory.js';
+import { canApply, isTerminal, type IncidentAction } from '../domain/incident-state.js';
+import {
+  appendNote,
+  applyAssignment,
+  applyTransition,
+  promoteFromCandidate,
+  type TransitionInput,
+} from '../domain/incident-factory.js';
+import { deriveActivity } from '../domain/incident-activity.js';
 import { conflict, notFound } from './errors.js';
 import type { IncidentStore } from './ports.js';
 import { NoopIncidentPublisher, type IncidentPublisher } from './incident-publisher.js';
@@ -35,6 +47,17 @@ export interface PromotionResult {
   incident: Incident;
   created: boolean;
 }
+
+/**
+ * How many notes one incident may carry (P-5.0 G-2).
+ *
+ * Notes are embedded in the incident document, so this is a real ceiling, not a preference: at
+ * 4,000 characters each, 500 notes is roughly 2 MB against MongoDB's 16 MB document limit, leaving
+ * room for the transition and assignment streams. An incident that hits it is an incident that
+ * should have been a case — which is the Workflow-engine feature this slice deliberately does not
+ * build (TD-8). Exceeding it is a 409 with a clear message, not a silent truncation.
+ */
+export const MAX_NOTES = 500;
 
 export class IncidentService {
   private readonly store: IncidentStore;
@@ -138,19 +161,114 @@ export class IncidentService {
     return this.transition(scope, id, 'close', { by: actor, note: input.note });
   }
 
+  /** Begin investigating (P-5.0 G-1). */
+  investigate(
+    scope: TenantScope,
+    id: string,
+    input: InvestigateIncidentInput,
+    actor?: string,
+  ): Promise<Incident> {
+    return this.transition(scope, id, 'investigate', { by: actor, note: input.note });
+  }
+
+  /** Escalate, recording who now owns the outcome (P-5.0 G-1). */
+  escalate(
+    scope: TenantScope,
+    id: string,
+    input: EscalateIncidentInput,
+    actor?: string,
+  ): Promise<Incident> {
+    return this.transition(scope, id, 'escalate', {
+      by: actor,
+      note: input.note,
+      escalateTo: input.to,
+    });
+  }
+
+  /**
+   * Assign or un-assign (P-5.0 G-2). **Not a lifecycle transition** — the status is untouched, so
+   * assigning a raised incident leaves it raised and the two facts stay independent.
+   */
+  async assign(
+    scope: TenantScope,
+    id: string,
+    input: AssignIncidentInput,
+    actor?: string,
+  ): Promise<Incident> {
+    const current = await this.getOrThrow(scope, id);
+    this.refuseIfSealed(current, 'assign');
+    const next = applyAssignment(
+      current,
+      { to: input.assignee ?? undefined, by: actor, note: input.note },
+      this.factoryDeps,
+    );
+    await this.persist(scope, next, current.version);
+    this.metrics?.assignments.inc({ kind: input.assignee === null ? 'unassign' : 'assign' });
+    return next;
+  }
+
+  /**
+   * Append an operator note (P-5.0 G-2). Immutable once written — there is no edit and no delete,
+   * because an investigation record that can be rewritten is not a record.
+   */
+  async addNote(
+    scope: TenantScope,
+    id: string,
+    input: AddIncidentNoteInput,
+    actor?: string,
+  ): Promise<Incident> {
+    const current = await this.getOrThrow(scope, id);
+    this.refuseIfSealed(current, 'comment on');
+    if (current.notes.length >= MAX_NOTES) {
+      throw conflict(`incident ${id} has reached the ${MAX_NOTES}-note limit`);
+    }
+    const next = appendNote(
+      current,
+      { body: input.body, by: actor, attachments: input.attachments },
+      this.factoryDeps,
+    );
+    await this.persist(scope, next, current.version);
+    this.metrics?.notesAdded.inc();
+    return next;
+  }
+
+  /** The derived activity log — transitions + assignments + notes, oldest first (P-5.0 G-2). */
+  async activity(scope: TenantScope, id: string): Promise<IncidentActivity> {
+    return deriveActivity(await this.getOrThrow(scope, id), this.now());
+  }
+
+  /**
+   * A closed incident is sealed: no transition, no assignment, no note. "Terminal; retained for
+   * audit" is only true if the record stops changing.
+   */
+  private refuseIfSealed(incident: Incident, verb: string): void {
+    if (isTerminal(incident.status)) {
+      throw conflict(`cannot ${verb} incident ${incident.id}: it is closed`);
+    }
+  }
+
+  /** Version-guarded write, shared by every mutation. */
+  private async persist(
+    scope: TenantScope,
+    next: Incident,
+    expectedVersion: number,
+  ): Promise<void> {
+    const ok = await this.store.replace(scope, next, expectedVersion);
+    if (!ok) throw conflict(`incident ${next.id} was modified concurrently; retry`);
+  }
+
   private async transition(
     scope: TenantScope,
     id: string,
     action: IncidentAction,
-    input: { by?: string | undefined; note?: string | undefined; resolution?: string | undefined },
+    input: TransitionInput,
   ): Promise<Incident> {
     const current = await this.getOrThrow(scope, id);
     if (!canApply(action, current.status)) {
       throw conflict(`cannot ${action} an incident in status '${current.status}'`);
     }
     const next = applyTransition(current, action, input, this.factoryDeps);
-    const ok = await this.store.replace(scope, next, current.version);
-    if (!ok) throw conflict(`incident ${id} was modified concurrently; retry`);
+    await this.persist(scope, next, current.version);
     this.metrics?.transitions.inc({ to: next.status });
     await this.publisher.publish(next);
     return next;

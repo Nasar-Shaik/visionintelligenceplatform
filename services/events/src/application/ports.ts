@@ -13,6 +13,12 @@ export interface EventStore {
    * (same key) already existed — the caller skips re-publishing on `false` (idempotent).
    */
   persist(scope: TenantScope, envelope: EventEnvelope, key: string): Promise<boolean>;
+  /**
+   * Fetch one persisted envelope by its id (P-5.0 G-5). `null` when it does not exist **or belongs
+   * to another tenant** — indistinguishable on purpose, so a by-id probe cannot confirm that an
+   * event exists in a tenant the caller cannot see.
+   */
+  getById(scope: TenantScope, id: string): Promise<EventEnvelope | null>;
   /** Tenant-scoped, bounded query, newest-first, with an opaque forward cursor. */
   query(
     scope: TenantScope,

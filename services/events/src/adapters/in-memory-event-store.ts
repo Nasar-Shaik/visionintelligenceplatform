@@ -29,6 +29,14 @@ export class InMemoryEventStore implements EventStore {
     return true;
   }
 
+  /** One envelope by id within the scope — another tenant's event is `null`, not a 403 (G-5). */
+  async getById(scope: TenantScope, id: string): Promise<EventEnvelope | null> {
+    return (
+      this.rows.map((r) => r.envelope).find((e) => e.tenantId === scope.tenantId && e.id === id) ??
+      null
+    );
+  }
+
   async query(
     scope: TenantScope,
     q: EventQuery,
@@ -39,6 +47,7 @@ export class InMemoryEventStore implements EventStore {
       .filter((e) => (q.type ? e.type === q.type : true))
       .filter((e) => (q.cameraId ? e.cameraId === q.cameraId : true))
       .filter((e) => (q.zoneId ? e.zoneId === q.zoneId : true))
+      .filter((e) => (q.correlationId ? e.correlationId === q.correlationId : true))
       .filter((e) => (q.from ? e.occurredAt >= q.from : true))
       .filter((e) => (q.to ? e.occurredAt < q.to : true))
       .sort((a, b) =>

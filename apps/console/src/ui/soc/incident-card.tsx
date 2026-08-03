@@ -1,13 +1,17 @@
 import type { ReactNode } from 'react';
 import { Camera, Clock } from 'lucide-react';
-import type { EventPriority } from '@vip/contracts';
+import type { EventPriority, IncidentStatus } from '@vip/contracts';
 import { cn } from '@/lib/cn';
 import { timeAgo } from '@/lib/format';
 import { Badge } from '@/ui/badge';
 import { SeverityBadge, SEVERITY_BORDER } from './severity-badge';
 
-/** Incident lifecycle status (mirrors the contract IncidentStatus enum). */
-export type IncidentCardStatus = 'raised' | 'acknowledged' | 'resolved' | 'closed';
+/**
+ * Incident lifecycle status. Aliased to the contract enum rather than re-typed as a string union:
+ * this card duplicated the four values and would have silently rendered nothing for the two P-5.0
+ * added (G-1). Now a lifecycle change is a compile error here too.
+ */
+export type IncidentCardStatus = IncidentStatus;
 
 const STATUS_BADGE: Record<
   IncidentCardStatus,
@@ -15,6 +19,8 @@ const STATUS_BADGE: Record<
 > = {
   raised: { variant: 'critical', label: 'Raised' },
   acknowledged: { variant: 'warning', label: 'Acknowledged' },
+  investigating: { variant: 'warning', label: 'Investigating' },
+  escalated: { variant: 'critical', label: 'Escalated' },
   resolved: { variant: 'success', label: 'Resolved' },
   closed: { variant: 'neutral', label: 'Closed' },
 };
