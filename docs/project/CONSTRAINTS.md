@@ -266,6 +266,32 @@
     move and a quadratic regression cannot pass. — _enforced:
     [RULE_ENGINE_BASELINE](../architecture/RULE_ENGINE_BASELINE.md); `services/rules/test/scale.test.ts`._
 
+52. **A score is never reported without the reasons that produced it.** Any derived rating —
+    health, risk, readiness — carries the findings whose deductions sum to it, and the number is
+    computed _from_ that list so the two cannot disagree. A rating nobody can take apart is one people
+    learn to ignore, and then a real problem hides behind a 78. Where the inputs could not be checked,
+    the answer is **unknown**, never a confident number: `0/100` beside "cannot be checked" reads as
+    "this is broken", which is a different and wrong claim. — _enforced: `domain/health.ts`;
+    [ADR-0028](../adr/ADR-0028-rule-support-surface-and-the-p5-contract.md); a test asserts the score
+    equals `100 −` the sum of the deductions, and another asserts an unverifiable rule is `unknown`._
+53. **A composed artifact omits what it does not know; it never zeroes it.** A support bundle,
+    report or export leaves a section **absent** when the node has no measurement for it. Zeroes and
+    "no data" are different facts and only one is worth acting on — the same reason `/rules/stats`
+    returns 501 rather than an idle-looking report. It also never synthesises a derivation that needs
+    an input it does not have: an explanation without an event is the most misleading thing a
+    diagnostic artifact can contain. — _enforced: `RuleDiagnosticPackage`; tests assert the runtime
+    sections are `undefined`, not `0`, on a node that does not evaluate._
+54. **A per-item lookup is resolved once per request, not once per item.** Any list view that
+    annotates rows from another context batches the lookup for the whole page. The obvious
+    implementation turns a list into a load test on a neighbour, and it passes every test written
+    against three rows. — _enforced: `searchDiagnostics`; a test creates ten rules and asserts **one**
+    hierarchy call._
+55. **Structural separation is not a URL rewrite.** Splitting an API into planes, contexts or
+    concerns is done in the modules; published paths do not move. A rename breaks every consumer,
+    integration and runbook in exchange for tidier prose — §41, applied to the refactor that most often
+    forgets it. — _enforced: `rule-authoring.ts` / `rule-operations.ts`; a route test asserts every
+    published path still resolves._
+
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._

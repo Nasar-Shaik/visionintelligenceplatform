@@ -519,6 +519,27 @@ export type RuleCompilation = z.infer<typeof RuleCompilation>;
  * than an inspection of every rule body. The kinds are the frozen `RuleReferenceKind` set, which is
  * why that set was declared ahead of the checks that use it.
  */
+/**
+ * Whether a dependency is actually there (P-4.2, Architect rec 4).
+ *
+ * `unknown` is the load-bearing value and the one an implementation is tempted to skip. When the
+ * context that owns a referenced thing cannot be reached, the honest answer is not `resolved` — the
+ * same rule as `RuleValidationReport.verified`, applied to a graph instead of a report.
+ *
+ * `deprecated` is **reserved**: nothing in the platform marks a location, camera or event type as
+ * deprecated yet, so it is declared and never emitted. Declared now for the reason
+ * `RuleReferenceKind` was — adding a value to a published enum is not purely additive for a strict
+ * parser.
+ */
+export const DependencyStatus = z.enum([
+  'resolved',
+  'missing',
+  'archived',
+  'deprecated',
+  'unknown',
+]);
+export type DependencyStatus = z.infer<typeof DependencyStatus>;
+
 export const RuleDependency = z.object({
   kind: RuleReferenceKind,
   ref: z.string().min(1).max(200),
@@ -528,6 +549,11 @@ export const RuleDependency = z.object({
    * event as deleting something an author named.
    */
   direct: z.boolean().default(true),
+  /**
+   * Whether it is there (P-4.2). Absent when the graph was built without a health check — which is
+   * the default, because building the graph is pure and checking it is not.
+   */
+  status: DependencyStatus.optional(),
 });
 export type RuleDependency = z.infer<typeof RuleDependency>;
 
@@ -543,6 +569,12 @@ export const RuleDependencyGraph = z.object({
   dependencies: z.array(RuleDependency).default([]),
   /** The same value as `RuleCompilation.dependencyHash`, so the two are comparable in isolation. */
   dependencyHash: ContentHash,
+  /**
+   * True when every dependency carries a `status` (P-4.2). False means the graph is structural only —
+   * which is a different thing from "everything resolved", and conflating them is how an upgrade
+   * check reports all-clear because it never ran.
+   */
+  statusChecked: z.boolean().default(false),
 });
 export type RuleDependencyGraph = z.infer<typeof RuleDependencyGraph>;
 
@@ -778,6 +810,17 @@ export const RulePackage = z.object({
   /** Format version of the package itself, so an old export stays readable. */
   packageVersion: SemVer,
   compilerVersion: SemVer,
+  /**
+   * The versions the package was produced against (P-4.2, Architect recs 5 + 11).
+   *
+   * Checked on import and **rejected on a major mismatch**. A package is a file that can arrive from
+   * any vintage of the platform, and a rule silently reinterpreted by a newer engine is the worst
+   * shape of failure available here: it imports cleanly, validates cleanly, and does something other
+   * than what it did where it came from.
+   */
+  engineVersion: SemVer.optional(),
+  /** The `Rule` contract shape this package was written against. */
+  schemaVersion: SemVer.optional(),
   exportedAt: IsoDateTime,
   /** Where it came from — provenance for support, never used to authorise anything on import. */
   source: z.object({ tenantId: TenantId, node: z.string().optional() }),
@@ -790,11 +833,35 @@ export const RulePackage = z.object({
         rule: CreateRuleInput,
         dependencies: z.array(RuleDependency).default([]),
         compiledHash: ContentHash,
+        /** Diagnostic only (rec 5) — the same values `RuleCompilation` reports for this version. */
+        scopeHash: ContentHash.optional(),
+        dependencyHash: ContentHash.optional(),
       }),
     )
     .default([]),
 });
 export type RulePackage = z.infer<typeof RulePackage>;
+
+/** How an import should treat a rule whose name already exists in the target tenant (P-4.2, rec 8). */
+export const RuleImportConflictPolicy = z.enum(['skip', 'import-anyway']);
+export type RuleImportConflictPolicy = z.infer<typeof RuleImportConflictPolicy>;
+
+/**
+ * Import a package (P-4.2, Architect rec 8).
+ *
+ * `onConflict` defaults to **skip**, so re-importing a package a second time does nothing rather than
+ * silently doubling a tenant's rule set. Duplicating configuration is the kind of mistake that is
+ * invisible until an operator wonders why every incident arrives twice.
+ */
+export const RuleImportInput = z.object({
+  package: RulePackage,
+  onConflict: RuleImportConflictPolicy.default('skip'),
+});
+export type RuleImportInput = z.infer<typeof RuleImportInput>;
+
+/** What happened to one rule in an import (P-4.2). */
+export const RuleImportOutcome = z.enum(['imported', 'skipped', 'rejected']);
+export type RuleImportOutcome = z.infer<typeof RuleImportOutcome>;
 
 /**
  * What an import did (Architect rec 10).
@@ -807,20 +874,323 @@ export type RulePackage = z.infer<typeof RulePackage>;
 export const RuleImportResult = z.object({
   imported: z.number().int().nonnegative(),
   rejected: z.number().int().nonnegative(),
+  /** Rules not imported because a rule of that name already exists here (P-4.2). */
+  skipped: z.number().int().nonnegative().default(0),
+  /**
+   * Package-level problems that stopped anything from being imported (P-4.2, rec 11) — an
+   * incompatible engine or schema version, most of all. Present and non-empty means nothing was
+   * written.
+   */
+  incompatible: z.array(z.string()).default([]),
   results: z
     .array(
       z.object({
         sourceRuleId: z.string().min(1),
-        /** Absent when the rule was rejected. */
+        /** Absent when the rule was rejected or skipped. */
         ruleId: z.string().optional(),
         /** True when the rule was created (always as a draft). */
         created: z.boolean(),
+        /** What happened, in one word (P-4.2). */
+        outcome: RuleImportOutcome.default('imported'),
         /** Why it was rejected, or what is wrong with what was created. */
         validation: RuleValidationReport.optional(),
+        /** References the package named that do not resolve in this tenant (P-4.2). */
+        unresolvedDependencies: z.array(RuleDependency).default([]),
+        /** The existing rule this one conflicted with, when it was skipped. */
+        conflictsWith: z.string().optional(),
         error: z.string().optional(),
       }),
     )
     .default([]),
+  /** Counts an operator reads before opening anything: how much of this needs attention (P-4.2). */
+  summary: z
+    .object({
+      withErrors: z.number().int().nonnegative(),
+      withWarnings: z.number().int().nonnegative(),
+      unverified: z.number().int().nonnegative(),
+    })
+    .default({ withErrors: 0, withWarnings: 0, unverified: 0 }),
   at: IsoDateTime,
 });
 export type RuleImportResult = z.infer<typeof RuleImportResult>;
+
+// ---------------------------------------------------------------------------------------------
+// P-4.2 — the support surface: one artifact, one health verdict, one diff, one trend.
+//
+// Same rule as everything in P-4.1: derived, operational, and never read while deciding whether a
+// rule fires. What P-4.2 adds is **composition** — the pieces existed and had to be gathered by hand
+// from six endpoints, which is exactly the work nobody does at 2 a.m.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * How much rule there is (P-4.2, Architect rec 3).
+ *
+ * Bands rather than a raw number, because the number is only meaningful against limits an operator
+ * does not carry in their head. The classification is a **function of `RuleComplexity` and the
+ * deployment's `RuleLimits`** — so it moves when the ceilings move, which is the honest behaviour: a
+ * rule is complex relative to what the deployment allows, not in the abstract.
+ */
+export const RuleComplexityClass = z.enum(['simple', 'moderate', 'complex', 'very-complex']);
+export type RuleComplexityClass = z.infer<typeof RuleComplexityClass>;
+
+export const RuleComplexityReport = z.object({
+  measured: RuleComplexity,
+  class: RuleComplexityClass,
+  /** 0–100, where 100 is at the deployment ceiling on its worst dimension. */
+  utilization: z.number().min(0).max(100),
+  /** Which dimensions put it in this band, worst first — what to simplify, if anything. */
+  drivers: z
+    .array(z.object({ dimension: z.string(), used: z.number(), limit: z.number() }))
+    .default([]),
+});
+export type RuleComplexityReport = z.infer<typeof RuleComplexityReport>;
+
+/**
+ * Whether a rule is in good shape (P-4.2, Architect rec 2).
+ *
+ * **The score is never the answer on its own.** Every point deducted is listed as a finding with its
+ * own deduction, so the number can be reconstructed from the reasons — a health score nobody can
+ * take apart is a number people learn to ignore, and then a real problem hides behind a 78.
+ *
+ * `unknown` rather than a confident score when the checks could not run. A health verdict computed
+ * from checks that did not run is the same mistake as `verified` — see `RuleValidationReport`.
+ *
+ * Operational metadata only. Nothing in evaluation reads it.
+ */
+export const RuleHealthStatus = z.enum(['healthy', 'degraded', 'unhealthy', 'unknown']);
+export type RuleHealthStatus = z.infer<typeof RuleHealthStatus>;
+
+export const RuleHealthFinding = z.object({
+  code: z.string().min(1).max(60),
+  severity: RuleIssueSeverity,
+  message: z.string().min(1).max(400),
+  /** Points this finding removed from 100. Sums to `100 - score`. */
+  deduction: z.number().int().min(0).max(100),
+});
+export type RuleHealthFinding = z.infer<typeof RuleHealthFinding>;
+
+export const RuleHealth = z.object({
+  ruleId: z.string().min(1),
+  ruleVersion: z.number().int().min(1),
+  status: RuleHealthStatus,
+  /** 0–100. Meaningless without `findings`, which is why they travel together. */
+  score: z.number().int().min(0).max(100),
+  findings: z.array(RuleHealthFinding).default([]),
+  assessedAt: IsoDateTime,
+});
+export type RuleHealth = z.infer<typeof RuleHealth>;
+
+/**
+ * What changed between two versions of a rule (P-4.2, Architect rec 6).
+ *
+ * "Version changed" is not a review; this says which condition was added, which zone left the scope,
+ * which action was swapped. Derived from the two immutable snapshots, so it works for any pair in the
+ * history — including two versions from before this existed.
+ */
+export const RuleDiffArea = z.enum([
+  'identity',
+  'lifecycle',
+  'prefilter',
+  'condition',
+  'window',
+  'scope',
+  'actions',
+  'severity',
+  'priority',
+]);
+export type RuleDiffArea = z.infer<typeof RuleDiffArea>;
+
+export const RuleDiffChange = z.object({
+  area: RuleDiffArea,
+  kind: z.enum(['added', 'removed', 'changed']),
+  /** A dotted path into the rule, precise enough to point at in an editor. */
+  path: z.string().min(1).max(200),
+  /** One line a reviewer can read without opening either version. */
+  summary: z.string().min(1).max(400),
+  before: z.unknown().optional(),
+  after: z.unknown().optional(),
+});
+export type RuleDiffChange = z.infer<typeof RuleDiffChange>;
+
+export const RuleDiff = z.object({
+  ruleId: z.string().min(1),
+  fromVersion: z.number().int().min(1),
+  toVersion: z.number().int().min(1),
+  /** True when nothing that affects evaluation differs — the content hashes are equal. */
+  behaviourUnchanged: z.boolean(),
+  changes: z.array(RuleDiffChange).default([]),
+});
+export type RuleDiff = z.infer<typeof RuleDiff>;
+
+/**
+ * One bucket of a rule's activity (P-4.2, Architect rec 7).
+ *
+ * ⚠️ **In-process, bounded, and lost on restart.** This is not a time-series database and must not be
+ * used as one — it answers _"has this rule gone quiet since lunchtime?"_, which is a question about
+ * one node over one shift. Capacity planning and anything spanning replicas comes from the Prometheus
+ * pipeline, which stores history properly. Per-rule labels are deliberately not exported there:
+ * cardinality is the reason, and a bounded ring here is the cheaper honest answer.
+ */
+export const RuleStatsBucket = z.object({
+  /** Start of the bucket. */
+  from: IsoDateTime,
+  to: IsoDateTime,
+  evaluations: z.number().int().nonnegative(),
+  matches: z.number().int().nonnegative(),
+  failures: z.number().int().nonnegative(),
+  avgEvaluationMicros: z.number().nonnegative(),
+});
+export type RuleStatsBucket = z.infer<typeof RuleStatsBucket>;
+
+export const RuleStatsHistory = z.object({
+  ruleId: z.string().min(1),
+  /** How long each bucket covers. */
+  bucketSeconds: z.number().int().positive(),
+  /** Oldest first. At most `retainedBuckets` of them. */
+  buckets: z.array(RuleStatsBucket).default([]),
+  /** How far back this node can see. Shorter than expected means it restarted. */
+  coversSeconds: z.number().nonnegative(),
+});
+export type RuleStatsHistory = z.infer<typeof RuleStatsHistory>;
+
+/**
+ * **The support artifact** (P-4.2, Architect recs 1 + 14).
+ *
+ * Everything about one rule, gathered once: what it is now, every version it has been, what it points
+ * at, whether those things exist, how complex it is, how it is doing, and what this node has seen it
+ * do. One download instead of six endpoints and a note-taking app.
+ *
+ * Immutable in the sense that matters: every part is either an immutable record (the versions) or a
+ * pure function of one (everything else), so the same rule at the same version produces the same
+ * package — apart from the runtime statistics and the timestamp, which are explicitly the parts that
+ * describe *this node right now* and are labelled as such.
+ *
+ * **No explanation trace.** An explanation is per-event, and a rule has no event. The package carries
+ * the condition *structure*; `POST /rules/:id/simulate` produces a trace when an event is supplied.
+ * Including an invented one would be the most misleading thing this artifact could contain.
+ */
+export const RuleDiagnosticPackage = z.object({
+  /** Bumped when the artifact's own shape changes, so an old download stays readable. */
+  packageVersion: SemVer,
+  ruleId: z.string().min(1),
+  tenantId: TenantId,
+  /** Which node produced it, and when. The runtime statistics below are that node's. */
+  node: z.string().min(1),
+  generatedAt: IsoDateTime,
+
+  /** The rule as it stands. */
+  rule: Rule,
+  compilation: RuleCompilation,
+  validation: RuleValidationReport,
+  complexity: RuleComplexityReport,
+  health: RuleHealth,
+  dependencies: RuleDependencyGraph,
+  /** Every version, newest first — the whole history, not a window (rec 14). */
+  versions: z.array(RuleVersionRecord).default([]),
+  audit: z.array(RuleAuditEntry).default([]),
+  /** Absent when this node does not evaluate — never zeroes standing in for measurements. */
+  runtime: RuleRuntimeStats.optional(),
+  history: RuleStatsHistory.optional(),
+  /** Absent when this node does not evaluate. */
+  cache: RuleCacheStats.optional(),
+});
+export type RuleDiagnosticPackage = z.infer<typeof RuleDiagnosticPackage>;
+
+/**
+ * **The contract Incident Management consumes** (P-4.2, Architect recs 12 + 15).
+ *
+ * Frozen ahead of P-5 so that building the investigation workspace requires no change to the Rule
+ * Designer. It is a *projection*, not a new store: every field is already reachable through an
+ * existing route, and this exists so P-5 makes one call instead of five and depends on one shape
+ * instead of five.
+ *
+ * ⚠️ **What is deliberately absent: an explanation for the incident.** Explanations are derived from
+ * an event, and an incident candidate carries the triggering event's **id**, not the event. Producing
+ * one means fetching from the Events context, which is a P-5 decision about how the workspace reaches
+ * other contexts — not something the Rule Designer should reach across a boundary to fake. The
+ * condition structure and the scope snapshot are here; the trace is a `simulate` call away once P-5
+ * has the event.
+ */
+export const RuleIncidentContext = z.object({
+  ruleId: z.string().min(1),
+  /** The version the incident was raised by — **not** necessarily the current one. */
+  ruleVersion: z.number().int().min(1),
+  ruleName: z.string(),
+  severity: EventPriority,
+  lifecycle: RuleLifecycleState,
+  /** True when the rule has been edited since this version raised the incident. */
+  supersededByCurrentVersion: z.boolean(),
+
+  /** What the rule looked like then — the immutable snapshot, not today's rule. */
+  snapshot: Rule,
+  /** The zones and cameras that version covered, as recorded on it. */
+  scope: ResolvedRuleScope.optional(),
+  /** The condition tree as authored. A per-event trace needs the event — see the note above. */
+  condition: RuleCondition.optional(),
+
+  compilation: RuleCompilation,
+  dependencies: RuleDependencyGraph,
+  validation: RuleValidationReport,
+  audit: z.array(RuleAuditEntry).default([]),
+  /** This node's counters for the rule, when it evaluates. */
+  runtime: RuleRuntimeStats.optional(),
+  at: IsoDateTime,
+});
+export type RuleIncidentContext = z.infer<typeof RuleIncidentContext>;
+
+/**
+ * One rule, reduced to what an operator scans a list for (P-4.2, Architect rec 13).
+ *
+ * The row behind diagnostic search: enough to decide which rule to open, and nothing more. Building
+ * the full package for every rule in a tenant to render a list would be the obvious mistake.
+ */
+export const RuleDiagnosticRow = z.object({
+  ruleId: z.string().min(1),
+  ruleName: z.string(),
+  ruleVersion: z.number().int().min(1),
+  lifecycle: RuleLifecycleState,
+  health: RuleHealthStatus,
+  healthScore: z.number().int().min(0).max(100),
+  complexity: RuleComplexityClass,
+  /** Dependencies that are missing, archived or unknown. `0` with `statusChecked: false` means nothing was checked. */
+  unresolvedDependencies: z.number().int().nonnegative(),
+  statusChecked: z.boolean(),
+  evaluations: z.number().int().nonnegative(),
+  matches: z.number().int().nonnegative(),
+  lastMatchedAt: IsoDateTime.optional(),
+  updatedAt: IsoDateTime,
+});
+export type RuleDiagnosticRow = z.infer<typeof RuleDiagnosticRow>;
+
+/**
+ * Filters for diagnostic search (P-4.2, Architect rec 13).
+ *
+ * Every filter is optional and they combine with AND. `kind` + `ref` together answer "show me
+ * everything touching this zone", which is the enterprise question this exists for.
+ */
+export const RuleDiagnosticQuery = z.object({
+  /** Restrict to rules depending on this kind of thing — requires `ref`. */
+  kind: RuleReferenceKind.optional(),
+  ref: z.string().min(1).max(200).optional(),
+  lifecycle: RuleLifecycleState.optional(),
+  health: RuleHealthStatus.optional(),
+  complexity: RuleComplexityClass.optional(),
+  /** Rules changed at or after this instant. */
+  updatedSince: IsoDateTime.optional(),
+  /** Free-text match on the rule name, case-insensitive. */
+  name: z.string().min(1).max(200).optional(),
+});
+export type RuleDiagnosticQuery = z.infer<typeof RuleDiagnosticQuery>;
+
+export const RuleDiagnosticSearchResult = z.object({
+  rows: z.array(RuleDiagnosticRow).default([]),
+  /** How many rules were considered, before filtering. */
+  scanned: z.number().int().nonnegative(),
+  /**
+   * True when dependency status could be checked. False means `unresolvedDependencies` on every row
+   * is `0` because nothing was looked at, not because everything resolves.
+   */
+  statusChecked: z.boolean(),
+  at: IsoDateTime,
+});
+export type RuleDiagnosticSearchResult = z.infer<typeof RuleDiagnosticSearchResult>;

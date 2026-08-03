@@ -82,7 +82,7 @@ describe('tenant isolation (Architect rec 11)', () => {
     await service.create(scopeA, personRuleInput({ name: 'a-rule' }));
     const pkgA = await service.exportRules(scopeA);
     // The package says it came from tnt_a; importing as tnt_b must land in tnt_b.
-    await service.importRules(scopeB, pkgA);
+    await service.importRules(scopeB, { package: pkgA, onConflict: 'skip' });
 
     expect((await service.list(scopeA)).map((r) => r.name)).toEqual(['a-rule']);
     const inB = await service.list(scopeB);

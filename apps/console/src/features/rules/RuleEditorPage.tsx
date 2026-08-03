@@ -32,6 +32,7 @@ import {
 } from '@/ui';
 import { RuleDryRunPanel } from './RuleDryRunPanel';
 import { RuleScopeField } from './RuleScopeField';
+import { RuleHealthPanel } from './RuleHealthBadge';
 import { RuleValidationPanel } from './RuleValidationPanel';
 import { RuleVersionsSheet } from './RuleVersionsSheet';
 import { RULE_LIFECYCLES, lifecyclePresentation } from './lifecycle';
@@ -509,6 +510,12 @@ export function RuleEditorPage() {
             <Card>
               <CardContent className="pt-6">
                 <RuleValidationPanel ruleId={id} />
+              </CardContent>
+            </Card>
+            {/* How the rule is doing, as opposed to whether it would save (P-4.2). */}
+            <Card>
+              <CardContent className="pt-6">
+                <RuleHealthPanel ruleId={id} />
               </CardContent>
             </Card>
             <RuleDryRunPanel ruleId={id} />

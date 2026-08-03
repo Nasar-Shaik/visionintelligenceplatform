@@ -28,6 +28,7 @@ const KIND_LABEL: Record<string, string> = {
   schedule: 'Schedule',
   output: 'Output',
   action: 'Action',
+  condition: 'Condition',
 };
 
 /**

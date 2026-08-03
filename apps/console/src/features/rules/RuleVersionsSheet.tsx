@@ -1,5 +1,6 @@
-import { History, Undo2 } from 'lucide-react';
-import type { RuleAuditEntry } from '@vip/contracts';
+import { useState } from 'react';
+import { GitCompare, History, Undo2 } from 'lucide-react';
+import type { RuleAuditEntry, RuleDiffChange } from '@vip/contracts';
 import { formatTimestamp, timeAgo } from '@/lib/format';
 import {
   Badge,
@@ -15,7 +16,7 @@ import {
   SheetTrigger,
   Skeleton,
 } from '@/ui';
-import { useRuleAudit, useRollbackRule } from './useRules';
+import { useRuleAudit, useRuleDiff, useRollbackRule } from './useRules';
 
 const ACTION_LABEL: Record<RuleAuditEntry['action'], string> = {
   created: 'Created',
@@ -42,10 +43,55 @@ const CONTENT_ACTIONS = new Set<RuleAuditEntry['action']>(['created', 'updated',
  * which is what makes the trail usable in an investigation: the mistake and the correction are both
  * there.
  */
+/** One change, in the words the server chose. The console never re-derives what changed. */
+function Change({ change }: { change: RuleDiffChange }) {
+  const tone =
+    change.kind === 'added'
+      ? 'text-success'
+      : change.kind === 'removed'
+        ? 'text-destructive'
+        : 'text-foreground';
+  return (
+    <li className="flex items-start gap-2 text-xs">
+      <span className={`shrink-0 font-medium ${tone}`}>{change.area}</span>
+      <span className="text-muted-foreground">{change.summary}</span>
+    </li>
+  );
+}
+
+/**
+ * What changed between this version and the one before it (P-4.2, Architect rec 6).
+ *
+ * Fetched only when a reviewer opens it — a timeline of forty versions must not be forty requests.
+ */
+function VersionDiff({ ruleId, version }: { ruleId: string; version: number }) {
+  const diff = useRuleDiff(ruleId, version - 1, version);
+  if (diff.isPending) return <p className="mt-2 text-xs text-text-subtle">Comparing…</p>;
+  if (diff.isError || !diff.data) {
+    return <p className="mt-2 text-xs text-text-subtle">Could not compare these versions.</p>;
+  }
+  if (diff.data.changes.length === 0) {
+    return <p className="mt-2 text-xs text-text-subtle">Nothing changed.</p>;
+  }
+  return (
+    <div className="mt-2 space-y-1 rounded-md bg-surface-2 p-2">
+      {diff.data.behaviourUnchanged ? (
+        <p className="text-xs text-text-subtle">This did not change what the rule does.</p>
+      ) : null}
+      <ul className="space-y-1">
+        {diff.data.changes.map((change, index) => (
+          <Change key={`${change.path}-${index}`} change={change} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function RuleVersionsSheet({ ruleId }: { ruleId: string }) {
   const audit = useRuleAudit(ruleId);
   const rollback = useRollbackRule(ruleId);
   const current = audit.data?.[0]?.version;
+  const [comparing, setComparing] = useState<number | null>(null);
 
   return (
     <Sheet>
@@ -107,17 +153,33 @@ export function RuleVersionsSheet({ ruleId }: { ruleId: string }) {
                    * "the content as of when it was disabled" is a confusing thing to offer, because
                    * lifecycle is deliberately not part of what a restore moves.
                    */}
-                  {CONTENT_ACTIONS.has(entry.action) && entry.version !== current ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-2"
-                      disabled={rollback.isPending}
-                      onClick={() => rollback.mutate(entry.version)}
-                    >
-                      <Undo2 />
-                      Restore this version
-                    </Button>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {entry.version > 1 ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setComparing((open) => (open === entry.version ? null : entry.version))
+                        }
+                      >
+                        <GitCompare />
+                        {comparing === entry.version ? 'Hide changes' : 'What changed'}
+                      </Button>
+                    ) : null}
+                    {CONTENT_ACTIONS.has(entry.action) && entry.version !== current ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={rollback.isPending}
+                        onClick={() => rollback.mutate(entry.version)}
+                      >
+                        <Undo2 />
+                        Restore this version
+                      </Button>
+                    ) : null}
+                  </div>
+                  {comparing === entry.version ? (
+                    <VersionDiff ruleId={ruleId} version={entry.version} />
                   ) : null}
                 </li>
               ))}

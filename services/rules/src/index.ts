@@ -58,6 +58,7 @@ async function main(): Promise<void> {
       uptimeSeconds: () => ruleStats.uptimeSeconds,
       cacheStats: (tenantId) => engineRef.current?.cacheStats(tenantId),
       ruleStats: (tenantId) => ruleStats.snapshot(tenantId),
+      history: (tenantId, ruleId) => ruleStats.historyFor(tenantId, ruleId),
     },
   });
 

@@ -514,7 +514,11 @@ describe('portability (Architect recs 10 + 14)', () => {
     expect(pkg.rules[0]?.rule.lifecycle).toBe('enabled');
 
     const scopeC = TenantScope.fromTenantId('tnt_c');
-    const result = await service.importRules(scopeC, pkg, 'usr_import');
+    const result = await service.importRules(
+      scopeC,
+      { package: pkg, onConflict: 'skip' },
+      'usr_import',
+    );
     expect(result.imported).toBe(1);
     expect(result.rejected).toBe(0);
     const [imported] = await service.list(scopeC);
@@ -528,7 +532,10 @@ describe('portability (Architect recs 10 + 14)', () => {
       personRuleInput({ lifecycle: 'draft', scope: { nodeIds: ['on_ghost'], cameraIds: [] } }),
     );
     const pkg = await service.exportRules(scopeA);
-    const result = await service.importRules(TenantScope.fromTenantId('tnt_c'), pkg);
+    const result = await service.importRules(TenantScope.fromTenantId('tnt_c'), {
+      package: pkg,
+      onConflict: 'skip',
+    });
     expect(result.imported).toBe(1);
     expect(result.results[0]?.validation?.valid).toBe(false);
     expect(result.results[0]?.validation?.issues.some((i) => i.code === 'missing-location')).toBe(

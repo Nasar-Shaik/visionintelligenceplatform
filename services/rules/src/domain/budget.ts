@@ -25,6 +25,8 @@ import {
   DEFAULT_RULE_LIMITS,
   type Rule,
   type RuleComplexity,
+  type RuleComplexityClass,
+  type RuleComplexityReport,
   type RuleCondition,
   type RuleLimits,
   type RuleValidationIssue,
@@ -196,4 +198,53 @@ export function budgetChecks(
     });
   }
   return issues;
+}
+
+/**
+ * How much rule there is, relative to what the deployment allows (P-4.2, Architect rec 3).
+ *
+ * Deliberately **relative, not absolute**. "40 condition nodes" means nothing to an operator who does
+ * not carry the ceiling in their head; "at 20% of what this deployment allows" does. It also means the
+ * classification moves when the limits move, which is the honest behaviour — a rule is complex with
+ * respect to something.
+ *
+ * The band comes from the **worst** dimension, not an average. A rule with one leaf condition and
+ * 4,900 covered zones is not simple, and averaging would say it was.
+ */
+export function classifyRule(
+  rule: Rule,
+  limits: RuleLimits = DEFAULT_RULE_LIMITS,
+): RuleComplexityReport {
+  const measured = measureRule(rule);
+
+  const drivers = CEILINGS.map((ceiling) => ({
+    dimension: ceiling.measured,
+    used: measured[ceiling.measured],
+    limit: limits[ceiling.limit],
+  }))
+    .map((driver) => ({ ...driver, ratio: driver.limit > 0 ? driver.used / driver.limit : 0 }))
+    .sort((a, b) => b.ratio - a.ratio);
+
+  const worst = drivers[0]?.ratio ?? 0;
+  const utilization = Math.min(100, Math.round(worst * 100));
+
+  const band: RuleComplexityClass =
+    worst >= 0.5
+      ? 'very-complex'
+      : worst >= 0.25
+        ? 'complex'
+        : worst >= 0.1
+          ? 'moderate'
+          : 'simple';
+
+  return {
+    measured,
+    class: band,
+    utilization,
+    // Only the dimensions actually contributing — a list of twenty zeroes is not a finding.
+    drivers: drivers
+      .filter((driver) => driver.used > 0)
+      .slice(0, 3)
+      .map(({ dimension, used, limit }) => ({ dimension, used, limit })),
+  };
 }

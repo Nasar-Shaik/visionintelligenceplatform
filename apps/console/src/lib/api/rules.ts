@@ -2,6 +2,8 @@ import type {
   CreateRuleInput,
   Rule,
   RuleAuditEntry,
+  RuleDiff,
+  RuleHealth,
   RuleDryRunResult,
   RuleValidationReport,
   RuleVersionRecord,
@@ -37,4 +39,12 @@ export const rulesApi = {
   /** Restore an earlier version's content as a new version. History is appended to, never rewritten. */
   rollback: (id: string, version: number) =>
     http.post<Rule>(`/rules/rules/${id}/rollback`, { version }),
+  /**
+   * What actually changed between two versions (P-4.2) — added conditions, scope moves, action swaps,
+   * rather than "version changed".
+   */
+  diff: (id: string, from: number, to: number) =>
+    http.get<RuleDiff>(`/rules/rules/${id}/diff?from=${from}&to=${to}`),
+  /** Whether the rule is in good shape, with every point deducted named (P-4.2). */
+  health: (id: string) => http.get<RuleHealth>(`/rules/rules/${id}/health`),
 };

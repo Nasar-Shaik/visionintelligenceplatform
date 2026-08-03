@@ -17,7 +17,8 @@ import { registerErrorHandler } from './plugins/error-handler.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerMetricsRoute } from './routes/metrics.js';
 import { registerRootRoute } from './routes/root.js';
-import { registerRuleRoutes } from './routes/rules.js';
+import { registerRuleAuthoringRoutes } from './routes/rule-authoring.js';
+import { registerRuleOperationsRoutes } from './routes/rule-operations.js';
 
 export interface BuildServerOptions {
   config: ServiceConfig;
@@ -65,7 +66,12 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
   registerHealthRoutes(app, { readiness });
   registerMetricsRoute(app, registry);
   registerRootRoute(app, { name: config.serviceName, version: config.serviceVersion, startedAt });
-  registerRuleRoutes(app, { service: opts.ruleService, auth });
+  /*
+   * Two planes, one service (P-4.2, Architect rec 9). The paths are unchanged — the separation is
+   * about who calls what and why each half changes, not about URLs.
+   */
+  registerRuleAuthoringRoutes(app, { service: opts.ruleService, auth });
+  registerRuleOperationsRoutes(app, { service: opts.ruleService, auth });
 
   return { app, readiness, registry };
 }

@@ -555,3 +555,158 @@ describe('rule explanation tree (P-4.1)', () => {
     expect(stages.queryByText('Enabled')).not.toBeInTheDocument();
   });
 });
+
+/** Health and version comparison (P-4.2, Architect recs 2 + 6). */
+describe('rule health and version comparison (P-4.2)', () => {
+  function mockRuleDetail(extra: Parameters<typeof server.use>[0][] = []) {
+    server.use(
+      mswHttp.get('/api/rules/rules/:id', () => HttpResponse.json({ success: true, data: RULE })),
+      mswHttp.get('/api/rules/rules/:id/validation', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            ruleId: 'rule-1',
+            ruleVersion: 3,
+            valid: true,
+            verified: true,
+            issues: [],
+            checked: ['event-type'],
+            checkedAt: '2026-08-03T00:00:00.000Z',
+          },
+        }),
+      ),
+      ...extra,
+    );
+  }
+
+  it('never shows a score without the reasons behind it', async () => {
+    authAs(['admin']);
+    mockRuleDetail([
+      mswHttp.get('/api/rules/rules/:id/health', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            ruleId: 'rule-1',
+            ruleVersion: 3,
+            status: 'degraded',
+            score: 90,
+            findings: [
+              {
+                code: 'scope-stale',
+                severity: 'warning',
+                message: 'the covered zones were last worked out 45 days ago',
+                deduction: 10,
+              },
+            ],
+            assessedAt: '2026-08-03T00:00:00.000Z',
+          },
+        }),
+      ),
+    ]);
+
+    renderWithProviders(<RuleEditorPage />, { store, route: '/rules/rule-1', path: '/rules/:id' });
+    const panel = within(await screen.findByLabelText('Rule health'));
+    expect(panel.getByText('Needs attention')).toBeInTheDocument();
+    expect(panel.getByText('90 / 100')).toBeInTheDocument();
+    expect(panel.getByText(/45 days ago/)).toBeInTheDocument();
+    expect(panel.getByText('−10')).toBeInTheDocument();
+  });
+
+  /** An unexamined rule is not an unhealthy one, and the two need different actions. */
+  it('shows "cannot be checked" as its own state, with no score at all', async () => {
+    authAs(['admin']);
+    mockRuleDetail([
+      mswHttp.get('/api/rules/rules/:id/health', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            ruleId: 'rule-1',
+            ruleVersion: 3,
+            status: 'unknown',
+            score: 0,
+            findings: [
+              {
+                code: 'unverified',
+                severity: 'error',
+                message: 'some of this rule’s references could not be checked',
+                deduction: 0,
+              },
+            ],
+            assessedAt: '2026-08-03T00:00:00.000Z',
+          },
+        }),
+      ),
+    ]);
+
+    renderWithProviders(<RuleEditorPage />, { store, route: '/rules/rule-1', path: '/rules/:id' });
+    const panel = within(await screen.findByLabelText('Rule health'));
+    expect(panel.getByText('Cannot be checked')).toBeInTheDocument();
+    // A 0/100 next to "cannot be checked" would read as "this rule is broken".
+    expect(panel.queryByText('0 / 100')).not.toBeInTheDocument();
+  });
+
+  it('fetches a comparison only when a reviewer asks for one', async () => {
+    authAs(['admin']);
+    let diffRequests = 0;
+    mockRuleDetail([
+      mswHttp.get('/api/rules/rules/:id/audit', () =>
+        HttpResponse.json({
+          success: true,
+          data: [
+            {
+              ruleId: 'rule-1',
+              version: 2,
+              action: 'updated',
+              summary: 'changed severity',
+              changedFields: ['severity'],
+              at: '2026-07-20T00:00:00.000Z',
+              contentHash: 'a'.repeat(64),
+            },
+            {
+              ruleId: 'rule-1',
+              version: 1,
+              action: 'created',
+              summary: 'the rule was created',
+              changedFields: [],
+              at: '2026-07-01T00:00:00.000Z',
+              contentHash: 'b'.repeat(64),
+            },
+          ],
+        }),
+      ),
+      mswHttp.get('/api/rules/rules/:id/diff', () => {
+        diffRequests += 1;
+        return HttpResponse.json({
+          success: true,
+          data: {
+            ruleId: 'rule-1',
+            fromVersion: 1,
+            toVersion: 2,
+            behaviourUnchanged: false,
+            changes: [
+              {
+                area: 'severity',
+                kind: 'changed',
+                path: 'severity',
+                summary: 'severity "high" → "critical"',
+              },
+            ],
+          },
+        });
+      }),
+    ]);
+
+    renderWithProviders(<RuleEditorPage />, { store, route: '/rules/rule-1', path: '/rules/:id' });
+    await userEvent.click(await screen.findByRole('button', { name: /version history/i }));
+
+    // A timeline of forty versions must not be forty diff requests.
+    expect(diffRequests).toBe(0);
+    // Only v2 offers a comparison — there is nothing before v1.
+    const compare = await screen.findAllByRole('button', { name: /what changed/i });
+    expect(compare).toHaveLength(1);
+
+    await userEvent.click(compare[0]!);
+    expect(await screen.findByText(/severity "high" → "critical"/)).toBeInTheDocument();
+    expect(diffRequests).toBe(1);
+  });
+});

@@ -10,6 +10,7 @@ import type {
   Rule,
   RuleCacheStats,
   RuleRuntimeStats,
+  RuleStatsHistory,
   RuleVersionRecord,
   UpdateRuleInput,
 } from '@vip/contracts';
@@ -65,6 +66,8 @@ export interface RuleDiagnostics {
    */
   cacheStats(tenantId: string): RuleCacheStats | undefined;
   ruleStats(tenantId: string): RuleRuntimeStats[];
+  /** Recent activity for one rule on this node (P-4.2). Empty when the rule has never been compiled. */
+  history(tenantId: string, ruleId: string): RuleStatsHistory;
 }
 
 export interface RuleStateStore {

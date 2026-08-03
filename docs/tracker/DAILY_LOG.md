@@ -2,6 +2,16 @@
 
 > One rolling file, newest first. **Capture meaningful progress only — no exhaustive file lists** (those live in git history and per-slice [REVIEW_HISTORY](REVIEW_HISTORY.md)). One short entry per working day. Sign entries `[name · YYYY-MM-DD]`.
 
+## 2026-08-03 (later)
+
+- **P-4.1 ✅ ACCEPTED** by the Architect with 15 further recommendations, folded into **P-4.2 — The Rule Support Surface & the P-5 Contract**.
+- **P-4.2 built:** the diagnostic package · health with every deduction named · complexity classification · dependency status · a bounded stats ring · version diff · route-plane split · package signature and compatibility · conflict-aware import · diagnostic search · the frozen P-5 incident context · console health panel and version comparison.
+- **Three recommendations deliberately not followed as written**, each recorded: the API separation is a module split with **no path renamed** (§41/§55); statistics history is a 24-hour single-node ring, not a time series (Prometheus already does that properly); and the P-5 contract is frozen **with one gap named** rather than papered over.
+- **The P-5 architecture validation pass** the Architect required: **no frozen foundation needs to change — and P-5 still cannot start.** Six additive gaps, all outside the frozen foundations. The blocker: **an event cannot be fetched by id**, which the investigation workspace needs to explain why a rule fired. One gap is technical debt, not enhancement — the Workflow context has no index for P-5's incident searches and no coverage test ([TD-22](../../tracking/TECH-DEBT.md)).
+- **Gates:** rules 206 · console 112 · contracts 291 · camera 193 · tenant 144 · e2e 33 · typecheck 28 · lint 0 errors · build 19 · imports 0 violations · schemas 70 · format clean. Python (850) not run — no Python environment, no Python file changed.
+- **Next:** P-4.2 review, and approval of the six P-5 gaps. Do not start P-5.
+- `[Claude · 2026-08-03]`
+
 ## 2026-08-03
 
 - **P-4 Rule Designer ✅ ACCEPTED** by the Architect with 15 recommendations, folded into **P-4.1 — Rule Operations, Diagnostics & Portability**.

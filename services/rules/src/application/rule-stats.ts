@@ -25,7 +25,29 @@
  *
  * Nothing in evaluation reads any of this.
  */
-import type { Rule, RuleRuntimeStats } from '@vip/contracts';
+import type { Rule, RuleRuntimeStats, RuleStatsBucket, RuleStatsHistory } from '@vip/contracts';
+
+/**
+ * How long one history bucket covers, and how many are kept (P-4.2, Architect rec 7).
+ *
+ * ⚠️ Twenty-four hourly buckets is a **shift**, not a time series. It answers "has this rule gone
+ * quiet since lunchtime?" — a question about one node over one day. Anything longer, anything spanning
+ * replicas, and anything used for capacity planning comes from the Prometheus pipeline, which stores
+ * history properly. Building a second, worse one here would be the mistake.
+ */
+export const HISTORY_BUCKET_SECONDS = 3_600;
+export const HISTORY_BUCKETS = 24;
+
+/** A closed bucket: what happened in one interval, computed from counter deltas. */
+interface ClosedBucket {
+  startedAt: number;
+  endedAt: number;
+  evaluations: number;
+  matches: number;
+  failures: number;
+  totalMicros: number;
+  timedEvaluations: number;
+}
 
 /**
  * Mutable counters for one rule, incremented directly by the engine.
@@ -56,6 +78,22 @@ export interface RuleCounter {
   totalMicros: number;
   timedEvaluations: number;
   maxMicros: number;
+  /**
+   * Closed history buckets, oldest first, bounded to `HISTORY_BUCKETS` (P-4.2).
+   *
+   * Held on the counter rather than in a parallel structure so the ring lives and dies with the thing
+   * it describes — a rule evicted from the registry takes its history with it rather than leaking one.
+   */
+  history: ClosedBucket[];
+  /** Counter values when the open bucket began, so a bucket is a delta rather than a running total. */
+  bucketStartedAt: number;
+  bucketBaseline: {
+    evaluations: number;
+    matches: number;
+    failures: number;
+    totalMicros: number;
+    timedEvaluations: number;
+  };
 }
 
 function newCounter(rule: Rule, createdAt: number): RuleCounter {
@@ -72,6 +110,15 @@ function newCounter(rule: Rule, createdAt: number): RuleCounter {
     totalMicros: 0,
     timedEvaluations: 0,
     maxMicros: 0,
+    history: [],
+    bucketStartedAt: createdAt,
+    bucketBaseline: {
+      evaluations: 0,
+      matches: 0,
+      failures: 0,
+      totalMicros: 0,
+      timedEvaluations: 0,
+    },
   };
 }
 
@@ -80,6 +127,10 @@ export interface RuleStatsRegistryDeps {
   maxTenants?: number;
   /** Rules tracked per tenant. */
   maxRulesPerTenant?: number;
+  /** History bucket width, in seconds (P-4.2). */
+  bucketSeconds?: number;
+  /** How many closed buckets to keep. */
+  retainedBuckets?: number;
   now?: () => number;
 }
 
@@ -87,12 +138,16 @@ export class RuleStatsRegistry {
   private readonly byTenant = new Map<string, Map<string, RuleCounter>>();
   private readonly maxTenants: number;
   private readonly maxRules: number;
+  private readonly bucketMs: number;
+  private readonly retainedBuckets: number;
   private readonly now: () => number;
   private readonly startedAt: number;
 
   constructor(deps: RuleStatsRegistryDeps = {}) {
     this.maxTenants = deps.maxTenants ?? 1_000;
     this.maxRules = deps.maxRulesPerTenant ?? 5_000;
+    this.bucketMs = (deps.bucketSeconds ?? HISTORY_BUCKET_SECONDS) * 1000;
+    this.retainedBuckets = deps.retainedBuckets ?? HISTORY_BUCKETS;
     this.now = deps.now ?? (() => Date.now());
     this.startedAt = this.now();
   }
@@ -117,12 +172,100 @@ export class RuleStatsRegistry {
     if (existing) {
       existing.ruleName = rule.name;
       existing.ruleVersion = rule.version;
+      // Compile time is the regular heartbeat that closes elapsed history buckets (P-4.2).
+      this.roll(existing);
       return existing;
     }
     const counter = newCounter(rule, this.now());
     rules.set(rule.id, counter);
     this.evictRules(rules);
     return counter;
+  }
+
+  /**
+   * Close any elapsed history buckets (P-4.2).
+   *
+   * Called at **compile time and read time, never per event** — the same discipline as everything
+   * else that touches these counters. A tenant receiving events recompiles at least every TTL, so its
+   * buckets close on time; a tenant receiving none has nothing to attribute anyway.
+   *
+   * ⚠️ **The imprecision this accepts:** if several buckets elapse between rolls, everything measured
+   * in that gap is attributed to the first of them. For an active tenant the gap is seconds. For an
+   * inactive one the deltas are zero. It is not a sampling system and is not documented as one.
+   */
+  private roll(counter: RuleCounter): void {
+    const elapsed = Math.floor((this.now() - counter.bucketStartedAt) / this.bucketMs);
+    if (elapsed <= 0) return;
+
+    /*
+     * A node that has been up for weeks would otherwise loop thousands of times to produce buckets it
+     * evicts immediately. Only the last `retainedBuckets` can survive, so the rest are skipped — and
+     * with them the deltas that belonged to a window nobody can see any more, which is what a bounded
+     * window means.
+     */
+    const emit = Math.min(elapsed, this.retainedBuckets);
+    const skipped = elapsed - emit;
+    let start = counter.bucketStartedAt + skipped * this.bucketMs;
+    const base = counter.bucketBaseline;
+
+    for (let i = 0; i < emit; i += 1) {
+      const carriesDeltas = i === 0 && skipped === 0;
+      counter.history.push({
+        startedAt: start,
+        endedAt: start + this.bucketMs,
+        evaluations: carriesDeltas ? counter.evaluations - base.evaluations : 0,
+        matches: carriesDeltas ? counter.matches - base.matches : 0,
+        failures: carriesDeltas ? counter.failures - base.failures : 0,
+        totalMicros: carriesDeltas ? counter.totalMicros - base.totalMicros : 0,
+        timedEvaluations: carriesDeltas ? counter.timedEvaluations - base.timedEvaluations : 0,
+      });
+      start += this.bucketMs;
+    }
+
+    if (counter.history.length > this.retainedBuckets) {
+      counter.history.splice(0, counter.history.length - this.retainedBuckets);
+    }
+    counter.bucketStartedAt = start;
+    counter.bucketBaseline = {
+      evaluations: counter.evaluations,
+      matches: counter.matches,
+      failures: counter.failures,
+      totalMicros: counter.totalMicros,
+      timedEvaluations: counter.timedEvaluations,
+    };
+  }
+
+  /**
+   * A rule's recent activity, oldest bucket first (P-4.2, Architect rec 7).
+   *
+   * Returns an empty history for a rule this node has never compiled — not a fabricated flat line.
+   */
+  historyFor(tenantId: string, ruleId: string): RuleStatsHistory {
+    const counter = this.byTenant.get(tenantId)?.get(ruleId);
+    const bucketSeconds = this.bucketMs / 1000;
+    if (!counter) return { ruleId, bucketSeconds, buckets: [], coversSeconds: 0 };
+
+    this.roll(counter);
+    const buckets: RuleStatsBucket[] = counter.history.map((bucket) => ({
+      from: new Date(bucket.startedAt).toISOString(),
+      to: new Date(bucket.endedAt).toISOString(),
+      evaluations: bucket.evaluations,
+      matches: bucket.matches,
+      failures: bucket.failures,
+      avgEvaluationMicros:
+        bucket.timedEvaluations > 0 ? bucket.totalMicros / bucket.timedEvaluations : 0,
+    }));
+
+    return {
+      ruleId,
+      bucketSeconds,
+      buckets,
+      // How far back this node can actually see — shorter than the window means it restarted.
+      coversSeconds: Math.min(
+        buckets.length * bucketSeconds,
+        (this.now() - counter.createdAt) / 1000,
+      ),
+    };
   }
 
   /** Drop a tenant's counters — used when a rule is deleted and by tests. */
@@ -147,6 +290,7 @@ export class RuleStatsRegistry {
   snapshot(tenantId: string): RuleRuntimeStats[] {
     const rules = this.byTenant.get(tenantId);
     if (!rules) return [];
+    for (const counter of rules.values()) this.roll(counter);
     return [...rules.values()]
       .map((counter) => {
         const stats: RuleRuntimeStats = {

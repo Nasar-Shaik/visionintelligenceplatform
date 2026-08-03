@@ -54,6 +54,24 @@ export function useRollbackRule(id: string) {
   });
 }
 
+/** What changed between two versions (P-4.2). Only fetched when a reviewer asks for a comparison. */
+export function useRuleDiff(id: string, from: number | undefined, to: number | undefined) {
+  return useQuery({
+    queryKey: [...queryKeys.rules.detail(id), 'diff', from, to] as const,
+    queryFn: () => rulesApi.diff(id, from as number, to as number),
+    enabled: Boolean(id) && from !== undefined && to !== undefined,
+  });
+}
+
+/** The rule's operational health (P-4.2) — a score that always travels with its reasons. */
+export function useRuleHealth(id: string | undefined) {
+  return useQuery({
+    queryKey: [...queryKeys.rules.detail(id ?? ''), 'health'] as const,
+    queryFn: () => rulesApi.health(id as string),
+    enabled: Boolean(id),
+  });
+}
+
 export function useCreateRule() {
   const qc = useQueryClient();
   return useMutation({

@@ -306,3 +306,193 @@ describe('operations routes (P-4.1)', () => {
     expect(res.json().error.message).toMatch(/nested too deeply/);
   });
 });
+
+/**
+ * P-4.2 operations routes.
+ *
+ * Route-level questions the service tests cannot answer: does a static path get mistaken for a rule
+ * id, is a malformed query a 400 rather than a silent default, and does the plane split leave every
+ * published path exactly where it was.
+ */
+describe('diagnostics routes (P-4.2)', () => {
+  const adminToken = () => token('tnt_a', ['admin']);
+
+  it('serves health, complexity and the full diagnostic package', async () => {
+    const admin = await adminToken();
+    const rule = (await createRule(admin)).json().data;
+
+    const health = await app.inject({
+      method: 'GET',
+      url: `/rules/${rule.id}/health`,
+      headers: authHeader(admin),
+    });
+    expect(health.statusCode).toBe(200);
+    expect(health.json().data).toMatchObject({ ruleId: rule.id });
+
+    const complexity = await app.inject({
+      method: 'GET',
+      url: `/rules/${rule.id}/complexity`,
+      headers: authHeader(admin),
+    });
+    expect(complexity.json().data.class).toBe('simple');
+
+    const pkg = await app.inject({
+      method: 'GET',
+      url: `/rules/${rule.id}/diagnostics`,
+      headers: authHeader(admin),
+    });
+    expect(pkg.statusCode).toBe(200);
+    expect(pkg.json().data).toMatchObject({ ruleId: rule.id, packageVersion: '1.0.0' });
+    expect(pkg.json().data.versions).toHaveLength(1);
+  });
+
+  it('diffs two versions, and rejects a diff with no versions to compare', async () => {
+    const admin = await adminToken();
+    const rule = (await createRule(admin)).json().data;
+    await app.inject({
+      method: 'PATCH',
+      url: `/rules/${rule.id}`,
+      headers: authHeader(admin),
+      payload: { severity: 'critical' },
+    });
+
+    const diff = await app.inject({
+      method: 'GET',
+      url: `/rules/${rule.id}/diff?from=1&to=2`,
+      headers: authHeader(admin),
+    });
+    expect(diff.statusCode).toBe(200);
+    expect(diff.json().data.changes.some((c: { area: string }) => c.area === 'severity')).toBe(
+      true,
+    );
+
+    const bad = await app.inject({
+      method: 'GET',
+      url: `/rules/${rule.id}/diff?from=one`,
+      headers: authHeader(admin),
+    });
+    expect(bad.statusCode).toBe(400);
+  });
+
+  it('serves the incident-management contract, pinned to a version', async () => {
+    const admin = await adminToken();
+    const rule = (await createRule(admin, personRuleInput({ severity: 'low' }))).json().data;
+    await app.inject({
+      method: 'PATCH',
+      url: `/rules/${rule.id}`,
+      headers: authHeader(admin),
+      payload: { severity: 'critical' },
+    });
+
+    const pinned = await app.inject({
+      method: 'GET',
+      url: `/rules/${rule.id}/incident-context?version=1`,
+      headers: authHeader(admin),
+    });
+    expect(pinned.json().data).toMatchObject({
+      ruleVersion: 1,
+      severity: 'low',
+      supersededByCurrentVersion: true,
+    });
+
+    const bad = await app.inject({
+      method: 'GET',
+      url: `/rules/${rule.id}/incident-context?version=nope`,
+      headers: authHeader(admin),
+    });
+    expect(bad.statusCode).toBe(400);
+  });
+
+  /** Another static path that must not be read as a rule id. */
+  it('resolves the diagnostics search path and validates its filters', async () => {
+    const admin = await adminToken();
+    await createRule(admin, personRuleInput({ name: 'searchable' }));
+
+    const ok = await app.inject({
+      method: 'GET',
+      url: '/rules/diagnostics?name=search',
+      headers: authHeader(admin),
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().data.rows[0]?.ruleName).toBe('searchable');
+
+    // An unknown lifecycle is a 400, not a filter silently ignored.
+    const bad = await app.inject({
+      method: 'GET',
+      url: '/rules/diagnostics?lifecycle=whenever',
+      headers: authHeader(admin),
+    });
+    expect(bad.statusCode).toBe(400);
+  });
+
+  it('checks dependency status only when asked, and says which answer it gave', async () => {
+    const admin = await adminToken();
+    const rule = (await createRule(admin)).json().data;
+
+    const bare = await app.inject({
+      method: 'GET',
+      url: `/rules/${rule.id}/dependencies`,
+      headers: authHeader(admin),
+    });
+    expect(bare.json().data.statusChecked).toBe(false);
+
+    const checked = await app.inject({
+      method: 'GET',
+      url: `/rules/${rule.id}/dependencies?status=true`,
+      headers: authHeader(admin),
+    });
+    expect(checked.json().data.statusChecked).toBe(true);
+  });
+
+  it('takes the conflict policy from the query, keeping the body a bare package', async () => {
+    const admin = await adminToken();
+    await createRule(admin, personRuleInput({ name: 'portable' }));
+    const pkg = (
+      await app.inject({ method: 'GET', url: '/rules/export', headers: authHeader(admin) })
+    ).json().data;
+
+    const other = await token('tnt_b', ['admin']);
+    await app.inject({
+      method: 'POST',
+      url: '/rules/import',
+      headers: authHeader(other),
+      payload: pkg,
+    });
+    const again = await app.inject({
+      method: 'POST',
+      url: '/rules/import',
+      headers: authHeader(other),
+      payload: pkg,
+    });
+    expect(again.json().data).toMatchObject({ imported: 0, skipped: 1 });
+
+    const forced = await app.inject({
+      method: 'POST',
+      url: '/rules/import?onConflict=import-anyway',
+      headers: authHeader(other),
+      payload: pkg,
+    });
+    expect(forced.json().data.imported).toBe(1);
+  });
+
+  it('keeps every published path where it was after the plane split', async () => {
+    const admin = await adminToken();
+    const rule = (await createRule(admin)).json().data;
+    const paths = [
+      '/rules',
+      `/rules/${rule.id}`,
+      `/rules/${rule.id}/versions`,
+      `/rules/${rule.id}/validation`,
+      `/rules/${rule.id}/audit`,
+      `/rules/${rule.id}/dependencies`,
+      `/rules/${rule.id}/compilation`,
+      '/rules/dependents?kind=action&ref=raise-incident',
+      '/rules/export',
+    ];
+    for (const path of paths) {
+      const res = await app.inject({ method: 'GET', url: path, headers: authHeader(admin) });
+      // A rename would be a 404 here — which is exactly what CONSTRAINTS §41 forbids.
+      expect(res.statusCode, path).toBe(200);
+    }
+  });
+});
