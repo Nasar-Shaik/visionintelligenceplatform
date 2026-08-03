@@ -37,6 +37,7 @@
  */
 import { z } from 'zod';
 import { IsoDateTime, TenantId, Uuid } from '../common/primitives.js';
+import { DerivedArtifact } from '../evidence/derived.js';
 import { PlaybackSource } from './playback.js';
 
 // ---------------------------------------------------------------------------------------------
@@ -251,6 +252,14 @@ export const RedactionResult = z.object({
   /** The `media.render` job that produced it. */
   jobId: Uuid,
   producedAt: IsoDateTime,
+  /**
+   * ⚠️ The full derivation record (P-5.4.1 refinement 1): renderer version, ordered operations,
+   * the three timestamps and the artefact's **own** integrity hash.
+   *
+   * Composed rather than restated — a second copy of `sourceEvidenceId` here and in
+   * {@link DerivedArtifact} is two places to disagree about what a disclosure copy came from.
+   */
+  derivation: DerivedArtifact.optional(),
 });
 export type RedactionResult = z.infer<typeof RedactionResult>;
 

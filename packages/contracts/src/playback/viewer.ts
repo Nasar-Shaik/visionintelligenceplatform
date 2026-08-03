@@ -30,6 +30,8 @@
  */
 import { z } from 'zod';
 import { IsoDateTime } from '../common/primitives.js';
+import type { DerivedArtifact } from '../evidence/derived.js';
+import { isDestructive } from '../evidence/derived.js';
 
 /**
  * What a viewer may offer for a given evidence item. Declared per item, like
@@ -147,12 +149,56 @@ export type EvidenceComparison = z.infer<typeof EvidenceComparison>;
  * A badge that lives only on the screen is lost the moment someone screenshots the screen — which
  * is exactly how an enhanced frame ends up in a report presented as the original.
  */
-export const EvidenceViewMode = z.enum(['original', 'enhanced']);
+export const EvidenceViewMode = z.enum([
+  /** The stored bytes, shown as captured. */
+  'original',
+  /** The stored bytes, with a **reversible display adjustment** — brightness, contrast, zoom. */
+  'enhanced',
+  /**
+   * ⚠️ A **different artefact**: information has been irreversibly removed (blur, mask, crop, trim).
+   *
+   * P-5.4 added this. Showing a redacted copy labelled `original` is the exact failure §75 exists to
+   * prevent, one layer up: the operator concludes the bystander was never in frame.
+   */
+  'redacted',
+  /**
+   * ⚠️ A different artefact produced by a non-destructive render — transcoded, scaled, watermarked.
+   *
+   * Distinct from `enhanced` because the change is **in the file, not in the viewer**: closing the
+   * adjustment panel restores an enhanced view to the original, and does nothing at all to this one.
+   */
+  'derived',
+]);
 export type EvidenceViewMode = z.infer<typeof EvidenceViewMode>;
 
-/** The mode a set of adjustments puts the view in. Derived, so the label cannot disagree. */
-export function viewMode(adjustment: EvidenceViewAdjustment | undefined): EvidenceViewMode {
+/**
+ * The mode a view is in. Derived, so the label cannot disagree with the artefact.
+ *
+ * ⚠️ **Provenance outranks adjustment.** A derived artefact is `redacted` or `derived` whatever the
+ * viewer is doing to it — brightening a redacted clip does not make it "enhanced", it makes it a
+ * brightened redaction, and the stronger of the two claims is the one an operator needs on screen.
+ * Order matters here and is asserted by a test.
+ */
+export function viewMode(
+  adjustment: EvidenceViewAdjustment | undefined,
+  derivation?: DerivedArtifact | undefined,
+): EvidenceViewMode {
+  if (derivation !== undefined) return isDestructive(derivation) ? 'redacted' : 'derived';
   return adjustment !== undefined && isAdjusted(adjustment) ? 'enhanced' : 'original';
+}
+
+/**
+ * ⚠️ Modes that must be shown **prominently and persistently**, not in a tooltip (refinement 4).
+ *
+ * Exported as data so the console asserts on it rather than a designer remembering. `original` is
+ * absent because it is the default state and a permanent "this is the original" badge trains
+ * operators to stop reading badges — which is what makes the other three invisible.
+ */
+export const MODES_REQUIRING_PROMINENT_LABEL = ['enhanced', 'redacted', 'derived'] as const;
+
+/** Does this mode require the persistent on-screen marking? */
+export function requiresProminentLabel(mode: EvidenceViewMode): boolean {
+  return (MODES_REQUIRING_PROMINENT_LABEL as readonly string[]).includes(mode);
 }
 
 /**

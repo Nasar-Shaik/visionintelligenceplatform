@@ -443,6 +443,32 @@
     `ReportedMetric` requires `source`; `falseNegatives` is optional; `CoverageBasis`;
     `HeatmapBand.counted` with a required `uncountedReason`._
 
+80. **A derived evidence artefact records how to reproduce it, and never shares its source's
+    hash.** Every rendered copy — snapshot, redaction, export — carries `sourceEvidenceId`,
+    `renderProfileId`, **ordered** `appliedOperations`, `rendererVersion`, its own integrity hash and
+    its own custody entry. Ordered because rendering is not commutative: masking then downscaling is
+    not the picture downscaling then masking produces, and the second can leave recoverable detail at
+    the region's edge. — _enforced: `DerivedArtifact` refuses an output id equal to its input and
+    refuses duplicate operation orders; `rendererVersion` is required._
+81. **Recording time, playback position and export time are three fields, never one.** An artefact
+    carrying a single timestamp is read as _when this happened_ by whoever receives it, which turns
+    "exported at 14:05" into a claim about the world. Clock confidence travels with the artefact, and
+    an estimated alignment carries its caveat out of the platform. — _enforced: `DerivedTimeBasis`
+    names all three, defaults `clockConfidence` to `unknown`, and refuses a recording that ends
+    before it starts._
+82. **The viewer names what the operator is looking at, and provenance outranks adjustment.** Four
+    states, not two: original · enhanced (reversible, in the viewer) · redacted (information removed)
+    · derived (a different file). Brightening a redacted clip does not make it "enhanced" — the
+    stronger claim wins, and everything except `original` carries a persistent on-screen label rather
+    than a tooltip. — _enforced: `viewMode()` checks the derivation first;
+    `MODES_REQUIRING_PROMINENT_LABEL`._
+83. **A produced report records the build and template that made it; a preview need not.** An
+    artefact that leaves the building must be reproducible years later: platform version, template
+    version, generation timestamp, and the **integrity hash of every evidence item included** — an id
+    alone cannot detect that an item was purged and the re-render silently differs. — _enforced:
+    `RenderedReport` refuses a missing `platformVersion` or `templateVersion`; they stay optional on
+    `ReportProvenance` so `ReportPreview` is unaffected._
+
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._

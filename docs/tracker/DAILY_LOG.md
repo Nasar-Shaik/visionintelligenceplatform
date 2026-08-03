@@ -173,3 +173,15 @@
 - Long-term items (face recognition, LPR, PTZ, audio, GIS, drone, cloud/edge sync) recorded in **PRODUCT_ROADMAP_QUEUE, not as contracts** — biometrics need a lawful basis and a DPIA before a schema; PTZ is the first camera-control write path and needs its own ADR. **P-6 Production Polish** queued after Demo Readiness v1.
 - Gates: contracts **483** (+52) · permissions **28** (+3). No service, route, worker or screen added.
 - `[Claude · 2026-08-03]`
+
+## 2026-08-03 (P-5.4.1 — the architecture freeze)
+
+- **P-5.4 approved**; seven refinements issued as the final architecture review, with an explicit freeze after it.
+- **Three already satisfied** — §74 optimistic concurrency, §75 originals never mutated, §71 lazy loading + bundle budget. Recorded as satisfied rather than reimplemented.
+- ⚠️ **§81 three timestamps.** `recordedAt` · `playbackOffsetSeconds` · `exportedAt`; clock confidence defaults to `unknown`; an estimated alignment carries its caveat out of the platform.
+- ⚠️ **§82 four view modes.** `original | enhanced | redacted | derived`, and `viewMode()` checks provenance first — a brightened redaction is still a redaction. Everything but `original` requires a persistent label.
+- ⚠️ **§80 `DerivedArtifact`.** `rendererVersion` + **ordered** operations (rendering is not commutative); refuses `derivedEvidenceId === sourceEvidenceId`; its own integrity hash, never the source's.
+- ⚠️ **§83 reproducible reports.** `templateVersion` + evidence integrity hashes, required on `RenderedReport`, optional on `ReportProvenance` so `ReportPreview` is unaffected.
+- Gates: contracts **499** (+16) · typecheck 28 · build 19 · lint 0 errors · imports 0 violations · schemas 70 · integration 18 suites · bundle budget OK.
+- ⚠️ **Contracts and foundations frozen from here.** Next: implementation — evidence playback, search, reporting, dashboards, notifications, branding, Demo Readiness v1.
+- `[Claude · 2026-08-03]`

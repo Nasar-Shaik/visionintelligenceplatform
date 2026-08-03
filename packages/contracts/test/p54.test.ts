@@ -56,6 +56,15 @@ import { DemoResetRequest } from '../src/workspace/surfaces.js';
 import { WORKSPACE_PROFILES, WorkspaceProfileId } from '../src/workspace/workspace.js';
 import { CommandId, WORKSPACE_COMMANDS } from '../src/workspace/commands.js';
 import { TenantBranding } from '../src/tenant/branding.js';
+import { DerivedArtifact, isDestructive } from '../src/evidence/derived.js';
+import {
+  EvidenceViewAdjustment,
+  EvidenceViewMode,
+  MODES_REQUIRING_PROMINENT_LABEL,
+  requiresProminentLabel,
+  viewMode,
+} from '../src/playback/viewer.js';
+import { RenderedReport, ReportProvenance } from '../src/reporting/report.js';
 
 const NOW = '2026-08-03T12:00:00.000Z';
 
@@ -691,5 +700,187 @@ describe('playback commands', () => {
       .map((command) => command.shortcut)
       .filter((chord): chord is string => chord !== undefined);
     expect(new Set(chords).size).toBe(chords.length);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// P-5.4.1 — the final refinements: derived artefacts, three timestamps, four view modes,
+// reproducible reports.
+// ---------------------------------------------------------------------------------------------
+
+describe('derived evidence artefacts', () => {
+  const artifact = {
+    derivedEvidenceId: 'ev-2',
+    sourceEvidenceId: 'ev-1',
+    tenantId: 'tenant-a',
+    renderProfileId: 'court',
+    appliedOperations: [
+      { order: 0, operation: 'mask' as const, parameters: { regions: 2 } },
+      { order: 1, operation: 'scale' as const, parameters: { width: 1280 } },
+    ],
+    rendererVersion: 'ffmpeg-7.1/vip-render-2.3.0',
+    time: {
+      recordedAt: '2026-07-01T09:00:00.000Z',
+      exportedAt: NOW,
+      clockConfidence: 'device-clock' as const,
+    },
+    integrityHash: 'sha256:abc',
+    producedBy: 'operator-1',
+  };
+
+  it('⚠️ refuses an output id equal to its input — that is an in-place mutation', () => {
+    expect(DerivedArtifact.safeParse({ ...artifact, derivedEvidenceId: 'ev-1' }).success).toBe(
+      false,
+    );
+    expect(DerivedArtifact.safeParse(artifact).success).toBe(true);
+  });
+
+  it('⚠️ keeps the operation order unique — rendering is not commutative', () => {
+    expect(
+      DerivedArtifact.safeParse({
+        ...artifact,
+        appliedOperations: [
+          { order: 0, operation: 'mask', parameters: {} },
+          { order: 0, operation: 'scale', parameters: {} },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('requires a renderer version — the artefact is not reproducible without one', () => {
+    const { rendererVersion: _omitted, ...withoutRenderer } = artifact;
+    expect(DerivedArtifact.safeParse(withoutRenderer).success).toBe(false);
+  });
+
+  it('⚠️ keeps the recording instant separate from the export instant', () => {
+    const parsed = DerivedArtifact.parse(artifact);
+    expect(parsed.time.recordedAt).toBe('2026-07-01T09:00:00.000Z');
+    expect(parsed.time.exportedAt).toBe(NOW);
+    expect(parsed.time.recordedAt).not.toBe(parsed.time.exportedAt);
+  });
+
+  it('⚠️ defaults clock confidence to unknown, never to synchronised', () => {
+    const parsed = DerivedArtifact.parse({
+      ...artifact,
+      time: { recordedAt: '2026-07-01T09:00:00.000Z', exportedAt: NOW },
+    });
+    expect(parsed.time.clockConfidence).toBe('unknown');
+  });
+
+  it('rejects a recording that ends before it starts', () => {
+    expect(
+      DerivedArtifact.safeParse({
+        ...artifact,
+        time: {
+          recordedAt: '2026-07-01T09:00:00.000Z',
+          recordedUntil: '2026-07-01T08:00:00.000Z',
+          exportedAt: NOW,
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('knows which operations removed information', () => {
+    expect(isDestructive(DerivedArtifact.parse(artifact))).toBe(true);
+    expect(
+      isDestructive(
+        DerivedArtifact.parse({
+          ...artifact,
+          appliedOperations: [{ order: 0, operation: 'transcode', parameters: {} }],
+        }),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('evidence view mode', () => {
+  const derived = (operation: string) =>
+    DerivedArtifact.parse({
+      derivedEvidenceId: 'ev-2',
+      sourceEvidenceId: 'ev-1',
+      tenantId: 'tenant-a',
+      appliedOperations: [{ order: 0, operation, parameters: {} }],
+      rendererVersion: 'r-1',
+      time: { recordedAt: NOW, exportedAt: NOW },
+      integrityHash: 'sha256:abc',
+      producedBy: 'operator-1',
+    });
+
+  it('distinguishes all four states', () => {
+    expect(EvidenceViewMode.options).toEqual(['original', 'enhanced', 'redacted', 'derived']);
+  });
+
+  it('⚠️ ranks provenance above adjustment — a brightened redaction is still redacted', () => {
+    const brightened = EvidenceViewAdjustment.parse({ brightness: 1.4 });
+    expect(viewMode(brightened)).toBe('enhanced');
+    expect(viewMode(brightened, derived('blur'))).toBe('redacted');
+    expect(viewMode(brightened, derived('transcode'))).toBe('derived');
+  });
+
+  it('stays original when nothing was done to it', () => {
+    expect(viewMode(undefined)).toBe('original');
+    /* ⚠️ Parsed, not a bare object: the neutral adjustment is 1/1/0, not "fields absent". */
+    expect(viewMode(EvidenceViewAdjustment.parse({}))).toBe('original');
+  });
+
+  it('⚠️ marks an unadjusted view of a redacted copy as redacted, not original', () => {
+    expect(viewMode(undefined, derived('mask'))).toBe('redacted');
+    expect(viewMode(undefined, derived('watermark'))).toBe('derived');
+  });
+
+  it('⚠️ requires a persistent label on everything except the original', () => {
+    expect(requiresProminentLabel('original')).toBe(false);
+    for (const mode of MODES_REQUIRING_PROMINENT_LABEL) {
+      expect(requiresProminentLabel(mode)).toBe(true);
+    }
+  });
+});
+
+describe('report reproducibility', () => {
+  const provenance = {
+    incidentId: '66666666-6666-4666-8666-666666666666',
+    incidentVersion: 3,
+    correlationId: 'corr-1',
+    generatedAt: NOW,
+    generatedBy: 'operator-1',
+  };
+  const rendered = (extra: Record<string, unknown>) => ({
+    model: {
+      tenantId: 'tenant-a',
+      title: 'Incident report',
+      provenance: { ...provenance, ...extra },
+      sections: [],
+      omissions: [],
+    },
+    presentation: {},
+    storageKey: 'reports/r-1.pdf',
+    contentType: 'application/pdf',
+    sizeBytes: 1024,
+    renderedAt: NOW,
+  });
+
+  it('⚠️ refuses a rendered report with no platform build', () => {
+    expect(RenderedReport.safeParse(rendered({ templateVersion: '2.1.0' })).success).toBe(false);
+  });
+
+  it('⚠️ refuses a rendered report with no template version — a theme slug is not a version', () => {
+    expect(RenderedReport.safeParse(rendered({ platformVersion: '1.4.2' })).success).toBe(false);
+  });
+
+  it('accepts one that records both', () => {
+    expect(
+      RenderedReport.safeParse(rendered({ platformVersion: '1.4.2', templateVersion: '2.1.0' }))
+        .success,
+    ).toBe(true);
+  });
+
+  it('⚠️ records evidence hashes, so a purged item makes a re-render detectably different', () => {
+    const parsed = ReportProvenance.parse({
+      ...provenance,
+      evidenceVersions: [{ evidenceId: 'ev-1', integrityHash: 'sha256:abc' }],
+    });
+    expect(parsed.evidenceVersions).toHaveLength(1);
+    /* A preview has no artefact, so it needs neither version — that is why they stay optional. */
+    expect(ReportProvenance.parse(provenance).evidenceVersions).toEqual([]);
   });
 });

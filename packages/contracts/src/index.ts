@@ -32,6 +32,8 @@ export * from './media/media.js';
 
 // evidence (P2-2 G-4)
 export * from './evidence/evidence.js';
+// P-5.4.1 rec 1 — derived artefacts: source, profile, ordered operations, renderer version, hash.
+export * from './evidence/derived.js';
 
 // perception / inference (P1-6)
 export * from './perception/perception.js';

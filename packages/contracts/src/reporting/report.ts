@@ -126,6 +126,31 @@ export const ReportProvenance = z.object({
   generatedBy: z.string().min(1),
   /** The platform build that produced it, so a rendering defect is traceable to a release. */
   platformVersion: z.string().min(1).optional(),
+  /**
+   * The template that shaped it (P-5.4.1 refinement 5).
+   *
+   * ⚠️ A theme id alone is not enough: `security` in 2026 and `security` in 2029 are the same slug
+   * and potentially a different document. Reproducing a report years later needs the version, not
+   * just the name.
+   */
+  templateVersion: z.string().min(1).max(80).optional(),
+  /**
+   * ⚠️ **The exact evidence versions included** — id and integrity hash, as they were at generation.
+   *
+   * Evidence is immutable, so an id would seem sufficient. It is not: an item can be **purged or
+   * expired** under retention, and a report re-rendered afterwards is a different document that
+   * looks identical. Recording the hash makes the difference detectable rather than invisible, and
+   * makes "this is what we sent them" answerable.
+   */
+  evidenceVersions: z
+    .array(
+      z.object({
+        evidenceId: z.string().min(1),
+        integrityHash: z.string().min(1).max(200),
+      }),
+    )
+    .max(500)
+    .default([]),
 });
 export type ReportProvenance = z.infer<typeof ReportProvenance>;
 
@@ -190,15 +215,41 @@ export type ReportPresentation = z.infer<typeof ReportPresentation>;
  * Keeping them side by side means the same content can be re-rendered under a different theme with
  * no risk of the second render disagreeing with the first.
  */
-export const RenderedReport = z.object({
-  model: ReportModel,
-  presentation: ReportPresentation,
-  /** The artefact, as a job result — a storage key, never a URL (see `JobResult`). */
-  storageKey: z.string().min(1),
-  contentType: z.string().min(1),
-  sizeBytes: z.number().int().nonnegative(),
-  renderedAt: IsoDateTime,
-});
+export const RenderedReport = z
+  .object({
+    model: ReportModel,
+    presentation: ReportPresentation,
+    /** The artefact, as a job result — a storage key, never a URL (see `JobResult`). */
+    storageKey: z.string().min(1),
+    contentType: z.string().min(1),
+    sizeBytes: z.number().int().nonnegative(),
+    renderedAt: IsoDateTime,
+  })
+  .superRefine((report, ctx) => {
+    /*
+     * ⚠️ **A produced artefact must be reproducible; a preview need not be** (refinement 5).
+     *
+     * `platformVersion` and `templateVersion` stay optional on `ReportProvenance` because a
+     * `ReportPreview` shares that shape and is computed before anything is rendered — requiring
+     * them there would be a breaking change to a frozen contract for no gain. Requiring them
+     * *here*, on the thing that leaves the building, is the additive way to get the guarantee.
+     */
+    if (report.model.provenance.platformVersion === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['model', 'provenance', 'platformVersion'],
+        message:
+          'a rendered report must record the platform build that produced it — it has to be reproducible years later',
+      });
+    }
+    if (report.model.provenance.templateVersion === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['model', 'provenance', 'templateVersion'],
+        message: 'a rendered report must record the template version, not just the theme name',
+      });
+    }
+  });
 export type RenderedReport = z.infer<typeof RenderedReport>;
 
 /**

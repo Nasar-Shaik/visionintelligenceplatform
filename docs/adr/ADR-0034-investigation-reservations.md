@@ -154,3 +154,88 @@ legal review before a schema, not after.
 - **Inferring false positives from resolution shape** — rejected: indistinguishable from a
   well-handled real incident (decision 5).
 - **`metrics:read` covering per-operator figures** — rejected: `*:read` grants it to every viewer.
+
+---
+
+## Addendum — P-5.4.1: the final refinements before implementation (2026-08-03)
+
+The Architect approved P-5.4 and issued seven refinements as the **final architecture review before
+implementation**, with an explicit freeze after it. Three were already satisfied and are recorded as
+such rather than reimplemented; four were genuine correctness gaps.
+
+**Already satisfied — no change made.**
+
+- _"Resolve concurrent edits honestly · never silently overwrite · prefer optimistic concurrency."_
+  Delivered in P-5.3 and pinned as §74: every incident write is version-guarded, a 409 refetches,
+  keeps the operator's text and explains, and is **never** retried.
+- _"Never overwrite or mutate originals."_ §75, with no `overwriteOriginal` flag anywhere in the
+  contract surface and `RedactionResult.irreversible` typed as `z.literal(true)`.
+- _"Continue lazy loading, virtualized rendering, bundle budget."_ Route splitting, vendor chunking
+  and `check-bundle-budget.mjs` are wired into `build` (§71).
+
+**Four gaps closed.**
+
+### A. A derived artefact needs the renderer, not just the source (§80)
+
+`sourceEvidenceId` answers _what it came from_; it does not answer _whether this is what that
+renderer would produce today_. A blur radius, a codec default or a scaling filter that changed
+between releases yields a visibly different artefact from identical inputs. `DerivedArtifact` carries
+`renderProfileId`, `rendererVersion` and the **ordered** `appliedOperations`.
+
+⚠️ **Ordered, because rendering is not commutative.** Masking then downscaling is not the picture
+that downscaling then masking produces — and the second order can leave recoverable detail at the
+region's edge. The schema refuses duplicate orders.
+
+⚠️ **And it refuses `derivedEvidenceId === sourceEvidenceId`.** A "derivation" whose output id equals
+its input is an in-place mutation wearing a provenance record, which is exactly the shape a
+well-meaning optimisation would take.
+
+Modelled once and composed by `RedactionResult` rather than restated — a snapshot, a redaction and an
+export are the same shape of thing, and three copies would drift.
+
+### B. Three timestamps, because one gets read as the wrong one (§81)
+
+`recordedAt` · `playbackOffsetSeconds` · `exportedAt`. An artefact carrying a single timestamp is
+read as _when this happened_ by whoever receives it, which turns "exported at 14:05" into a claim
+about the world. Clock confidence travels with the artefact and defaults to `unknown`, and an
+estimated alignment carries its caveat **out of the platform** — "never imply synchronization if
+clock alignment is estimated" only holds if the caveat survives the export.
+
+### C. The viewer needs four modes, and provenance outranks adjustment (§82)
+
+`EvidenceViewMode` was `original | enhanced`. A redacted copy shown as `original` is §75's failure one
+layer up: the operator concludes the bystander was never in frame. Now four —
+
+| Mode       | What it means                                                                |
+| ---------- | ---------------------------------------------------------------------------- |
+| `original` | the stored bytes                                                             |
+| `enhanced` | reversible display adjustment, **in the viewer**                             |
+| `redacted` | information irreversibly removed — a different artefact                      |
+| `derived`  | non-destructive render (transcode, scale, watermark) — also a different file |
+
+⚠️ **`viewMode()` checks the derivation first.** Brightening a redacted clip does not make it
+"enhanced"; it makes it a brightened redaction, and the stronger claim is the one an operator needs on
+screen. Everything except `original` requires a persistent label, not a tooltip —
+`MODES_REQUIRING_PROMINENT_LABEL` exists so the console asserts on it.
+
+⚠️ This is the **fifth** enum extension recorded as additive for the platform and not for a strict
+external parser. Accepted for the same reason: the alternative is a second mode vocabulary.
+
+### D. A produced report must be reproducible; a preview need not be (§83)
+
+`templateVersion` was missing — `security` in 2026 and `security` in 2029 are the same slug and
+potentially a different document. So are the **evidence integrity hashes**: evidence is immutable, so
+an id looks sufficient, but an item can be **purged under retention**, and a report re-rendered
+afterwards is a different document that looks identical.
+
+⚠️ `platformVersion` and `templateVersion` stay **optional on `ReportProvenance`** and are required by
+a `superRefine` on **`RenderedReport`**. `ReportPreview` shares the provenance shape and is computed
+before anything is rendered; requiring them there would be a breaking change to a frozen contract for
+no gain. Requiring them on the thing that leaves the building is the additive way to get the
+guarantee.
+
+## Status after this addendum
+
+⚠️ **Contracts and foundations are frozen.** Further change requires a real implementation issue and
+an ADR. The next milestones are implementation, UX and testing: evidence playback, search, reporting,
+dashboards, notifications, branding, and Demo Readiness v1.

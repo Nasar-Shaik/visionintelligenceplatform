@@ -932,3 +932,51 @@ does not choose which incidents reach them.
 than what it would _contain_. A feature list is written in the vocabulary of the screen; a contract
 has to be written in the vocabulary of the guarantee, and the two disagree most sharply exactly where
 the guarantee matters most.
+
+## ED-0065 — P-5.4.1: three timestamps, four view modes, and a derivation you can reproduce
+
+**Date:** 2026-08-03 · **Milestone:** P-5.4.1 (final architecture review) · **ADR:** [ADR-0034 addendum](../adr/ADR-0034-investigation-reservations.md)
+
+Seven refinements arrived as the last architecture review before implementation. **Three were already
+satisfied** and were recorded as such rather than reimplemented — optimistic concurrency with honest
+conflict resolution (§74, P-5.3), never mutating originals (§75), and lazy loading with a bundle
+budget (§71). Reimplementing a satisfied requirement is how a codebase acquires two answers to one
+question.
+
+**Four were genuine gaps, and three of them are the same mistake in different clothes: a single value
+standing in for several distinct facts.**
+
+⚠️ **One timestamp gets read as the wrong one.** An exported clip carrying only an export date is a
+file that says the wrong thing about when the events in it happened — "exported at 14:05" is received
+as a claim about the world. Split into `recordedAt` · `playbackOffsetSeconds` · `exportedAt`, with
+clock confidence defaulting to `unknown` and an estimated alignment carrying its caveat **out of the
+platform**. A caveat that does not survive the export was never worth making (§81).
+
+⚠️ **Two view modes cannot describe four artefacts.** `original | enhanced` had nowhere to put a
+redacted copy, so a redacted copy would have shown as `original` — §75's failure one layer up, where
+the operator concludes the bystander was never in frame. Now four, and `viewMode()` **checks
+provenance before adjustment**: brightening a redacted clip does not make it "enhanced", it makes it a
+brightened redaction, and the stronger claim is the one that belongs on screen (§82).
+
+⚠️ **`sourceEvidenceId` alone does not make an artefact reproducible.** It says what the input was, not
+whether today's renderer would produce the same output — a blur radius or a scaling filter that
+changed between releases yields a visibly different file from identical inputs. `DerivedArtifact`
+carries `rendererVersion` and the **ordered** operations, ordered because rendering is not
+commutative: masking then downscaling is not the picture downscaling then masking produces, and the
+second order can leave recoverable detail at a region's edge. It also **refuses an output id equal to
+its input** — a derivation whose output is its input is an in-place mutation wearing a provenance
+record, which is precisely the shape a well-meaning optimisation would take (§80).
+
+**The fourth is about what survives.** A report needs `templateVersion` (the slug `security` in 2026
+and in 2029 are the same name and possibly a different document) and the **integrity hash of every
+evidence item included**. Evidence is immutable, so an id looks sufficient — but an item can be
+**purged under retention**, and a report re-rendered afterwards is a different document that looks
+identical. ⚠️ Both are required on `RenderedReport` via a refinement and left **optional on
+`ReportProvenance`**, because `ReportPreview` shares that shape and is computed before anything is
+rendered. Requiring them on the artefact that leaves the building is the additive way to get the
+guarantee; requiring them on the shared shape would have been a breaking change for no gain (§83).
+
+**The general lesson, and it is the same one as ED-0064.** Every gap here was found by asking what a
+field would be **true of** rather than what it would contain. A feature list names things the screen
+shows; a contract has to name the claim each value makes to whoever receives it — and the two diverge
+hardest exactly where the artefact outlives the session that made it.
