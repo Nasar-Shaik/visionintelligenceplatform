@@ -381,6 +381,34 @@
     `HttpTimelineSources`; `IncidentTimelineGapReason.forbidden`; tests assert the caller's token is
     forwarded, that no service key is sent, and that an identity-less call is never made._
 
+71. **Measure the client before optimising it, and gate what is deterministic.** A frontend has the
+    same rule as a query: benchmark, do not assume. **Bytes are not milliseconds** — a bundle's size
+    is reproducible from source and lockfile, so an absolute byte budget is a legitimate gate where a
+    timing threshold is not (§51). A budget that skips because nobody built is §44 in a build script.
+    — _enforced: `apps/console/scripts/check-bundle-budget.mjs`, wired into the console's `build`;
+    it fails when `dist/` is absent. Measured baseline: entry **1,410 kB → 42.9 kB** once routes were
+    split._
+72. **A composed status is projected from reads already made, never from a new probe.** A health or
+    readiness surface answers from the typed gaps, errors and registry facts the screen already
+    collected — adding N probes to the busiest page to re-answer what it knows is §54 wearing a
+    dashboard. And it reports **three kinds of "not working"** — nothing was built, nothing was
+    configured, nothing answered — because each leads to a different action, plus **`unknown` for
+    anything nothing exercised**, which is never rendered as healthy. — _enforced:
+    `deriveWorkspaceHealth`; the health panel fetches nothing (`enabled: false`); a test asserts an
+    unexercised dependency is `unknown` with no `observedAt`._
+73. **A provenance chain must be able to break, and say which kind of break it is.** Any
+    end-to-end trace — evidence chain, lineage, audit path — renders every stage, and an unresolved
+    stage carries a **required reason**: aged out of retention · archived · never produced · not
+    built · forbidden · unreachable. Omitting the stage lets a reader believe the chain ends there;
+    drawing every gap the same way lets them believe the platform lost something. — _enforced:
+    `EvidenceChain` refuses an unresolved link with no `brokenBecause` and no `detail`; `complete` is
+    derived from the links so the summary cannot disagree with them._
+74. **A conflict is reported to the person, never retried by the client.** Optimistic concurrency
+    only pays off if the operator learns the record moved: an automatic retry re-applies a write
+    against a state that has since changed — a resolution note landing on an incident somebody else
+    just escalated. Refetch, keep what they typed, and say so. — _enforced:
+    `useCollaboration`; a 409 invalidates and toasts, and the composer clears only on success._
+
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._

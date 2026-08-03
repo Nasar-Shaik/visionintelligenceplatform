@@ -10,6 +10,7 @@ folding these into a slice that is about something else is the failure this file
 
 Recorded 2026-08-03, from the P-5 architecture review and the P-5.1 authorisation.
 **Updated 2026-08-03 (P-5.2.0): Q-1 and Q-2 are discharged; Q-5…Q-9 added.**
+**Updated 2026-08-03 (P-5.3): Q-5…Q-9 still untouched, and the reserved list grew — dashboard, notification centre, offline bundle, report preview, branding, profiles, demo mode. ⚠️ All of them now surface in the workspace's health panel as `not-built` with a stated reason, so the gap is visible to an operator rather than only to a reader of this file.**
 **Updated 2026-08-03 (P-5.2): Q-5…Q-9 remain untouched — the workspace consumes the frozen
 contracts and implements none of them.** ⚠️ The workspace visibly declares Saved Investigations,
 Playback and AI Recommendations _unavailable_ rather than empty, so the gap is on the screen rather

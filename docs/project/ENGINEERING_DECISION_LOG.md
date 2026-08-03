@@ -833,3 +833,46 @@ freeze — not against it.
 
 Constraint added: **§70** — a cross-context join runs as the caller, and "you may not" is not "it is
 down".
+
+## ED-0063 — P-5.3: the client had never been measured, and the chain has to be able to break
+
+**Date:** 2026-08-03 · **Milestone:** P-5.3 (evidence integration + collaboration) · **ADR:** [ADR-0033](../adr/ADR-0033-evidence-integration-and-chain.md)
+
+**The finding was in the frontend build, and measuring first is the only reason it was found.**
+Recommendation 17 said _continue measuring, never assume_. Measuring the production bundle **before
+changing anything** showed the console shipped as **one chunk: 1,410 kB (403 kB gzip)** — the rule
+editor, Recharts and the entire workspace downloaded before an operator could see the login form.
+Nothing was broken. Nothing had ever been looked at. Route-level lazy boundaries plus vendor
+chunking took the entry chunk to **42.9 kB (13.4 kB gzip)**.
+
+⚠️ **The gate is a byte budget, which needed justifying against §51.** That constraint forbids
+turning a recorded number into a threshold, because a benchmark belongs to the machine that produced
+it. **Bytes are not milliseconds:** a bundle's size is reproducible from source and lockfile, so a
+byte regression is a fact rather than a measurement artefact. A gzip budget was rejected for the
+opposite reason — compression ratios move with the compressor version, reintroducing the machine
+dependence. And the script **fails when `dist/` is missing** rather than skipping, because a budget
+that passes for want of a build is §44 in a build script.
+
+**The evidence chain's value is entirely in its breaks.** Three of the eight stages have no producer
+in this build, and on most incidents a fourth is empty because automatic capture is a no-op pending
+the media frame source (TD-15). A diagram that omitted the unbuilt stages would say the chain ends
+at evidence; one that drew every gap identically would say the platform lost something. So an
+unresolved stage carries a **required reason** from six — aged out · archived · never produced · not
+built · forbidden · unreachable — and the schema refuses a link without one.
+
+**Health is projected, not probed.** Seven probes on the busiest screen would re-answer what the
+screen already knows from the timeline's typed gaps and the panel registry. The health panel fetches
+nothing. It reports **three kinds of "not working"** — because a release, a config change and a page
+to an engineer are three different actions — plus **`unknown`** for anything nothing exercised,
+which is never drawn as healthy.
+
+**Three requests were answered differently, each for a reason recorded in the ADR:** a third
+`migrationVersion` was refused (no distinct question; the per-panel version is what actually meets
+"never invalidate saved layouts"); "AI must not mutate without approval" was met by going further
+(an AI cannot mutate _with_ approval, because an approval flow needs an AI-authored mutation to
+exist); and "WebSocket-ready" was answered by reserving the vocabulary on the SSE transport that
+already exists rather than standing up a second one for updates that are server→client only.
+
+Constraints added: **§71** measure the client, gate what is deterministic · **§72** a composed status
+is projected, never probed · **§73** a provenance chain must be able to break, and say which kind ·
+**§74** a conflict is reported to the person, never retried.
