@@ -1,6 +1,7 @@
 # P-5 Entry Criteria — the readiness matrix
 
-**Status:** ✅ **All six criteria met.** P-5 Incident Management is unblocked.
+**Status:** ✅ **ACCEPTED** by the Architect, 2026-08-03. All six criteria met.
+**P-5 implementation is gated on one further step:** the [P-5 architecture document](../architecture/P-5-INCIDENT-MANAGEMENT.md) and its approval (Architect rec 14 — _"only after approval should implementation begin"_).
 **Slice:** P-5.0 — Incident Management Entry Criteria · **Date:** 2026-08-03
 **Authorised by:** Architect approval of P-4.2 and of the
 [P-5 architecture validation pass](P-5-ARCHITECTURE-VALIDATION.md), which turned its six findings

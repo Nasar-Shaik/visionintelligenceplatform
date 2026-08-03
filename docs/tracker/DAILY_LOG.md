@@ -2,6 +2,18 @@
 
 > One rolling file, newest first. **Capture meaningful progress only — no exhaustive file lists** (those live in git history and per-slice [REVIEW_HISTORY](REVIEW_HISTORY.md)). One short entry per working day. Sign entries `[name · YYYY-MM-DD]`.
 
+## 2026-08-03 (architecture)
+
+- **P-5.0 ✅ ACCEPTED** by the Architect, with the **three-valued index coverage model adopted as the standard** verification approach for future query surfaces. Fifteen recommendations, of which rec 14 gates implementation: produce one P-5 architecture document, and only begin coding after it is approved.
+- **P-5 architecture document written — documentation only, no P-5 code.** Incident aggregate · timeline · workspace · evidence integration · search · correlation · permissions · reporting · metrics · SLA · scalability targets · AI extension points · UI flow · a five-slice delivery plan. Contracts are specified precisely but **not added to `@vip/contracts`**: "frozen before implementation" cannot mean frozen before review.
+- **Applying rec 5's five-check rule to queries P-5 has not written yet found a real defect.** The Evidence context carries TD-22's exact shape — `EvidenceQuery` filters on `eventId`, `correlationId` and `cameraId` with no index for any of them, `tenant_incident` stops before the cursor tiebreak, and there is no coverage test. **I measured it with `explain('executionStats')` instead of trusting my reading of the index list, and the measurement changed the claim:** the workspace's first query produces a **blocking in-memory `SORT`**, and the unindexed ones produce **no `COLLSCAN`** — they fall back to the time index and filter residually, so `eventId` examined **all 500 documents to return 1**. Registered as **[TD-25](../../tracking/TECH-DEBT.md)** (high) and **requested rather than done**, because the guardrail against redesigning the Evidence Foundation is explicit — even though adding an index changes no contract, route or behaviour.
+- **The timeline is a fan-out, not a projection.** Three of the eight requested entry kinds live in other contexts, so it gets a join budget: three bounded upstream calls, `include` opt-in, an unavailable upstream reported as a named `gap` rather than silence, and an explicit cap reported as `truncated`.
+- **Two recommendations not adopted as written**, both consistent with decisions already accepted: `comment` does not become a second name for `note`; and "similarity" is not a correlation dimension — it is fuzzy matching with no index, so it sits in the AI advisory surface instead.
+- **AI may only recommend, enforced by the permission catalog rather than by convention** — no role grants a machine principal any `incident:*` write permission.
+- **Gates:** documentation-only — no source file changed; format clean, and the full suite is unchanged from `240270f` (28/28).
+- **Next:** P-5 architecture review and decisions on six findings (F-1…F-6). **Implementation has not started and must not until approval.**
+- `[Claude · 2026-08-03]`
+
 ## 2026-08-03 (latest)
 
 - **P-4.2 ✅ ACCEPTED** by the Architect. The **P-5 architecture validation pass was accepted in full** and its six findings became **formal entry criteria**, with ten further recommendations.

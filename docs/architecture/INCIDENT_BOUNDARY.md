@@ -8,6 +8,32 @@ wrong and that is a decision to take at the boundary, not a change to make in th
 
 ---
 
+## Ownership
+
+**The Incident Context owns these, and no other context may own any part of them:**
+
+| Owned          | Meaning                                                         |
+| -------------- | --------------------------------------------------------------- |
+| Lifecycle      | status, transitions, the state machine, terminality             |
+| Assignments    | who owns an incident, and the immutable assignment history      |
+| Collaboration  | notes, attachments-as-references, operator statements           |
+| Timelines      | the merged narrative — derived, never stored                    |
+| Investigations | the workspace projection, its state, its findings               |
+| Reporting      | incident-shaped aggregates, SLA attainment, operational metrics |
+
+**It consumes, read-only and by id:** Events · Rules · Evidence · Camera · Location. Never their
+storage; always a published route.
+
+⚠️ **No downstream context may own incident state.** Three things that forbids, concretely:
+
+1. The **Notify** context may not decide an incident's status. `notification.acked` does not
+   auto-acknowledge — that stays an explicit Workflow decision (the deferred loop is TD-8).
+2. The **Evidence** context may not carry investigation notes. An annotation is a Workflow object
+   referencing evidence by id — see [CONTEXT_OWNERSHIP](CONTEXT_OWNERSHIP.md).
+3. The **Rules** context may not learn whether a candidate became an incident. It emits and forgets.
+
+---
+
 ## The dependency graph
 
 Every arrow is a **published route or contract**. There is no arrow that is a shared database, and
