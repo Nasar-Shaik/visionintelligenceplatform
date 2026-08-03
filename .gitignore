@@ -56,3 +56,8 @@ tmp/
 
 # AI Playground CLI output (engineering artifacts — never committed)
 playground-output/
+
+# Local agent tooling (Claude Code skills). Not project code — installed per
+# machine, third-party content with its own licences. Delete this line if the
+# team decides to share a skill set through the repo.
+.claude/
