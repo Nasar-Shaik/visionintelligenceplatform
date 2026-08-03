@@ -3,7 +3,9 @@ import { can } from '../src/can.js';
 import {
   INCIDENT_PERMISSIONS,
   REFUSED_INCIDENT_PERMISSIONS,
+  REFUSED_WORKSPACE_PERMISSIONS,
   ROLE_PERMISSIONS,
+  WORKSPACE_PERMISSIONS,
 } from '../src/model.js';
 
 /**
@@ -94,5 +96,55 @@ describe('refused incident permissions (P-5.1)', () => {
         expect(can(ROLE_PERMISSIONS[role], refused), `${role} → ${refused}`).toBe(false);
       }
     }
+  });
+});
+
+/**
+ * The workspace permission catalog (P-5.2.0).
+ *
+ * ⚠️ The first test here is the one that matters. `audit:read` would have been the obvious name for
+ * reading the access log — and both `operator` and `viewer` hold `*:read`, so naming it that way
+ * would have granted a log of *who looked at what, when, from which IP* to the least privileged
+ * role in the product. Nothing would have failed: it is a wildcard expansion, and no test asserted
+ * the negative. These assert it.
+ */
+describe('the workspace permission catalog (P-5.2.0)', () => {
+  it('⚠️ never grants the access audit to an operator or a viewer', () => {
+    for (const role of ['operator', 'viewer'] as const) {
+      expect(can(ROLE_PERMISSIONS[role], 'audit:inspect')).toBe(false);
+    }
+    expect(can(ROLE_PERMISSIONS.admin, 'audit:inspect')).toBe(true);
+    expect(can(ROLE_PERMISSIONS.owner, 'audit:inspect')).toBe(true);
+  });
+
+  /*
+   * The general hazard, pinned. If anyone renames the permission to `audit:read`, or adds any other
+   * sensitive read permission, this fails — which is the point (TD-26).
+   */
+  it('⚠️ proves the wildcard would have granted it, had it been named audit:read', () => {
+    expect(can(ROLE_PERMISSIONS.viewer, 'audit:read')).toBe(true);
+    expect(WORKSPACE_PERMISSIONS as readonly string[]).not.toContain('audit:read');
+    expect(WORKSPACE_PERMISSIONS as readonly string[]).toContain('audit:inspect');
+  });
+
+  it('creates no permission that duplicates an authority that already exists', () => {
+    const all = [...INCIDENT_PERMISSIONS, ...WORKSPACE_PERMISSIONS] as readonly string[];
+    for (const refused of REFUSED_WORKSPACE_PERMISSIONS) {
+      expect(all).not.toContain(refused);
+    }
+    /* An incident report is an incident export — `incident:export` already authorises it. */
+    expect(all).toContain('incident:export');
+  });
+
+  it('keeps the access audit append-only by refusing a write and a delete permission', () => {
+    expect(REFUSED_WORKSPACE_PERMISSIONS as readonly string[]).toContain('audit:write');
+    expect(REFUSED_WORKSPACE_PERMISSIONS as readonly string[]).toContain('audit:delete');
+  });
+
+  it('lets an operator save their own investigative work and cancel their own exports', () => {
+    expect(can(ROLE_PERMISSIONS.operator, 'investigation:write')).toBe(true);
+    expect(can(ROLE_PERMISSIONS.operator, 'job:cancel')).toBe(true);
+    /* A viewer may read saved work (via `*:read`) but may not create it. */
+    expect(can(ROLE_PERMISSIONS.viewer, 'investigation:write')).toBe(false);
   });
 });

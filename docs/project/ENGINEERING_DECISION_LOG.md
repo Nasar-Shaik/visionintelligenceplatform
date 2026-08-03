@@ -735,3 +735,60 @@
 
 - **Gates:** workflow **103** (+26) · evidence **43** (+21) · contracts 296 · permissions **20** (+8) · rules 206 · camera 193 · tenant 144 · console 112 · events 40 · e2e 33 · typecheck 28 · integration **evidence 10 / workflow 13 / events 9 against a real MongoDB** · evidence benchmark 1:1 flat at 10k/100k/500k. Docs: [ADR-0030](../adr/ADR-0030-incident-prerequisites.md), [CONSTRAINTS §61–63](CONSTRAINTS.md), [P-5 architecture](../architecture/P-5-INCIDENT-MANAGEMENT.md), [PRODUCT_ROADMAP_QUEUE](PRODUCT_ROADMAP_QUEUE.md), [TECH-DEBT](../../tracking/TECH-DEBT.md) (TD-25 resolved).
 - **Owner:** Claude · **Status:** ⏳ Awaiting architectural review · **Future Review:** Yes — P-5.2 (incident aggregate, timeline upstream clients, workspace backend) is next; the timeline currently reports three `unavailable` gaps in every deployment because those clients do not exist yet.
+
+## ED-0061 — P-5.2.0: freeze the shapes, refuse the ones that cannot be honest, and check the permission before naming it
+
+**Date:** 2026-08-03 · **Milestone:** P-5.2.0 (contract + specification freeze; **no implementation**) · **ADR:** [ADR-0031](../adr/ADR-0031-workspace-prerequisites.md)
+
+Eleven recommendations arrived with the P-5.1 approval, all of the form _define the contract before
+implementation_, plus three refinement sets during the work. All of it discharged as contracts and
+specifications; **P-5.2 has not begun**.
+
+**The finding is a permission this time, not a query.** The obvious name for reading the access
+audit was `audit:read`. Both `operator` and `viewer` hold `*:read` — so that name would have granted
+a log of _who viewed what, when, from which IP_ to the least privileged role in the product, **at
+the moment the string was written**. No grant recorded. Nothing failing. No test asserting the
+negative. Measured (`can(ROLE_PERMISSIONS.viewer, 'audit:read')` is `true`), renamed to
+`audit:inspect`, and the hazard **pinned by an assertion that `audit:read` would have been granted**
+— because avoiding an instance is not the same as recording the class. The class is worse than the
+instance: **every** future `<resource>:read` is granted to viewers the moment it is named
+([TD-26](../../tracking/TECH-DEBT.md)).
+
+**What was refused, and the reasoning that generalises:**
+
+- **Five of eleven requested audit events.** A write leaves a record; a read leaves nothing.
+  Assignment, comment, attachment, resolution and escalation already append to the incident's own
+  streams and are derived by `IncidentActivity` — a second copy is two records of one truth (§46).
+  `view` refused separately: at list-row granularity it is one write per rendered row, and **a
+  sampled audit is not an audit**, because the one access anybody asks about is the one dropped.
+- **A global relevance score.** Search is a federation over per-context indexes; blending scores
+  across them is arithmetic on incomparable quantities (§52). Groups state their own ordering.
+- **Four "search entities".** Site/Building/Floor/Zone are the `type` of a `location` — four
+  entities would copy the frozen hierarchy enum into search. `actor` is a _reference_, not a record.
+- **A `partial` job state.** "Partly succeeded" is where the archive missing four clips gets handed
+  to a regulator. A half-finished export is a failure that produced something.
+- **A signed URL inside `JobResult`.** It outlives its own expiry: a broken link at best, a
+  credential sitting in a queryable collection at worst.
+- **A second design-system document.** One already existed and was already enforced; two
+  descriptions of one visual language have no principled resolution when they disagree.
+
+**Three restatements that changed the design:**
+
+1. _"Persist only UI state"_ → **"a reference may be persisted; a record may not."** The
+   instruction's own examples (current incident, selected evidence) crossed its line. An id goes
+   stale safely; a cached `{id, status, title}` renders stale truth confidently after access is
+   revoked.
+2. _A keyboard registry and a command palette_ → **one registry.** A shortcut is a binding to a
+   command; two tables diverge silently, and the failure is a keystroke firing a renamed command.
+3. _A theme_ → **presentation that may not choose content.** If a theme could drop the audit trail,
+   two reports of one incident would say different things while both claiming to be the report.
+   Theme ids are opaque configured slugs, not an industry enum (§36).
+
+**Also worth recording:** the design system's "Tailwind only, no Bootstrap, no MUI" rule was already
+true — and true **by accident**. Nothing recorded it and nothing checked it, so the first
+`pnpm add @mui/material` would have passed review as an ordinary dependency change. It is now a test
+that reads the real manifest.
+
+Constraints added: **§64** registers are data · **§65** four render states, the fourth being
+_unavailable_ · **§66** references not records · **§67** federation budgets and no fabricated
+ranking · **§68** audit reads, derive writes · **§69** naming a permission is a grant.

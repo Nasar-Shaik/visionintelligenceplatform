@@ -30,6 +30,14 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'event:replay',
     'tenant:read',
     'tenant:update',
+    // P-5.2.0 — saved investigations, background jobs, and the access audit.
+    'investigation:*',
+    'job:*',
+    /*
+     * ⚠️ A tenant administrator may inspect the access audit; nobody below them may. See
+     * `WORKSPACE_PERMISSIONS` for why the action is `inspect` and not `read`.
+     */
+    'audit:inspect',
   ],
   operator: [
     '*:read',
@@ -57,6 +65,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'notification:ack',
     'evidence:create',
     'evidence:update',
+    // P-5.2.0 — saving and pinning your own investigative work is operator work.
+    'investigation:write',
+    /* Cancelling a runaway export you started. Reading jobs already arrives via `*:read`. */
+    'job:cancel',
   ],
   viewer: ['*:read'],
 };
@@ -114,6 +126,64 @@ export const REFUSED_INCIDENT_PERMISSIONS = [
   'incident:ai-resolve',
   'incident:ai-close',
   'incident:ai-assign',
+] as const;
+
+/**
+ * The Investigation Workspace permission catalog (P-5.2.0), stated as data for the same reason
+ * `INCIDENT_PERMISSIONS` is.
+ *
+ * ### ⚠️ `audit:inspect`, and the wildcard that nearly granted it to everyone
+ *
+ * The obvious name for reading the access audit is `audit:read`. Writing it that way **grants it to
+ * every operator and every viewer**, because both roles hold `*:read` — so introducing the
+ * permission would have silently handed a log of *who looked at what, when, from which IP* to the
+ * least privileged role in the product. Nothing would have failed; the grant is a wildcard
+ * expansion, and no test asserted the negative.
+ *
+ * The action is therefore `inspect`. That is not a euphemism — inspecting a log of colleagues'
+ * activity is a genuinely different act from reading a camera or an incident, and it deserves a
+ * verb that does not ride a wildcard. `permissions.test.ts` asserts operator and viewer do **not**
+ * hold it, so a future rename back to `audit:read` fails loudly instead of quietly widening access.
+ *
+ * ⚠️ **The general hazard is recorded, not just this instance:** `*:read` means every future
+ * `<resource>:read` permission is granted to viewers the moment it is named. Any new read
+ * permission over sensitive data must either be named off the wildcard, or the wildcard must be
+ * narrowed — which is a breaking change and needs an ADR. Recorded as TD-26.
+ */
+export const WORKSPACE_PERMISSIONS = [
+  /** Saved searches, saved investigations, pins. Read arrives via `*:read` for operator/viewer. */
+  'investigation:read',
+  'investigation:write',
+  /** Background jobs: listing them, and cancelling one you started. */
+  'job:read',
+  'job:cancel',
+  /** ⚠️ The access audit. See the note above — deliberately not `audit:read`. */
+  'audit:inspect',
+] as const;
+
+/**
+ * ⚠️ **Permissions deliberately NOT created for the workspace.**
+ *
+ * - `search:query` — search is a **federation** over per-entity query surfaces, each already
+ *   guarded by its own permission (`incident:read`, `camera:read`, …). A separate search permission
+ *   would be a second gate that can disagree with the first, and the disagreement resolves in
+ *   whichever direction the code happens to check — so a principal could search a resource they
+ *   cannot open, or fail to search one they can. Instead, an entity the principal may not read
+ *   comes back as a `forbidden` gap in the response.
+ * - `report:generate` — an incident report is an incident export. `incident:export` already
+ *   authorises it, and a second spelling of the same authority is a second thing to keep in sync
+ *   (the reasoning that refused `incident:admin` in P-5.1).
+ * - `playback:read` — playback resolves recordings and evidence, each already permissioned. The
+ *   panel rides `stream:read`.
+ * - `audit:delete` / `audit:write` — the access audit is **append-only**. The absence of these is
+ *   the guarantee, exactly as the absent `DELETE` route is for archived locations (§38).
+ */
+export const REFUSED_WORKSPACE_PERMISSIONS = [
+  'search:query',
+  'report:generate',
+  'playback:read',
+  'audit:write',
+  'audit:delete',
 ] as const;
 
 export const ROLES = Object.keys(ROLE_PERMISSIONS) as Role[];

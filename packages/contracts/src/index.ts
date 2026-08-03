@@ -73,6 +73,34 @@ export * from './notifications/notification.js';
 // real-time delivery — SSE stream frames (P2-2 G-5)
 export * from './stream/stream.js';
 
+// ---------------------------------------------------------------------------------------------
+// P-5.2.0 — the Investigation Workspace prerequisites. Every contract below is **frozen and
+// unimplemented**: shapes settled before code, so the workspace slice consumes them rather than
+// inventing them. Nothing in the platform reads or writes these yet.
+// ---------------------------------------------------------------------------------------------
+
+// unified search — federated over existing indexed query surfaces (rec 6). Exported before the
+// workspace, which imports `SearchEntityKind`.
+export * from './search/search.js';
+
+// investigation workspace: layout register, command + keyboard registry, UI state, saved work
+export * from './workspace/workspace.js';
+export * from './workspace/commands.js';
+export * from './workspace/state.js';
+export * from './workspace/saved.js';
+
+// playback — recorded CCTV review (rec 2)
+export * from './playback/playback.js';
+
+// background jobs — anything too slow to hold a request open (rec 4)
+export * from './jobs/job.js';
+
+// report model — one shape every generator consumes (rec 5)
+export * from './reporting/report.js';
+
+// access audit — read-side only; writes stay derived (rec 7)
+export * from './audit/access.js';
+
 // capability
 export * from './capability/descriptor.js';
 

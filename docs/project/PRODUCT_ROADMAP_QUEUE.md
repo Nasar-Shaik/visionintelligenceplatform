@@ -9,6 +9,7 @@ authorisation.** The standing discipline is one milestone at a time, each indepe
 folding these into a slice that is about something else is the failure this file exists to prevent.
 
 Recorded 2026-08-03, from the P-5 architecture review and the P-5.1 authorisation.
+**Updated 2026-08-03 (P-5.2.0): Q-1 and Q-2 are discharged; Q-5…Q-9 added.**
 
 ---
 
@@ -18,12 +19,12 @@ Each of these was asked for as "define the contract before implementation". They
 milestones**: a contract freeze is a design exercise with a review, not a side-effect of another
 slice.
 
-| #       | Contract set                    | Shape asked for                                                                                                                               | Depends on                                                          |
-| ------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| **Q-1** | **Evidence Viewer**             | Timeline · Snapshots · Playback · Bookmarks · Annotations · Metadata · Integrity · Downloads · Chain of custody · future AI overlays          | P-5.3 (evidence integration)                                        |
-| **Q-2** | **Offline / recorded playback** | `PlaybackSession` · `PlaybackTimeline` · `PlaybackBookmark` · `PlaybackEvidence` · `PlaybackExport` · `PlaybackFilter` · `PlaybackAnnotation` | Media context; the **immediate customer priority** is recorded CCTV |
-| **Q-3** | **Notification abstraction**    | One transport-agnostic seam; Email · SMS · WhatsApp · Push · Webhook · Slack · Teams plug in without redesign                                 | Notify context (partially exists: in-app + webhook)                 |
-| **Q-4** | **Dashboards**                  | `DashboardWidget` · `DashboardLayout` · `DashboardMetric` · `DashboardFilter` · `DashboardPreset` · `DashboardPermission`                     | P-7 Analytics                                                       |
+| #       | Contract set                        | Shape asked for                                                                                                                                                                                                                                                                                                                                                | Depends on                                          |
+| ------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| ~~Q-1~~ | ~~**Evidence Viewer**~~             | ✅ **Discharged by P-5.2.0.** Playback · bookmarks · annotations · snapshots · markers are frozen in `@vip/contracts` `playback/`; metadata, integrity, downloads and chain of custody already existed in the Evidence contract. ⚠️ **Residual:** AI overlays — no producer (see the AI panel, `availability: deferred`)                                       | —                                                   |
+| ~~Q-2~~ | ~~**Offline / recorded playback**~~ | ✅ **Discharged by P-5.2.0.** `PlaybackSession` (derived, not stored) · `PlaybackSegment` · ⚠️ `PlaybackGap` (added — recorded CCTV is not continuous) · `PlaybackMarker` · `PlaybackBookmark` · `PlaybackAnnotation` · `PlaybackCapabilities`. `PlaybackExport` became `JobKind` (`clip.materialise`); `PlaybackFilter` became `PlaybackSessionQuery.include` | —                                                   |
+| **Q-3** | **Notification abstraction**        | One transport-agnostic seam; Email · SMS · WhatsApp · Push · Webhook · Slack · Teams plug in without redesign                                                                                                                                                                                                                                                  | Notify context (partially exists: in-app + webhook) |
+| **Q-4** | **Dashboards**                      | `DashboardWidget` · `DashboardLayout` · `DashboardMetric` · `DashboardFilter` · `DashboardPreset` · `DashboardPermission`                                                                                                                                                                                                                                      | P-7 Analytics                                       |
 
 **Two constraints that already apply to all four**, so they are not re-litigated later:
 
@@ -33,6 +34,23 @@ slice.
 - **The Incident domain publishes events; it does not deliver.** Q-3's transports live entirely
   outside the Incident context. Delivery state is Notify's, not the incident's
   ([INCIDENT_BOUNDARY](../architecture/INCIDENT_BOUNDARY.md), ownership rule 1).
+
+### Added by P-5.2.0 — frozen contracts with no implementation
+
+Each was frozen in `@vip/contracts` on 2026-08-03 and **nothing reads or writes it**. Listed so the
+gap between "the shape is settled" and "the feature exists" stays visible.
+
+| #       | Frozen contract                        | What is missing                                                                                                              | Depends on           |
+| ------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| **Q-5** | Saved searches · investigations · pins | No store, no routes. `SEARCH_ENTITIES` declares `investigation` and `saved-search` **unsupported** for this reason           | P-5.2 workspace      |
+| **Q-6** | Unified search (`SearchResponse`)      | No federator. ⚠️ Operator search stays unsupported until Identity has an indexed principal search **and** its own permission | Per-context adapters |
+| **Q-7** | Background jobs (`Job`, `JobSchedule`) | No worker in any service, no lease reclaimer, no cron evaluator (`JobSchedule.enabled` is `false`)                           | P-5.5 reporting      |
+| **Q-8** | Report model (`ReportModel`)           | No generator for any format; theme presets are not defined in configuration yet                                              | Q-7                  |
+| **Q-9** | Access audit (`AccessAuditEntry`)      | Nothing writes an entry; no indexes declared, so ⚠️ **no query route may be exposed** until they are (§40)                   | P-5.2 workspace      |
+
+⚠️ **Q-9 carries the sharpest constraint:** the access audit will be the highest-volume collection in
+the product. A query without a covering index there is not a slow page — it is the query that takes
+the cluster down.
 
 ---
 

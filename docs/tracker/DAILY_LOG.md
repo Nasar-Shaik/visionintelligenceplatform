@@ -2,6 +2,10 @@
 
 > One rolling file, newest first. **Capture meaningful progress only — no exhaustive file lists** (those live in git history and per-slice [REVIEW_HISTORY](REVIEW_HISTORY.md)). One short entry per working day. Sign entries `[name · YYYY-MM-DD]`.
 
+## 2026-08-03
+
+- **P-5.2.0 Investigation Workspace prerequisites — contract + specification freeze, no implementation.** Nine new `@vip/contracts` modules (workspace layout/commands/state/saved · playback · search · jobs · reporting · access audit), none of which any service reads. ⚠️ **Found: `audit:read` would have granted a staff-surveillance log to every viewer** — `operator` and `viewer` both hold `*:read`, so the grant happens the moment the string is written; measured, renamed `audit:inspect`, hazard pinned by a test (TD-26). Refused five of eleven requested audit events (already derived, §46), four "search entities" (not entities), a global relevance score, a `partial` job state and a stored signed URL. Design system **extended to v2**, not recreated — its framework ban is now a test rather than an accident. Contracts 378 · permissions 25 · console 120 · imports 0 violations. [ADR-0031](../adr/ADR-0031-workspace-prerequisites.md) · CONSTRAINTS §64–69. `[Claude · 2026-08-03]`
+
 ## 2026-08-03 (P-5.1)
 
 - **P-5 architecture ✅ APPROVED as the implementation blueprint**, and **P-5.1 ✅ APPROVED** mid-slice with seventeen recommendations — the first being "never merge multiple milestones together".

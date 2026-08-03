@@ -334,6 +334,44 @@
     `IncidentTimeline.gaps`; `UnavailableTimelineSources`; tests assert a hung upstream is abandoned
     and reported._
 
+64. **A layout, a keymap or a capability register that must not drift is declared as data.** Anything
+    a reviewer would otherwise have to notice — a panel added to a region, a shortcut bound twice, an
+    entity claiming to be searchable — is a constant a test parses. Prose cannot evolve additively,
+    because nothing fails when someone edits it. §60 generalised from indexes to every register. —
+    _enforced: `INVESTIGATION_WORKSPACE_LAYOUT`, `WORKSPACE_COMMANDS`, `SEARCH_ENTITIES`;
+    `packages/contracts/test/workspace.test.ts` and `search.test.ts`._
+65. **A surface has four states, not three: loading, content, empty, and _unavailable_.** "There is
+    nothing" and "nobody could look" are different facts, and rendering the second as the first is a
+    confident false statement — an empty AI panel asserts an incident was analysed and found clean.
+    Every panel, gap and omission carries a **required reason** when it is not available. §44 and §63
+    applied to a screen. — _enforced: `WorkspacePanel.availability` + `unavailableReason` (schema-
+    enforced), `IncidentTimelineGap`, `SearchGap`, `ReportOmission`, `PlaybackGap`;
+    [DESIGN_SYSTEM](../architecture/phase2/DESIGN_SYSTEM.md) §11._
+66. **A reference may be persisted. A record may not.** Anything stored outside its owning context —
+    browser state, a saved investigation, a pin, a report row — holds ids and view state, never a copy
+    of a record. A copy has no invalidation, no tenant check and no permission check, and it renders
+    stale truth confidently after access is revoked. Restoring is a **re-fetch**, and every reference
+    that fails to resolve is reported rather than dropped. — _enforced: `WorkspaceUiState`,
+    `SavedInvestigation`, `WorkspaceStateRestore.dropped`; a test asserts a cached title is stripped._
+67. **A cross-context federation states its budget and never fabricates a ranking.** A search, like a
+    timeline, is a fan-out: cap the contexts, time-bound each, and report every absence as a typed gap.
+    Results are grouped per source, each stating its own ordering — a blended score across contexts is
+    arithmetic on incomparable quantities, and a count that costs a second unbounded query is absent
+    rather than estimated. — _enforced: `SEARCH_MAX_ENTITIES`, `SEARCH_ENTITY_TIMEOUT_MS`,
+    `SearchResponse.gaps`; a test asserts no global score field and no fabricated total._
+68. **A read is audited because nothing else witnesses it; a write is derived because something
+    already does.** Never write an audit row for an action that already appends to the record — that is
+    two records of one truth (§46). Do write one for opening, downloading, exporting and searching,
+    which change nothing and therefore leave no trace. **Never sample an audit**, and never record the
+    content that was read. — _enforced: `AccessAuditAction` (read-side only),
+    `REFUSED_AUDIT_ACTIONS`; a test asserts the write-side actions are absent._
+69. **Naming a permission is a grant.** `*:read` means every future `<resource>:read` is held by every
+    viewer the moment it is spelled — so a sensitive read permission is named off the wildcard, or the
+    wildcard is narrowed by ADR. Check the expansion before choosing the word: `audit:read` would have
+    handed a log of who-viewed-what to the least privileged role, and nothing would have failed. —
+    _enforced: `audit:inspect`; `permissions.test.ts` asserts operator/viewer lack it **and** that
+    `audit:read` would have been granted; TD-26._
+
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._
