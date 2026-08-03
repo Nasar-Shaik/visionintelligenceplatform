@@ -441,6 +441,22 @@ export const IncidentTimelineGapReason = z.enum([
   'truncated',
   /** The caller did not ask for this source (`include` is opt-in per source). */
   'not-requested',
+  /**
+   * ⚠️ **The caller may not read that context** (added P-5.2, found while wiring the joins).
+   *
+   * The timeline join runs under the **caller's** permissions, never a service key — otherwise an
+   * operator without `event:read` would see events in the timeline that they cannot see in the
+   * Events panel, which is a privilege escalation through a join.
+   *
+   * That makes 403 a routine answer, and it is not `unavailable`: telling an operator the events
+   * service is down when in fact their role excludes it sends them to an engineer for something a
+   * permission grant fixes. The two are different facts and the enum now distinguishes them.
+   *
+   * ⚠️ Extending this enum is **not purely additive for a strict parser** — the same caveat
+   * [ADR-0029](../../../../docs/adr/ADR-0029-incident-workflow-entry-criteria.md) records for
+   * `IncidentStatus`. It is safe here because P-5.2 is the first consumer.
+   */
+  'forbidden',
 ]);
 export type IncidentTimelineGapReason = z.infer<typeof IncidentTimelineGapReason>;
 

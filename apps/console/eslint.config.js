@@ -26,6 +26,17 @@ export default [
     },
   },
   {
+    /*
+     * The workspace panel registry is a *map of components* keyed by `WorkspacePanelId` — that
+     * co-location is the point: adding a panel to the frozen contract without a body here is a
+     * TypeScript error rather than a blank rectangle a customer finds. Fast-refresh granularity is
+     * irrelevant for a lookup table, and splitting it would trade a real guarantee for a dev-server
+     * nicety. Same exemption, same reasoning, as the design-system primitives below.
+     */
+    files: ['src/features/workspace/panels.tsx'],
+    rules: { 'react-refresh/only-export-components': 'off' },
+  },
+  {
     // Design-system primitives legitimately co-export cva variant maps + helper
     // constants alongside their component (standard shadcn pattern); fast-refresh
     // granularity is irrelevant for a token library.

@@ -42,6 +42,12 @@ export const queryKeys = {
     all: () => ['incidents'] as const,
     list: (params?: Record<string, unknown>) => ['incidents', 'list', params ?? {}] as const,
     detail: (id: string) => ['incidents', 'detail', id] as const,
+    // P-5.2. The workspace's derived reads. Keyed apart from the incident so opening the timeline
+    // does not refetch the record, and so a transition invalidates all four together.
+    activity: (id: string) => ['incidents', 'activity', id] as const,
+    timeline: (id: string, include: readonly string[]) =>
+      ['incidents', 'timeline', id, [...include].sort().join(',')] as const,
+    sla: (id: string) => ['incidents', 'sla', id] as const,
   },
   notifications: {
     all: () => ['notifications'] as const,

@@ -37,12 +37,29 @@ export interface IncidentStore {
  * Every method is **bounded** — it takes a limit and returns whether more existed. One call per
  * source per timeline read; never one per entry (CONSTRAINTS §54).
  */
+/**
+ * Who is asking, carried into the join.
+ *
+ * ⚠️ **The joins run under the caller's permissions, never a service key.** A service-to-service
+ * fetch would let the timeline show an operator events, evidence or notifications they cannot open
+ * anywhere else in the product — a privilege escalation through a join, and an invisible one,
+ * because the timeline is exactly where nobody thinks to check an authorisation.
+ *
+ * So the caller's `Authorization` header is forwarded verbatim, and a 403 from upstream becomes a
+ * `forbidden` gap rather than an `unavailable` one. Absent means an unauthenticated internal caller,
+ * which the HTTP adapter refuses rather than upgrading to a service identity.
+ */
+export interface TimelineCaller {
+  authorization?: string | undefined;
+}
+
 export interface TimelineSources {
   /** Events on the incident's correlation spine, newest first, bounded. */
   relatedEvents(
     scope: TenantScope,
     correlationId: string,
     limit: number,
+    caller?: TimelineCaller,
   ): Promise<{ items: RelatedEvent[]; truncated: boolean }>;
   /** Evidence registered against this incident or its correlation, bounded. */
   relatedEvidence(
@@ -50,12 +67,14 @@ export interface TimelineSources {
     incidentId: string,
     correlationId: string,
     limit: number,
+    caller?: TimelineCaller,
   ): Promise<{ items: RelatedEvidence[]; truncated: boolean }>;
   /** Notifications this incident produced, bounded. */
   relatedAutomation(
     scope: TenantScope,
     incidentId: string,
     limit: number,
+    caller?: TimelineCaller,
   ): Promise<{ items: RelatedAutomation[]; truncated: boolean }>;
 }
 

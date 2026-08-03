@@ -150,7 +150,13 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
     async (request, reply) => {
       const scope = scopeOf(request.principal!.tenantId);
       const include = parseInclude(request.query.include);
-      return reply.send(success(await service.timeline(scope, request.params.id, include)));
+      /*
+       * ⚠️ The caller's own token is forwarded into every join. A service key here would let the
+       * timeline show events, evidence and notifications the operator cannot open anywhere else —
+       * a privilege escalation through a read-only narrative, which is where nobody looks for one.
+       */
+      const caller = { authorization: request.headers.authorization };
+      return reply.send(success(await service.timeline(scope, request.params.id, include, caller)));
     },
   );
 

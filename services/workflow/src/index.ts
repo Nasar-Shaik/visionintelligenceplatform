@@ -15,6 +15,7 @@ import { IncidentMetrics } from './application/metrics.js';
 import { BusIncidentPublisher } from './application/incident-publisher.js';
 import { connectMongo } from './adapters/mongo.js';
 import { MongoIncidentStore } from './adapters/mongo-incident-store.js';
+import { HttpTimelineSources } from './adapters/http-timeline-sources.js';
 import { buildServer } from './transport/server.js';
 
 async function main(): Promise<void> {
@@ -24,6 +25,8 @@ async function main(): Promise<void> {
   const mongo = await connectMongo({ uri: config.database.uri });
   const bus = await NatsEventBus.connect({ servers: config.nats.url, name: 'workflow' });
   const store = new MongoIncidentStore({ incidents: mongo.incidents });
+
+  const timelineSources = new HttpTimelineSources(config.timeline);
 
   const readiness = new ReadinessRegistry();
   readiness.register('mongo', async () => {
@@ -45,15 +48,24 @@ async function main(): Promise<void> {
      */
     slaPolicies: config.slaPolicies,
     /*
-     * ⚠️ Timeline sources are deliberately left at the default: **every source unavailable**
-     * (P-5.1, F-3). The HTTP clients for the events/evidence/notify joins are P-5.2 work. Until
-     * they exist, `GET /incidents/:id/timeline` returns the incident's own streams plus a named
-     * `gap` per source — the honest answer. Wiring an empty array instead would claim the sources
-     * were consulted and had nothing to say.
+     * The timeline joins (P-5.2 — F-3's clients, which P-5.1 deliberately left unwired).
+     *
+     * ⚠️ A source with no configured URL still degrades to a named `unavailable` gap, exactly as
+     * before: `HttpTimelineSources` rejects with the same message `UnavailableTimelineSources`
+     * uses, so a partly-wired deployment behaves identically to an unwired one. One behaviour, not
+     * two — and no guessed localhost default, which would turn a supported deployment into a
+     * connection error on every timeline read.
      */
+    sources: timelineSources,
   });
 
   const { app, registry } = await buildServer({ config, incidentService, readiness });
+
+  /*
+   * Logged at boot so an operator seeing `unavailable` gaps in a timeline can tell "this deployment
+   * is not wired for that source" from "that service is down" — without reading the code.
+   */
+  app.log.info({ timeline: timelineSources.configured }, 'timeline join sources');
 
   // The registry only exists after the server is built; attach metrics to the shared service now,
   // so both the HTTP transition routes and the promoter consumer record onto the same registry.

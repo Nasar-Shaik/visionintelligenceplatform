@@ -23,6 +23,19 @@ export interface ServiceConfig extends AppConfig {
   nats: NatsConfig;
   /** Deployment-configured SLA targets (P-5.1, F-4). Empty is the honest default. */
   slaPolicies: IncidentSlaPolicy[];
+  /**
+   * Base URLs for the timeline joins (P-5.2, F-3's clients).
+   *
+   * ⚠️ **Absent is a supported deployment, not a misconfiguration.** A workflow service with no
+   * events URL returns an `unavailable` gap for events and a complete timeline of everything else.
+   * Defaulting these to a guessed localhost port would produce a connection error on every timeline
+   * read in every environment that does not happen to match the guess.
+   */
+  timeline: {
+    eventsUrl?: string | undefined;
+    evidenceUrl?: string | undefined;
+    notifyUrl?: string | undefined;
+  };
 }
 
 /**
@@ -68,5 +81,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
   const nats = loadNatsConfig(env);
   const serviceVersion = env.SERVICE_VERSION ?? env.npm_package_version ?? '0.1.0';
   const slaPolicies = parseSlaPolicies(env.INCIDENT_SLA_POLICIES);
-  return { ...app, serviceVersion, jwt, database, nats, slaPolicies };
+  const timeline = {
+    eventsUrl: env.EVENTS_SERVICE_URL,
+    evidenceUrl: env.EVIDENCE_SERVICE_URL,
+    notifyUrl: env.NOTIFY_SERVICE_URL,
+  };
+  return { ...app, serviceVersion, jwt, database, nats, slaPolicies, timeline };
 }

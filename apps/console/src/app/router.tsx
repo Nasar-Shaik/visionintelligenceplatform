@@ -7,6 +7,7 @@ import { EventsPage } from '@/features/events/EventsPage';
 import { RulesListPage } from '@/features/rules/RulesListPage';
 import { RuleEditorPage } from '@/features/rules/RuleEditorPage';
 import { IncidentsPage } from '@/features/incidents/IncidentsPage';
+import { InvestigationWorkspace } from '@/features/workspace/InvestigationWorkspace';
 import { AlertsPage } from '@/features/alerts/AlertsPage';
 import { PlaceholderPage } from '@/routes/PlaceholderPage';
 import { CamerasPage } from '@/features/cameras/CamerasPage';
@@ -33,6 +34,10 @@ export const router = createBrowserRouter([
           { path: 'locations', element: <LocationsPage /> },
           { path: 'events', element: <EventsPage /> },
           { path: 'incidents', element: <IncidentsPage /> },
+          // P-5.2 — the Investigation Workspace. `/workspace/:incidentId` is the deep link an
+          // alert, a report or a colleague's message points at.
+          { path: 'workspace', element: <InvestigationWorkspace /> },
+          { path: 'workspace/:incidentId', element: <InvestigationWorkspace /> },
           { path: 'alerts', element: <AlertsPage /> },
           { path: 'rules', element: <RulesListPage /> },
           { path: 'rules/new', element: <RuleEditorPage /> },

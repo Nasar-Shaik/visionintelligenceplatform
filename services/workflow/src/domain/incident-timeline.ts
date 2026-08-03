@@ -96,7 +96,20 @@ export interface TimelineInputs {
   /** Sources the caller asked for. A source not requested is a `not-requested` gap, not a silence. */
   requested: readonly IncidentTimelineSource[];
   /** Sources that failed, with why. Produced by the application layer, reported verbatim. */
-  failures?: readonly { source: IncidentTimelineSource; detail: string }[] | undefined;
+  /**
+   * Sources that failed, with why. Produced by the application layer, reported verbatim.
+   *
+   * ⚠️ `reason` is carried rather than assumed (P-5.2). Every failure used to become `unavailable`,
+   * which told an operator the service was down when in fact their role excluded it — sending them
+   * to an engineer for something a permission grant fixes.
+   */
+  failures?:
+    | readonly {
+        source: IncidentTimelineSource;
+        reason: 'unavailable' | 'forbidden';
+        detail: string;
+      }[]
+    | undefined;
   now: Date;
 }
 
@@ -255,7 +268,7 @@ export function buildTimeline(inputs: TimelineInputs): IncidentTimeline {
   }
 
   for (const failure of inputs.failures ?? []) {
-    gaps.push({ source: failure.source, reason: 'unavailable', detail: failure.detail });
+    gaps.push({ source: failure.source, reason: failure.reason, detail: failure.detail });
   }
 
   /*

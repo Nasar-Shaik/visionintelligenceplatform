@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useDispatch, useSelector, useStore } from 'react-redux';
 import { can } from '@vip/permissions';
 import type { AppDispatch, AppStore, RootState } from './store';
@@ -14,4 +15,16 @@ export const useAppStore = useStore.withTypes<AppStore>();
  */
 export function usePermission(permission: string): boolean {
   return useAppSelector((state) => can(state.session.permissions, permission));
+}
+
+/**
+ * A stable permission predicate for surfaces that check many permissions at once — the workspace
+ * resolves fifteen panels and every command against it.
+ *
+ * `usePermission` is the right hook for one gate; calling it fifteen times would mean fifteen
+ * subscriptions to the same slice. This returns the same PDP, memoised on the permission set.
+ */
+export function useCan(): (permission: string) => boolean {
+  const permissions = useAppSelector((state) => state.session.permissions);
+  return useMemo(() => (permission: string) => can(permissions, permission), [permissions]);
 }

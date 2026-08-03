@@ -147,7 +147,10 @@ export type CommandBindingKind = z.infer<typeof CommandBindingKind>;
  * Binding kinds that may **never** invoke a state-changing command. Exported as data so the rule is
  * greppable and testable rather than buried in a refinement.
  */
-export const NON_MUTATING_BINDING_KINDS: readonly CommandBindingKind[] = ['ai-assistant', 'automation'];
+export const NON_MUTATING_BINDING_KINDS: readonly CommandBindingKind[] = [
+  'ai-assistant',
+  'automation',
+];
 
 /**
  * Which invocation surfaces a command exposes. Absent ⇒ `['keyboard', 'palette']`, the two that

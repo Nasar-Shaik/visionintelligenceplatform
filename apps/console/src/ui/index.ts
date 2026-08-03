@@ -82,7 +82,7 @@ export { NotificationCard } from './soc/notification-card';
 export type { DeliveryStatus, NotificationChannelKind } from './soc/notification-card';
 export { PageHeader } from './soc/page-header';
 export type { Breadcrumb } from './soc/page-header';
-export { QueryBoundary } from './soc/query-boundary';
+export { QueryBoundary, UnavailableState } from './soc/query-boundary';
 export { SeverityBadge, SEVERITY_BORDER } from './soc/severity-badge';
 export { StatusIndicator } from './soc/status-indicator';
 export { Timeline } from './soc/timeline';

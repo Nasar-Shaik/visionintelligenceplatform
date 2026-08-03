@@ -44,7 +44,12 @@ import {
 import { deriveSla, policyFor } from '../domain/incident-sla.js';
 import { assertMayMutate, operatorActor } from '../domain/incident-actor.js';
 import { conflict, notFound } from './errors.js';
-import { UnavailableTimelineSources, type IncidentStore, type TimelineSources } from './ports.js';
+import {
+  UnavailableTimelineSources,
+  type IncidentStore,
+  type TimelineCaller,
+  type TimelineSources,
+} from './ports.js';
 import { NoopIncidentPublisher, type IncidentPublisher } from './incident-publisher.js';
 import type { IncidentMetrics } from './metrics.js';
 
@@ -290,9 +295,14 @@ export class IncidentService {
     scope: TenantScope,
     id: string,
     include: readonly IncidentTimelineSource[] = [],
+    caller?: TimelineCaller,
   ): Promise<IncidentTimeline> {
     const incident = await this.getOrThrow(scope, id);
-    const failures: { source: IncidentTimelineSource; detail: string }[] = [];
+    const failures: {
+      source: IncidentTimelineSource;
+      reason: 'unavailable' | 'forbidden';
+      detail: string;
+    }[] = [];
 
     const bounded = async <T>(
       source: IncidentTimelineSource,
@@ -302,7 +312,19 @@ export class IncidentService {
       try {
         return await withTimeout(run(), UPSTREAM_TIMEOUT_MS, source);
       } catch (err) {
-        failures.push({ source, detail: err instanceof Error ? err.message : String(err) });
+        /*
+         * ⚠️ A 403 is not an outage. The joins run under the caller's own permissions (see
+         * `HttpTimelineSources`), so "you may not read that context" is a routine answer — and
+         * reporting it as `unavailable` would send an operator to an engineer for something a role
+         * grant fixes.
+         */
+        const forbidden =
+          typeof err === 'object' && err !== null && 'forbidden' in err && err.forbidden === true;
+        failures.push({
+          source,
+          reason: forbidden ? 'forbidden' : 'unavailable',
+          detail: err instanceof Error ? err.message : String(err),
+        });
         return undefined;
       }
     };
@@ -310,7 +332,7 @@ export class IncidentService {
     // Sequential rather than concurrent on purpose: three bounded reads are cheap, and a timeline
     // request that fans out in parallel multiplies a retry storm across three neighbours at once.
     const events = await bounded('events', () =>
-      this.sources.relatedEvents(scope, incident.correlationId, MAX_ENTRIES_PER_SOURCE),
+      this.sources.relatedEvents(scope, incident.correlationId, MAX_ENTRIES_PER_SOURCE, caller),
     );
     const evidence = await bounded('evidence', () =>
       this.sources.relatedEvidence(
@@ -318,10 +340,11 @@ export class IncidentService {
         incident.id,
         incident.correlationId,
         MAX_ENTRIES_PER_SOURCE,
+        caller,
       ),
     );
     const automation = await bounded('notify', () =>
-      this.sources.relatedAutomation(scope, incident.id, MAX_ENTRIES_PER_SOURCE),
+      this.sources.relatedAutomation(scope, incident.id, MAX_ENTRIES_PER_SOURCE, caller),
     );
 
     const inputs: TimelineInputs = {
