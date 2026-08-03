@@ -792,3 +792,44 @@ that reads the real manifest.
 Constraints added: **§64** registers are data · **§65** four render states, the fourth being
 _unavailable_ · **§66** references not records · **§67** federation budgets and no fabricated
 ranking · **§68** audit reads, derive writes · **§69** naming a permission is a grant.
+
+## ED-0062 — P-5.2: the joins run as the caller, and the freeze got the vocabulary wrong
+
+**Date:** 2026-08-03 · **Milestone:** P-5.2 (Investigation Workspace) · **ADR:** [ADR-0032](../adr/ADR-0032-investigation-workspace.md)
+
+**The finding came from writing the client, not from reviewing the contract.**
+
+The timeline's three joins were the last unwired piece of P-5.1's F-3. The established pattern for a
+service-to-service read is `HttpCameraSource`'s internal key, and using it here would have been a
+one-line decision that nobody reviewed twice. It is also a **privilege escalation through a
+read-only narrative**: the timeline would show an operator events, evidence and notifications they
+cannot open in any other panel. Nothing errors; the Events panel refuses them and the timeline does
+not, and the discrepancy reads as a bug in the panel.
+
+So every join forwards the caller's own `Authorization`, and a request with no identity is
+**refused, not upgraded** — asserted by a test that the upstream is never called, rather than that
+the call fails.
+
+**That made a frozen enum incomplete.** With caller-scoped joins, 403 is routine. `IncidentTimelineGapReason`
+had `unavailable | truncated | not-requested`, and mapping a permission failure onto `unavailable`
+tells an operator the events service is down — sending them to an engineer for something a role
+grant fixes. `forbidden` was added, with the ⚠️ strict-parser caveat ADR-0029 records for
+`IncidentStatus`; it is safe only because P-5.2 is the first consumer, and the next such extension
+will not have that excuse.
+
+Worth recording as a pattern: **P-5.2.0 froze nine contract modules and got the shapes right. The
+one thing it got wrong was a vocabulary gap that only appeared when something had to answer with
+it.** A freeze reduces the class of mistakes to exactly this kind, which is the argument for the
+freeze — not against it.
+
+**Two smaller decisions:**
+
+- **The evidence join asks by `incidentId`, not by correlation.** Both are indexed, so this is not
+  performance: the correlation spine can carry a **sibling incident's** evidence, and showing it as
+  this incident's is wrong in the direction an investigator acts on.
+- **`QueryBoundary` gained a fourth state** rather than gaining a sibling component. Two components
+  deciding one thing would let a panel choose Empty where the contract says Unavailable — and the
+  reason string comes from the registry, so it cannot.
+
+Constraint added: **§70** — a cross-context join runs as the caller, and "you may not" is not "it is
+down".

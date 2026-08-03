@@ -10,6 +10,10 @@ folding these into a slice that is about something else is the failure this file
 
 Recorded 2026-08-03, from the P-5 architecture review and the P-5.1 authorisation.
 **Updated 2026-08-03 (P-5.2.0): Q-1 and Q-2 are discharged; Q-5…Q-9 added.**
+**Updated 2026-08-03 (P-5.2): Q-5…Q-9 remain untouched — the workspace consumes the frozen
+contracts and implements none of them.** ⚠️ The workspace visibly declares Saved Investigations,
+Playback and AI Recommendations _unavailable_ rather than empty, so the gap is on the screen rather
+than only in this file.
 
 ---
 

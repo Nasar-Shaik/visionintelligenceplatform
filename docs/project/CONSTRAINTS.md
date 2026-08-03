@@ -372,6 +372,15 @@
     _enforced: `audit:inspect`; `permissions.test.ts` asserts operator/viewer lack it **and** that
     `audit:read` would have been granted; TD-26._
 
+70. **A cross-context join runs as the caller, and "you may not" is not "it is down".** Forward the
+    requesting principal's authority into every upstream read a composed view makes; a service key
+    there shows an operator records they cannot open anywhere else, and a privilege escalation
+    through a read-only narrative is one nobody thinks to look for. A request carrying no identity is
+    **refused, never upgraded**. And distinguish the refusal in the gap: reporting a 403 as
+    `unavailable` sends someone to an engineer for what a role grant fixes. — _enforced:
+    `HttpTimelineSources`; `IncidentTimelineGapReason.forbidden`; tests assert the caller's token is
+    forwarded, that no service key is sent, and that an identity-less call is never made._
+
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._

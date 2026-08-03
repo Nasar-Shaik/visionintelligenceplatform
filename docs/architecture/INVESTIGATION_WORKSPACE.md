@@ -214,8 +214,15 @@ restore the previous shift's open incidents, and an id must never cross a tenant
 The rule underneath all six rows: **returning the partial view is right; returning it silently is
 not.**
 
-⚠️ **Today, `GET /incidents/:id/timeline` returns three `unavailable` gaps in every deployment**,
-because the upstream clients are P-5.2. That is the honest answer, not a defect.
+⚠️ **Closed in P-5.2.** The joins are wired (`HttpTimelineSources`), so a configured deployment
+answers from all four sources. A source with **no configured URL** still degrades to a named
+`unavailable` gap — identical behaviour to the unwired state, so a partly-wired deployment does not
+fork into a second code path.
+
+⚠️ **A fifth gap reason exists: `forbidden`.** The joins run under the **caller's own permissions**,
+never a service key — otherwise the timeline would show an operator events they cannot open in the
+Events panel. That makes 403 routine, and it is not an outage: reporting it as `unavailable` sends
+someone to an engineer for what a role grant fixes.
 
 ---
 
