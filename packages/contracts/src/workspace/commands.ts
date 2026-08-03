@@ -453,7 +453,8 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       shortcut: 'Mod+B',
       keywords: ['mark', 'save', 'moment'],
       bindings: ['keyboard', 'palette', 'mouse'],
-      available: false,
+      /* P-5.6: the bookmark store, the API and the player action all exist, so the binding fires. */
+      available: true,
     },
     {
       id: 'incident.assign',

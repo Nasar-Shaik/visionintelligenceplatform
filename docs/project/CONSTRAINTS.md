@@ -486,8 +486,49 @@
     measured in the browser before being trusted. The first draft of the codec check appended the
     manifest's friendly codec name to `canPlayType`, whose parameter is RFC 6381 — it answers `''`
     to `h264` and `probably` to `avc1.42E01E`, so every H.264 clip in the product would have been
-    declared undecodable. — _enforced: the container alone is probed; a test asserts the probe
-    string never carries the codec name._
+    declared undecodable. — _enforced: `codecs.ts` translates the stored name into representative
+    RFC 6381 candidates measured in five engines; tests assert the friendly name is never handed to
+    the browser._
+    86b. **_(P-5.6 amendment)_** The P-5.5 fix — probe the container alone — was correct and
+    insufficient: `video/mp4` answers `maybe` in **every** engine, so a container-only check can
+    never refuse the format nearly all CCTV arrives in, and an H.265 clip on a build with no HEVC
+    decoder fell through to the same generic error a dead link produces.
+87. **A capability probe may refuse; it may never promise.** Measured: WebKit 26.5 and Safari 26.5.2
+    both answer `probably` to `video/mp4; codecs="avc1.42E01E"` and then reject an actual H.264 file
+    with `MEDIA_ERR_SRC_NOT_SUPPORTED`. A positive probe is therefore advice, not a guarantee, and
+    a negative probe is the only side worth acting on. Three-valued results: `supported` ·
+    `unsupported` · `unknown`, where **`unknown` is never treated as `supported`** (§44). — _enforced:
+    `codecVerdict` returns `unknown` for an untranslatable codec and for a probe that answers `''`
+    to a bare container (jsdom); `classifyFailure` names a live-signature source rejection
+    `refused` and the overlay says the probe was advisory._
+88. **A damaged recording plays silently, so the platform says what the browser will not.** Measured
+    against truncated and byte-corrupted H.264: Chromium, Chrome and Firefox all played the file
+    **with no error event of any kind** and reported roughly half the duration. An investigator sees
+    the clip stop and concludes the incident ended there. Where the playhead stopped, against the
+    duration the evidence record declares, is compared and the shortfall is stated persistently —
+    never against the browser's _reported_ duration, which the same intact file gives as 6.01 s,
+    3.45 s and 1.19 s in three engines. — _enforced: `endedEarly()`; the player renders a persistent
+    band naming the shortfall and pointing at the integrity hash._
+89. **A retry is offered only where retrying can succeed.** An expired signature is repaired by
+    fetching a **new signature**, not by reloading a URL that already 403s; a damaged file is damaged
+    on the second attempt too. Failures are classified before they are described, because "the media
+    could not be loaded" covers an expired link, a dropped connection and destroyed evidence — three
+    problems with three different answers. Expiry is judged against the **wall clock** on wake,
+    focus, reconnect and visibility change, never by a timer, because no timer survives a slept
+    laptop. — _enforced: `recovery.ts`; `failureCopy('decode').recoverable === false`; the player
+    offers no button at all when no refetch is wired in._
+90. **Touch capability is asked of the pointer, never of the screen width.** Measured: `sm:size-8`
+    gave an iPad Pro — 834 px wide and driven entirely by thumbs — 32 px controls on 16 of 16
+    targets. Interactive controls are ≥44 px on a coarse pointer, and no control may be revealed
+    only by hover, which a touch device does not have. — _enforced: `pointer-coarse:` variants; a
+    Playwright device-emulation audit measures every control's box on iPad and Pixel._
+91. **What is drawn is bounded by the viewport, not by the collection — and past a density, a count
+    replaces the items.** Culling happens on the data before any element exists. Beyond the point
+    where marks stop being individually distinguishable the timeline draws a density band instead of
+    pins: 4,000 bookmarks clustered to 67 elements was the right _number_ and still an unreadable
+    smear covering the footage, the gaps and the playhead. — _enforced: `clusterMarks()` +
+    `MAX_DRAWN_MARKS`; `DENSITY_THRESHOLD` switches representation; tests assert the bound for
+    10,000 marks._
 
 ## Engineering process
 

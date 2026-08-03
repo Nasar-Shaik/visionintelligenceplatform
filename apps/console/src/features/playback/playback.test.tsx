@@ -22,6 +22,17 @@ import { PlaybackPanel } from './panels';
 
 const START = '2026-08-03T09:00:00.000Z';
 
+/**
+ * ⚠️ `derivedAt` is **now**, not a fixed literal.
+ *
+ * A hard-coded resolution time makes every fixture a session that expired months ago, and the
+ * player — correctly, since P-5.6 — replaces the video with "this playback link expired". The suite
+ * still passed, because the assertions were all on the transport chrome *around* the video, so a
+ * player showing an expiry overlay in every test looked identical to a healthy one. The fixture is
+ * live by construction now, and expiry is asserted deliberately where it belongs.
+ */
+const nowIso = () => new Date().toISOString();
+
 function session(overrides: Partial<PlaybackSession> = {}): PlaybackSession {
   return {
     tenantId: 'tnt_a',
@@ -49,7 +60,7 @@ function session(overrides: Partial<PlaybackSession> = {}): PlaybackSession {
     bookmarks: [],
     annotations: [],
     capabilities: { seek: true, frameStep: true, rates: [1, 2, 4], snapshot: false, export: false },
-    derivedAt: START,
+    derivedAt: nowIso(),
     ...overrides,
   };
 }
@@ -101,49 +112,88 @@ describe('the player offers only what the media can do', () => {
   });
 });
 
-describe('codec support is judged on the container, never the friendly codec name', () => {
+describe('the codec question is answered with measured browser behaviour', () => {
   /*
-   * ⚠️ The regression this pins. `canPlayType`'s codecs parameter is RFC 6381 (`avc1.42E01E`);
-   * this platform's manifests store the friendly name, because `CameraCodec` is `'h264' | 'h265'`.
-   * Appending it makes Chromium answer `''` — and the player told every operator that every H.264
-   * clip was undecodable. Found by looking at the rendered page, not by reasoning.
+   * ⚠️ The P-5.5 regression this still pins. `canPlayType`'s codecs parameter is RFC 6381
+   * (`avc1.42E01E`); this platform's manifests store the friendly name, because `CameraCodec` is
+   * `'h264' | 'h265'`. Handing the stored name straight to the browser makes **every engine**
+   * answer `''`, and the player told every operator that every H.264 clip was undecodable.
+   *
+   * P-5.6 goes further: the friendly name is *translated* rather than dropped, so an H.265 clip on
+   * a build with no HEVC decoder is named as such instead of falling through to a generic media
+   * error. jsdom answers `''` to everything, so these tests inject the answers measured in each
+   * real engine — see `docs/review/p56/BROWSER_MATRIX.md`.
    */
-  /*
-   * jsdom answers `''` to everything, so asserting the rendered outcome would only prove jsdom's
-   * stub. What matters is the **string we hand the browser**: it must be the container alone.
-   */
-  it('⚠️ never appends the manifest codec to the probe', () => {
+  it('⚠️ never hands the browser the friendly codec name', () => {
     const probed: string[] = [];
     const spy = vi
       .spyOn(HTMLMediaElement.prototype, 'canPlayType')
       .mockImplementation((type: string) => {
         probed.push(type);
-        /* Chromium's real answers, measured in the browser. */
+        /* Chromium's measured answers. */
         if (type === 'video/mp4') return 'maybe';
-        if (type === 'video/mp4; codecs="h264"') return '';
+        if (type.includes('avc1')) return 'probably';
         return '';
       });
 
     renderWithProviders(<EvidencePlayer session={session()} />);
 
     expect(probed).toContain('video/mp4');
-    expect(probed.some((type) => type.includes('h264'))).toBe(false);
+    expect(probed.some((type) => type.includes('"h264"'))).toBe(false);
+    expect(probed.some((type) => type.includes('avc1'))).toBe(true);
     expect(screen.queryByTestId('player-codec')).not.toBeInTheDocument();
     spy.mockRestore();
   });
 
-  it('still refuses a container the browser genuinely cannot open', () => {
+  it('refuses a container the browser genuinely cannot open', () => {
+    /* Chrome measured: `video/quicktime` → '' while `video/mp4` → 'maybe'. A .mov will not open. */
     const spy = vi
       .spyOn(HTMLMediaElement.prototype, 'canPlayType')
-      .mockImplementation(() => '' as const);
+      .mockImplementation((type: string) => (type.startsWith('video/mp4') ? 'maybe' : ''));
     renderWithProviders(
       <EvidencePlayer
         session={session({
-          segments: [{ ...session().segments[0]!, contentType: 'video/x-nonsense' }],
+          segments: [{ ...session().segments[0]!, contentType: 'video/quicktime' }],
         })}
       />,
     );
     expect(screen.getByTestId('player-codec')).toBeInTheDocument();
+    spy.mockRestore();
+  });
+
+  it('⚠️ names the missing HEVC decoder instead of reporting a broken recording', () => {
+    /* Chromium (open-source build) measured: both H.265 candidates → ''. Branded Chrome differs. */
+    const spy = vi
+      .spyOn(HTMLMediaElement.prototype, 'canPlayType')
+      .mockImplementation((type: string) => {
+        if (type === 'video/mp4') return 'maybe';
+        if (type.includes('avc1')) return 'probably';
+        return '';
+      });
+    renderWithProviders(
+      <EvidencePlayer
+        session={session({
+          segments: [{ ...session().segments[0]!, codec: 'h265' }],
+        })}
+      />,
+    );
+    expect(screen.getByTestId('player-codec')).toHaveTextContent(/H\.265/);
+    /* ⚠️ And it must say the evidence is fine — that is the whole point of naming the cause. */
+    expect(screen.getByTestId('player-codec')).toHaveTextContent(/evidence is intact/i);
+    spy.mockRestore();
+  });
+
+  it('⚠️ stays silent in a test environment that answers "" to everything', () => {
+    /*
+     * jsdom. A probe that refuses even a bare container is not measuring, and treating its answer
+     * as fact would paper every player in the suite with a false "cannot decode" alarm — which is
+     * how the P-5.5 defect stayed invisible in the other direction.
+     */
+    const spy = vi
+      .spyOn(HTMLMediaElement.prototype, 'canPlayType')
+      .mockImplementation(() => '' as const);
+    renderWithProviders(<EvidencePlayer session={session()} />);
+    expect(screen.queryByTestId('player-codec')).not.toBeInTheDocument();
     spy.mockRestore();
   });
 });
@@ -350,5 +400,161 @@ describe('the playback panel', () => {
     );
     renderPanel();
     await waitFor(() => expect(screen.getByText('No recording to play')).toBeInTheDocument());
+  });
+});
+
+// =================================================================================================
+// P-5.6 — production hardening
+// =================================================================================================
+
+describe('⚠️ an expired playback link is recovered, not reported as a broken recording', () => {
+  const expired = () => session({ derivedAt: new Date(Date.now() - 4 * 3600_000).toISOString() });
+
+  it('names the expiry rather than blaming the media', () => {
+    renderWithProviders(<EvidencePlayer session={expired()} onRecover={() => undefined} />);
+    const overlay = screen.getByTestId('player-error');
+    expect(overlay).toHaveAttribute('data-failure', 'expired');
+    expect(overlay).toHaveTextContent(/expired/i);
+    /* The sentence that stops somebody concluding the evidence is gone. */
+    expect(overlay).toHaveTextContent(/untouched/i);
+  });
+
+  it('⚠️ fetches a fresh signature instead of reloading the dead URL', async () => {
+    const user = userEvent.setup();
+    const onRecover = vi.fn();
+    renderWithProviders(<EvidencePlayer session={expired()} onRecover={onRecover} />);
+    await user.click(screen.getByRole('button', { name: /resume playback/i }));
+    expect(onRecover).toHaveBeenCalledTimes(1);
+  });
+
+  it('⚠️ offers no button at all when nothing can refetch, and says what to do instead', () => {
+    renderWithProviders(<EvidencePlayer session={expired()} />);
+    expect(screen.queryByRole('button', { name: /resume playback/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId('player-error')).toHaveTextContent(/reopen this evidence item/i);
+  });
+
+  it('a live session shows no overlay', () => {
+    renderWithProviders(<EvidencePlayer session={session()} onRecover={() => undefined} />);
+    expect(screen.queryByTestId('player-error')).not.toBeInTheDocument();
+  });
+});
+
+describe('⚠️ the media element is released when the player goes away', () => {
+  it('pauses, clears the source and reloads the element on unmount', async () => {
+    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+    const load = vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);
+    const { unmount } = renderWithProviders(<EvidencePlayer session={session()} />);
+    const video = document.querySelector('video');
+    expect(video).not.toBeNull();
+    const removeAttribute = vi.spyOn(video!, 'removeAttribute');
+
+    unmount();
+
+    /*
+     * Detaching the node is not enough: a detached element with a live `src` keeps downloading —
+     * measured at 13.33 MB against 1.61 MB over 60 opened-and-closed clips.
+     */
+    await waitFor(() => expect(pause).toHaveBeenCalled());
+    expect(removeAttribute).toHaveBeenCalledWith('src');
+    expect(load).toHaveBeenCalled();
+
+    pause.mockRestore();
+    load.mockRestore();
+  });
+
+  it('⚠️ does NOT release a node React is merely re-attaching', async () => {
+    /*
+     * The defect this pins: React runs ref cleanup then ref attach on a **still-mounted** node —
+     * StrictMode does it on every development mount. Releasing there blanked a live player, and
+     * React never restored `src`, because its virtual DOM saw no change. The player was a black
+     * rectangle reading "Resolving media…" and no test was watching.
+     */
+    const load = vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);
+    renderWithProviders(<EvidencePlayer session={session()} />);
+    const video = document.querySelector('video')!;
+    const removeAttribute = vi.spyOn(video, 'removeAttribute');
+
+    /* Re-renders that keep the element mounted, driven the way the operator would. */
+    fireEvent.change(screen.getByRole('slider', { name: 'Playback position' }), {
+      target: { value: '12' },
+    });
+    fireEvent.change(screen.getByLabelText('Volume'), { target: { value: '0.5' } });
+    await waitFor(() => expect(video.isConnected).toBe(true));
+    /* Let any deferred release run — if the guard were absent, this is where it would fire. */
+    await new Promise((resolve) => queueMicrotask(() => resolve(undefined)));
+
+    expect(removeAttribute).not.toHaveBeenCalledWith('src');
+    expect(video.getAttribute('src')).toBe('https://example.test/clip.mp4');
+    load.mockRestore();
+  });
+});
+
+describe('playback preferences survive the clip being reopened', () => {
+  it('⚠️ remembers the rate for this clip only, in sessionStorage', async () => {
+    const user = userEvent.setup();
+    sessionStorage.clear();
+    const { unmount } = renderWithProviders(
+      <EvidencePlayer session={session()} evidenceId="clip-a" />,
+    );
+    /* The rate ladder for this fixture is [1, 2, 4]; one press moves to 2×. */
+    await user.click(screen.getByRole('button', { name: /^Speed/ }));
+    expect(screen.getByRole('button', { name: 'Speed 2×' })).toBeInTheDocument();
+    unmount();
+
+    renderWithProviders(<EvidencePlayer session={session()} evidenceId="clip-a" />);
+    expect(screen.getByRole('button', { name: 'Speed 2×' })).toBeInTheDocument();
+
+    /* ⚠️ A different clip starts clean — this is per-item memory, not a global preference. */
+    renderWithProviders(<EvidencePlayer session={session()} evidenceId="clip-b" />);
+    expect(screen.getAllByRole('button', { name: 'Speed 1×' }).length).toBeGreaterThan(0);
+  });
+
+  it('⚠️ never reaches localStorage, which would outlive the operator’s shift', async () => {
+    const user = userEvent.setup();
+    sessionStorage.clear();
+    localStorage.clear();
+    renderWithProviders(<EvidencePlayer session={session()} evidenceId="clip-c" />);
+    await user.click(screen.getByRole('button', { name: /^Speed/ }));
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.getItem('vip.playback.memory.v1')).toContain('clip-c');
+  });
+});
+
+describe('the volume control', () => {
+  it('is offered on a clip and withheld from a still image', () => {
+    const { unmount } = renderWithProviders(<EvidencePlayer session={session()} />);
+    expect(screen.getByLabelText('Volume')).toBeInTheDocument();
+    unmount();
+    renderWithProviders(<EvidencePlayer session={still()} />);
+    expect(screen.queryByLabelText('Volume')).not.toBeInTheDocument();
+  });
+
+  it('⚠️ announces a percentage, not a raw float', () => {
+    renderWithProviders(<EvidencePlayer session={session()} />);
+    expect(screen.getByLabelText('Volume')).toHaveAttribute('aria-valuetext', '100 percent');
+  });
+});
+
+describe('the shortcut sheet is generated from the frozen registry', () => {
+  it('⚠️ lists an unavailable binding with its reason rather than hiding it', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<EvidencePlayer session={session()} />);
+    await user.click(screen.getByRole('button', { name: 'Keyboard shortcuts' }));
+
+    const list = await screen.findByTestId('shortcut-list');
+    expect(list).toHaveTextContent('Play / Pause');
+    expect(list).toHaveTextContent('Capture Snapshot');
+    /* Registered so the binding is reserved, and honest about producing nothing. */
+    expect(list).toHaveTextContent(/no snapshot renderer is built yet/i);
+  });
+});
+
+describe('the scrubber speaks to a screen reader', () => {
+  it('⚠️ announces a clock, not a float', () => {
+    renderWithProviders(<EvidencePlayer session={session()} />);
+    expect(screen.getByRole('slider', { name: 'Playback position' })).toHaveAttribute(
+      'aria-valuetext',
+      '00:00 of 10:00',
+    );
   });
 });

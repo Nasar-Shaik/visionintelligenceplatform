@@ -1036,3 +1036,89 @@ bug rather than a harness gap. The test tree now matches the real tree.
 These two were found by **looking at the rendered pixels**. A test asserts what you thought to
 assert; a screenshot shows what you shipped — and the browser-capability defect was invisible to the
 test environment by construction.
+
+## ED-0067 — P-5.6: measure it, then stop believing the measurement
+
+P-5.6 was a production-verification milestone, not a feature one: browser validation, touch, memory,
+recovery, real media. It added no contract. The only change inside `@vip/contracts` is one
+`available` flag flipped to `true`, because a player now consumes `Mod+B`.
+
+Five things were learned, and three of them contradicted a decision made one milestone earlier.
+
+⚠️ **The P-5.5 fix was right and insufficient.** §86 said: probe the container, never append the
+stored codec name. Correct — every engine answers `''` to `codecs="h264"`. But `video/mp4` answers
+`maybe` in **all five engines**, so a container-only check can never refuse the format nearly all
+CCTV arrives in. An H.265 clip on a build with no HEVC decoder fell straight through to _"the media
+could not be loaded"_ — the same sentence a dead signed URL produces. The friendly name is now
+_translated_ into representative RFC 6381 candidates rather than dropped. §86b.
+
+⚠️ **`hvc1` and `hev1` are not interchangeable, and one engine proves it.** Safari answers `probably`
+to `hvc1` and `''` to `hev1`; Chrome and Firefox accept both. Probing a single string would have
+reported "Safari cannot play H.265", which is false. Each codec carries a list and the best answer
+wins. The general shape: **a capability question may need several phrasings before the answer means
+what you think.**
+
+⚠️ **A positive probe is not a promise.** WebKit and Safari answered `probably` to `avc1.42E01E` and
+then rejected an actual H.264 file with `MEDIA_ERR_SRC_NOT_SUPPORTED`. So the check may **refuse**
+and may never **promise** — `unsupported` is actionable, `supported` is only advice, and `unknown`
+is never a synonym for either (§44, §87). The failure classification gained a `refused` case whose
+copy says exactly that, because "try a different browser" is advice an operator can act on and "the
+media could not be loaded" is not.
+
+⚠️ **The most consequential finding: a damaged recording plays silently.** Truncated and
+byte-corrupted H.264 played in Chromium, Chrome and Firefox with **no error event of any kind**,
+reporting roughly half the duration. An investigator watches the clip stop and concludes the incident
+ended there. Nothing in the browser will ever tell them otherwise, so the platform does: where the
+playhead stopped is compared against the duration the evidence record declares, and a shortfall is
+stated persistently, pointing at the integrity hash. It compares the **playhead**, not the reported
+duration — the same intact file reports 6.01 s, 3.45 s and 1.19 s across three engines. §88.
+
+⚠️ **The leak was not where the intuition put it.** "Opening hundreds of clips leaks memory" turned
+out to be unmeasurable: over 250 open/close cycles, retained nodes and JS heap were indistinguishable
+between releasing the element and not (148 vs 193 nodes; 0.025 vs 0.026 MB). Decoded media does not
+live on the JS heap. What _is_ measurable is the download — 60 clips opened and closed as soon as
+their metadata arrived transferred **13.33 MB unreleased against 1.61 MB released**, because a
+detached element with a live `src` keeps fetching. The first draft of this entry claimed a heap leak;
+the A/B measurement removed the claim. **State what the measurement showed, not what motivated it.**
+
+### Four defects the tests could not have found, and two more from driving the UI
+
+1. **The player was a black rectangle forever.** The media release ran on ref cleanup — and React
+   runs ref cleanup then re-attach on a node that is _still mounted_. It cleared `src` on a live
+   element and React never restored it, because its virtual DOM saw no change. Now deferred a
+   microtask and guarded on `isConnected`. The same investigation found that the _obvious_ home for
+   the cleanup — an unmount effect — silently does nothing, because React nulls refs before passive
+   cleanups run.
+2. **4,000 bookmarks clustered to the right number and looked wrong.** 67 abutting pins are a solid
+   band hiding the footage, the gaps and the playhead. Past a density the timeline draws a density
+   band instead. §91: bounding the count is necessary and not sufficient.
+3. **An iPad got 32 px controls** — `sm:` is screen width, and an iPad Pro is 834 px wide. Touch
+   capability is a property of the pointer. §90.
+4. **The volume slider was unreachable on touch**, because it was revealed on hover.
+5. **Pinch-zoom silently did nothing** — `setPointerCapture` throws for a pointer the browser no
+   longer tracks, and the uncaught throw aborted the handler before the gesture registered.
+6. **The transport stayed live under every error overlay.** §85 applied to capabilities; it now
+   applies to states too.
+
+### One deliberate structural change
+
+The keyboard handler no longer switches on `event.key`. P-5.5 read the frozen registry's chords in a
+comment and re-typed them into a `switch` — two tables holding the same bindings, with the help sheet
+documenting one and the code implementing the other. The registry is now _executed_: a chord is
+normalised, looked up in the `playback` scope, dispatched by command id. The shortcut sheet renders
+the same data. A binding cannot be implemented one way and documented another.
+
+### And what was refused
+
+The milestone asked for validation against Hikvision, Dahua, CP Plus, UNV, ONVIF, RTSP and NVR
+playback. **None of it was done and none of it was simulated.** No such hardware exists here, and a
+fixture named after a vendor would put that vendor's name against behaviour it never produced.
+Separately, and more importantly: **no browser plays RTSP**, so live camera playback is not a testing
+gap but a missing server-side component. `docs/review/p56/NVR_VALIDATION.md` says so plainly, because
+"playback is production-ready" must be read as _recorded evidence playback is production-ready_.
+
+**The general lesson.** ED-0066 said a screenshot shows what you shipped. P-5.6 adds the next step:
+a measurement shows what the platform does, and then you have to ask what the measurement is
+actually evidence of. `probably` was evidence of a parser's opinion, not of a decoder. A shorter
+duration was evidence of metadata, not of damage. A retained node count was evidence of nothing at
+all.

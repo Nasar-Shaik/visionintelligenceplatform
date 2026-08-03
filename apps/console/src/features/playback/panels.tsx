@@ -149,8 +149,16 @@ export function PlaybackPanel({ incidentId, unavailableReason }: PanelProps) {
 
           <EvidencePlayer
             session={session.data}
+            evidenceId={active.id}
             seekToSeconds={seekTo}
             onPositionChange={setPosition}
+            /*
+             * ⚠️ The recovery path. An expired signature is fixed by asking the server for a new
+             * one, not by reloading a dead URL — so the player is handed a refetch rather than
+             * left to call `video.load()` on a link that already 403s.
+             */
+            onRecover={() => void session.refetch()}
+            recovering={session.isFetching}
             {...(canComment
               ? {
                   onBookmark: (offsetSeconds: number) => {

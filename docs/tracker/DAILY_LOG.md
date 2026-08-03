@@ -199,3 +199,19 @@
 - UI review artifact captured from the real components: `docs/review/p55/`.
 - Gates: evidence 52 (+9) · workflow 136 (+10) · console **167** (+21) · contracts 499 · typecheck 28 · build 19 · lint 0 errors · imports 0 violations · schemas 70 · bundle budget OK.
 - `[Claude · 2026-08-03]`
+
+## 2026-08-04 (P-5.6 — playback production verification)
+
+- Verification milestone, not a feature one. **No contract added** — one `WORKSPACE_COMMANDS` flag flipped (`playback.bookmark`), because `Mod+B` now fires.
+- **Measured five engines**: Chromium 151, branded Chrome 150, Firefox 153, WebKit 26.5 and **real Safari 26.5.2** (opened by hand; the page posted its results back). Edge is **not installed and was not measured** — its column is deliberately blank rather than assumed. Full matrix: `docs/review/p56/BROWSER_MATRIX.md`.
+- ⚠️ **The P-5.5 codec fix was right and insufficient.** `video/mp4` answers `maybe` everywhere, so a container-only probe can never refuse the format nearly all CCTV arrives in. The stored name is now translated into RFC 6381 candidates (§86b); `hvc1` **and** `hev1` are both tried, because Safari accepts one and refuses the other.
+- ⚠️ **A positive probe is not a promise** (§87). WebKit and Safari answer `probably` to `avc1.42E01E` and then reject a real H.264 file. The check may refuse; it may never promise. New `refused` failure class whose copy says so.
+- ⚠️ **A truncated or byte-corrupted recording plays with no error event in Chromium, Chrome or Firefox**, reporting roughly half the duration (§88). The platform compares the **playhead** against the declared duration — not the reported duration, which the same intact file gives as 6.01 s / 3.45 s / 1.19 s across three engines — and states the shortfall persistently.
+- ⚠️ **The leak was bandwidth, not memory.** 250 open/close cycles: heap and retained nodes indistinguishable. 60 clips opened and closed as soon as metadata arrived: **13.33 MB unreleased vs 1.61 MB released**. The first draft of the code comment claimed a heap leak; the A/B measurement removed the claim.
+- **Recovery** (§89): wall-clock expiry re-checked on wake/focus/reconnect/visibility (no timer survives a slept laptop); failures classified before they are described; **no retry offered where retrying cannot succeed**; an expired signature refetches rather than reloading a dead URL.
+- **Keyboard handling now executes the frozen registry** instead of re-typing its chords into a `switch`; the shortcut sheet renders the same data, so a binding cannot be implemented one way and documented another.
+- **Six defects found by rendering or driving the UI**: a black-rectangle player (React re-runs ref cleanup on a still-mounted node, and the _obvious_ unmount-effect home for that cleanup silently does nothing); a 4,000-bookmark timeline that clustered to the right number and still smeared (§91, density band); 32 px controls on an iPad (`sm:` is screen width, §90); a hover-only volume slider unreachable on touch; a pinch gesture killed by an uncaught `setPointerCapture` throw; a live transport under every error overlay.
+- ⚠️ **Not done and not simulated: Hikvision, Dahua, CP Plus, UNV, ONVIF, RTSP, NVR playback.** No hardware here, and **no browser plays RTSP** — live view is a missing server-side component, not a testing gap. `docs/review/p56/NVR_VALIDATION.md`.
+- UI review artifact from the real components playing real H.264: `docs/review/p56/`.
+- Gates: console **259** (+92) · contracts 499 · rules 206 · camera 193 · tenant 144 · workflow 136 · evidence 52 · gateway 42 · events 40 · media 38 · e2e 33 · permissions 28 · typecheck 28 · build 19 · integration 18 suites · lint 0 errors · imports 0 violations · schemas 70 · format clean · bundle budget OK.
+- `[Claude · 2026-08-04]`
