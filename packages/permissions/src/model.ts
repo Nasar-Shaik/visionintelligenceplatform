@@ -38,6 +38,12 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
      * `WORKSPACE_PERMISSIONS` for why the action is `inspect` and not `read`.
      */
     'audit:inspect',
+    /*
+     * ⚠️ P-5.4 — per-operator workload is staff monitoring. The action is `workload`, not `read`,
+     * for exactly the reason `audit:inspect` is not `audit:read`: `*:read` would hand it to every
+     * viewer (TD-26, §69). Aggregate metrics need no such grant.
+     */
+    'metrics:workload',
   ],
   operator: [
     '*:read',
@@ -159,6 +165,21 @@ export const WORKSPACE_PERMISSIONS = [
   'job:cancel',
   /** ⚠️ The access audit. See the note above — deliberately not `audit:read`. */
   'audit:inspect',
+  /**
+   * Aggregate investigation metrics. ⚠️ Names **no person** — that is what makes it safe to reach
+   * every operator and viewer through `*:read`.
+   */
+  'metrics:read',
+  /**
+   * ⚠️ **Per-operator workload — staff monitoring.** Granted to `admin` and above only.
+   *
+   * The action is deliberately `workload` rather than `read`. This platform has already had one
+   * finding of this exact class: `audit:read` would have exposed a staff-activity log to every
+   * `viewer`, because both `operator` and `viewer` hold `*:read` (TD-26, CONSTRAINTS §69). A
+   * productivity measure of named employees is the same hazard with a friendlier name, so it gets
+   * the same treatment — an action no wildcard in `ROLE_PERMISSIONS` matches.
+   */
+  'metrics:workload',
 ] as const;
 
 /**

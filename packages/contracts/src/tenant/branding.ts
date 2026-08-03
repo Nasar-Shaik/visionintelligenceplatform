@@ -43,6 +43,31 @@ export const TenantBranding = z.object({
     .optional(),
   /** Which theme the tenant's operators start in. They may still switch. */
   defaultTheme: z.enum(['dark', 'light']).default('dark'),
+  /**
+   * The browser tab icon (P-5.4). A storage key, for the same reason as the logo.
+   *
+   * ⚠️ Served through the platform after a content-type check, never linked to directly. A favicon
+   * is fetched on every page load by every operator, which makes it the most reliable beacon a
+   * tenant could accidentally install.
+   */
+  faviconStorageKey: z.string().min(1).max(500).optional(),
+  /**
+   * Branding on the sign-in screen (P-5.4).
+   *
+   * ⚠️ **Resolved from the tenant the operator names, and only after they name it.** The sign-in
+   * screen is pre-authentication: rendering a tenant's mark from a hostname or an email domain
+   * before anyone has proved anything turns the login page into an oracle for "does this company
+   * use this product", which is reconnaissance a competitor or an attacker gets for free.
+   */
+  loginBranding: z.boolean().default(false),
+  /**
+   * Apply the mark to generated reports (P-5.4).
+   *
+   * ⚠️ Only the logo and company name cross over. A report's *theme* stays `ReportThemeId`, which
+   * shares no tokens with the console — see the module note. A document handed to a regulator must
+   * not change appearance because somebody adjusted a console accent.
+   */
+  reportBranding: z.boolean().default(true),
   updatedAt: IsoDateTime,
 });
 export type TenantBranding = z.infer<typeof TenantBranding>;

@@ -876,3 +876,59 @@ already exists rather than standing up a second one for updates that are server�
 Constraints added: **§71** measure the client, gate what is deterministic · **§72** a composed status
 is projected, never probed · **§73** a provenance chain must be able to break, and say which kind ·
 **§74** a conflict is reported to the person, never retried.
+
+## ED-0064 — P-5.4: a redaction that is only drawn is not a redaction
+
+**Date:** 2026-08-03 · **Milestone:** P-5.4 (investigation reservations) · **ADR:** [ADR-0034](../adr/ADR-0034-investigation-reservations.md)
+
+**The finding was in a feature list, in the word "annotation".** The reservation asked for
+rectangles, polygons, arrows, text, **blur, redaction** and timestamps as one annotation layer.
+Modelled that way, a redaction is a shape stored beside the media and painted over it at display
+time — and the bytes still contain the face. Anyone with `evidence:read` sees it unobscured by
+opening the original, using another viewer, or exporting through any path that does not consult the
+investigation context. ⚠️ A disclosure copy is the **one** artefact where "the viewer chose not to
+paint it" is the whole failure: handing a police force a file whose redaction is a rendering hint is
+worse than handing them the original, because everyone involved believes it is redacted.
+
+So the layer is split. Overlays are non-destructive and live with the investigation. `blur`, `mask`
+and burnt-in `timestamp` are **treatments**: a `RedactionRequest` runs as a `media.render` job and
+produces a **new evidence record** with its own hash and custody log. There is no
+`overwriteOriginal` flag, and `RedactionResult.irreversible` is `z.literal(true)` — a treatment that
+could be undone from the derived copy would mean the pixels were never removed. Now CONSTRAINTS §75.
+
+**Three more requests were answered differently, each for a stated reason.**
+
+⚠️ **The session field list is UI state.** `sessionId`, `resumeToken` and `expiresAt` read like a
+server resource; the requirement's own last line ("restore only UI state, never business state")
+resolves it. The token is an opaque encoding of a query and a position and is explicitly **not a
+bearer credential** — restoring re-runs the query under the restorer's permissions, so a link pasted
+into a chat cannot outlive the revocation of the person who made it. `activeBookmarks` and
+`activeAnnotations` are **id lists, never records**: a persisted record survives the incident
+closing, the annotation being revised and access being withdrawn, and is then rendered as current
+(§76).
+
+⚠️ **A 16-tile wall is a display grid, not a resolution budget.** Each sync member is a full session
+resolution, so `PLAYBACK_SYNC_MAX_SOURCES` stays at 9 and a 16-grid resolves at most nine with the
+rest drawn as empty tiles. `resolvableMembers()` derives from the constant so there is no second
+number to maintain.
+
+⚠️ **An export profile may require a redaction but never perform one.** A court profile differs from
+an internal one by what has been _removed_, and removal is content; a profile that could redact
+would be a presentation object silently changing evidence. `requiresRedactionReview` is a gate, and
+`PROFILE_FORBIDDEN_KEYS` is asserted so no future change adds content selection (§77). The seven
+profiles ship as **data, not an enum** — six jurisdiction nouns in the type system is what §36
+refuses.
+
+**And two metrics could not be computed at all.** A **false negative** is an incident that was never
+raised: there is no document to count, so a dashboard computing `0` from platform data states the one
+thing it cannot know, on the metric a customer is most likely to buy on. It is reported with a source
+and a date, and absent means _not measured_ (§79). ⚠️ **Operator workload is staff monitoring** — the
+same finding as `audit:read`, one milestone later in a friendlier costume: `metrics:workload` takes a
+distinct action verb so no `*:read` wildcard reaches it, and the aggregate form naming nobody stays on
+the ordinary read path (§78). `OperatorWorkload` carries no quality measure on purpose: an operator
+does not choose which incidents reach them.
+
+**The general lesson.** Four of these were found by asking what a field would be _true of_ rather
+than what it would _contain_. A feature list is written in the vocabulary of the screen; a contract
+has to be written in the vocabulary of the guarantee, and the two disagree most sharply exactly where
+the guarantee matters most.

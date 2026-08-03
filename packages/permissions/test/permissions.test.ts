@@ -148,3 +148,36 @@ describe('the workspace permission catalog (P-5.2.0)', () => {
     expect(can(ROLE_PERMISSIONS.viewer, 'investigation:write')).toBe(false);
   });
 });
+
+/**
+ * P-5.4 — investigation metrics.
+ *
+ * ⚠️ The same finding as `audit:inspect`, one milestone later and in a friendlier costume: a
+ * per-operator productivity measure is a staff-monitoring surface, and `*:read` would have handed
+ * it to every viewer.
+ */
+describe('P-5.4 metrics permissions', () => {
+  it('lets aggregate metrics reach everyone who can read — they name no person', () => {
+    expect(can(ROLE_PERMISSIONS.viewer, 'metrics:read')).toBe(true);
+    expect(can(ROLE_PERMISSIONS.operator, 'metrics:read')).toBe(true);
+  });
+
+  it('⚠️ keeps per-operator workload away from every wildcard below admin', () => {
+    expect(can(ROLE_PERMISSIONS.viewer, 'metrics:workload')).toBe(false);
+    expect(can(ROLE_PERMISSIONS.operator, 'metrics:workload')).toBe(false);
+    expect(can(ROLE_PERMISSIONS.admin, 'metrics:workload')).toBe(true);
+    expect(can(ROLE_PERMISSIONS.owner, 'metrics:workload')).toBe(true);
+  });
+
+  it('⚠️ proves the hazard: the read-spelling WOULD have been granted to every viewer', () => {
+    /* Had it been named `metrics:workload-read`, or any `*:read`, this would have been true. */
+    expect(can(ROLE_PERMISSIONS.viewer, 'metrics:read')).toBe(true);
+    expect(WORKSPACE_PERMISSIONS as readonly string[]).toContain('metrics:workload');
+    for (const permission of WORKSPACE_PERMISSIONS as readonly string[]) {
+      if (!permission.startsWith('metrics:')) continue;
+      if (permission === 'metrics:read') continue;
+      /* Every other metrics permission must be unreachable by a viewer. */
+      expect(can(ROLE_PERMISSIONS.viewer, permission)).toBe(false);
+    }
+  });
+});

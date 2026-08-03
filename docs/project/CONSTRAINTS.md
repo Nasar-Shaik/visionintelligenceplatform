@@ -408,6 +408,40 @@
     against a state that has since changed — a resolution note landing on an incident somebody else
     just escalated. Refetch, keep what they typed, and say so. — _enforced:
     `useCollaboration`; a 409 invalidates and toasts, and the composer clears only on success._
+75. **A redaction is a rendered derivative, never an overlay.** Anything that removes information
+    from evidence — blur, mask, burnt-in timestamp — changes pixels and therefore produces a **new
+    evidence record** with its own hash and custody log; the original is read and never written. An
+    overlay drawn over the media leaves the bytes intact, so the "redacted" face is visible to
+    anyone who opens the original, uses another viewer, or exports through a path that does not
+    consult the investigation — and a disclosure copy is the one artefact where everyone involved
+    believes it is redacted. — _enforced: `AnnotationOverlayKind` refuses `blur`/`redaction`;
+    `OVERLAY_FORBIDDEN_KINDS` + `requiresRenderedTreatment()` assert the split; `RedactionResult`
+    types `irreversible` as `z.literal(true)`; no `overwriteOriginal` flag exists._
+76. **Client-persisted state carries ids, never records.** UI state may remember _what was
+    selected_; it may not keep a copy of the thing. A stored record outlives the incident closing,
+    the annotation being revised and the reader's access being withdrawn, and is then rendered as
+    current. — _enforced: `SESSION_FORBIDDEN_KEYS` and `WorkspaceUiState.bookmarkIds`; a P-5.4 test
+    asserts no forbidden key survives a parse._
+77. **A presentation object may never select content.** Themes, export profiles and layouts change
+    how something is rendered; what a report contains belongs to the request and to the person
+    making it. Two objects with authority over the same decision resolve in whichever order the
+    code happens to check, and the one nobody looked at wins. A profile may _gate_ an export
+    (requiring a redaction review) but never perform one. — _enforced: `PROFILE_FORBIDDEN_KEYS`;
+    `ReportPresentation` carries no section selection; `exportBlockers()` returns reasons, not a
+    silent transform._
+78. **A measure of named people needs its own permission, and no wildcard may reach it.** Staff
+    monitoring surfaces — access audits, per-operator productivity — take a distinct action verb
+    (`inspect`, `workload`), never `read`, because `operator` and `viewer` both hold `*:read`. The
+    aggregate form, naming nobody, stays on the ordinary read path. — _enforced: `audit:inspect` and
+    `metrics:workload`; tests assert a viewer is refused both and would have been granted the
+    `:read` spelling (TD-26)._
+79. **A number the platform cannot observe is reported, not computed.** A false negative is an
+    incident that was never raised: there is no document to count, so a dashboard computing `0` from
+    platform data states the one thing it cannot know. Such figures are externally reported with a
+    source and a date, and absent means _not measured_ — never zero. The same rule governs a
+    coverage cone (declared vs surveyed) and a heatmap band over a truncated read. — _enforced:
+    `ReportedMetric` requires `source`; `falseNegatives` is optional; `CoverageBasis`;
+    `HeatmapBand.counted` with a required `uncountedReason`._
 
 ## Engineering process
 

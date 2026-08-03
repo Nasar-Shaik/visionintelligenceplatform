@@ -83,6 +83,20 @@ export function isAdjusted(adjustment: EvidenceViewAdjustment): boolean {
 }
 
 /**
+ * How a comparison is arranged (P-5.4). ⚠️ Presentation only — every mode shows both artefacts
+ * unaltered, and `before-after` in particular does **not** imply one was derived from the other.
+ */
+export const EvidenceComparisonMode = z.enum([
+  /** Two panes, both fully visible. */
+  'side-by-side',
+  /** A draggable divider over one frame. */
+  'before-after',
+  /** Two frames at the same instant, stepped together. */
+  'frame',
+]);
+export type EvidenceComparisonMode = z.infer<typeof EvidenceComparisonMode>;
+
+/**
  * Two items or moments shown side by side (rec 6, "frame compare").
  *
  * Each side carries its own adjustment, because comparing a brightened frame against an untouched
@@ -97,6 +111,24 @@ export const EvidenceComparison = z.object({
   rightAdjustment: EvidenceViewAdjustment.optional(),
   /** ⚠️ False when either side is adjusted — the comparison is not like-for-like and must say so. */
   likeForLike: z.boolean(),
+  /** How the two sides are arranged (P-5.4). Presentation only; neither side is altered. */
+  mode: EvidenceComparisonMode.default('side-by-side'),
+  /**
+   * Play both sides against one clock (P-5.4).
+   *
+   * ⚠️ **Only meaningful when the two sources' clocks can be reconciled.** Two cameras compared
+   * "synchronously" on unverified device clocks assert a simultaneity nobody measured — the same
+   * claim `PlaybackClockConfidence` exists to qualify. When this is true and the underlying group
+   * is not verified, the surface carries the group's caveat; it does not quietly drop it.
+   */
+  synchronised: z.boolean().default(false),
+  /**
+   * Offset applied to the right side to line the two up, in seconds (P-5.4, "timeline alignment").
+   *
+   * ⚠️ Absent means **not aligned**, never zero. A `0` asserts the two are already in step, which is
+   * precisely the claim an operator dragging one track into place has not yet made.
+   */
+  alignmentOffsetSeconds: z.number().optional(),
 });
 export type EvidenceComparison = z.infer<typeof EvidenceComparison>;
 
@@ -201,6 +233,113 @@ export const PlaybackTimelineTrack = z.object({
   unavailableReason: z.string().min(1).max(300).optional(),
 });
 export type PlaybackTimelineTrack = z.infer<typeof PlaybackTimelineTrack>;
+
+// ---------------------------------------------------------------------------------------------
+// P-5.4 rec 7 — the timeline heatmap
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * What a heatmap band counts. One band per kind, so an operator can see *what* is dense rather than
+ * only *that* something is.
+ *
+ * ⚠️ `motion` is listed because the recommendation asks for it, and it is the one band with **no
+ * producer of any kind**: nothing in this platform emits a motion signal — detections come from the
+ * AI runtime and are a different thing. It is reserved rather than quietly folded into `detection`,
+ * because a heatmap that silently relabels detections as motion would misrepresent what a camera
+ * observed.
+ */
+export const HeatmapBandKind = z.enum([
+  'event',
+  'detection',
+  'alert',
+  'evidence',
+  'bookmark',
+  'ai-marker',
+  /** ⚠️ No producer. See the note above. */
+  'motion',
+]);
+export type HeatmapBandKind = z.infer<typeof HeatmapBandKind>;
+
+/** Buckets a heatmap may be computed at. Bounded so a scrub cannot ask for a million buckets. */
+export const HEATMAP_MAX_BUCKETS = 720;
+
+/**
+ * One band of density over the session's range.
+ *
+ * ⚠️ **`counts` and `bucketSeconds` describe a fixed grid, and `counted` says whether the grid is
+ * complete.** A band computed over a truncated read is a band whose quiet stretches are an artefact
+ * of the query rather than of the footage — the same distinction `SearchFacet.counted` draws, and
+ * for the same reason: a density map is read as evidence of what did *not* happen, which is the
+ * strongest claim on the screen and the easiest one to get wrong.
+ */
+export const HeatmapBand = z.object({
+  kind: HeatmapBandKind,
+  /** Seconds each bucket spans. Uniform across the band. */
+  bucketSeconds: z.number().positive(),
+  /** Counts per bucket, from the session's `startedAt`. Length ≤ `HEATMAP_MAX_BUCKETS`. */
+  counts: z.array(z.number().int().min(0)).max(HEATMAP_MAX_BUCKETS).default([]),
+  /**
+   * ⚠️ False when the underlying read was truncated or the source could not be consulted. A band
+   * that is not `counted` is rendered as indeterminate, never as zero.
+   */
+  counted: z.boolean(),
+  /** Required when `counted` is false — what limited it. */
+  uncountedReason: z.string().min(1).max(300).optional(),
+});
+export type HeatmapBand = z.infer<typeof HeatmapBand>;
+
+/**
+ * The heatmap over one playback range.
+ *
+ * ⚠️ `peak` is derived across the bands that are `counted` only. Including an uncounted band would
+ * let a truncated read set the scale, and every other band would then be drawn faint against a
+ * number that does not mean anything.
+ */
+export const PlaybackTimelineHeatmap = z
+  .object({
+    startedAt: IsoDateTime,
+    endedAt: IsoDateTime,
+    bands: z.array(HeatmapBand).max(8).default([]),
+    /** Highest bucket across all `counted` bands. `0` is legitimate: nothing happened. */
+    peak: z.number().int().min(0),
+    derivedAt: IsoDateTime,
+  })
+  .superRefine((heatmap, ctx) => {
+    for (const band of heatmap.bands) {
+      if (!band.counted && band.uncountedReason === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['bands'],
+          message: `the ${band.kind} band is not counted and must say why`,
+        });
+      }
+    }
+    const expected = heatmapPeak(heatmap.bands);
+    if (heatmap.peak !== expected) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['peak'],
+        message: `peak must be derived from the counted bands (expected ${expected}, got ${heatmap.peak})`,
+      });
+    }
+  });
+export type PlaybackTimelineHeatmap = z.infer<typeof PlaybackTimelineHeatmap>;
+
+/**
+ * The scale for a heatmap: the highest bucket among **counted** bands.
+ *
+ * Derived in one place so the schema, the renderer and the tests cannot disagree (CONSTRAINTS §46).
+ */
+export function heatmapPeak(bands: readonly HeatmapBand[]): number {
+  let peak = 0;
+  for (const band of bands) {
+    if (!band.counted) continue;
+    for (const count of band.counts) {
+      if (count > peak) peak = count;
+    }
+  }
+  return peak;
+}
 
 /**
  * ⚠️ **What the operator is actually looking at** (mid-milestone requirement 5).

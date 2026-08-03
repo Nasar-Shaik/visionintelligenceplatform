@@ -161,3 +161,15 @@
 - **Phase 1 architecture planning:** re-scoped Phase 1 to a **camera → alert vertical** ([ED-0019](../project/ENGINEERING_DECISION_LOG.md)); wrote the full `docs/architecture/phase1/` blueprint + PROJECT_ROADMAP. Frozen architecture 01–28 unchanged.
 - Per-slice detail: [REVIEW_HISTORY](REVIEW_HISTORY.md). Notable fixes that day: import-graph self-edge false-cycle; TS pinned 5.9.3 (TD-1, typescript-eslint); MLflow 3.x allowed-hosts (R-012); Prometheus per-instance registry.
 - `[Claude · 2026-07-27]`
+
+## 2026-08-03 (P-5.4 — investigation reservations)
+
+- **P-5.3 ACCEPTED**; the Architect issued the reservation list and then closed the phase: _"stop adding architecture unless a real limitation is discovered."_ **P-5.4 is the last contract-freeze milestone.**
+- Audited before writing: **5 of 12** requested areas were already frozen (sync groups + clock skew, AI recommendation categories, workspace profiles, offline bundles, branding). Extended those; wrote new contracts only where there was nothing.
+- ⚠️ **Finding — a redaction drawn as an overlay is not a redaction.** Split the annotation layer: overlays stay investigation-context and non-destructive; `blur`/`mask`/burnt-in `timestamp` become a `RedactionRequest` → `media.render` job producing a **new evidence record**. No `overwriteOriginal` flag; `irreversible` is `z.literal(true)`. CONSTRAINTS §75.
+- ⚠️ **Finding — operator workload is staff monitoring.** `metrics:workload` takes a distinct action verb because `operator` and `viewer` both hold `*:read` — the `audit:read`/TD-26 hazard, recurring. Aggregate metrics stay on `metrics:read`. §78.
+- ⚠️ **Finding — a false negative is not in the data.** Reported with a source and a date; absent means _not measured_, never zero. §79.
+- Answered differently, with reasons: session field list as **UI state** (ids, never records — §76) · **16-tile grid** resolving at most nine · **export profiles as data** that gate but never redact (§77).
+- Long-term items (face recognition, LPR, PTZ, audio, GIS, drone, cloud/edge sync) recorded in **PRODUCT_ROADMAP_QUEUE, not as contracts** — biometrics need a lawful basis and a DPIA before a schema; PTZ is the first camera-control write path and needs its own ADR. **P-6 Production Polish** queued after Demo Readiness v1.
+- Gates: contracts **483** (+52) · permissions **28** (+3). No service, route, worker or screen added.
+- `[Claude · 2026-08-03]`

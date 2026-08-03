@@ -224,3 +224,64 @@ export const DemoScenario = z.object({
   steps: z.array(DemoScenarioStep).max(50).default([]),
 });
 export type DemoScenario = z.infer<typeof DemoScenario>;
+
+/**
+ * The demo dataset (P-5.4) — **"demo mode must never mix with production data."**
+ *
+ * ### ⚠️ The guarantee is a tenant boundary, not a flag
+ *
+ * `DemoScenario.isDemo` marks a record, and a flag is only as good as every query that remembers to
+ * filter on it: one forgotten `where` in one report and a sample incident is counted in a
+ * customer's compliance figures. A flag is a convention enforced by attention.
+ *
+ * A **separate tenant** is enforced by the isolation the platform already applies to every read and
+ * write, everywhere, including the ones nobody thought about. So demo data lives in a demo *tenant*
+ * — the flag stays, because a surface still needs to label what it is showing, but the flag is the
+ * label and the tenant is the guarantee.
+ *
+ * That also makes `reset` safe to define: it is "delete this tenant's data", scoped by the same
+ * boundary, rather than "delete everything flagged", which is one bad predicate away from deleting
+ * a customer's incidents.
+ *
+ * ⚠️ **Frozen with no producer.** Nothing seeds, serves or resets a demo tenant. Demo Readiness v1
+ * crosses TD-4, TD-5, TD-9, TD-13, TD-14, TD-15 and TD-16 and is scoped as its own milestone.
+ */
+export const DemoDataset = z.object({
+  /** ⚠️ The demo tenant. Never a production tenant id — that is the whole guarantee. */
+  tenantId: TenantId,
+  /** ⚠️ Always true, on the tenant. A tenant either is a demo tenant or it is not. */
+  isDemo: z.literal(true),
+  title: z.string().min(1).max(120),
+  /** What the dataset contains, so a surface can say what is sample data before showing it. */
+  cameraCount: z.number().int().min(0),
+  incidentCount: z.number().int().min(0),
+  evidenceCount: z.number().int().min(0),
+  reportCount: z.number().int().min(0),
+  scenarios: z.array(DemoScenario).max(20).default([]),
+  /** When the dataset was last seeded or reset. */
+  seededAt: IsoDateTime,
+});
+export type DemoDataset = z.infer<typeof DemoDataset>;
+
+/**
+ * Reset a demo tenant to its seeded state.
+ *
+ * ⚠️ `confirmTenantId` must equal `tenantId`. A destructive operation whose entire safety rests on
+ * the caller passing the right id gets that id typed twice — the same reason a database console
+ * makes you retype the name of the thing you are dropping.
+ */
+export const DemoResetRequest = z
+  .object({
+    tenantId: TenantId,
+    confirmTenantId: TenantId,
+  })
+  .superRefine((request, ctx) => {
+    if (request.tenantId !== request.confirmTenantId) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['confirmTenantId'],
+        message: 'the confirmation must repeat the tenant being reset',
+      });
+    }
+  });
+export type DemoResetRequest = z.infer<typeof DemoResetRequest>;

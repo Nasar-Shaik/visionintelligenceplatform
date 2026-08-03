@@ -640,6 +640,15 @@ export const WorkspaceProfileId = z.enum([
   'administrator',
   /** Read-only summary: the fewest panels that still tell the story. */
   'executive',
+  /**
+   * The operator's own arrangement (P-5.4).
+   *
+   * ⚠️ It hides and collapses nothing. A `custom` profile is the marker that the saved layout in
+   * `vip.workspace.state.*` is the authority — the profile stops supplying defaults rather than
+   * supplying different ones. Without it, an operator who rearranged their workspace has no way to
+   * express that, and the next profile change silently discards their work.
+   */
+  'custom',
 ]);
 export type WorkspaceProfileId = z.infer<typeof WorkspaceProfileId>;
 
@@ -696,5 +705,13 @@ export const WORKSPACE_PROFILES: readonly WorkspaceProfile[] = [
     description: 'The fewest panels that still tell the story.',
     hiddenPanels: ['filters', 'attachments', 'audit-trail', 'related-events', 'rule-explanation'],
     collapsedPanels: ['comments', 'assignments'],
+  },
+  {
+    id: 'custom',
+    title: 'Custom',
+    description: 'Your own arrangement. Saved layout wins; this profile supplies no defaults.',
+    /* ⚠️ Both empty, deliberately. See the note on the `custom` member. */
+    hiddenPanels: [],
+    collapsedPanels: [],
   },
 ];

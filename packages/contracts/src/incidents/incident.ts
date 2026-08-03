@@ -588,8 +588,35 @@ export const IncidentRecommendationKind = z.enum([
   'similar-cameras',
   'similar-rules',
   'similar-evidence',
+  // P-5.4 — the remaining "related X" categories. Also unproduced.
+  'related-detections',
+  'related-timelines',
 ]);
 export type IncidentRecommendationKind = z.infer<typeof IncidentRecommendationKind>;
+
+/**
+ * ⚠️ **Recommendation categories that will never exist**, exported as data so the boundary is
+ * greppable and a test asserts it rather than a reviewer remembering it.
+ *
+ * Each of these would require the advisor to *produce* something rather than point at something
+ * that already exists:
+ *
+ * - `generated-evidence` — an artefact with no camera behind it, entering a chain of custody whose
+ *   whole value is that every link traces to a real capture. There is no lawful reading of an
+ *   evidence record that a model made up.
+ * - `approval` / `auto-resolve` / `auto-escalate` — a lifecycle decision attributed to a machine in
+ *   an immutable audit trail. Acting on advice stays an ordinary operator action, recorded against
+ *   the human who decided.
+ * - `rule-change` — a rule version is the platform's account of why an incident was raised;
+ *   a model editing one rewrites that account retrospectively.
+ */
+export const REFUSED_RECOMMENDATION_KINDS = [
+  'generated-evidence',
+  'approval',
+  'auto-resolve',
+  'auto-escalate',
+  'rule-change',
+] as const;
 
 export const IncidentRecommendation = z.object({
   id: Uuid,

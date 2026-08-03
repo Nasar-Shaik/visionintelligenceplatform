@@ -24,6 +24,8 @@ export * from './auth/auth.js';
 
 // camera inventory (P1-3)
 export * from './camera/camera.js';
+// P-5.4 rec 5 — camera placement and the camera map. Additive; camera.ts is untouched.
+export * from './camera/placement.js';
 
 // media / ingestion (P1-4)
 export * from './media/media.js';
@@ -68,6 +70,8 @@ export * from './rules/rules.js';
 // incidents — workflow lifecycle (P1-8)
 export * from './incidents/incident.js';
 export * from './incidents/chain.js';
+// P-5.4 rec 10 — investigation metrics, derived on read.
+export * from './incidents/metrics.js';
 
 // notifications — alert engine (P1-8)
 export * from './notifications/notification.js';
@@ -97,12 +101,18 @@ export * from './workspace/surfaces.js';
 // playback — recorded CCTV review (rec 2)
 export * from './playback/playback.js';
 export * from './playback/viewer.js';
+// P-5.4 rec 1 — the operator's playback session, held as UI state.
+export * from './playback/session.js';
+// P-5.4 rec 4 — the annotation layer, and redaction as a rendered derivative.
+export * from './playback/annotation.js';
 
 // background jobs — anything too slow to hold a request open (rec 4)
 export * from './jobs/job.js';
 
 // report model — one shape every generator consumes (rec 5)
 export * from './reporting/report.js';
+// P-5.4 rec 3 — export profiles. Presentation only.
+export * from './reporting/profiles.js';
 
 // access audit — read-side only; writes stay derived (rec 7)
 export * from './audit/access.js';

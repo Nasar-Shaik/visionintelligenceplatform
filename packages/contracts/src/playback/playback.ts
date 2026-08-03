@@ -193,6 +193,33 @@ export const PlaybackBookmark = z.object({
   offsetSeconds: z.number().nonnegative().optional(),
   label: z.string().min(1).max(200),
   note: z.string().max(2000).optional(),
+  /**
+   * A grouping label (P-5.4). ⚠️ An **opaque slug, not an enum** — what an investigator files a
+   * moment under is deployment vocabulary ("entry", "handover", "point-of-sale"), and §36 keeps
+   * that out of the platform's types.
+   */
+  category: z
+    .string()
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'must be a lowercase kebab-case slug')
+    .max(60)
+    .optional(),
+  /**
+   * How significant the operator considered this moment (P-5.4).
+   *
+   * ⚠️ **This is the bookmark's own severity, not the incident's**, and it never propagates: a
+   * `critical` bookmark inside a `low` incident does not raise the incident, because severity there
+   * is rule-derived and an operator marking a frame is not a rule firing (§46). It orders the
+   * bookmark list and nothing else.
+   */
+  severity: EventPriority.optional(),
+  /**
+   * Who else may see it (P-5.4, "shared bookmark").
+   *
+   * ⚠️ `private` is the default, deliberately. A bookmark is a working note, and defaulting to
+   * shared would publish half-formed reasoning to a colleague's screen. There is no `public`: the
+   * widest visibility is the tenant, because evidence never leaves one.
+   */
+  visibility: z.enum(['private', 'tenant']).default('private'),
   createdBy: z.string().min(1),
   createdAt: IsoDateTime,
 });
@@ -318,6 +345,14 @@ export const CreatePlaybackBookmarkInput = z.object({
   at: IsoDateTime,
   label: z.string().min(1).max(200),
   note: z.string().max(2000).optional(),
+  category: z
+    .string()
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'must be a lowercase kebab-case slug')
+    .max(60)
+    .optional(),
+  severity: EventPriority.optional(),
+  /** ⚠️ Defaults to `private`. See the note on `PlaybackBookmark.visibility`. */
+  visibility: z.enum(['private', 'tenant']).default('private'),
 });
 export type CreatePlaybackBookmarkInput = z.infer<typeof CreatePlaybackBookmarkInput>;
 
@@ -491,3 +526,175 @@ export type PlaybackSyncQuery = z.infer<typeof PlaybackSyncQuery>;
 export function alignmentIsVerified(members: readonly PlaybackSyncMember[]): boolean {
   return members.every((member) => member.clock.confidence === 'synchronised');
 }
+
+// ---------------------------------------------------------------------------------------------
+// P-5.4 rec 1 — restoring a session · rec 2 — the wall and independent playback
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * ⚠️ **Restoration is re-derivation, not a resume token.**
+ *
+ * The recommendation asks for resume tokens, expiration and session restoration. A token implies a
+ * server-side session with a lifecycle — which decision 1 at the top of this file refuses, for a
+ * reason that has not changed: the descriptor's signed URLs expire on their own schedule, so a
+ * stored session goes stale while claiming to be current, and every consumer then has to decide
+ * whether to trust it.
+ *
+ * What an operator actually wants back is **the query and the position**, both of which are already
+ * theirs: the query is this object, and the position is UI state in `WorkspaceViewState`
+ * (`vip.workspace.state.*`). So restoring is issuing the same query again and seeking — no token,
+ * no server-side lifecycle, and it works after a deploy, in a second tab, and on another machine
+ * where a token would have been unknown.
+ *
+ * ⚠️ **`positionSeconds` is an offset, never a wall-clock instant.** A restore against a source
+ * whose range has since been trimmed by retention must land inside the footage that still exists;
+ * an absolute timestamp would silently resume into a gap.
+ */
+export const PlaybackRestore = z.object({
+  query: PlaybackSessionQuery,
+  /** Offset from the session's `startedAt`. Clamped to the restored session's duration. */
+  positionSeconds: z.number().nonnegative(),
+  /** The rate in use when the operator left. Absent ⇒ normal speed. */
+  rate: z.number().positive().optional(),
+  /** Which evidence item the viewer had open, when the session carries several. */
+  activeEvidenceId: z.string().min(1).optional(),
+  savedAt: IsoDateTime,
+});
+export type PlaybackRestore = z.infer<typeof PlaybackRestore>;
+
+/**
+ * When the resolved descriptor stops being usable.
+ *
+ * ⚠️ Derived from the **earliest** segment expiry, not the latest. A session is usable only while
+ * every segment is; reporting the latest would let a player scrub confidently into a segment whose
+ * URL died ten minutes ago.
+ */
+export function sessionExpiresInSeconds(segments: readonly PlaybackSegment[]): number | undefined {
+  if (segments.length === 0) return undefined;
+  return Math.min(...segments.map((segment) => segment.expiresInSeconds));
+}
+
+/**
+ * Tile counts a synchronized wall may present (rec 2).
+ *
+ * ⚠️ **This is a display grid, and it is deliberately not the resolution budget.** A 16-tile wall
+ * is a legitimate thing to ask for; sixteen *resolved* sessions is sixteen upstream fan-outs on the
+ * busiest screen in the product, which is why {@link PLAYBACK_SYNC_MAX_SOURCES} stays at 9 (§54).
+ *
+ * A 16-grid is therefore a grid with at most nine resolved members and the remainder rendered as
+ * empty tiles an operator can fill by swapping a source out — the honest arrangement. Silently
+ * resolving sixteen would move the cost onto a screen that already carries the timeline's budget,
+ * and silently refusing the layout would look like a bug.
+ */
+export const PlaybackGridLayout = z.enum(['1', '2', '4', '9', '16']);
+export type PlaybackGridLayout = z.infer<typeof PlaybackGridLayout>;
+
+/** Tiles in a grid. */
+export const GRID_TILE_COUNT: Record<PlaybackGridLayout, number> = {
+  '1': 1,
+  '2': 2,
+  '4': 4,
+  '9': 9,
+  '16': 16,
+};
+
+/**
+ * How many members a grid may actually resolve — the tile count, bounded by the fan-out budget.
+ *
+ * Exported as a function rather than a table so the relationship to `PLAYBACK_SYNC_MAX_SOURCES` is
+ * stated once: raise the budget and every grid follows, with no second number to keep in step.
+ */
+export function resolvableMembers(layout: PlaybackGridLayout): number {
+  return Math.min(GRID_TILE_COUNT[layout], PLAYBACK_SYNC_MAX_SOURCES);
+}
+
+/**
+ * Whether a member follows the group clock (rec 2, "independent playback").
+ *
+ * ⚠️ `independent` is not a lesser mode — it is the correct one whenever alignment cannot be
+ * claimed. A member whose clock is unverified can still be reviewed usefully on its own timeline;
+ * what it cannot do is assert simultaneity with the tile beside it. Making the distinction explicit
+ * on the member means a wall can mix both and say which is which, instead of choosing between a
+ * confident lie and refusing to show the footage.
+ */
+export const PlaybackFollowMode = z.enum(['synchronised', 'independent']);
+export type PlaybackFollowMode = z.infer<typeof PlaybackFollowMode>;
+
+/** A tile on the wall: which group member fills it, and whether it follows the group clock. */
+export const PlaybackWallTile = z.object({
+  /** Index into the grid, `0 .. GRID_TILE_COUNT[layout] - 1`. */
+  position: z.number().int().min(0).max(15),
+  /** The member's `order`. ⚠️ Absent ⇒ an **empty tile**, which is a normal state, not an error. */
+  memberOrder: z.number().int().min(0).optional(),
+  follow: PlaybackFollowMode.default('synchronised'),
+});
+export type PlaybackWallTile = z.infer<typeof PlaybackWallTile>;
+
+/**
+ * A multi-camera wall — the arrangement, over a sync group.
+ *
+ * ⚠️ **The wall composes a group; it does not replace it.** Alignment, clock accuracy and the
+ * caveat all stay on {@link PlaybackSyncGroup}, where they are derived. If the wall carried its own
+ * copy there would be two answers to "is this aligned", and the layout is the one thing here an
+ * operator can change freely.
+ */
+export const PlaybackWall = z
+  .object({
+    layout: PlaybackGridLayout,
+    group: PlaybackSyncGroup,
+    tiles: z.array(PlaybackWallTile).max(16).default([]),
+    /**
+     * The member whose transport drives the followers — a **leader**, by `order`.
+     *
+     * ⚠️ Every follower's position is computed from the leader's, so the leader's clock confidence
+     * becomes the wall's. A leader with an unverified clock is allowed (sometimes it is the only
+     * camera that saw anything) but it cannot be silent: the group's `alignmentVerified` is already
+     * false in that case, and the console renders the caveat beside the grid.
+     */
+    leaderOrder: z.number().int().min(0).optional(),
+    /** The focused tile — the one keyboard commands act on. Independent of the leader. */
+    activeOrder: z.number().int().min(0).optional(),
+  })
+  .superRefine((wall, ctx) => {
+    const orders = new Set(wall.group.members.map((member) => member.order));
+    if (wall.leaderOrder !== undefined && !orders.has(wall.leaderOrder)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['leaderOrder'],
+        message: 'the leader must be one of the group members',
+      });
+    }
+    if (wall.activeOrder !== undefined && !orders.has(wall.activeOrder)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['activeOrder'],
+        message: 'the active member must be one of the group members',
+      });
+    }
+    const tiles = GRID_TILE_COUNT[wall.layout];
+    for (const tile of wall.tiles) {
+      if (tile.position >= tiles) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['tiles'],
+          message: `tile position ${tile.position} does not exist in a ${wall.layout}-tile grid`,
+        });
+      }
+    }
+    const positions = new Set(wall.tiles.map((tile) => tile.position));
+    if (positions.size !== wall.tiles.length) {
+      ctx.addIssue({ code: 'custom', path: ['tiles'], message: 'tile positions must be unique' });
+    }
+    /*
+     * ⚠️ The budget, enforced in the schema rather than trusted to the caller. A wall that resolved
+     * sixteen members would be sixteen fan-outs regardless of how it was assembled.
+     */
+    if (wall.group.members.length > resolvableMembers(wall.layout)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['group', 'members'],
+        message: `a ${wall.layout}-tile wall may resolve at most ${resolvableMembers(wall.layout)} members`,
+      });
+    }
+  });
+export type PlaybackWall = z.infer<typeof PlaybackWall>;

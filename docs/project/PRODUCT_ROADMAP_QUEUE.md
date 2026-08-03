@@ -110,6 +110,39 @@ stated up front rather than discovered halfway through.
 
 ---
 
+## After Demo Readiness v1
+
+### P-6 — Production Polish (Architect, 2026-08-03)
+
+**No new capability.** Entirely about making the product feel like commercial software: UI/UX
+refinement across every page · micro-interactions and animations · an accessibility audit ·
+responsive optimisation for laptop, ultrawide and 4K security-monitor layouts · performance and
+bundle-size work · a review of every empty / error / loading / unavailable state · end-to-end
+workflow testing · white-label branding completion · demo script and sample-data polish.
+
+⚠️ Sequenced **after** Demo Readiness v1 deliberately: polishing screens whose data path is still a
+no-op (TD-4/5/9/13/14/15) polishes the wrong thing. The demo is what makes the workflows real enough
+to be worth refining.
+
+### Long-term reservations — recorded, and deliberately **not** contracts
+
+Face Recognition · License Plate Recognition · PTZ · Audio Analytics · GIS Maps · Drone Cameras ·
+Cloud Sync · Edge Synchronization. All post-first-production-release.
+
+⚠️ **These are listed here rather than reserved as schemas, and the distinction is not stylistic.**
+A type carrying no producer is already a cost; a `face-recognition` type is more than that. Face
+recognition and LPR are **biometric and regulated processing** under GDPR Art. 9 and equivalent
+regimes: they need a lawful basis, a DPIA, a retention position and a subject-rights path _before_
+there is a schema to store a faceprint in, not after. Freezing the vocabulary first is how a
+platform acquires the capability by accident and the compliance obligation by surprise.
+
+PTZ is different in kind — it is the platform's **first camera-control write path**, and every
+camera contract to date is read-only. That is a security boundary decision (who may move a camera,
+and what the audit record of a moved camera looks like) and deserves its own ADR rather than an
+enum.
+
+---
+
 ## Related
 
 - [P-5 architecture](../architecture/P-5-INCIDENT-MANAGEMENT.md) · [INCIDENT_BOUNDARY](../architecture/INCIDENT_BOUNDARY.md) · [CONTEXT_OWNERSHIP](../architecture/CONTEXT_OWNERSHIP.md)
