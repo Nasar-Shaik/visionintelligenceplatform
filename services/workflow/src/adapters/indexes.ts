@@ -137,3 +137,33 @@ export const INCIDENT_INDEXES: readonly IndexSpec[] = [
  */
 export const UNINDEXED_BY_DESIGN =
   'filter combinations — one index is chosen, the rest are residual filters over an already-bounded scan';
+
+/**
+ * The `bookmarks` index set (P-5.5).
+ *
+ * ⚠️ The cursor pair here is `(at, id)` **ascending**, not `(raisedAt, id)` descending — a bookmark
+ * list is read oldest-first, because it is a route through the footage rather than a news feed. The
+ * index therefore ends in the pair the query actually sorts by, which is the whole point of
+ * [INDEX_POLICY](../../../../docs/project/INDEX_POLICY.md): a sort the index does not serve is a
+ * blocking in-memory sort that looks perfectly fine against a fixture.
+ */
+export const BOOKMARK_INDEXES: readonly IndexSpec[] = [
+  {
+    name: '_id_',
+    keys: ['_id'],
+    serves: "MongoDB's implicit index — not used by any bookmark query",
+    implicit: true,
+    unique: true,
+  },
+  {
+    name: 'uniq_tenant_bookmark',
+    keys: ['tenantId', 'id'],
+    serves: 'get by id, and the delete behind removing a marker',
+    unique: true,
+  },
+  {
+    name: 'bookmarks_by_incident',
+    keys: ['tenantId', 'incidentId', 'at', 'id'],
+    serves: "an incident's bookmarks, oldest first, paged by the (at, id) cursor",
+  },
+];

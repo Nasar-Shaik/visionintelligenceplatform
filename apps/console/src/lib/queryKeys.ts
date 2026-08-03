@@ -49,6 +49,8 @@ export const queryKeys = {
       ['incidents', 'timeline', id, [...include].sort().join(',')] as const,
     sla: (id: string) => ['incidents', 'sla', id] as const,
     chain: (id: string) => ['incidents', 'chain', id] as const,
+    // P-5.5. Investigation bookmarks, keyed by incident.
+    bookmarks: (id: string) => ['incidents', 'bookmarks', id] as const,
   },
   // P-5.3. Evidence is immutable, so a fetched record never needs refetching — but a **download
   // target expires**, so it is keyed apart and never cached beyond its lifetime.
@@ -57,6 +59,9 @@ export const queryKeys = {
     list: (params?: Record<string, unknown>) => ['evidence', 'list', params ?? {}] as const,
     detail: (id: string) => ['evidence', 'detail', id] as const,
     custody: (id: string) => ['evidence', 'custody', id] as const,
+    // P-5.5. ⚠️ Keyed apart and short-lived: the session's signed URLs expire, so this is the one
+    // evidence key that must NOT be treated as immutable.
+    playback: (id: string) => ['evidence', 'playback', id] as const,
   },
   notifications: {
     all: () => ['notifications'] as const,

@@ -980,3 +980,59 @@ guarantee; requiring them on the shared shape would have been a breaking change 
 field would be **true of** rather than what it would contain. A feature list names things the screen
 shows; a contract has to name the claim each value makes to whoever receives it — and the two diverge
 hardest exactly where the artefact outlives the session that made it.
+
+## ED-0066 — P-5.5: the review page found what the tests could not
+
+**Date:** 2026-08-03 · **Milestone:** P-5.5 (evidence playback) · **ADR:** [ADR-0035](../adr/ADR-0035-evidence-playback.md)
+
+The first implementation milestone after the architecture freeze, and it added **no contract** — the
+only change inside `@vip/contracts` was flipping ten `WORKSPACE_COMMANDS[…].available` flags from
+`false` to `true`, because a player now consumes them and that field exists to say what a deployment
+can actually do.
+
+⚠️ **The two defects that mattered were found by rendering the components and looking at them**, not
+by the 167 console tests that were already passing.
+
+**1. Every H.264 clip was declared undecodable.** The player probed
+`canPlayType('video/mp4; codecs="h264"')`. That parameter is RFC 6381 — `avc1.42E01E` — and this
+platform's manifests store the _friendly_ name, because `CameraCodec` is `'h264' | 'h265'`. Measured
+in Chromium: the friendly form answers `''`, the RFC form answers `probably`, the bare container
+answers `maybe`. So the player would have told every operator that every real clip in the product
+could not be played, and the unit tests could not have caught it: jsdom answers `''` to everything,
+so a rendered-outcome assertion would only ever have proved jsdom's stub. The test that pins it now
+asserts **the string handed to the browser**, with Chromium's measured answers mocked in. Now §86.
+
+**2. The timeline axis was an unreadable smear.** `MAX_TICKS` was 24. At a realistic panel width a
+ten-minute range picks a 30-second step, which puts twenty `02:31 PM` labels across ~700 px at 35 px
+each. Ten fits. Edge labels are now dropped rather than clipped — a centred label at 0 % renders as
+a truncated time, and `02:4` is worse than no label.
+
+**Three decisions that were not mechanical.**
+
+⚠️ **Watching evidence is accessing evidence** (§84). `playbackSession` issues a signed URL exactly
+as `download` does, so it appends a custody entry with `via: 'playback'`. Omitting it would have
+produced a chain of custody that says nobody opened a clip an investigator reviewed a hundred times.
+
+⚠️ **Capabilities are read off the media** (§85), and two are permanently false: no renderer extracts
+a still and no packager builds an export. `frameStep` deliberately under-claims — it needs a declared
+codec, because keyframe density is not knowable from a manifest.
+
+⚠️ **Bookmarks got their own collection and their own sort order.** Notes live on the incident
+document because they are bounded by design; bookmarks are not, are wanted only when a player is
+open, and would make every queue listing carry playback detail. Their index ends in `(at, id)`
+**ascending** — the opposite of every incident index — because a bookmark list is read oldest-first,
+as a route through the footage. And an unconfigured store **refuses** rather than returning `[]`: an
+empty list tells an operator they have bookmarked nothing (§44).
+
+**One thing was deliberately not done.** Bookmarks and evidence metadata went _inside_ the panels
+that already own them rather than taking two new panel ids. The registry is frozen at seventeen, and
+the freeze permits a contract change only for a real implementation problem — this was not one.
+
+**A test-harness gap, fixed once.** `renderWithProviders` omitted `TooltipProvider`, which `App.tsx`
+supplies. Any component using a tooltip was therefore untestable, and the failure read as a component
+bug rather than a harness gap. The test tree now matches the real tree.
+
+**The general lesson.** ED-0064 and ED-0065 were found by asking what a field would be _true of_.
+These two were found by **looking at the rendered pixels**. A test asserts what you thought to
+assert; a screenshot shows what you shipped — and the browser-capability defect was invisible to the
+test environment by construction.

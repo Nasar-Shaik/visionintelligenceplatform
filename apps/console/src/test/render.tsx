@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { Providers } from '@/app/providers';
 import { makeStore, type AppStore } from '@/app/store';
 import { createQueryClient } from '@/app/queryClient';
+import { TooltipProvider } from '@/ui';
 
 interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
   route?: string;
@@ -32,15 +33,22 @@ export function renderWithProviders(
     store,
     ...render(
       <Providers store={store} queryClient={queryClient}>
-        <MemoryRouter initialEntries={[route]}>
-          {path ? (
-            <Routes>
-              <Route path={path} element={ui} />
-            </Routes>
-          ) : (
-            ui
-          )}
-        </MemoryRouter>
+        {/*
+          ⚠️ Mirrors `App.tsx`. Radix tooltips throw without a provider, so a harness that omits it
+          makes every tooltip-bearing component untestable — and the failure looks like a component
+          bug rather than a harness gap. The test tree matches the real tree.
+        */}
+        <TooltipProvider delayDuration={200}>
+          <MemoryRouter initialEntries={[route]}>
+            {path ? (
+              <Routes>
+                <Route path={path} element={ui} />
+              </Routes>
+            ) : (
+              ui
+            )}
+          </MemoryRouter>
+        </TooltipProvider>
       </Providers>,
       options,
     ),

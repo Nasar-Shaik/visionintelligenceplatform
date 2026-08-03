@@ -75,7 +75,7 @@ export const CommandId = z.enum([
   'playback.previous-frame',
   'playback.next-frame',
   'playback.bookmark',
-  // P-5.4 — the rest of a professional transport. **Reserved; no player consumes them.**
+  // P-5.4 reserved these; P-5.5 built all but `snapshot`.
   'playback.stop',
   'playback.back-5',
   'playback.forward-5',
@@ -480,9 +480,12 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       available: true,
     },
     /*
-     * P-5.4 — the rest of the transport. Every one is `available: false`: the contracts are frozen
-     * and no player consumes them yet, so the palette lists them as unavailable rather than
-     * offering a control that does nothing.
+     * P-5.4 reserved these; **P-5.5 built them** and flipped `available` to true. That field exists
+     * to say what a deployment can actually do, so keeping it stale would be the lie it was added
+     * to prevent.
+     *
+     * ⚠️ `playback.snapshot` stays `false`: no renderer extracts a still, so offering it would put
+     * a control on the screen that fails.
      */
     {
       id: 'playback.stop',
@@ -494,7 +497,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       shortcut: 'Shift+Space',
       keywords: ['stop', 'halt', 'reset'],
       bindings: ['keyboard', 'palette', 'mouse', 'touch'],
-      available: false,
+      available: true,
     },
     {
       id: 'playback.back-5',
@@ -506,7 +509,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       shortcut: 'Shift+ArrowLeft',
       keywords: ['back', 'rewind', 'skip', '5'],
       bindings: ['keyboard', 'palette', 'mouse', 'touch'],
-      available: false,
+      available: true,
     },
     {
       id: 'playback.forward-5',
@@ -518,7 +521,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       shortcut: 'Shift+ArrowRight',
       keywords: ['forward', 'skip', '5'],
       bindings: ['keyboard', 'palette', 'mouse', 'touch'],
-      available: false,
+      available: true,
     },
     {
       id: 'playback.back-30',
@@ -530,7 +533,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       shortcut: 'Alt+ArrowLeft',
       keywords: ['back', 'rewind', 'skip', '30'],
       bindings: ['keyboard', 'palette', 'mouse', 'touch'],
-      available: false,
+      available: true,
     },
     {
       id: 'playback.forward-30',
@@ -542,7 +545,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       shortcut: 'Alt+ArrowRight',
       keywords: ['forward', 'skip', '30'],
       bindings: ['keyboard', 'palette', 'mouse', 'touch'],
-      available: false,
+      available: true,
     },
     {
       id: 'playback.speed-up',
@@ -554,7 +557,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       shortcut: 'Shift+Period',
       keywords: ['speed', 'faster', 'rate'],
       bindings: ['keyboard', 'palette', 'mouse'],
-      available: false,
+      available: true,
     },
     {
       id: 'playback.speed-down',
@@ -566,7 +569,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       shortcut: 'Shift+Comma',
       keywords: ['speed', 'slower', 'rate'],
       bindings: ['keyboard', 'palette', 'mouse'],
-      available: false,
+      available: true,
     },
     {
       id: 'playback.speed-reset',
@@ -578,7 +581,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       shortcut: 'Mod+0',
       keywords: ['speed', 'normal', '1x', 'reset'],
       bindings: ['keyboard', 'palette', 'mouse'],
-      available: false,
+      available: true,
     },
     {
       id: 'playback.fullscreen',
@@ -590,7 +593,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       shortcut: 'F',
       keywords: ['fullscreen', 'expand', 'maximise'],
       bindings: ['keyboard', 'palette', 'mouse', 'touch'],
-      available: false,
+      available: true,
     },
     {
       id: 'playback.picture-in-picture',
@@ -602,7 +605,7 @@ export const WORKSPACE_COMMANDS: CommandRegistry = {
       shortcut: 'Shift+F',
       keywords: ['pip', 'picture', 'float', 'detach'],
       bindings: ['keyboard', 'palette', 'mouse'],
-      available: false,
+      available: true,
     },
     {
       id: 'playback.snapshot',

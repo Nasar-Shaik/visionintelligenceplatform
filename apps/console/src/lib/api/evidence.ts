@@ -4,6 +4,7 @@ import type {
   EvidenceDownloadTarget,
   EvidencePage,
   EvidenceQuery,
+  PlaybackSession,
 } from '@vip/contracts';
 import { http } from './http';
 
@@ -52,4 +53,20 @@ export const evidenceApi = {
     ),
   /** The hash-chained custody log — the artefact that makes the integrity hash mean something. */
   custody: (id: string) => http.get<EvidenceCustodyPage>(`/evidence/evidence/${id}/custody`),
+  /**
+   * Resolve a playback session (P-5.5).
+   *
+   * ⚠️ **Derived per request and never cached beyond its expiry.** The session carries signed
+   * segment URLs that die on their own schedule; a cached session is a player that silently stops
+   * working. `staleTime` on this key is deliberately shorter than the shortest segment TTL.
+   *
+   * ⚠️ Resolving one is an **audited access** — it appears in the item's chain of custody as
+   * `via: 'playback'`. That is the intended behaviour, not a side effect: an investigator reviewing
+   * a clip a hundred times should not leave a custody log that says nobody opened it.
+   */
+  playback: (id: string, reason?: string) =>
+    http.get<PlaybackSession>(
+      `/evidence/evidence/${id}/playback`,
+      reason !== undefined ? { query: { reason } } : undefined,
+    ),
 };

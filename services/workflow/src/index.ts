@@ -15,6 +15,7 @@ import { IncidentMetrics } from './application/metrics.js';
 import { BusIncidentPublisher } from './application/incident-publisher.js';
 import { connectMongo } from './adapters/mongo.js';
 import { MongoIncidentStore } from './adapters/mongo-incident-store.js';
+import { MongoBookmarkStore } from './adapters/mongo-bookmark-store.js';
 import { HttpTimelineSources } from './adapters/http-timeline-sources.js';
 import { buildServer } from './transport/server.js';
 
@@ -25,6 +26,8 @@ async function main(): Promise<void> {
   const mongo = await connectMongo({ uri: config.database.uri });
   const bus = await NatsEventBus.connect({ servers: config.nats.url, name: 'workflow' });
   const store = new MongoIncidentStore({ incidents: mongo.incidents });
+  /* P-5.5 — investigation bookmarks, their own collection (see `bookmark-store.ts`). */
+  const bookmarks = new MongoBookmarkStore({ bookmarks: mongo.bookmarks });
 
   const timelineSources = new HttpTimelineSources(config.timeline);
 
@@ -39,6 +42,7 @@ async function main(): Promise<void> {
   });
 
   const incidentService = new IncidentService({
+    bookmarks,
     store,
     publisher: new BusIncidentPublisher(bus),
     /*

@@ -94,6 +94,28 @@ export function registerEvidenceRoutes(app: FastifyInstance, deps: EvidenceRoute
     },
   );
 
+  /**
+   * Resolve a playback session (P-5.5).
+   *
+   * ⚠️ **`evidence:read`, not a new `playback:read`.** `REFUSED_WORKSPACE_PERMISSIONS` records why:
+   * playback resolves an evidence record that is already permissioned, and a second gate over the
+   * same authority can disagree with the first — in whichever direction the code happens to check.
+   */
+  app.get<{ Params: IdParams; Querystring: { reason?: string } }>(
+    '/evidence/:id/playback',
+    { preHandler: auth.authorize('evidence:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const session = await service.playbackSession(
+        scope,
+        request.params.id,
+        actorOf(request),
+        request.query?.reason,
+      );
+      return reply.send(success(session));
+    },
+  );
+
   // --- version-safe metadata --------------------------------------------------------------------
 
   app.patch<{ Params: IdParams }>(

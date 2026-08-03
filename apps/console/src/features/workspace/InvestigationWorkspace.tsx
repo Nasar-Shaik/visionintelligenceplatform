@@ -17,6 +17,7 @@ import { useAppSelector, useCan } from '@/app/hooks';
 import { Alert, PageHeader } from '@/ui';
 import { cn } from '@/lib/cn';
 import { PanelFrame } from './PanelFrame';
+import { EvidenceSelectionProvider } from '@/features/playback/selection';
 import { CommandPalette } from './CommandPalette';
 import { PANEL_BODIES, type PanelContext } from './panels';
 import { resolveLayout, viewportTier, type ViewportTier } from './layout';
@@ -107,82 +108,89 @@ export function InvestigationWorkspace() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 p-3">
-      {/*
+    /*
+     * ⚠️ Session-scoped, not persisted. Which evidence item is open is not a preference worth
+     * restoring: the incident may be closed, the item purged under retention, or access withdrawn —
+     * and a restored id fails a fetch for reasons the operator cannot see. See `selection.tsx`.
+     */
+    <EvidenceSelectionProvider>
+      <div className="flex h-full min-h-0 flex-col gap-2 p-3">
+        {/*
         ⚠️ Restoration failures are surfaced, not swallowed. An operator whose workspace quietly
         loses a tab assumes they closed it.
       */}
-      {workspace.dropped.length > 0 ? (
-        <Alert variant="warning" title="Some saved workspace state could not be restored">
-          <ul className="list-disc pl-4">
-            {workspace.dropped.map((drop) => (
-              <li key={drop.path}>{drop.detail}</li>
-            ))}
-          </ul>
-        </Alert>
-      ) : null}
+        {workspace.dropped.length > 0 ? (
+          <Alert variant="warning" title="Some saved workspace state could not be restored">
+            <ul className="list-disc pl-4">
+              {workspace.dropped.map((drop) => (
+                <li key={drop.path}>{drop.detail}</li>
+              ))}
+            </ul>
+          </Alert>
+        ) : null}
 
-      <div className="flex min-h-0 flex-1 gap-2">
-        {(['left', 'center', 'right'] as const).map((region) => (
-          <div key={region} className={cn(REGION_CLASS[region])}>
-            {layout.regions[region].map((resolved) => {
-              const Body = PANEL_BODIES[resolved.panel.id];
-              return (
+        <div className="flex min-h-0 flex-1 gap-2">
+          {(['left', 'center', 'right'] as const).map((region) => (
+            <div key={region} className={cn(REGION_CLASS[region])}>
+              {layout.regions[region].map((resolved) => {
+                const Body = PANEL_BODIES[resolved.panel.id];
+                return (
+                  <PanelFrame
+                    key={resolved.panel.id}
+                    panel={resolved.panel}
+                    region={region}
+                    collapsed={resolved.collapsed}
+                    sizePx={resolved.sizePx}
+                    onToggleCollapse={() =>
+                      workspace.setPanelState(resolved.panel.id, {
+                        collapsed: !resolved.collapsed,
+                      })
+                    }
+                  >
+                    <Body {...context} unavailableReason={resolved.unavailableReason} />
+                  </PanelFrame>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+
+        <div className={cn(REGION_CLASS.bottom, 'h-56')}>
+          {layout.regions.bottom.map((resolved) => {
+            const Body = PANEL_BODIES[resolved.panel.id];
+            return (
+              <div key={resolved.panel.id} className="min-w-0 flex-1">
                 <PanelFrame
-                  key={resolved.panel.id}
                   panel={resolved.panel}
-                  region={region}
+                  region="bottom"
                   collapsed={resolved.collapsed}
                   sizePx={resolved.sizePx}
                   onToggleCollapse={() =>
-                    workspace.setPanelState(resolved.panel.id, {
-                      collapsed: !resolved.collapsed,
-                    })
+                    workspace.setPanelState(resolved.panel.id, { collapsed: !resolved.collapsed })
                   }
                 >
                   <Body {...context} unavailableReason={resolved.unavailableReason} />
                 </PanelFrame>
-              );
-            })}
-          </div>
-        ))}
+              </div>
+            );
+          })}
+        </div>
+
+        {layout.dropped.length > 0 ? (
+          <p className="text-2xs text-text-subtle">
+            {layout.dropped.length} panel{layout.dropped.length === 1 ? '' : 's'} hidden for this
+            window size.
+          </p>
+        ) : null}
+
+        <CommandPalette
+          open={paletteOpen}
+          onOpenChange={setPaletteOpen}
+          commands={commands.available}
+          onRun={commands.run}
+        />
       </div>
-
-      <div className={cn(REGION_CLASS.bottom, 'h-56')}>
-        {layout.regions.bottom.map((resolved) => {
-          const Body = PANEL_BODIES[resolved.panel.id];
-          return (
-            <div key={resolved.panel.id} className="min-w-0 flex-1">
-              <PanelFrame
-                panel={resolved.panel}
-                region="bottom"
-                collapsed={resolved.collapsed}
-                sizePx={resolved.sizePx}
-                onToggleCollapse={() =>
-                  workspace.setPanelState(resolved.panel.id, { collapsed: !resolved.collapsed })
-                }
-              >
-                <Body {...context} unavailableReason={resolved.unavailableReason} />
-              </PanelFrame>
-            </div>
-          );
-        })}
-      </div>
-
-      {layout.dropped.length > 0 ? (
-        <p className="text-2xs text-text-subtle">
-          {layout.dropped.length} panel{layout.dropped.length === 1 ? '' : 's'} hidden for this
-          window size.
-        </p>
-      ) : null}
-
-      <CommandPalette
-        open={paletteOpen}
-        onOpenChange={setPaletteOpen}
-        commands={commands.available}
-        onRun={commands.run}
-      />
-    </div>
+    </EvidenceSelectionProvider>
   );
 }
 

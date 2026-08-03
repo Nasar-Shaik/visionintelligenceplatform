@@ -16,12 +16,20 @@ import {
   IncidentQuery,
   InvestigateIncidentInput,
   ResolveIncidentInput,
+  CreatePlaybackBookmarkInput,
 } from '@vip/contracts';
 import { TenantScope } from '@vip/tenancy';
 import { notFound } from '../../application/errors.js';
 import type { IncidentService } from '../../application/incident-service.js';
 import type { Auth } from '../plugins/auth.js';
 import { parseBody, success } from '../http.js';
+import { z } from 'zod';
+
+/** Bounded, always — an unbounded read of operator-generated rows is an outage waiting to happen. */
+const BookmarkListQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+  cursor: z.string().min(1).optional(),
+});
 
 export interface IncidentRoutesDeps {
   service: IncidentService;
@@ -240,6 +248,60 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
         request.principal!.principalId,
       );
       return reply.send(success(updated));
+    },
+  );
+
+  // --- investigation bookmarks (P-5.5) ----------------------------------------------------------
+
+  /**
+   * ⚠️ Gated on `incident:comment`, not a new permission. A bookmark is a mark an investigator
+   * leaves on an investigation — the same authority as leaving a note, and a second spelling of an
+   * authority that already exists is a second thing to keep in sync (the reasoning that refused
+   * `report:generate`).
+   */
+  app.post<{ Params: IncidentParams }>(
+    '/incidents/:id/bookmarks',
+    { preHandler: auth.authorize('incident:comment') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const input = parseBody(CreatePlaybackBookmarkInput, request.body ?? {});
+      const bookmark = await service.addBookmark(
+        scope,
+        request.params.id,
+        input,
+        request.principal!.principalId,
+      );
+      return reply.status(201).send(success(bookmark));
+    },
+  );
+
+  app.get<{ Params: IncidentParams; Querystring: { limit?: string; cursor?: string } }>(
+    '/incidents/:id/bookmarks',
+    { preHandler: auth.authorize('incident:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const query = parseBody(BookmarkListQuery, request.query ?? {});
+      const page = await service.listBookmarks(scope, request.params.id, {
+        limit: query.limit,
+        ...(query.cursor !== undefined ? { cursor: query.cursor } : {}),
+      });
+      return reply.send(success(page));
+    },
+  );
+
+  app.delete<{ Params: IncidentParams & { bookmarkId: string } }>(
+    '/incidents/:id/bookmarks/:bookmarkId',
+    { preHandler: auth.authorize('incident:comment') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const removed = await service.removeBookmark(
+        scope,
+        request.params.bookmarkId,
+        request.principal!.principalId,
+      );
+      /* ⚠️ 404 rather than a cheerful 204: deleting something that was not there is not a success. */
+      if (!removed) throw notFound(`bookmark ${request.params.bookmarkId} not found`);
+      return reply.status(204).send();
     },
   );
 

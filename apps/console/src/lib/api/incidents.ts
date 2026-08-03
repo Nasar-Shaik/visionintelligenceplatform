@@ -13,6 +13,8 @@ import type {
   IncidentTimeline,
   InvestigateIncidentInput,
   ResolveIncidentInput,
+  CreatePlaybackBookmarkInput,
+  PlaybackBookmark,
 } from '@vip/contracts';
 import { http } from './http';
 
@@ -87,4 +89,19 @@ export const incidentsApi = {
     http.post<Incident>(`/workflow/incidents/${id}/assign`, input),
   addNote: (id: string, input: AddIncidentNoteInput) =>
     http.post<Incident>(`/workflow/incidents/${id}/notes`, input),
+
+  // --- investigation bookmarks (P-5.5) ------------------------------------------------------
+  /**
+   * ⚠️ Bookmarks live in the **Workflow** context, not Evidence — a bookmark is a statement an
+   * investigator made about evidence, so it belongs to the investigation and references the
+   * evidence by id (CONTEXT_OWNERSHIP; CONSTRAINTS §60).
+   */
+  bookmarks: (id: string) =>
+    http.get<{ items: PlaybackBookmark[]; nextCursor?: string }>(
+      `/workflow/incidents/${id}/bookmarks`,
+    ),
+  addBookmark: (id: string, body: CreatePlaybackBookmarkInput) =>
+    http.post<PlaybackBookmark>(`/workflow/incidents/${id}/bookmarks`, body),
+  removeBookmark: (id: string, bookmarkId: string) =>
+    http.del<void>(`/workflow/incidents/${id}/bookmarks/${bookmarkId}`),
 };

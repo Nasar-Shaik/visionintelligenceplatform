@@ -469,6 +469,26 @@
     `RenderedReport` refuses a missing `platformVersion` or `templateVersion`; they stay optional on
     `ReportProvenance` so `ReportPreview` is unaffected._
 
+84. **Reviewing evidence is accessing evidence.** Any path that issues a signed URL — download,
+    playback, export — appends a custody entry naming the actor, the reason and the route. An
+    investigator who reviews a clip a hundred times must not leave a chain of custody saying nobody
+    opened it, which is the one question a custody log exists to answer. — _enforced:
+    `EvidenceService.playbackSession` appends `accessed` with `via: 'playback'`; a test asserts the
+    chain still verifies and that the two access routes stay distinguishable._
+85. **A UI capability is offered from what the source declares, never from what the feature list
+    says.** A control on a source that cannot perform it is worse than an absent one: the operator
+    presses it, nothing happens, and they learn the product is unreliable. Unbuilt capabilities
+    render **disabled with a stated reason** rather than hidden — a missing button is
+    indistinguishable from a product that never had the feature. — _enforced: the player renders
+    from `PlaybackCapabilities`; `snapshot` and `export` are false on every source until a producer
+    exists._
+86. **Probe the platform, do not reason about it.** Browser and device capability checks are
+    measured in the browser before being trusted. The first draft of the codec check appended the
+    manifest's friendly codec name to `canPlayType`, whose parameter is RFC 6381 — it answers `''`
+    to `h264` and `probably` to `avc1.42E01E`, so every H.264 clip in the product would have been
+    declared undecodable. — _enforced: the container alone is probed; a test asserts the probe
+    string never carries the codec name._
+
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._

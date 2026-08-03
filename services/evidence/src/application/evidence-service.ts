@@ -13,6 +13,7 @@ import type {
   EvidenceManifest,
   EvidencePage,
   EvidenceQuery,
+  PlaybackSession,
   RegisterEvidenceInput,
   SetRetentionInput,
   UpdateEvidenceMetadataInput,
@@ -33,6 +34,7 @@ import {
   verifyChain,
   type CustodyDoc,
 } from '../domain/custody.js';
+import { resolveSession } from '../domain/playback.js';
 import { sha256Hex } from '../domain/integrity.js';
 import { badRequest, conflict, notFound } from './errors.js';
 import type { CustodyLog, EvidenceStore } from './ports.js';
@@ -187,6 +189,45 @@ export class EvidenceService {
       contentType: doc.media.contentType,
       sizeBytes: doc.media.integrity.sizeBytes,
     };
+  }
+
+  /**
+   * Resolve a **playback session** over one evidence item (P-5.5).
+   *
+   * ⚠️ **Watching evidence is accessing evidence, and it is audited as such.** This issues a signed
+   * URL exactly as `download` does; the only difference is what the operator does with it. Leaving
+   * playback out of the custody log would mean an investigator could review a clip a hundred times
+   * and the chain of custody would show nobody ever opened it — which is the one question a custody
+   * log exists to answer. The entry records `via: 'playback'` so the two access routes stay
+   * distinguishable.
+   *
+   * ⚠️ **Derived per request, never stored** (`PlaybackSession` decision 1). The signed URL expires
+   * on its own schedule; a cached session would go stale while claiming to be current.
+   */
+  async playbackSession(
+    scope: TenantScope,
+    id: string,
+    actor: string,
+    reason?: string,
+  ): Promise<PlaybackSession> {
+    const doc = await this.#require(scope, id);
+    if (doc.status !== 'available') {
+      /*
+       * ⚠️ A purged or expired item is a *conflict*, not a 404: the record exists and the reason it
+       * cannot be played is information the investigator needs. "Not found" would suggest the
+       * incident never had this evidence.
+       */
+      throw conflict(`evidence "${id}" is not available (status: ${doc.status})`);
+    }
+    const store = this.#tenantStore(scope);
+    const url = await store.presignGet(doc.media.storageKey, this.#ttl);
+    await this.#appendCustody(scope, id, 'accessed', actor, reason, { via: 'playback' });
+    this.#metrics?.downloads.inc();
+    return resolveSession(toEvidence(doc), {
+      url,
+      expiresInSeconds: this.#ttl,
+      now: this.#now(),
+    });
   }
 
   // --- Version-safe metadata (overlay only; media never touched) --------------------------------

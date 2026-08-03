@@ -89,3 +89,4 @@ export { StatusIndicator } from './soc/status-indicator';
 export { Timeline } from './soc/timeline';
 export type { TimelineItem } from './soc/timeline';
 export { VideoPlayerContainer } from './soc/video-player-container';
+export type { PlayerAspect } from './soc/video-player-container';

@@ -2,6 +2,26 @@ import type { ReactNode } from 'react';
 import { VideoOff } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
+/**
+ * Aspect ratios a surveillance surface actually has (P-5.5).
+ *
+ * ⚠️ `auto` exists because a stream's real ratio is not knowable until metadata loads, and locking
+ * a portrait stream into 16:9 either letterboxes it into a stripe or crops the part somebody is
+ * looking for. `auto` lets the media size itself inside a bounded stage.
+ */
+export type PlayerAspect = 'video' | 'classic' | 'portrait' | 'auto';
+
+const ASPECT: Record<PlayerAspect, string> = {
+  /** 16:9 — the default for modern IP cameras. */
+  video: 'aspect-video',
+  /** 4:3 — a great deal of installed CCTV. */
+  classic: 'aspect-4/3',
+  /** 9:16 — a corridor-mode or phone-sourced upload. */
+  portrait: 'aspect-9/16 mx-auto max-w-[min(100%,56vh)]',
+  /** Bounded stage, media sizes itself. */
+  auto: 'max-h-[70vh]',
+};
+
 export interface VideoPlayerContainerProps {
   /** The media element (an <img> MJPEG/snapshot for live, or <video> for a clip). */
   children?: ReactNode;
@@ -13,6 +33,8 @@ export interface VideoPlayerContainerProps {
   bottomBar?: ReactNode;
   /** Show the "no signal" placeholder instead of media. */
   offline?: boolean;
+  /** ⚠️ Defaults to 16:9 so every existing caller is unchanged. */
+  aspect?: PlayerAspect;
   className?: string;
 }
 
@@ -27,12 +49,14 @@ export function VideoPlayerContainer({
   topRight,
   bottomBar,
   offline = false,
+  aspect = 'video',
   className,
 }: VideoPlayerContainerProps) {
   return (
     <div
       className={cn(
-        'relative aspect-video w-full overflow-hidden rounded-lg border border-border bg-black',
+        'relative w-full overflow-hidden rounded-lg border border-border bg-black',
+        ASPECT[aspect],
         className,
       )}
     >

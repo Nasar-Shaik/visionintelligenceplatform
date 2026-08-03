@@ -66,10 +66,12 @@ function notBuilt(): Map<WorkspaceDependency, string> {
       'Saved investigations and unified search are contract-frozen, not built.',
     );
   }
-  reasons.set(
-    'playback',
-    'Playback contracts are frozen; no service resolves a playback session yet.',
-  );
+  /*
+   * ⚠️ `playback` is **no longer listed here** — P-5.5 built the resolver, so it is a real
+   * dependency that can be up or down, and reporting it as `not-built` would send an operator to
+   * wait for a release when what they need is an engineer. It falls through to the evidence-derived
+   * state below: playback resolves evidence, so if evidence is answering, so is playback.
+   */
   reasons.set('jobs', 'Background jobs are contract-frozen; no worker runs them yet.');
   return reasons;
 }
@@ -128,6 +130,25 @@ export function deriveWorkspaceHealth(inputs: HealthInputs): WorkspaceHealth {
 
   for (const dependency of all) {
     const panels = PANELS[dependency];
+
+    /*
+     * ⚠️ Playback's health *is* evidence's health: the resolver is a route on the Evidence service
+     * and resolves an evidence record. Probing it separately would be a second call to answer a
+     * question the first already answered (§54).
+     */
+    if (dependency === 'playback') {
+      const evidenceGap = gapBySource.get('evidence');
+      dependencies.push({
+        dependency,
+        state: evidenceGap === undefined ? 'ready' : stateFromGap(evidenceGap.reason),
+        ...(evidenceGap !== undefined
+          ? { detail: `Playback resolves evidence: ${evidenceGap.detail}` }
+          : {}),
+        panels,
+        observedAt,
+      });
+      continue;
+    }
 
     /* 1. Nothing exists to be up or down. A release fixes it; a config change does not. */
     const missing = built.get(dependency);

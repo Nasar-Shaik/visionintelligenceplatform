@@ -29,6 +29,7 @@ import {
   EvidencePanel as EvidencePanelP53,
   WorkspaceHealthPanel,
 } from './panels-p53';
+import { EvidenceMetadataPanel, PlaybackPanel } from '@/features/playback/panels';
 
 export interface PanelContext {
   incidentId: string | undefined;
@@ -135,21 +136,6 @@ function FiltersPanel({ filters, setFilters }: PanelContext) {
 // ---------------------------------------------------------------------------------------------
 // Centre region
 // ---------------------------------------------------------------------------------------------
-function PlaybackPanel({ unavailableReason }: PanelContext) {
-  return (
-    <QueryBoundary
-      unavailableReason={
-        unavailableReason ??
-        'Playback contracts are frozen; no service resolves a playback session yet. This is not "no footage".'
-      }
-      isLoading={false}
-      isError={false}
-      skeleton={null}
-    >
-      {null}
-    </QueryBoundary>
-  );
-}
 
 /** How a timeline gap reads to an operator. Each reason is a different fact. */
 function gapLabel(gap: IncidentTimelineGap): string {
@@ -517,13 +503,34 @@ function SavedInvestigationsPanel({ unavailableReason }: PanelContext) {
  * ⚠️ Keyed by `WorkspacePanelId`, so **adding a panel to the contract without a body here is a
  * TypeScript error**, not a blank rectangle discovered by a customer.
  */
+/**
+ * The evidence viewer: the incident's items, plus the metadata of whichever is selected.
+ *
+ * ⚠️ Composed here rather than given its own panel id. The frozen registry has no
+ * `evidence-metadata` id, and the freeze is explicit that only a real implementation problem
+ * justifies a contract change — a metadata block belongs next to the item it describes anyway.
+ */
+function EvidenceViewerPanel(context: PanelContext) {
+  return (
+    <div className="flex flex-col gap-3">
+      <EvidencePanelP53 {...context} />
+      <EvidenceMetadataPanel
+        incidentId={context.incidentId}
+        unavailableReason={context.unavailableReason}
+      />
+    </div>
+  );
+}
+
 export const PANEL_BODIES: Record<WorkspacePanelId, (context: PanelContext) => ReactElement> = {
   'incident-queue': IncidentQueuePanel,
   'saved-investigations': SavedInvestigationsPanel,
   filters: FiltersPanel,
   'workspace-health': WorkspaceHealthPanel,
   // P-5.3 — the evidence panel now reads the Evidence context rather than deriving from notes.
-  'evidence-viewer': EvidencePanelP53,
+  // P-5.5 — the evidence panel now also describes the selected item (metadata, integrity).
+  'evidence-viewer': EvidenceViewerPanel,
+  // P-5.5 — a real player: transport, timeline with gaps to scale, and bookmarks.
   'video-playback': PlaybackPanel,
   timeline: TimelinePanel,
   'incident-details': DetailsPanel,

@@ -5,13 +5,14 @@
  * is what makes candidate promotion idempotent even across restarts / concurrent consumers.
  */
 import { MongoClient, type Collection, type Db, type IndexSpecification } from 'mongodb';
-import type { Incident } from '@vip/contracts';
-import { INCIDENT_INDEXES } from './indexes.js';
+import type { Incident, PlaybackBookmark } from '@vip/contracts';
+import { BOOKMARK_INDEXES, INCIDENT_INDEXES } from './indexes.js';
 
 export interface MongoAdapter {
   client: MongoClient;
   db: Db;
   incidents: Collection<Incident>;
+  bookmarks: Collection<PlaybackBookmark>;
   ping(): Promise<void>;
   close(): Promise<void>;
 }
@@ -29,11 +30,14 @@ export async function connectMongo(opts: ConnectMongoOptions): Promise<MongoAdap
   await client.connect();
   const db = opts.dbName ? client.db(opts.dbName) : client.db();
   const incidents = db.collection<Incident>('incidents');
+  const bookmarks = db.collection<PlaybackBookmark>('bookmarks');
   await ensureIndexes(incidents);
+  await createAll(bookmarks, BOOKMARK_INDEXES);
   return {
     client,
     db,
     incidents,
+    bookmarks,
     async ping() {
       await db.command({ ping: 1 });
     },
@@ -57,11 +61,25 @@ export async function connectMongo(opts: ConnectMongoOptions): Promise<MongoAdap
  * reconcile (the events context does need one — see its `ensureIndexes`).
  */
 async function ensureIndexes(incidents: Collection<Incident>): Promise<void> {
-  for (const spec of INCIDENT_INDEXES) {
+  await createAll(incidents, INCIDENT_INDEXES);
+}
+
+/** Shared so the bookmark collection cannot drift from the incident collection's creation rules. */
+async function createAll(
+  collection: Collection<never> | Collection<Incident> | Collection<PlaybackBookmark>,
+  specs: readonly {
+    name: string;
+    keys: readonly string[];
+    unique?: boolean;
+    implicit?: boolean;
+    descending?: readonly string[];
+  }[],
+): Promise<void> {
+  for (const spec of specs) {
     if (spec.implicit) continue;
     const keys: Record<string, 1 | -1> = {};
     for (const key of spec.keys) keys[key] = spec.descending?.includes(key) ? -1 : 1;
-    await incidents.createIndex(keys as IndexSpecification, {
+    await (collection as Collection<never>).createIndex(keys as IndexSpecification, {
       name: spec.name,
       ...(spec.unique ? { unique: true } : {}),
     });

@@ -345,11 +345,22 @@ describe('workspace health — derived, never probed', () => {
     const health = deriveWorkspaceHealth({ tenantId: 'tnt_a', now });
     const byDep = Object.fromEntries(health.dependencies.map((d) => [d.dependency, d]));
 
-    for (const dependency of ['ai', 'playback', 'jobs', 'search'] as const) {
+    for (const dependency of ['ai', 'jobs', 'search'] as const) {
       expect(byDep[dependency]?.state).toBe('not-built');
       expect(byDep[dependency]?.detail).toBeTruthy();
     }
     expect(byDep['ai']?.detail).toContain('nothing has analysed');
+  });
+
+  /*
+   * ⚠️ P-5.5 built the playback resolver, so `playback` is no longer `not-built`. Its health is
+   * evidence's health — the resolver is a route on the Evidence service — so it must never be
+   * probed separately, and it must stop telling operators to wait for a release.
+   */
+  it('⚠️ stops calling playback not-built once a resolver exists', () => {
+    const health = deriveWorkspaceHealth({ tenantId: 'tnt_a', now });
+    const playback = health.dependencies.find((d) => d.dependency === 'playback');
+    expect(playback?.state).not.toBe('not-built');
   });
 
   /* ⚠️ An unexercised dependency and a working one are indistinguishable from here. */

@@ -25,6 +25,8 @@ import type {
   InvestigateIncidentInput,
   ResolveIncidentInput,
   EvidenceChain,
+  CreatePlaybackBookmarkInput,
+  PlaybackBookmark,
 } from '@vip/contracts';
 import type { TenantScope } from '@vip/tenancy';
 import { canApply, isTerminal, type IncidentAction } from '../domain/incident-state.js';
@@ -55,6 +57,7 @@ import {
 } from './ports.js';
 import { NoopIncidentPublisher, type IncidentPublisher } from './incident-publisher.js';
 import type { IncidentMetrics } from './metrics.js';
+import type { BookmarkStore } from './bookmark-store.js';
 
 export interface IncidentServiceDeps {
   store: IncidentStore;
@@ -64,6 +67,8 @@ export interface IncidentServiceDeps {
   sources?: TimelineSources;
   /** Deployment-configured SLA targets. Empty is the honest default: no policy ⇒ `unknown`. */
   slaPolicies?: readonly IncidentSlaPolicy[];
+  /** Investigation bookmarks (P-5.5). Absent ⇒ the surface reports `not-built` rather than empty. */
+  bookmarks?: BookmarkStore;
   now?: () => Date;
   newId?: () => string;
 }
@@ -105,6 +110,7 @@ export class IncidentService {
   private metrics: IncidentMetrics | undefined;
   private readonly sources: TimelineSources;
   private readonly slaPolicies: readonly IncidentSlaPolicy[];
+  private readonly bookmarks: BookmarkStore | undefined;
   private readonly now: () => Date;
   private readonly newId: () => string;
 
@@ -114,6 +120,7 @@ export class IncidentService {
     this.metrics = deps.metrics;
     this.sources = deps.sources ?? UnavailableTimelineSources;
     this.slaPolicies = deps.slaPolicies ?? [];
+    this.bookmarks = deps.bookmarks;
     this.now = deps.now ?? (() => new Date());
     this.newId = deps.newId ?? (() => crypto.randomUUID());
   }
@@ -277,6 +284,92 @@ export class IncidentService {
     await this.persist(scope, next, current.version);
     this.metrics?.notesAdded.inc();
     return next;
+  }
+
+  // --- Investigation bookmarks (P-5.5) ----------------------------------------------------------
+
+  /**
+   * ⚠️ **Absent store ⇒ refuse, never an empty list.** A deployment with no bookmark collection
+   * wired would otherwise return `[]`, which an operator reads as "I have not bookmarked anything"
+   * — and they would go on not-bookmarking things into a void. §44: a check that could not run is
+   * not a check that passed.
+   */
+  private bookmarkStoreOrThrow(): BookmarkStore {
+    if (this.bookmarks === undefined) {
+      throw conflict('bookmarks are not configured in this deployment');
+    }
+    return this.bookmarks;
+  }
+
+  get bookmarksConfigured(): boolean {
+    return this.bookmarks !== undefined;
+  }
+
+  /**
+   * Save a moment.
+   *
+   * ⚠️ Refused on a sealed incident, exactly as a note is: a closed investigation that can still
+   * acquire navigational markers is a closed investigation that still changes (§57).
+   */
+  async addBookmark(
+    scope: TenantScope,
+    incidentId: string,
+    input: CreatePlaybackBookmarkInput,
+    actor?: ActorArg,
+  ): Promise<PlaybackBookmark> {
+    const store = this.bookmarkStoreOrThrow();
+    const incident = await this.getOrThrow(scope, incidentId);
+    this.refuseIfSealed(incident, 'bookmark');
+
+    const bookmark: PlaybackBookmark = {
+      id: this.newId(),
+      tenantId: scope.tenantId,
+      incidentId,
+      source: input.source,
+      at: input.at,
+      label: input.label,
+      ...(input.note !== undefined ? { note: input.note } : {}),
+      ...(input.category !== undefined ? { category: input.category } : {}),
+      ...(input.severity !== undefined ? { severity: input.severity } : {}),
+      /*
+       * ⚠️ Defaulted here, not only in the schema. The route parses `CreatePlaybackBookmarkInput`
+       * and so supplies it — but a caller constructing the input in code would not, and a bookmark
+       * stored with no visibility is a bookmark whose sharing was decided by whichever reader
+       * applied a default. Fail closed to `private`.
+       */
+      visibility: input.visibility ?? 'private',
+      createdBy: normalizeActor(actor)?.id ?? 'unknown',
+      createdAt: this.now().toISOString(),
+    };
+    await store.insert(scope, bookmark);
+    return bookmark;
+  }
+
+  /**
+   * List an incident's bookmarks, oldest first.
+   *
+   * ⚠️ `offsetSeconds` is **never returned from storage**. `at` is the authority; an offset is
+   * meaningless the moment a session is derived over a different range, which happens as soon as
+   * somebody opens the bookmark from another starting point.
+   */
+  async listBookmarks(
+    scope: TenantScope,
+    incidentId: string,
+    options: { limit: number; cursor?: string | undefined },
+  ): Promise<{ items: PlaybackBookmark[]; nextCursor?: string | undefined }> {
+    const store = this.bookmarkStoreOrThrow();
+    await this.getOrThrow(scope, incidentId);
+    return store.list(scope, {
+      incidentId,
+      limit: options.limit,
+      ...(options.cursor !== undefined ? { cursor: options.cursor } : {}),
+    });
+  }
+
+  /** Remove a bookmark. Returns false when nothing matched, so the route answers 404 honestly. */
+  async removeBookmark(scope: TenantScope, id: string, actor?: ActorArg): Promise<boolean> {
+    const store = this.bookmarkStoreOrThrow();
+    return store.remove(scope, id, normalizeActor(actor)?.id ?? 'unknown');
   }
 
   /** The derived activity log — transitions + assignments + notes, oldest first (P-5.0 G-2). */

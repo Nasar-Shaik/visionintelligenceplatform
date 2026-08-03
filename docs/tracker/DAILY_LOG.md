@@ -185,3 +185,17 @@
 - Gates: contracts **499** (+16) · typecheck 28 · build 19 · lint 0 errors · imports 0 violations · schemas 70 · integration 18 suites · bundle budget OK.
 - ⚠️ **Contracts and foundations frozen from here.** Next: implementation — evidence playback, search, reporting, dashboards, notifications, branding, Demo Readiness v1.
 - `[Claude · 2026-08-03]`
+
+## 2026-08-03 (P-5.5 — evidence playback)
+
+- First implementation milestone after the architecture freeze. **No contract added** — only ten `WORKSPACE_COMMANDS[…].available` flags flipped to `true`, because a player now consumes them.
+- **Backend:** `GET /evidence/:id/playback` resolving a `PlaybackSession`; capabilities derived from the media; ⚠️ playback appends an `accessed` custody entry with `via: 'playback'` (§84).
+- **Backend:** investigation bookmarks in the Workflow context — port, in-memory + Mongo adapters, `BOOKMARK_INDEXES` ending `(at, id)` ascending, three routes. ⚠️ An unconfigured store refuses rather than returning `[]`.
+- **Console:** `EvidencePlayer` (adaptive aspect, full transport, view-mode badge, adjustments, buffering, codec + error overlays, honest dropped-frame readout), `PlaybackTimeline` (gaps to scale, zoom, wheel-zoom, jump-to-bookmark, bounded ticks), bookmark strip, evidence metadata. Three `not-built` placeholders removed.
+- ⚠️ **Defect found by rendering, not by tests: every H.264 clip was declared undecodable.** `canPlayType`'s codecs parameter is RFC 6381; this platform stores `h264`. jsdom answers `''` to everything, so the test environment could not have caught it — the pin asserts the probe string with Chromium's measured answers mocked in (§86).
+- ⚠️ **Defect found by rendering: the timeline axis was an unreadable smear.** `MAX_TICKS` 24 → 10; edge labels dropped rather than clipped.
+- Test-harness gap fixed once: `renderWithProviders` now includes `TooltipProvider`, matching `App.tsx`.
+- ⚠️ Bookmarks and metadata went **inside** existing panels — the 17-panel registry is frozen and this was not a real implementation problem.
+- UI review artifact captured from the real components: `docs/review/p55/`.
+- Gates: evidence 52 (+9) · workflow 136 (+10) · console **167** (+21) · contracts 499 · typecheck 28 · build 19 · lint 0 errors · imports 0 violations · schemas 70 · bundle budget OK.
+- `[Claude · 2026-08-03]`
