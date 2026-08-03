@@ -66,8 +66,14 @@ function noteEntry(note: IncidentNote): IncidentActivityEntry {
   return entry;
 }
 
-/** The order entries with an identical timestamp appear in — a state change precedes its commentary. */
-const KIND_ORDER: Record<IncidentActivityEntry['kind'], number> = {
+/**
+ * The order entries with an identical timestamp appear in — a state change precedes its commentary.
+ *
+ * `Partial` because `IncidentActivityKind` covers the whole timeline vocabulary (P-5.1, F-5) while
+ * this projection only ever emits three of them. Enumerating the rest here would be nine entries
+ * claiming this function can produce them.
+ */
+const KIND_ORDER: Partial<Record<IncidentActivityEntry['kind'], number>> = {
   transition: 0,
   assignment: 1,
   note: 2,
@@ -85,7 +91,9 @@ export function deriveActivity(incident: Incident, now: Date): IncidentActivity 
     ...incident.history.map(transitionEntry),
     ...incident.assignments.map(assignmentEntry),
     ...incident.notes.map(noteEntry),
-  ].sort((a, b) => a.at.localeCompare(b.at) || KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
+  ].sort(
+    (a, b) => a.at.localeCompare(b.at) || (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9),
+  );
 
   return {
     incidentId: incident.id,

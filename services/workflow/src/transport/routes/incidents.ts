@@ -8,6 +8,7 @@
 import type { FastifyInstance } from 'fastify';
 import {
   AcknowledgeIncidentInput,
+  IncidentTimelineSource,
   AddIncidentNoteInput,
   AssignIncidentInput,
   CloseIncidentInput,
@@ -50,6 +51,24 @@ interface RawQuery {
   to?: string;
   limit?: string;
   cursor?: string;
+}
+
+/**
+ * Parse `?include=events,evidence,notify` into validated sources.
+ *
+ * An unrecognised name is **dropped**, not rejected: a client asking for a source that does not
+ * exist gets a timeline without it plus a `not-requested` gap, which is more useful than a 400 on a
+ * read. `incident` is always included and never needs asking for.
+ */
+function parseInclude(raw: string | undefined): IncidentTimelineSource[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((part) => part.trim())
+    .filter(
+      (part): part is IncidentTimelineSource => IncidentTimelineSource.safeParse(part).success,
+    )
+    .filter((source) => source !== 'incident');
 }
 
 export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoutesDeps): void {
@@ -115,6 +134,36 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
     async (request, reply) => {
       const scope = scopeOf(request.principal!.tenantId);
       return reply.send(success(await service.activity(scope, request.params.id)));
+    },
+  );
+
+  /**
+   * The full investigation timeline (P-5.1, F-3).
+   *
+   * `?include=events,evidence,notify` is **opt-in per source**, because the incident header must
+   * not pay for the evidence panel. A source that is unreachable becomes a named `gap` in the
+   * response rather than a 5xx — a partial timeline that says it is partial beats no timeline.
+   */
+  app.get<{ Params: IncidentParams; Querystring: { include?: string } }>(
+    '/incidents/:id/timeline',
+    { preHandler: auth.authorize('incident:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const include = parseInclude(request.query.include);
+      return reply.send(success(await service.timeline(scope, request.params.id, include)));
+    },
+  );
+
+  /**
+   * Derived SLA attainment (P-5.1, F-4). ⚠️ Returns `state: 'unknown'` when the deployment has
+   * configured no policy for this tenant and severity — never a flattering default.
+   */
+  app.get<{ Params: IncidentParams }>(
+    '/incidents/:id/sla',
+    { preHandler: auth.authorize('incident:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      return reply.send(success(await service.sla(scope, request.params.id)));
     },
   );
 
@@ -186,9 +235,14 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
     },
   );
 
+  /**
+   * Close. Gated on `incident:close` (P-5.1) rather than `incident:resolve`, so a tenant can require
+   * a different authority to sign off. The `operator` role still holds it, so no deployment loses an
+   * ability it had — the split is additive.
+   */
   app.post<{ Params: IncidentParams }>(
     '/incidents/:id/close',
-    { preHandler: auth.authorize('incident:resolve') },
+    { preHandler: auth.authorize('incident:close') },
     async (request, reply) => {
       const scope = scopeOf(request.principal!.tenantId);
       const input = parseBody(CloseIncidentInput, request.body ?? {});

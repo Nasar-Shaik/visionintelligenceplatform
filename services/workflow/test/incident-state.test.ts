@@ -38,8 +38,16 @@ describe('promoteFromCandidate', () => {
       triggeredBy: { cameraId: 'cam_1', zoneId: 'zone_1' },
     });
     expect(incident.source.dedupKey).toBe('tnt_a|rule_1|-|123');
+    // The promoter records itself as the platform (P-5.1, F-2) — so a reader can tell "the system
+    // raised this" from "someone called system did", which a bare `by` string never could.
     expect(incident.history).toEqual([
-      { from: null, to: 'raised', at: '2026-07-29T23:00:00.000Z', by: 'system' },
+      {
+        from: null,
+        to: 'raised',
+        at: '2026-07-29T23:00:00.000Z',
+        by: 'system',
+        actor: { kind: 'system', id: 'system' },
+      },
     ]);
   });
 

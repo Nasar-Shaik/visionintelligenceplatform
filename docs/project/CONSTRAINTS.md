@@ -315,6 +315,24 @@
     changed — re-declaring it is an `IndexOptionsConflict` that fails the service at boot. — _enforced:
     `workflow/adapters/indexes.ts`, `events/adapters/indexes.ts`; an integration test recreates the old
     index shape and asserts the service still starts._
+61. **A coverage model must model the whole sort, and the filter's cardinality.** Checking only the
+    leading sort key declares an index sound that MongoDB will still sort in memory — measured. And an
+    unindexed filter is not one failure: a near-unique **identity** filter examines the tenant's whole
+    history, while a two-valued **enum** costs `limit ÷ selectivity` and is bounded by the page. Model
+    both. — _enforced: `services/evidence/test/index-coverage.test.ts`, whose self-test reproduces the
+    exact index that fooled the ported model._
+62. **Classify an actor at the moment it acts; never infer it afterwards.** Store who did a thing as a
+    typed reference at write time. A record written before typing existed resolves to `unknown`, not
+    to a guess from its display string — a person named `system` is an ordinary account, and a
+    confident wrong attribution in an immutable audit trail cannot be withdrawn. — _enforced:
+    `IncidentActorRef`; `resolveActor` returns `unknown` for every untyped record._
+63. **A cross-context read has a call budget, a timeout and a gap.** Any view assembled from other
+    contexts states its maximum upstream calls, bounds each with a timeout, and reports every absence
+    as a **typed gap** — distinguishing "unavailable", "truncated" and "not requested". Returning the
+    partial view is right; returning it silently is not, because an omitted source reads as an empty
+    one. Ports for such reads **default to unavailable**, never to an empty result. — _enforced:
+    `IncidentTimeline.gaps`; `UnavailableTimelineSources`; tests assert a hung upstream is abandoned
+    and reported._
 
 ## Engineering process
 

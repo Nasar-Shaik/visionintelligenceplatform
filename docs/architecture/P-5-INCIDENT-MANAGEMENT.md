@@ -1,6 +1,7 @@
 # P-5 — Incident Management: architecture
 
-**Status:** ⏳ **Awaiting architectural review. No P-5 code has been written.**
+**Status:** ✅ **APPROVED as the implementation blueprint** (Architect, 2026-08-03).
+**Findings F-1…F-6 are resolved in P-5.1** — see [ADR-0030](../adr/ADR-0030-incident-prerequisites.md).
 **Date:** 2026-08-03 · **Authorised by:** Architect approval of P-5.0 + recommendation 14
 **Layer:** Product Capability — composition over the frozen foundations, redesigning none of them.
 
@@ -39,10 +40,24 @@ it.
 
 ---
 
-## 0 · Six findings that need a decision
+## 0 · Six findings — all resolved in P-5.1
 
-Everything below this section is design. This section is what the design **ran into**. Each item
-changes what P-5 does, and three of them change its size.
+Everything below this section is design. This section is what the design **ran into**. All six were
+approved and are now **implemented**; each entry keeps the original finding and records the outcome.
+
+|         | Finding                       | Outcome in P-5.1                                                                                                                          |
+| ------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **F-1** | Evidence index defect (TD-25) | ✅ **paid** — 4 new indexes, 3 rebuilt, coverage model **strengthened**, planner + ratio verified, benchmarked. `eventId` 500/1 → **1/1** |
+| **F-2** | Actors are opaque strings     | ✅ `IncidentActorRef` stored on every write; legacy records resolve to **`unknown`**, never a guess                                       |
+| **F-3** | The timeline is a fan-out     | ✅ 3-call budget, 2 s timeout per call, typed `gaps`, port **defaults to unavailable**                                                    |
+| **F-4** | SLA has no target             | ✅ deployment-configurable policy; **no policy ⇒ `unknown`**, never `met`                                                                 |
+| **F-5** | Activity enum 3 → n           | ✅ expanded to the kinds that have producers; nine of the sixteen requested were payload, not kinds                                       |
+| **F-6** | note ≡ comment                | ✅ confirmed merged, as accepted in P-5.0                                                                                                 |
+
+⚠️ **The coverage model that found F-1 was itself wrong.** Ported from the Workflow context, it
+declared the defective index `covered` while `explain()` showed a blocking `SORT`. Two corrections —
+walk the **whole** compound sort, and classify filters by **cardinality** — are recorded in
+[ADR-0030](../adr/ADR-0030-incident-prerequisites.md) §1 and should travel with any future port.
 
 ### ⚠️ F-1 · The Evidence context has TD-22's defect, and the workspace will hit it
 

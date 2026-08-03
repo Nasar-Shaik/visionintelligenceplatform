@@ -270,3 +270,103 @@ describe('P-5.0 · the frozen search surface (G-3)', () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+/**
+ * P-5.1 at the HTTP edge — the timeline and SLA routes, and the permission split.
+ *
+ * The service-level behaviour is proven in `incident-p51.test.ts`; what is asserted here is the
+ * wiring: the routes exist, `?include=` is honoured, an unconfigured deployment answers honestly
+ * rather than flatteringly, and closing is gated on its own permission without having silently
+ * removed an operator's ability to do it.
+ */
+describe('P-5.1 · timeline and SLA routes', () => {
+  it('serves a timeline of the incident’s own streams, naming every source not requested', async () => {
+    const id = await seedIncident('tnt_a', 'p51|1');
+    const t = await token('tnt_a', ['operator']);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/incidents/${id}/timeline`,
+      headers: authHeader(t),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json().data;
+    expect(body.entries.map((e: { kind: string }) => e.kind)).toEqual(['raised']);
+    expect(
+      body.gaps.map((g: { source: string; reason: string }) => `${g.source}:${g.reason}`),
+    ).toEqual(['events:not-requested', 'evidence:not-requested', 'notify:not-requested']);
+  });
+
+  /**
+   * ⚠️ The property that matters most on this route. With no upstream clients wired (P-5.2 work),
+   * a requested source must come back as an **unavailable gap** — not an empty list, which would
+   * claim the source was consulted and had nothing to say.
+   */
+  it('reports a requested-but-unwired source as unavailable, and still returns 200', async () => {
+    const id = await seedIncident('tnt_a', 'p51|2');
+    const t = await token('tnt_a', ['operator']);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/incidents/${id}/timeline?include=events,evidence`,
+      headers: authHeader(t),
+    });
+    expect(res.statusCode).toBe(200);
+    const gaps = res.json().data.gaps.filter((g: { reason: string }) => g.reason === 'unavailable');
+    expect(gaps.map((g: { source: string }) => g.source).sort()).toEqual(['events', 'evidence']);
+  });
+
+  it('drops an unrecognised include rather than failing the read', async () => {
+    const id = await seedIncident('tnt_a', 'p51|3');
+    const t = await token('tnt_a', ['operator']);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/incidents/${id}/timeline?include=events,nonsense`,
+      headers: authHeader(t),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.sources).toEqual(['incident', 'events']);
+  });
+
+  it('reports SLA as unknown when the deployment configured no policy', async () => {
+    const id = await seedIncident('tnt_a', 'p51|4');
+    const t = await token('tnt_a', ['viewer']);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/incidents/${id}/sla`,
+      headers: authHeader(t),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toMatchObject({ state: 'unknown' });
+    expect(res.json().data.policy).toBeUndefined();
+  });
+
+  it('still lets an operator close — the incident:close split is additive', async () => {
+    const id = await seedIncident('tnt_a', 'p51|5');
+    const operator = await token('tnt_a', ['operator']);
+    await app.inject({
+      method: 'POST',
+      url: `/incidents/${id}/resolve`,
+      headers: authHeader(operator),
+      payload: {},
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/incidents/${id}/close`,
+      headers: authHeader(operator),
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe('closed');
+  });
+
+  it('records the calling principal as a typed operator on every write', async () => {
+    const id = await seedIncident('tnt_a', 'p51|6');
+    const t = await token('tnt_a', ['operator']);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/incidents/${id}/ack`,
+      headers: authHeader(t),
+      payload: {},
+    });
+    expect(res.json().data.history.at(-1).actor).toEqual({ kind: 'operator', id: 'usr_1' });
+  });
+});

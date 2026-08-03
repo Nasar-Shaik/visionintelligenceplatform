@@ -67,12 +67,74 @@ export const IncidentTrigger = z.object({
 });
 export type IncidentTrigger = z.infer<typeof IncidentTrigger>;
 
+// ---------------------------------------------------------------------------------------------
+// Actors — who did a thing. Declared before the streams that reference them.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Whoever an incident can be assigned or escalated to: a principal id, or a team/role handle.
+ * Deliberately an opaque string — the Workflow context does not own the directory, and resolving
+ * this to a person is the caller's job (Identity owns principals).
+ */
+export const IncidentActor = z.string().min(1).max(200);
+export type IncidentActor = z.infer<typeof IncidentActor>;
+
+/**
+ * **Who did this** (P-5.1, finding F-2) — the typed half of `IncidentActor`.
+ *
+ * The problem this fixes: `IncidentActor` is a bare string, so `"priya"`, `"system"` and a future AI
+ * principal are indistinguishable by type. "Show me only what a human did" was unanswerable, and
+ * merging operator, automation and AI actions into one undifferentiated stream is exactly what the
+ * collaboration model must not do.
+ *
+ * ⚠️ **`unknown` is a real value, not defensive padding.** Every incident raised before this
+ * existed carries a bare string, and there is no honest way to decide whether `"system"` was a
+ * person named system. Guessing would be the mistake CONSTRAINTS §52 exists to prevent, so
+ * pre-P-5.1 records resolve to `{kind: 'unknown', id: <the string>}` and say so.
+ */
+export const IncidentActorKind = z.enum([
+  /** A human being, acting through the console or the API. */
+  'operator',
+  /** The platform itself — promotion, dedup collapse, retention expiry. */
+  'system',
+  /** Another VIP service acting under a machine principal. */
+  'service',
+  /** A configured automation rule or workflow, acting on a policy someone wrote. */
+  'automation',
+  /**
+   * An AI advisor. ⚠️ **Advisory only** — see `IncidentRecommendation`. No role grants a principal
+   * of this kind any `incident:*` write permission, so this can appear beside a recommendation and
+   * never beside a state change.
+   */
+  'ai-advisor',
+  /** A third-party system acting through an integration. */
+  'external-integration',
+  /** Not honestly classifiable — pre-P-5.1 records, and anything the platform cannot attribute. */
+  'unknown',
+]);
+export type IncidentActorKind = z.infer<typeof IncidentActorKind>;
+
+export const IncidentActorRef = z.object({
+  kind: IncidentActorKind,
+  /** The raw identifier: a principal id, a service name, a model name, or the legacy string. */
+  id: IncidentActor,
+  /** Resolved for display when the caller knows it. Never authoritative — Identity owns names. */
+  displayName: z.string().max(200).optional(),
+});
+export type IncidentActorRef = z.infer<typeof IncidentActorRef>;
+
 /** One immutable lifecycle transition — the (embedded) audit trail for the incident. */
 export const IncidentTransition = z.object({
   from: IncidentStatus.nullable(),
   to: IncidentStatus,
   at: IsoDateTime,
   by: z.string().optional(),
+  /**
+   * The typed actor (P-5.1, F-2). Written on every new transition; **absent on records from before
+   * P-5.1**, which is why it is optional and why readers resolve an absent one to `unknown` rather
+   * than guessing from `by`. `by` is retained unchanged — the contract is additive-only.
+   */
+  actor: IncidentActorRef.optional(),
   note: z.string().max(2000).optional(),
 });
 export type IncidentTransition = z.infer<typeof IncidentTransition>;
@@ -85,14 +147,6 @@ export type IncidentTransition = z.infer<typeof IncidentTransition>;
 // them, never stored. Two records of one truth eventually disagree (CONSTRAINTS §46) — and a
 // derived log works on incidents raised long before this contract existed.
 // ---------------------------------------------------------------------------------------------
-
-/**
- * Whoever an incident can be assigned or escalated to: a principal id, or a team/role handle.
- * Deliberately an opaque string — the Workflow context does not own the directory, and resolving
- * this to a person is the caller's job (Identity owns principals).
- */
-export const IncidentActor = z.string().min(1).max(200);
-export type IncidentActor = z.infer<typeof IncidentActor>;
 
 /**
  * Something attached to a note. **A reference, never bytes.**
@@ -123,6 +177,8 @@ export const IncidentNote = z.object({
   id: Uuid,
   body: z.string().min(1).max(4000),
   by: IncidentActor.optional(),
+  /** The typed actor (P-5.1, F-2). Absent on pre-P-5.1 records — resolved to `unknown`, not guessed. */
+  actor: IncidentActorRef.optional(),
   at: IsoDateTime,
   attachments: z.array(IncidentAttachment).max(20).default([]),
 });
@@ -133,6 +189,8 @@ export const IncidentAssignment = z.object({
   from: IncidentActor.optional(),
   to: IncidentActor.optional(),
   by: IncidentActor.optional(),
+  /** The typed actor (P-5.1, F-2). Absent on pre-P-5.1 records — resolved to `unknown`, not guessed. */
+  actor: IncidentActorRef.optional(),
   at: IsoDateTime,
   note: z.string().max(2000).optional(),
 });
@@ -275,24 +333,76 @@ export const IncidentQuery = z.object({
 export type IncidentQuery = z.infer<typeof IncidentQuery>;
 
 /**
- * One entry in an incident's activity log (P-5.0 G-2).
+ * One entry in an incident's activity log (P-5.0 G-2; expanded P-5.1, finding F-5).
  *
  * **Derived, never stored.** Merged on read from `history`, `assignments` and `notes` — the three
- * append-only streams the incident already carries. A stored fourth copy would be a second audit
- * trail, which is the mistake P-4.1 recorded and did not make (CONSTRAINTS §46).
+ * append-only streams the incident already carries, plus (for `IncidentTimeline`) bounded reads
+ * from the contexts that own the rest. A stored copy would be a second audit trail, which is the
+ * mistake P-4.1 recorded and did not make (CONSTRAINTS §46).
+ *
+ * ### ⚠️ Why this enum is shorter than the list that was asked for
+ *
+ * The recommendation named sixteen activities. Nine of them are not distinct **kinds** — they are
+ * the *payload* of a kind that already exists, and giving each its own value would duplicate
+ * another enum into this one, leaving two that must be kept in sync forever:
+ *
+ * | Asked for                                                  | Modelled as                                          |
+ * | ---------------------------------------------------------- | ---------------------------------------------------- |
+ * | Acknowledgement · Investigation · Escalation · Resolution  | `state-change` + `transition.to` — that *is* `IncidentStatus` |
+ * | Assignment · Reassignment                                  | `assignment`; `assignment.from` present ⇒ a reassignment |
+ * | Comment                                                    | `note` — note and comment are one object (P-5.0, F-6) |
+ * | Evidence Linked                                            | `attachment` with `attachment.kind === 'evidence'`    |
+ * | AI Accepted · AI Rejected                                  | deferred: `recommendation-decision`, when an AI exists to accept |
+ * | Camera Offline · Camera Recovered · Rule Changed           | deferred: `context-change`, when a producer emits one |
+ *
+ * The deferred values are safe to add later precisely because **consumers must render an unknown
+ * kind** from `kind` + `actor` + `at` + `summary`, which are required on every entry. Adding a
+ * value nothing emits today would be a category that is always empty while looking like a feature —
+ * the same failure CONSTRAINTS §58 records for query filters.
  */
-export const IncidentActivityKind = z.enum(['transition', 'assignment', 'note']);
+export const IncidentActivityKind = z.enum([
+  /** The incident came into being — promoted from a rule candidate. */
+  'raised',
+  /** A lifecycle transition. Carries its bound note, if the operator left one. */
+  'state-change',
+  /** Assigned, re-assigned, or un-assigned. */
+  'assignment',
+  /** A free-standing operator note (the workspace's "comment"). */
+  'note',
+  /** Evidence or a link referenced from a note. */
+  'attachment',
+  /** A related event on the correlation spine — joined from the Events context. */
+  'event',
+  /** The platform acted: promotion, dedup collapse, retention expiry. */
+  'system',
+  /** A configured automation acted: a notification sent, delivered or acknowledged. */
+  'automation',
+  /**
+   * An AI suggestion. ⚠️ **Advisory only** — a recommendation never changes incident state, and an
+   * `ai-advisor` actor can never appear on a `state-change`.
+   */
+  'recommendation',
+  /**
+   * ⚠️ **Retained for compatibility.** P-5.0 emitted `transition` for what is now `state-change`.
+   * Nothing emits this any more; it stays so a consumer pinned to the P-5.0 schema still parses.
+   */
+  'transition',
+]);
 export type IncidentActivityKind = z.infer<typeof IncidentActivityKind>;
 
 export const IncidentActivityEntry = z.object({
   kind: IncidentActivityKind,
   at: IsoDateTime,
+  /** The raw actor string, as P-5.0 emitted it. Retained; `actor` is the typed answer. */
   by: IncidentActor.optional(),
+  /** The typed actor (P-5.1, F-2). Always present on a derived entry — `unknown` when unattributable. */
+  actor: IncidentActorRef.optional(),
   /** A human-readable one-liner. The structured payload below is the authority. */
   summary: z.string().min(1),
   transition: IncidentTransition.optional(),
   assignment: IncidentAssignment.optional(),
   note: IncidentNote.optional(),
+  attachment: IncidentAttachment.optional(),
 });
 export type IncidentActivityEntry = z.infer<typeof IncidentActivityEntry>;
 
@@ -303,6 +413,170 @@ export const IncidentActivity = z.object({
   derivedAt: IsoDateTime,
 });
 export type IncidentActivity = z.infer<typeof IncidentActivity>;
+
+// ---------------------------------------------------------------------------------------------
+// P-5.1 — the timeline (finding F-3) and SLA (finding F-4).
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Which context an activity entry came from.
+ *
+ * Present on every timeline entry so a reader can tell "the incident says so" from "another service
+ * said so" — and, when a source is missing, exactly which one.
+ */
+export const IncidentTimelineSource = z.enum(['incident', 'events', 'evidence', 'notify']);
+export type IncidentTimelineSource = z.infer<typeof IncidentTimelineSource>;
+
+/**
+ * Something the timeline could **not** include, and why (P-5.1, F-3).
+ *
+ * ⚠️ This is a first-class field, not error handling. A timeline that quietly omits the events is a
+ * timeline asserting the events did not happen — §44 applied to a read. Every degraded source says
+ * so out loud, and the entries that *were* gathered are still returned.
+ */
+export const IncidentTimelineGapReason = z.enum([
+  /** The upstream context did not answer in time, or answered with an error. */
+  'unavailable',
+  /** The upstream answered, but there were more entries than the budget allows. */
+  'truncated',
+  /** The caller did not ask for this source (`include` is opt-in per source). */
+  'not-requested',
+]);
+export type IncidentTimelineGapReason = z.infer<typeof IncidentTimelineGapReason>;
+
+export const IncidentTimelineGap = z.object({
+  source: IncidentTimelineSource,
+  reason: IncidentTimelineGapReason,
+  detail: z.string().min(1),
+});
+export type IncidentTimelineGap = z.infer<typeof IncidentTimelineGap>;
+
+/** One timeline entry — an activity entry that also knows where it came from. */
+export const IncidentTimelineEntry = IncidentActivityEntry.extend({
+  /**
+   * Stable within one derivation. Enough for a React key and a deep link; **not** a durable id,
+   * because the entry is derived and has no independent existence.
+   */
+  id: z.string().min(1),
+  source: IncidentTimelineSource,
+  /** Set when `kind === 'event'` — the related event, as the Events context returned it. */
+  eventId: z.string().min(1).optional(),
+  eventType: EventType.optional(),
+  /** Set when the entry references an evidence record. */
+  evidenceId: z.string().min(1).optional(),
+});
+export type IncidentTimelineEntry = z.infer<typeof IncidentTimelineEntry>;
+
+/**
+ * The full investigation narrative (P-5.1, F-3) — **derived across contexts**, oldest first.
+ *
+ * Distinct from `IncidentActivity`, which stays exactly as P-5.0 shipped it: one document read, no
+ * fan-out, for the incident header. This one joins the contexts that own the rest of the story, so
+ * it costs upstream calls and is bounded and degradable by design.
+ */
+export const IncidentTimeline = z.object({
+  incidentId: Uuid,
+  incidentVersion: z.number().int().min(1),
+  entries: z.array(IncidentTimelineEntry),
+  /** Which sources were consulted, whatever they answered. */
+  sources: z.array(IncidentTimelineSource),
+  /** ⚠️ Everything missing, and why. Empty means genuinely complete. */
+  gaps: z.array(IncidentTimelineGap).default([]),
+  derivedAt: IsoDateTime,
+});
+export type IncidentTimeline = z.infer<typeof IncidentTimeline>;
+
+/**
+ * An SLA target (P-5.1, F-4) — **deployment-configurable**, per tenant, per severity.
+ *
+ * Deliberately minimal: two durations and the clock they run against. Escalation *policies* and
+ * timers (who gets paged when a target is missed) remain deferred with the full Workflow engine —
+ * measuring a breach and acting on one are different features, and only the first is in scope.
+ */
+export const IncidentSlaPolicy = z.object({
+  tenantId: TenantId,
+  severity: EventPriority,
+  /** Time from `raisedAt` to an operator acknowledging. Absent = not measured. */
+  acknowledgeWithinSeconds: z.number().int().min(1).optional(),
+  /** Time from `raisedAt` to `resolved`. Absent = not measured. */
+  resolveWithinSeconds: z.number().int().min(1).optional(),
+});
+export type IncidentSlaPolicy = z.infer<typeof IncidentSlaPolicy>;
+
+/** One SLA clock's outcome. `dueAt` is derived from `raisedAt` + the target. */
+export const IncidentSlaClock = z.object({
+  dueAt: IsoDateTime,
+  /** When the target was met. Absent while still running, or if it was missed. */
+  metAt: IsoDateTime.optional(),
+  breached: z.boolean(),
+  /** Elapsed at `metAt`, or at the moment of derivation while still running. */
+  elapsedSeconds: z.number().int().min(0),
+});
+export type IncidentSlaClock = z.infer<typeof IncidentSlaClock>;
+
+/**
+ * An incident's SLA attainment — **derived, never stored** (P-5.1, F-4).
+ *
+ * ⚠️ **No policy means `unknown`, never "met".** An incident with no SLA configured is not
+ * compliant, it is *unmeasured*, and a report that cannot distinguish the two is worse than one
+ * that omits the column. The same discipline as `RuleHealthStatus.unknown` — a status computed from
+ * a target that does not exist is fabricated.
+ */
+export const IncidentSlaState = z.enum(['unknown', 'on-track', 'met', 'breached']);
+export type IncidentSlaState = z.infer<typeof IncidentSlaState>;
+
+export const IncidentSlaStatus = z.object({
+  incidentId: Uuid,
+  state: IncidentSlaState,
+  /** The policy this was measured against. **Absent ⇒ `state` is `unknown`.** */
+  policy: IncidentSlaPolicy.optional(),
+  acknowledge: IncidentSlaClock.optional(),
+  resolve: IncidentSlaClock.optional(),
+  derivedAt: IsoDateTime,
+});
+export type IncidentSlaStatus = z.infer<typeof IncidentSlaStatus>;
+
+/**
+ * An AI suggestion about an incident (P-5.1 — the reserved shape; **no producer exists yet**).
+ *
+ * ⚠️ **The AI boundary, stated where it is enforced.** A recommendation is a read-side artefact.
+ * AI may recommend, summarise, correlate, prioritise, suggest and explain; it may never assign,
+ * resolve, close, delete, modify or escalate. That is enforced by the **permission catalog** — no
+ * role grants a machine principal any `incident:*` write permission, and `incident:ai-recommend` is
+ * a read-side grant — not by convention and not by prompt.
+ *
+ * `basis` and `producer` are required in spirit: an unattributable suggestion sitting in an
+ * investigation record is indistinguishable from a finding, which is how it ends up in a report.
+ */
+export const IncidentRecommendationKind = z.enum([
+  'summary',
+  'similar-incidents',
+  'root-cause',
+  'suggested-action',
+]);
+export type IncidentRecommendationKind = z.infer<typeof IncidentRecommendationKind>;
+
+export const IncidentRecommendation = z.object({
+  id: Uuid,
+  incidentId: Uuid,
+  kind: IncidentRecommendationKind,
+  body: z.string().min(1).max(8000),
+  /** 0–1. **Absent means absent** — not zero, not certain. */
+  confidence: z.number().min(0).max(1).optional(),
+  /** What it looked at, so a wrong suggestion is traceable to its inputs. */
+  basis: z
+    .object({
+      incidentIds: z.array(z.string().min(1)).default([]),
+      eventIds: z.array(z.string().min(1)).default([]),
+      evidenceIds: z.array(z.string().min(1)).default([]),
+      ruleIds: z.array(z.string().min(1)).default([]),
+    })
+    .default({ incidentIds: [], eventIds: [], evidenceIds: [], ruleIds: [] }),
+  /** Which model said it, so a bad one is traceable to its producer. */
+  producer: z.object({ name: z.string().min(1), version: z.string().min(1) }),
+  at: IsoDateTime,
+});
+export type IncidentRecommendation = z.infer<typeof IncidentRecommendation>;
 
 export const IncidentPage = z.object({
   items: z.array(Incident),

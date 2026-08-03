@@ -8,6 +8,11 @@
  */
 import type {
   AcknowledgeIncidentInput,
+  IncidentActorRef,
+  IncidentSlaPolicy,
+  IncidentSlaStatus,
+  IncidentTimeline,
+  IncidentTimelineSource,
   AddIncidentNoteInput,
   AssignIncidentInput,
   CloseIncidentInput,
@@ -30,8 +35,16 @@ import {
   type TransitionInput,
 } from '../domain/incident-factory.js';
 import { deriveActivity } from '../domain/incident-activity.js';
+import {
+  buildTimeline,
+  MAX_ENTRIES_PER_SOURCE,
+  UPSTREAM_TIMEOUT_MS,
+  type TimelineInputs,
+} from '../domain/incident-timeline.js';
+import { deriveSla, policyFor } from '../domain/incident-sla.js';
+import { assertMayMutate, operatorActor } from '../domain/incident-actor.js';
 import { conflict, notFound } from './errors.js';
-import type { IncidentStore } from './ports.js';
+import { UnavailableTimelineSources, type IncidentStore, type TimelineSources } from './ports.js';
 import { NoopIncidentPublisher, type IncidentPublisher } from './incident-publisher.js';
 import type { IncidentMetrics } from './metrics.js';
 
@@ -39,6 +52,10 @@ export interface IncidentServiceDeps {
   store: IncidentStore;
   publisher?: IncidentPublisher;
   metrics?: IncidentMetrics;
+  /** The timeline joins. Defaults to every source unavailable — a named gap, never a silent empty. */
+  sources?: TimelineSources;
+  /** Deployment-configured SLA targets. Empty is the honest default: no policy ⇒ `unknown`. */
+  slaPolicies?: readonly IncidentSlaPolicy[];
   now?: () => Date;
   newId?: () => string;
 }
@@ -59,10 +76,27 @@ export interface PromotionResult {
  */
 export const MAX_NOTES = 500;
 
+/**
+ * Every write path takes `actor?: ActorArg` (P-5.1, F-2).
+ *
+ * A bare string is what every caller before P-5.1 passed, and it always meant "the principal id of
+ * the human who made this request" — so it normalises to an `operator`, which is the one inference
+ * that is not a guess. Anything else (the promoter, an automation, an integration) passes a typed
+ * ref and says what it is.
+ */
+export type ActorArg = string | IncidentActorRef;
+
+function normalizeActor(actor: ActorArg | undefined): IncidentActorRef | undefined {
+  if (actor === undefined) return undefined;
+  return typeof actor === 'string' ? operatorActor(actor) : actor;
+}
+
 export class IncidentService {
   private readonly store: IncidentStore;
   private readonly publisher: IncidentPublisher;
   private metrics: IncidentMetrics | undefined;
+  private readonly sources: TimelineSources;
+  private readonly slaPolicies: readonly IncidentSlaPolicy[];
   private readonly now: () => Date;
   private readonly newId: () => string;
 
@@ -70,6 +104,8 @@ export class IncidentService {
     this.store = deps.store;
     this.publisher = deps.publisher ?? NoopIncidentPublisher;
     this.metrics = deps.metrics;
+    this.sources = deps.sources ?? UnavailableTimelineSources;
+    this.slaPolicies = deps.slaPolicies ?? [];
     this.now = deps.now ?? (() => new Date());
     this.newId = deps.newId ?? (() => crypto.randomUUID());
   }
@@ -134,52 +170,55 @@ export class IncidentService {
     return this.store.list(scope, query);
   }
 
-  acknowledge(
+  async acknowledge(
     scope: TenantScope,
     id: string,
     input: AcknowledgeIncidentInput,
-    actor?: string,
+    actor?: ActorArg,
   ): Promise<Incident> {
-    return this.transition(scope, id, 'acknowledge', { by: actor, note: input.note });
+    return this.transition(scope, id, 'acknowledge', { ...who(actor), note: input.note });
   }
 
-  resolve(
+  async resolve(
     scope: TenantScope,
     id: string,
     input: ResolveIncidentInput,
-    actor?: string,
+    actor?: ActorArg,
   ): Promise<Incident> {
-    return this.transition(scope, id, 'resolve', { by: actor, resolution: input.resolution });
+    return this.transition(scope, id, 'resolve', {
+      ...who(actor),
+      resolution: input.resolution,
+    });
   }
 
-  close(
+  async close(
     scope: TenantScope,
     id: string,
     input: CloseIncidentInput,
-    actor?: string,
+    actor?: ActorArg,
   ): Promise<Incident> {
-    return this.transition(scope, id, 'close', { by: actor, note: input.note });
+    return this.transition(scope, id, 'close', { ...who(actor), note: input.note });
   }
 
   /** Begin investigating (P-5.0 G-1). */
-  investigate(
+  async investigate(
     scope: TenantScope,
     id: string,
     input: InvestigateIncidentInput,
-    actor?: string,
+    actor?: ActorArg,
   ): Promise<Incident> {
-    return this.transition(scope, id, 'investigate', { by: actor, note: input.note });
+    return this.transition(scope, id, 'investigate', { ...who(actor), note: input.note });
   }
 
   /** Escalate, recording who now owns the outcome (P-5.0 G-1). */
-  escalate(
+  async escalate(
     scope: TenantScope,
     id: string,
     input: EscalateIncidentInput,
-    actor?: string,
+    actor?: ActorArg,
   ): Promise<Incident> {
     return this.transition(scope, id, 'escalate', {
-      by: actor,
+      ...who(actor),
       note: input.note,
       escalateTo: input.to,
     });
@@ -193,13 +232,13 @@ export class IncidentService {
     scope: TenantScope,
     id: string,
     input: AssignIncidentInput,
-    actor?: string,
+    actor?: ActorArg,
   ): Promise<Incident> {
     const current = await this.getOrThrow(scope, id);
     this.refuseIfSealed(current, 'assign');
     const next = applyAssignment(
       current,
-      { to: input.assignee ?? undefined, by: actor, note: input.note },
+      { to: input.assignee ?? undefined, ...who(actor), note: input.note },
       this.factoryDeps,
     );
     await this.persist(scope, next, current.version);
@@ -215,7 +254,7 @@ export class IncidentService {
     scope: TenantScope,
     id: string,
     input: AddIncidentNoteInput,
-    actor?: string,
+    actor?: ActorArg,
   ): Promise<Incident> {
     const current = await this.getOrThrow(scope, id);
     this.refuseIfSealed(current, 'comment on');
@@ -224,7 +263,7 @@ export class IncidentService {
     }
     const next = appendNote(
       current,
-      { body: input.body, by: actor, attachments: input.attachments },
+      { body: input.body, ...who(actor), attachments: input.attachments },
       this.factoryDeps,
     );
     await this.persist(scope, next, current.version);
@@ -235,6 +274,75 @@ export class IncidentService {
   /** The derived activity log — transitions + assignments + notes, oldest first (P-5.0 G-2). */
   async activity(scope: TenantScope, id: string): Promise<IncidentActivity> {
     return deriveActivity(await this.getOrThrow(scope, id), this.now());
+  }
+
+  /**
+   * The full investigation timeline (P-5.1, F-3) — the incident's own streams plus bounded joins
+   * from the contexts that own the rest.
+   *
+   * ⚠️ **At most one call per requested source, and a failure is a gap rather than an error.** The
+   * whole read succeeds with fewer entries and an honest account of what is missing; an operator
+   * looking at a partial timeline must be able to see that it is partial. Each call is raced
+   * against a timeout, because a hanging upstream would otherwise turn a bounded read into an
+   * unbounded one.
+   */
+  async timeline(
+    scope: TenantScope,
+    id: string,
+    include: readonly IncidentTimelineSource[] = [],
+  ): Promise<IncidentTimeline> {
+    const incident = await this.getOrThrow(scope, id);
+    const failures: { source: IncidentTimelineSource; detail: string }[] = [];
+
+    const bounded = async <T>(
+      source: IncidentTimelineSource,
+      run: () => Promise<{ items: T[]; truncated: boolean }>,
+    ): Promise<{ items: T[]; truncated: boolean } | undefined> => {
+      if (!include.includes(source)) return undefined;
+      try {
+        return await withTimeout(run(), UPSTREAM_TIMEOUT_MS, source);
+      } catch (err) {
+        failures.push({ source, detail: err instanceof Error ? err.message : String(err) });
+        return undefined;
+      }
+    };
+
+    // Sequential rather than concurrent on purpose: three bounded reads are cheap, and a timeline
+    // request that fans out in parallel multiplies a retry storm across three neighbours at once.
+    const events = await bounded('events', () =>
+      this.sources.relatedEvents(scope, incident.correlationId, MAX_ENTRIES_PER_SOURCE),
+    );
+    const evidence = await bounded('evidence', () =>
+      this.sources.relatedEvidence(
+        scope,
+        incident.id,
+        incident.correlationId,
+        MAX_ENTRIES_PER_SOURCE,
+      ),
+    );
+    const automation = await bounded('notify', () =>
+      this.sources.relatedAutomation(scope, incident.id, MAX_ENTRIES_PER_SOURCE),
+    );
+
+    const inputs: TimelineInputs = {
+      incident,
+      requested: include,
+      failures,
+      now: this.now(),
+    };
+    if (events) inputs.events = events;
+    if (evidence) inputs.evidence = evidence;
+    if (automation) inputs.automation = automation;
+    return buildTimeline(inputs);
+  }
+
+  /**
+   * Derived SLA attainment (P-5.1, F-4). ⚠️ No configured policy yields `unknown` — never `met`.
+   * An unmeasured incident and a compliant one must never look the same in a report.
+   */
+  async sla(scope: TenantScope, id: string): Promise<IncidentSlaStatus> {
+    const incident = await this.getOrThrow(scope, id);
+    return deriveSla(incident, policyFor(this.slaPolicies, incident), this.now());
   }
 
   /**
@@ -273,4 +381,36 @@ export class IncidentService {
     await this.publisher.publish(next);
     return next;
   }
+}
+
+/**
+ * Race a bounded upstream read against a timeout.
+ *
+ * A join budget that counts calls but not time is not a budget: one hanging upstream turns a
+ * bounded read into an unbounded one, and the timeline route stops answering at all. The rejection
+ * carries the source so it becomes a legible `gap` rather than "something went wrong".
+ */
+/**
+ * Shape an actor argument into the `{ by, actor }` pair every stream stores, and **refuse an AI**.
+ *
+ * ⚠️ The permission catalog is the real enforcement point — no role grants a machine principal an
+ * `incident:*` write permission. This is the second lock: if an `ai-advisor` ever reaches a write
+ * path, it fails here rather than being written into an immutable audit trail where removing it
+ * means rewriting history.
+ */
+function who(actor: ActorArg | undefined): { by?: string; actor?: IncidentActorRef } {
+  // Note: every caller is `async`, so a throw here surfaces as a rejection. A synchronous throw
+  // from a method typed `Promise<Incident>` is a footgun — `.catch()` would never see it.
+  const ref = normalizeActor(actor);
+  if (!ref) return {};
+  assertMayMutate(ref);
+  return { by: ref.id, actor: ref };
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, source: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${source} did not answer within ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer)) as Promise<T>;
 }

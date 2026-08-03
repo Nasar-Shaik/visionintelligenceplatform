@@ -4,12 +4,13 @@
  * id). Listings use keyset pagination — newest-first by `(capturedAt, _id)` (ISO timestamps order as
  * strings). Mirrors the media/events stores.
  */
-import type { Collection } from 'mongodb';
+import type { Collection, IndexSpecification } from 'mongodb';
 import type { EvidenceQuery } from '@vip/contracts';
 import { TenantRepository, type PlainObject, type TenantScope } from '@vip/tenancy';
 import type { EvidenceDoc } from '../domain/evidence.js';
 import type { EvidenceStore } from '../application/ports.js';
 import { decodeCursor, encodeCursor } from './evidence-cursor.js';
+import { EVIDENCE_INDEXES } from './indexes.js';
 
 export class MongoEvidenceStore implements EvidenceStore {
   readonly #repo: TenantRepository<EvidenceDoc>;
@@ -78,19 +79,31 @@ export class MongoEvidenceStore implements EvidenceStore {
     return n > 0;
   }
 
-  /** Tenant-leading indexes: unique id + keyset sort support + common filters. */
+  /**
+   * Create every index declared in `indexes.ts`, reconciling names whose key set changed (TD-25).
+   *
+   * ⚠️ **Three pre-existing indexes gained the `_id` cursor key**, and `tenant_captured` already
+   * had it. Re-declaring an existing name with different keys is an `IndexOptionsConflict` —
+   * MongoDB refuses and the service fails to start — so a changed key set is dropped and rebuilt.
+   * Each old index is a strict prefix of its replacement, so nothing loses coverage during the
+   * rebuild; the rebuild itself is real work on a large collection, which is why this is deliberate
+   * rather than incidental.
+   */
   async ensureIndexes(): Promise<void> {
-    await this.#col.createIndex(
-      { tenantId: 1, capturedAt: -1, _id: -1 },
-      { name: 'tenant_captured' },
-    );
-    await this.#col.createIndex(
-      { tenantId: 1, 'source.incidentId': 1, capturedAt: -1 },
-      { name: 'tenant_incident' },
-    );
-    await this.#col.createIndex(
-      { tenantId: 1, kind: 1, status: 1, capturedAt: -1 },
-      { name: 'tenant_kind_status' },
-    );
+    const existing = await this.#col.indexes().catch(() => []);
+    for (const spec of EVIDENCE_INDEXES) {
+      if (spec.implicit) continue;
+      const keys: Record<string, 1 | -1> = {};
+      for (const key of spec.keys) keys[key] = spec.descending?.includes(key) ? -1 : 1;
+
+      const current = existing.find((index) => index.name === spec.name);
+      if (current && JSON.stringify(current.key) !== JSON.stringify(keys)) {
+        await this.#col.dropIndex(spec.name);
+      }
+      await this.#col.createIndex(keys as IndexSpecification, {
+        name: spec.name,
+        ...(spec.unique ? { unique: true } : {}),
+      });
+    }
   }
 }

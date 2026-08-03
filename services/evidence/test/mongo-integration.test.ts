@@ -116,3 +116,132 @@ describe.skipIf(!online)('evidence against real MongoDB + LocalFs storage', () =
     await expect(service.get(B, aId)).rejects.toThrow(/not found/);
   });
 });
+
+/**
+ * **Planner verification for TD-25** (P-5.1, Architect-approved F-1) — the half of index validation
+ * only a real database can answer, and the half that found the coverage model wrong.
+ *
+ * `test/index-coverage.test.ts` proves the declaration is sound. This proves MongoDB agrees: for
+ * every query the investigation workspace will issue, the planner picks the declared index, does
+ * **no blocking `SORT`**, does **no `COLLSCAN`**, and — the measurement that actually matters —
+ * examines a number of documents proportional to what it returns rather than to the tenant's whole
+ * evidence history.
+ *
+ * Skipped without a database, which is a skip and not a pass (CONSTRAINTS §44).
+ */
+describe.skipIf(!online)('the planner uses the declared evidence indexes (TD-25)', () => {
+  let client: MongoClient;
+  let col: import('mongodb').Collection;
+
+  const ROWS = 500;
+
+  beforeAll(async () => {
+    // A dedicated collection: this suite rebuilds indexes and measures examined/returned ratios,
+    // so it must not share state with the fixtures above.
+    client = new MongoClient(URI);
+    await client.connect();
+    col = client.db(DB).collection('evidence_planner');
+    await col.deleteMany({});
+    await col.dropIndexes().catch(() => {});
+    await new (await import('../src/adapters/mongo-evidence-store.js')).MongoEvidenceStore(
+      col as never,
+    ).ensureIndexes();
+
+    await col.insertMany(
+      Array.from({ length: ROWS }, (_, i) => ({
+        _id: `evd_${String(i).padStart(6, '0')}` as never,
+        tenantId: 'tnt_a',
+        kind: i % 2 ? 'clip' : 'snapshot',
+        status: 'available',
+        capturedAt: new Date(Date.UTC(2026, 0, 1) + i * 60_000).toISOString(),
+        source: {
+          cameraId: `cam_${i % 10}`,
+          incidentId: `inc_${i % 50}`,
+          eventId: `evt_${i}`,
+          correlationId: `corr_${i % 8}`,
+        },
+      })),
+    );
+  });
+
+  afterAll(async () => {
+    await col?.drop().catch(() => {});
+    await client?.close();
+  });
+
+  async function plan(filter: Record<string, unknown>) {
+    const e = (await col
+      .find({ tenantId: 'tnt_a', ...filter })
+      .sort({ capturedAt: -1, _id: -1 })
+      .limit(50)
+      .explain('executionStats')) as {
+      queryPlanner: { winningPlan: Record<string, unknown> };
+      executionStats: { totalDocsExamined: number; nReturned: number };
+    };
+    const json = JSON.stringify(e.queryPlanner.winningPlan);
+    return {
+      index: json.match(/"indexName":"([^"]+)"/)?.[1] ?? '(none)',
+      blockingSort: json.includes('"stage":"SORT"'),
+      collscan: json.includes('COLLSCAN'),
+      examined: e.executionStats.totalDocsExamined,
+      returned: e.executionStats.nReturned,
+    };
+  }
+
+  const CASES: [string, string, Record<string, unknown>][] = [
+    ['unfiltered', 'tenant_captured', {}],
+    ['incidentId — the workspace panel', 'tenant_incident', { 'source.incidentId': 'inc_3' }],
+    ['correlationId — the spine', 'tenant_correlation', { 'source.correlationId': 'corr_5' }],
+    ['eventId', 'tenant_event', { 'source.eventId': 'evt_7' }],
+    ['cameraId', 'tenant_camera', { 'source.cameraId': 'cam_3' }],
+    ['kind + status', 'tenant_kind_status', { kind: 'clip', status: 'available' }],
+  ];
+
+  it.each(CASES)('%s — uses %s, no blocking sort, no collscan', async (_n, expected, filter) => {
+    const p = await plan(filter);
+    expect(p.index, `expected the planner to choose ${expected}`).toBe(expected);
+    expect(p.blockingSort, 'a blocking SORT is the 32 MB cliff TD-25 recorded').toBe(false);
+    expect(p.collscan).toBe(false);
+  });
+
+  /**
+   * ⚠️ The assertion that actually encodes TD-25. Before P-5.1 `eventId` examined **all 500
+   * documents to return 1** — no COLLSCAN and no blocking sort, which is exactly why reading the
+   * index list understated it. The ratio is the defect.
+   */
+  it('examines documents in proportion to what it returns, not to the tenant history', async () => {
+    const identity = await plan({ 'source.eventId': 'evt_7' });
+    expect(identity.returned).toBe(1);
+    expect(
+      identity.examined,
+      `examined ${identity.examined} of ${ROWS} rows to return 1 — the TD-25 defect`,
+    ).toBeLessThanOrEqual(2);
+
+    const spine = await plan({ 'source.correlationId': 'corr_5' });
+    expect(spine.examined).toBeLessThanOrEqual(spine.returned + 1);
+  });
+
+  /**
+   * The migration TD-25 performs, proven rather than trusted. Three index names already exist in
+   * deployed databases with a **different key set**; re-declaring one is an `IndexOptionsConflict`
+   * that fails the service at boot, so `ensureIndexes` drops and rebuilds. This runs once per
+   * deployment and its failure mode is "the service will not start".
+   */
+  it('rebuilds a pre-P-5.1 index whose keys changed, instead of failing to start', async () => {
+    await col.dropIndexes().catch(() => {});
+    // Recreate `tenant_incident` exactly as it was — stopping at `capturedAt`.
+    await col.createIndex(
+      { tenantId: 1, 'source.incidentId': 1, capturedAt: -1 },
+      { name: 'tenant_incident' },
+    );
+    const before = await plan({ 'source.incidentId': 'inc_3' });
+    expect(before.blockingSort, 'the old index really did sort in memory').toBe(true);
+
+    const { MongoEvidenceStore } = await import('../src/adapters/mongo-evidence-store.js');
+    await new MongoEvidenceStore(col as never).ensureIndexes();
+
+    const rebuilt = (await col.indexes()).find((i) => i.name === 'tenant_incident');
+    expect(rebuilt?.key).toEqual({ tenantId: 1, 'source.incidentId': 1, capturedAt: -1, _id: -1 });
+    expect((await plan({ 'source.incidentId': 'inc_3' })).blockingSort).toBe(false);
+  });
+});

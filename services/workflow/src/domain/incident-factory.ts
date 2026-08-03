@@ -7,6 +7,7 @@
  */
 import type {
   Incident,
+  IncidentActorRef,
   IncidentAssignment,
   IncidentAttachment,
   IncidentCandidate,
@@ -23,6 +24,8 @@ export interface FactoryDeps {
 /** Input carried on a transition (who + optional note/resolution/escalation target). */
 export interface TransitionInput {
   by?: string | undefined;
+  /** The typed actor (P-5.1, F-2). Recorded alongside `by`, never inferred from it. */
+  actor?: IncidentActorRef | undefined;
   note?: string | undefined;
   resolution?: string | undefined;
   /** Only meaningful for `escalate`: who now owns the outcome. */
@@ -36,7 +39,17 @@ export function promoteFromCandidate(
   actor = 'system',
 ): Incident {
   const at = deps.now().toISOString();
-  const firstTransition: IncidentTransition = { from: null, to: 'raised', at, by: actor };
+  /*
+   * The promoter is the platform, not a person (P-5.1, F-2). Recording that explicitly is what lets
+   * a timeline distinguish "the system raised this" from "someone called system did".
+   */
+  const firstTransition: IncidentTransition = {
+    from: null,
+    to: 'raised',
+    at,
+    by: actor,
+    actor: { kind: 'system', id: actor },
+  };
   const incident: Incident = {
     id: deps.newId(),
     tenantId: candidate.tenantId,
@@ -89,6 +102,7 @@ export function applyTransition(
   const to = targetStatus(action);
   const transition: IncidentTransition = { from: incident.status, to, at };
   if (input.by !== undefined) transition.by = input.by;
+  if (input.actor !== undefined) transition.actor = input.actor;
   const note = action === 'resolve' ? input.resolution : input.note;
   if (note !== undefined && note !== '') transition.note = note;
 
@@ -133,6 +147,7 @@ export function applyTransition(
 export interface AssignmentInput {
   to?: string | undefined;
   by?: string | undefined;
+  actor?: IncidentActorRef | undefined;
   note?: string | undefined;
 }
 
@@ -150,6 +165,7 @@ export function applyAssignment(
   if (incident.assignee !== undefined) assignment.from = incident.assignee;
   if (input.to !== undefined) assignment.to = input.to;
   if (input.by !== undefined) assignment.by = input.by;
+  if (input.actor !== undefined) assignment.actor = input.actor;
   if (input.note !== undefined && input.note !== '') assignment.note = input.note;
 
   const next: Incident = {
@@ -167,6 +183,7 @@ export function applyAssignment(
 export interface NoteInput {
   body: string;
   by?: string | undefined;
+  actor?: IncidentActorRef | undefined;
   attachments?: readonly IncidentAttachment[] | undefined;
 }
 
@@ -180,6 +197,7 @@ export function appendNote(incident: Incident, input: NoteInput, deps: FactoryDe
     attachments: [...(input.attachments ?? [])],
   };
   if (input.by !== undefined) note.by = input.by;
+  if (input.actor !== undefined) note.actor = input.actor;
 
   return {
     ...incident,

@@ -38,6 +38,19 @@ async function main(): Promise<void> {
   const incidentService = new IncidentService({
     store,
     publisher: new BusIncidentPublisher(bus),
+    /*
+     * Deployment-configured SLA targets (P-5.1, F-4). Empty unless `INCIDENT_SLA_POLICIES` is set,
+     * and empty means every incident reports `state: 'unknown'` — which is the correct answer for a
+     * deployment that has not configured targets, not a failure.
+     */
+    slaPolicies: config.slaPolicies,
+    /*
+     * ⚠️ Timeline sources are deliberately left at the default: **every source unavailable**
+     * (P-5.1, F-3). The HTTP clients for the events/evidence/notify joins are P-5.2 work. Until
+     * they exist, `GET /incidents/:id/timeline` returns the incident's own streams plus a named
+     * `gap` per source — the honest answer. Wiring an empty array instead would claim the sources
+     * were consulted and had nothing to say.
+     */
   });
 
   const { app, registry } = await buildServer({ config, incidentService, readiness });

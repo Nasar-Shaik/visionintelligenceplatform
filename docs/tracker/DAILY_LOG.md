@@ -2,6 +2,19 @@
 
 > One rolling file, newest first. **Capture meaningful progress only — no exhaustive file lists** (those live in git history and per-slice [REVIEW_HISTORY](REVIEW_HISTORY.md)). One short entry per working day. Sign entries `[name · YYYY-MM-DD]`.
 
+## 2026-08-03 (P-5.1)
+
+- **P-5 architecture ✅ APPROVED as the implementation blueprint**, and **P-5.1 ✅ APPROVED** mid-slice with seventeen recommendations — the first being "never merge multiple milestones together".
+- **⚠️ The coverage model that found TD-25 was itself wrong.** I raised TD-25 by reading the Evidence index list, then ported the Workflow coverage model to prove it — and the model declared the defective index **`covered`** while `explain()` showed a **blocking `SORT`**. Two corrections, both general: the sort is a **pair** not a key, and an unindexed filter's cost depends on its **cardinality** (identity → the tenant's whole history; two-valued enum → bounded by the page).
+- **TD-25 closed with measured proof.** `eventId` went from examining **500 documents to return 1** → **1/1, flat at 10k/100k/500k**. Four new indexes, three rebuilt, a boot-time reconcile proven by recreating the old shape and asserting it really did sort in memory.
+- **F-2 typed actors · F-3 timeline join · F-4 SLA · F-5 activity kinds** all landed. Actors resolve to **`unknown`** where honest typing is impossible; the timeline has a 3-call budget, a 2 s timeout and typed gaps including `not-requested`; no SLA policy yields **`unknown`, never `met`**.
+- **The AI boundary is enforced twice and asserted by tests** — a permission catalog with no AI-writable permission, and a domain guard so an AI action can never be written into an immutable audit trail.
+- **Three requested permissions refused with reasons** (`create`, `reopen`, `delete`), and `incident:close` split **additively** so no operator silently loses an ability.
+- **Four contract freezes and eleven modules deliberately not built** — Evidence Viewer, playback, notifications, dashboards and the roadmap modules are their own milestones, queued in PRODUCT_ROADMAP_QUEUE. That file also records that **Demo Readiness v1 is not a thin slice over P-5**: it crosses seven open debts and is the first milestone needing the perception path real end to end.
+- **Gates:** workflow 103 (+26) · evidence 43 (+21) · permissions 20 (+8) · contracts 296 · integration 10+13+9 against a real MongoDB.
+- **Next:** P-5.1 review. P-5.2 is the incident aggregate, the timeline upstream clients and the workspace backend.
+- `[Claude · 2026-08-03]`
+
 ## 2026-08-03 (architecture)
 
 - **P-5.0 ✅ ACCEPTED** by the Architect, with the **three-valued index coverage model adopted as the standard** verification approach for future query surfaces. Fifteen recommendations, of which rec 14 gates implementation: produce one P-5 architecture document, and only begin coding after it is approved.
