@@ -89,3 +89,61 @@ export const StreamControl = z.object({
   detail: z.string().optional(),
 });
 export type StreamControl = z.infer<typeof StreamControl>;
+
+// ---------------------------------------------------------------------------------------------
+// P-5.3 rec 16 — real-time workspace updates, reserved.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Workspace-facing update kinds the realtime channel will carry. **Reserved: nothing publishes
+ * these.**
+ *
+ * ### ⚠️ Why this extends SSE rather than reserving a WebSocket
+ *
+ * The review asked for a "WebSocket-ready architecture". The platform already has a working
+ * realtime transport: `GET /api/stream`, SSE, multiplexed by `StreamTopic`, with a per-tenant
+ * monotonic cursor and `Last-Event-ID` replay from a bounded ring buffer (P2-2 G-5). Adding a
+ * second transport would mean two connection lifecycles, two backpressure policies, two auth paths
+ * and two replay semantics — for updates that are **server→client only**.
+ *
+ * WebSocket earns its complexity when the client needs to *push*. Nothing here does: an operator's
+ * actions are HTTP requests that must be authorised, versioned and audited individually, and
+ * routing them over a socket would take them off the path where all of that happens.
+ *
+ * So what is reserved is the **vocabulary**, on the transport that exists. If a future feature
+ * genuinely needs client→server streaming, that is a transport decision with its own ADR — and it
+ * will consume these kinds rather than replace them.
+ */
+export const WorkspaceUpdateKind = z.enum([
+  /** An incident this operator has open changed — re-fetch, never patch from the frame. */
+  'incident-changed',
+  /** Evidence was registered against an open incident. */
+  'evidence-added',
+  /** A playback session became resolvable (media materialised). */
+  'playback-available',
+  /** A background job moved. Carries the job id; progress is re-fetched. */
+  'job-progress',
+  /** A camera in view went offline or recovered. */
+  'camera-status-changed',
+  /** ⚠️ Reserved. No AI produces anything to finish. */
+  'ai-completed',
+]);
+export type WorkspaceUpdateKind = z.infer<typeof WorkspaceUpdateKind>;
+
+/**
+ * ⚠️ **A notification that something changed — never the change itself.**
+ *
+ * The frame carries an id and a kind. The client re-fetches under its own permissions. Pushing the
+ * changed record would put a copy of a business record on a channel whose subscription was
+ * authorised once, at connect time, minutes or hours earlier — and an operator whose access is
+ * revoked mid-session would keep receiving updates until they reconnected. Re-fetching re-checks.
+ */
+export const WorkspaceUpdate = z.object({
+  kind: WorkspaceUpdateKind,
+  /** What changed, so the client knows which query to invalidate. */
+  entity: z.string().min(1).max(40),
+  targetId: z.string().min(1).max(200),
+  correlationId: z.string().min(1).optional(),
+  at: IsoDateTime,
+});
+export type WorkspaceUpdate = z.infer<typeof WorkspaceUpdate>;

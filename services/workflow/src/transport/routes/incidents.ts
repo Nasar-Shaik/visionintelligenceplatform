@@ -161,6 +161,24 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
   );
 
   /**
+   * The evidence chain (P-5.3, rec 7) — why this incident exists and what can be shown for it.
+   *
+   * ⚠️ Unresolved stages carry a **reason**, not a silence: an event that aged out, evidence that
+   * was never captured, and a feature that is not built are three different answers and only one of
+   * them means anything is wrong.
+   */
+  app.get<{ Params: IncidentParams }>(
+    '/incidents/:id/chain',
+    { preHandler: auth.authorize('incident:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      /* The same caller-scoped join rule as the timeline (CONSTRAINTS §70). */
+      const caller = { authorization: request.headers.authorization };
+      return reply.send(success(await service.chain(scope, request.params.id, caller)));
+    },
+  );
+
+  /**
    * Derived SLA attainment (P-5.1, F-4). ⚠️ Returns `state: 'unknown'` when the deployment has
    * configured no policy for this tenant and severity — never a flattering default.
    */

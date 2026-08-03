@@ -17,6 +17,7 @@ export * from './common/foundations.js';
 
 // tenant + org hierarchy (P1-1)
 export * from './tenant/tenant.js';
+export * from './tenant/branding.js';
 
 // auth: users, tokens, principal (P1-2)
 export * from './auth/auth.js';
@@ -66,6 +67,7 @@ export * from './rules/rules.js';
 
 // incidents — workflow lifecycle (P1-8)
 export * from './incidents/incident.js';
+export * from './incidents/chain.js';
 
 // notifications — alert engine (P1-8)
 export * from './notifications/notification.js';
@@ -89,6 +91,8 @@ export * from './workspace/commands.js';
 export * from './workspace/state.js';
 export * from './workspace/saved.js';
 export * from './workspace/extensions.js';
+export * from './workspace/health.js';
+export * from './workspace/surfaces.js';
 
 // playback — recorded CCTV review (rec 2)
 export * from './playback/playback.js';

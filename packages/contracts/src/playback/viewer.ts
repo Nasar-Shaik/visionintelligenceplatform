@@ -99,3 +99,126 @@ export const EvidenceComparison = z.object({
   likeForLike: z.boolean(),
 });
 export type EvidenceComparison = z.infer<typeof EvidenceComparison>;
+
+// ---------------------------------------------------------------------------------------------
+// P-5.3 — the professional player and timeline surfaces (mid-milestone requirements 1–3).
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * ⚠️ **Original or Enhanced — the label, as a contract rather than a UI decision.**
+ *
+ * The requirement is that any display adjustment be *visibly marked*. Making the mode a value
+ * carried on the view (and on anything derived from it) rather than a badge a component decides to
+ * render means a renderer cannot forget it: a snapshot, an export or a report section produced from
+ * an adjusted view carries `enhanced`, and the marking follows the artefact out of the browser.
+ *
+ * A badge that lives only on the screen is lost the moment someone screenshots the screen — which
+ * is exactly how an enhanced frame ends up in a report presented as the original.
+ */
+export const EvidenceViewMode = z.enum(['original', 'enhanced']);
+export type EvidenceViewMode = z.infer<typeof EvidenceViewMode>;
+
+/** The mode a set of adjustments puts the view in. Derived, so the label cannot disagree. */
+export function viewMode(adjustment: EvidenceViewAdjustment | undefined): EvidenceViewMode {
+  return adjustment !== undefined && isAdjusted(adjustment) ? 'enhanced' : 'original';
+}
+
+/**
+ * What the player may show over the picture. Overlays are **additive to the presentation, never to
+ * the media** — the original bytes are untouched, which is the Evidence Foundation's guarantee.
+ */
+export const EvidencePlayerOverlay = z.enum([
+  /** Burned-in wall-clock time. ⚠️ Rendered by the player from the manifest, never trusted from the
+   * picture itself: a camera's own burned-in clock is the device's claim, not the platform's. */
+  'timestamp',
+  /** Camera, zone, capture reason, integrity hash. */
+  'metadata',
+  /** Detection boxes, normalised [0,1]. */
+  'detections',
+  /** Investigator annotations. */
+  'annotations',
+]);
+export type EvidencePlayerOverlay = z.infer<typeof EvidencePlayerOverlay>;
+
+/**
+ * The player's declared surface (mid-milestone requirement 2). **Reserved: not implemented.**
+ *
+ * ⚠️ Every field here is a *capability*, not a setting, for the reason `PlaybackCapabilities`
+ * exists: frame stepping needs seekable keyframe-dense media, and an un-materialised clip cannot do
+ * it at all. A control offered on a source that cannot perform it is worse than an absent one.
+ */
+export const EvidencePlayerSurface = z.object({
+  capabilities: EvidenceViewerCapabilities,
+  /** Overlays this source can render. Empty is legitimate — a still has no detections. */
+  overlays: z.array(EvidencePlayerOverlay).max(4).default([]),
+  fullscreen: z.boolean(),
+  pictureInPicture: z.boolean(),
+  /** Speeds the player offers. Mirrors `PlaybackCapabilities.rates`; never wider. */
+  rates: z.array(z.number().positive()).min(1),
+  /** ⚠️ The current mode, so the "Enhanced View" marking is part of the surface's state. */
+  mode: EvidenceViewMode.default('original'),
+});
+export type EvidencePlayerSurface = z.infer<typeof EvidencePlayerSurface>;
+
+/**
+ * What a professional investigation timeline draws (mid-milestone requirement 1). **Reserved.**
+ *
+ * ⚠️ **`missing-footage` is a track, not a styling choice.** Every other track is something that
+ * happened; this one is the absence of recording, and it is the one an investigation most often
+ * turns on. Modelling it as a first-class track means a renderer cannot quietly omit it, and a
+ * consumer that does not understand the kind still shows *something* rather than closing the gap.
+ */
+export const PlaybackTimelineTrackKind = z.enum([
+  'evidence',
+  'ai-detection',
+  'rule-trigger',
+  'annotation',
+  'bookmark',
+  'exported-segment',
+  /** ⚠️ See above. Sized to real elapsed time, never compressed away. */
+  'missing-footage',
+]);
+export type PlaybackTimelineTrackKind = z.infer<typeof PlaybackTimelineTrackKind>;
+
+export const PlaybackTimelineTrack = z.object({
+  kind: PlaybackTimelineTrackKind,
+  label: z.string().min(1).max(80),
+  /** Ordered spans on the track. A point is a span whose end equals its start. */
+  spans: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        offsetSeconds: z.number().nonnegative(),
+        endOffsetSeconds: z.number().nonnegative(),
+        label: z.string().max(200).optional(),
+        ref: z.string().min(1).max(200).optional(),
+        confidence: z.number().min(0).max(1).optional(),
+      }),
+    )
+    .max(2000)
+    .default([]),
+  /** ⚠️ Present when the track itself could not be resolved — never rendered as an empty track. */
+  unavailableReason: z.string().min(1).max(300).optional(),
+});
+export type PlaybackTimelineTrack = z.infer<typeof PlaybackTimelineTrack>;
+
+/**
+ * ⚠️ **What the operator is actually looking at** (mid-milestone requirement 5).
+ *
+ * Reserved because a control room cannot afford ambiguity here: an operator who believes they are
+ * watching live when they are watching a recording will make a decision about a situation that
+ * ended twenty minutes ago. The distinction belongs on the surface, in words, at all times.
+ */
+export const InvestigationMode = z.enum([
+  /** A live stream. ⚠️ No live path exists in this build. */
+  'live',
+  /** Recorded footage under operator control — the immediate product priority. */
+  'playback',
+  /** A past incident being reviewed after the fact; footage may be partly purged. */
+  'historical',
+  /** Working from an exported bundle with no platform connection. */
+  'offline',
+  /** Nothing can be shown, and the surface says why. */
+  'unavailable',
+]);
+export type InvestigationMode = z.infer<typeof InvestigationMode>;

@@ -48,6 +48,15 @@ export const queryKeys = {
     timeline: (id: string, include: readonly string[]) =>
       ['incidents', 'timeline', id, [...include].sort().join(',')] as const,
     sla: (id: string) => ['incidents', 'sla', id] as const,
+    chain: (id: string) => ['incidents', 'chain', id] as const,
+  },
+  // P-5.3. Evidence is immutable, so a fetched record never needs refetching — but a **download
+  // target expires**, so it is keyed apart and never cached beyond its lifetime.
+  evidence: {
+    all: () => ['evidence'] as const,
+    list: (params?: Record<string, unknown>) => ['evidence', 'list', params ?? {}] as const,
+    detail: (id: string) => ['evidence', 'detail', id] as const,
+    custody: (id: string) => ['evidence', 'custody', id] as const,
   },
   notifications: {
     all: () => ['notifications'] as const,

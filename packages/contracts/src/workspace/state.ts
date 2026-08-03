@@ -46,9 +46,20 @@ import { WorkspacePanelId, WorkspaceRegion } from './workspace.js';
  */
 export const WORKSPACE_STATE_SCHEMA_VERSION = 1;
 
-/** One panel's remembered presentation. Every field is view state; none of it is data. */
+/**
+ * One panel's remembered presentation. Every field is view state; none of it is data.
+ *
+ * ⚠️ **`panelVersion` is per panel, and that is the whole point** (P-5.3, rec 3). The requirement —
+ * *future panel evolution must never invalidate saved layouts* — is not met by a global counter: a
+ * global bump discards every panel's state to fix one. A per-panel version lets exactly the panel
+ * whose state shape changed be reset to its registry default while every other panel's sizing,
+ * collapse and dock survive untouched.
+ *
+ * Absent means version 1, so every layout saved before this field existed keeps working.
+ */
 export const WorkspacePanelState = z.object({
   panelId: WorkspacePanelId,
+  panelVersion: z.number().int().min(1).optional(),
   collapsed: z.boolean().optional(),
   hidden: z.boolean().optional(),
   /** Along the region's resize axis — see `regionAxis`. */
@@ -108,7 +119,17 @@ export const WorkspaceUiState = z.object({
   /** Part of the storage scope, repeated here so a mis-scoped read is detectable rather than silent. */
   tenantId: TenantId,
   principalId: z.string().min(1),
-  /** The layout this state was captured against, so a panel added later is defaulted, not dropped. */
+  /**
+   * The layout this state was captured against, so a panel added later is defaulted, not dropped.
+   *
+   * ⚠️ **There is deliberately no third `migrationVersion`.** The review asked for three counters;
+   * two answer distinct questions and a third answers none. `schemaVersion` asks *can this file
+   * still be parsed* (a mismatch discards everything); `layoutVersion` asks *which panels existed
+   * when this was saved* (a mismatch discards nothing, because per-panel state is independently
+   * defaulted); `panelVersion` asks *is this one panel's state still meaningful*. A migration
+   * counter would have to mean one of those three, and whichever it meant, two numbers would then
+   * have to agree forever.
+   */
   layoutVersion: z.number().int().min(1),
   panels: z.array(WorkspacePanelState).max(50).default([]),
   view: WorkspaceViewState.default({}),

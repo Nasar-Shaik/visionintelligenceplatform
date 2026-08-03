@@ -385,8 +385,41 @@ export const PlaybackClockConfidence = z.enum([
 ]);
 export type PlaybackClockConfidence = z.infer<typeof PlaybackClockConfidence>;
 
+/**
+ * How a source's time was reconciled with the group's clock (P-5.3, rec 5).
+ *
+ * ⚠️ Recorded because the *method* is the claim. "The device said so" and "we matched a visible
+ * event across two views" support very different assertions about simultaneity, and an operator
+ * comparing two cameras is entitled to know which one they are relying on.
+ */
+export const PlaybackAlignmentMethod = z.enum([
+  /** The recording's own timestamps, taken at face value. The default, and the weakest. */
+  'declared-timestamp',
+  /** The source is NTP/PTP disciplined and the platform verified it. */
+  'time-protocol',
+  /** An operator aligned the views by hand against a shared visible moment. */
+  'manual',
+  /** A shared event (a door opening, a flash) was matched across sources. */
+  'shared-event',
+  /** ⚠️ Not reconciled at all. The group carries the sources side by side and claims nothing. */
+  'none',
+]);
+export type PlaybackAlignmentMethod = z.infer<typeof PlaybackAlignmentMethod>;
+
 export const PlaybackClockAccuracy = z.object({
   confidence: PlaybackClockConfidence,
+  /** How the reconciliation was made (rec 5). Absent ⇒ `declared-timestamp`. */
+  method: PlaybackAlignmentMethod.optional(),
+  /** Where the time came from: an NTP server, a device model, an operator's id. */
+  source: z.string().min(1).max(200).optional(),
+  /**
+   * Estimated drift against the group's clock, in seconds (rec 5).
+   *
+   * ⚠️ Distinct from `offsetSeconds`: an offset is a **measured, correctable** difference; drift is
+   * the **estimated residual** after correcting. A player may shift by the offset; it may not shift
+   * by the drift, because the drift is what nobody knows.
+   */
+  estimatedDriftSeconds: z.number().min(0).optional(),
   /** Known offset from platform time, in seconds. Positive means the source runs fast. */
   offsetSeconds: z.number().optional(),
   /**

@@ -57,6 +57,8 @@ export const WorkspacePanelId = z.enum([
   'incident-queue',
   'saved-investigations',
   'filters',
+  /** P-5.3 — what is and is not answering, explained rather than silently hidden. */
+  'workspace-health',
   // center — the thing being investigated
   'evidence-viewer',
   'video-playback',
@@ -68,6 +70,8 @@ export const WorkspacePanelId = z.enum([
   'comments',
   'attachments',
   'ai-recommendations',
+  /** P-5.3 — camera → detection → rule → incident → evidence → playback → export → report. */
+  'evidence-chain',
   // bottom — what it relates to
   'related-events',
   'related-incidents',
@@ -280,7 +284,9 @@ export type WorkspaceLayout = z.infer<typeof WorkspaceLayout>;
  * Panels are listed region by region in the order the Architect gave them.
  */
 export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
-  version: 1,
+  /* v2 (P-5.3): + workspace-health, + evidence-chain. Additive — a saved layout keeps working,
+   * because per-panel state is defaulted independently (see `WorkspacePanelState.panelVersion`). */
+  version: 2,
   panels: [
     {
       id: 'incident-queue',
@@ -338,6 +344,24 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       detachable: false,
       priority: 50,
       persistenceKey: 'vip.workspace.filters',
+    },
+    {
+      id: 'workspace-health',
+      region: 'left',
+      order: 30,
+      title: 'What Is Answering',
+      source: 'client',
+      permission: 'incident:read',
+      availability: 'available',
+      minSizePx: 260,
+      maxSizePx: 520,
+      resizable: true,
+      collapsible: true,
+      hideable: true,
+      floatable: false,
+      detachable: false,
+      priority: 55,
+      persistenceKey: 'vip.workspace.workspace-health',
     },
     {
       id: 'evidence-viewer',
@@ -427,6 +451,24 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
       detachable: false,
       priority: 40,
       persistenceKey: 'vip.workspace.rule-explanation',
+    },
+    {
+      id: 'evidence-chain',
+      region: 'right',
+      order: 15,
+      title: 'Evidence Chain',
+      source: 'workflow',
+      permission: 'incident:read',
+      availability: 'available',
+      minSizePx: 300,
+      maxSizePx: 560,
+      resizable: true,
+      collapsible: true,
+      hideable: true,
+      floatable: false,
+      detachable: false,
+      priority: 25,
+      persistenceKey: 'vip.workspace.evidence-chain',
     },
     {
       id: 'assignments',
@@ -567,3 +609,92 @@ export const INVESTIGATION_WORKSPACE_LAYOUT: WorkspaceLayout = {
     },
   ],
 };
+
+// ---------------------------------------------------------------------------------------------
+// P-5.3 rec 2 — workspace profiles. **Default layouts only.**
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A role-shaped starting point for the workspace.
+ *
+ * ⚠️ **A profile is a default, not a policy.** It decides which panels start visible and how they
+ * are sized; it decides nothing about what an operator *may* see — that is the permission on each
+ * panel, checked independently. A profile that could hide a panel the principal is entitled to
+ * would be a second, weaker authorisation system, and the two would eventually disagree about who
+ * can see what.
+ *
+ * ⚠️ **It is also not a role.** `Role` in `@vip/permissions` grants authority. This grants a layout.
+ * Naming them the same would invite exactly the conflation above, so a profile is chosen by the
+ * operator and may be changed at will.
+ *
+ * ⚠️ **Frozen with no store.** Nothing persists a profile selection yet.
+ */
+export const WorkspaceProfileId = z.enum([
+  /** Deep single-incident work: evidence and timeline dominant, queue narrow. */
+  'investigator',
+  /** Triage across many incidents: queue and filters dominant, detail compact. */
+  'security-operator',
+  /** Oversight: assignment, SLA and related incidents forward. */
+  'supervisor',
+  /** Configuration and audit: audit trail and rule explanation forward. */
+  'administrator',
+  /** Read-only summary: the fewest panels that still tell the story. */
+  'executive',
+]);
+export type WorkspaceProfileId = z.infer<typeof WorkspaceProfileId>;
+
+export const WorkspaceProfile = z.object({
+  id: WorkspaceProfileId,
+  title: z.string().min(1).max(80),
+  description: z.string().min(1).max(300),
+  /**
+   * Panels this profile starts with **hidden**. Everything else starts visible.
+   *
+   * ⚠️ Stated as an exclusion list rather than an inclusion list on purpose: a new panel added to
+   * the registry then appears for every profile by default, which is the additive behaviour. An
+   * inclusion list would silently hide every future panel from every existing profile.
+   */
+  hiddenPanels: z.array(WorkspacePanelId).max(20).default([]),
+  /** Panels this profile starts collapsed. */
+  collapsedPanels: z.array(WorkspacePanelId).max(20).default([]),
+});
+export type WorkspaceProfile = z.infer<typeof WorkspaceProfile>;
+
+/** **The frozen profiles** (P-5.3). Defaults only — see the note above. */
+export const WORKSPACE_PROFILES: readonly WorkspaceProfile[] = [
+  {
+    id: 'investigator',
+    title: 'Investigator',
+    description: 'Deep work on one incident: evidence, playback and the timeline stay open.',
+    hiddenPanels: [],
+    collapsedPanels: ['filters'],
+  },
+  {
+    id: 'security-operator',
+    title: 'Security Operator',
+    description: 'Triage across the queue: filters open, single-incident detail compact.',
+    hiddenPanels: ['rule-explanation'],
+    collapsedPanels: ['attachments', 'audit-trail'],
+  },
+  {
+    id: 'supervisor',
+    title: 'Supervisor',
+    description: 'Oversight: assignment, SLA and related incidents forward.',
+    hiddenPanels: [],
+    collapsedPanels: ['evidence-viewer', 'attachments'],
+  },
+  {
+    id: 'administrator',
+    title: 'Administrator',
+    description: 'Configuration and audit: why a rule fired, and who did what.',
+    hiddenPanels: [],
+    collapsedPanels: ['comments'],
+  },
+  {
+    id: 'executive',
+    title: 'Executive',
+    description: 'The fewest panels that still tell the story.',
+    hiddenPanels: ['filters', 'attachments', 'audit-trail', 'related-events', 'rule-explanation'],
+    collapsedPanels: ['comments', 'assignments'],
+  },
+];

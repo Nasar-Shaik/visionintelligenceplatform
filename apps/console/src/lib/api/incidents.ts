@@ -1,5 +1,6 @@
 import type {
   AcknowledgeIncidentInput,
+  EvidenceChain,
   AddIncidentNoteInput,
   AssignIncidentInput,
   CloseIncidentInput,
@@ -63,6 +64,13 @@ export const incidentsApi = {
 
   /** ⚠️ Returns `state: 'unknown'` when the deployment configured no policy — never `met`. */
   sla: (id: string) => http.get<IncidentSlaStatus>(`/workflow/incidents/${id}/sla`),
+
+  /**
+   * The evidence chain (P-5.3) — camera → detection → rule → incident → evidence → playback →
+   * export → report. ⚠️ Unresolved stages carry **which of six reasons** applies, so a customer
+   * never reads a broken link as lost data.
+   */
+  chain: (id: string) => http.get<EvidenceChain>(`/workflow/incidents/${id}/chain`),
 
   acknowledge: (id: string, input: AcknowledgeIncidentInput = {}) =>
     http.post<Incident>(`/workflow/incidents/${id}/ack`, input),

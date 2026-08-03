@@ -8,7 +8,7 @@
  */
 import type { ReactElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, FileVideo, Link2, MessageSquare, Sparkles } from 'lucide-react';
+import { AlertTriangle, Link2, Sparkles } from 'lucide-react';
 import type {
   Incident,
   IncidentTimeline,
@@ -22,6 +22,13 @@ import { EmptyState, QueryBoundary, SeverityBadge, Skeleton, TableSkeleton } fro
 import { timeAgo } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import { INCIDENT_STATUS } from '@/features/incidents/status';
+import {
+  AssignmentPanel as AssignmentPanelP53,
+  CommentsPanel as CommentsPanelP53,
+  EvidenceChainPanel,
+  EvidencePanel as EvidencePanelP53,
+  WorkspaceHealthPanel,
+} from './panels-p53';
 
 export interface PanelContext {
   incidentId: string | undefined;
@@ -128,56 +135,6 @@ function FiltersPanel({ filters, setFilters }: PanelContext) {
 // ---------------------------------------------------------------------------------------------
 // Centre region
 // ---------------------------------------------------------------------------------------------
-
-function EvidencePanel({ incidentId, unavailableReason }: PanelContext) {
-  const query = useIncident(incidentId);
-  const attachments =
-    query.data?.notes.flatMap((note) =>
-      note.attachments.filter((attachment) => attachment.kind === 'evidence'),
-    ) ?? [];
-
-  return (
-    <QueryBoundary
-      unavailableReason={unavailableReason}
-      isLoading={incidentId !== undefined && query.isPending}
-      isError={query.isError}
-      error={query.error}
-      isEmpty={incidentId === undefined || attachments.length === 0}
-      skeleton={<Skeleton className="h-40 w-full" />}
-      emptyState={
-        <EmptyState
-          icon={FileVideo}
-          title={incidentId === undefined ? 'No incident selected' : 'No evidence attached'}
-          description={
-            incidentId === undefined
-              ? NO_INCIDENT
-              : 'Nothing has been captured or attached for this incident yet.'
-          }
-        />
-      }
-    >
-      <ul className="grid grid-cols-2 gap-2">
-        {attachments.map((attachment) => (
-          <li
-            key={attachment.ref}
-            className="flex flex-col gap-1 rounded border border-border bg-surface-2 p-2"
-          >
-            <span className="truncate text-xs text-text">{attachment.label ?? attachment.ref}</span>
-            <span className="font-mono text-2xs text-text-subtle">{attachment.ref}</span>
-          </li>
-        ))}
-      </ul>
-    </QueryBoundary>
-  );
-}
-
-/**
- * ⚠️ Playback is declared **unavailable at the panel level**, not rendered as an empty player.
- *
- * The playback contracts were frozen in P-5.2.0 and no service resolves a `PlaybackSession` yet.
- * An empty video shell with disabled controls would read as "there is no footage" — a claim about
- * the recording rather than about the platform.
- */
 function PlaybackPanel({ unavailableReason }: PanelContext) {
   return (
     <QueryBoundary
@@ -313,25 +270,6 @@ function DetailsPanel({ incidentId, unavailableReason }: PanelContext) {
   );
 }
 
-function Row({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value?: string | undefined;
-  mono?: boolean | undefined;
-}) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-2xs uppercase tracking-wide text-text-subtle">{label}</dt>
-      <dd className={cn('truncate text-text', mono === true && 'font-mono text-2xs')}>
-        {value ?? '—'}
-      </dd>
-    </div>
-  );
-}
-
 function RuleExplanationPanel({ incidentId, unavailableReason }: PanelContext) {
   const query = useIncident(incidentId);
   return (
@@ -362,78 +300,24 @@ function RuleExplanationPanel({ incidentId, unavailableReason }: PanelContext) {
   );
 }
 
-function AssignmentPanel({ incidentId, unavailableReason }: PanelContext) {
-  const query = useIncident(incidentId);
-  const assignments = query.data?.assignments ?? [];
+function Row({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value?: string | undefined;
+  mono?: boolean | undefined;
+}) {
   return (
-    <QueryBoundary
-      unavailableReason={unavailableReason}
-      isLoading={incidentId !== undefined && query.isPending}
-      isError={query.isError}
-      error={query.error}
-      isEmpty={incidentId === undefined || assignments.length === 0}
-      skeleton={<Skeleton className="h-12 w-full" />}
-      emptyState={
-        <EmptyState
-          icon={AlertTriangle}
-          title={incidentId === undefined ? 'No incident selected' : 'Unassigned'}
-          description={
-            incidentId === undefined
-              ? NO_INCIDENT
-              : 'Nobody owns this incident yet — a legitimate resting state, not an error.'
-          }
-        />
-      }
-    >
-      <ul className="flex flex-col gap-1 text-xs">
-        {assignments.map((assignment, index) => (
-          <li key={`${assignment.at}-${index}`} className="flex justify-between gap-2">
-            <span className="text-text">{assignment.to ?? 'unassigned'}</span>
-            <span className="text-2xs text-text-subtle">{timeAgo(assignment.at)}</span>
-          </li>
-        ))}
-      </ul>
-    </QueryBoundary>
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="text-2xs uppercase tracking-wide text-text-subtle">{label}</dt>
+      <dd className={cn('truncate text-text', mono === true && 'font-mono text-2xs')}>
+        {value ?? '—'}
+      </dd>
+    </div>
   );
 }
-
-function CommentsPanel({ incidentId, unavailableReason }: PanelContext) {
-  const query = useIncident(incidentId);
-  const notes = query.data?.notes ?? [];
-  return (
-    <QueryBoundary
-      unavailableReason={unavailableReason}
-      isLoading={incidentId !== undefined && query.isPending}
-      isError={query.isError}
-      error={query.error}
-      isEmpty={incidentId === undefined || notes.length === 0}
-      skeleton={<Skeleton className="h-16 w-full" />}
-      emptyState={
-        <EmptyState
-          icon={MessageSquare}
-          title={incidentId === undefined ? 'No incident selected' : 'No comments'}
-          description={
-            incidentId === undefined ? NO_INCIDENT : 'Nobody has written anything on this incident.'
-          }
-        />
-      }
-    >
-      <ul className="flex flex-col gap-2">
-        {notes.map((note) => (
-          <li key={note.id} className="rounded border border-border bg-surface-2 p-2">
-            <p className="text-xs text-text">{note.body}</p>
-            <p className="mt-1 text-2xs text-text-subtle">
-              {/* ⚠️ `unknown` is shown as such — a pre-P-5.1 record cannot be honestly attributed. */}
-              {note.actor?.kind === 'unknown' ? 'unattributed' : (note.by ?? 'unknown')} ·{' '}
-              {timeAgo(note.at)}
-            </p>
-          </li>
-        ))}
-      </ul>
-    </QueryBoundary>
-  );
-}
-
 function AttachmentsPanel({ incidentId, unavailableReason }: PanelContext) {
   const query = useIncident(incidentId);
   const attachments = query.data?.notes.flatMap((note) => note.attachments) ?? [];
@@ -637,13 +521,17 @@ export const PANEL_BODIES: Record<WorkspacePanelId, (context: PanelContext) => R
   'incident-queue': IncidentQueuePanel,
   'saved-investigations': SavedInvestigationsPanel,
   filters: FiltersPanel,
-  'evidence-viewer': EvidencePanel,
+  'workspace-health': WorkspaceHealthPanel,
+  // P-5.3 — the evidence panel now reads the Evidence context rather than deriving from notes.
+  'evidence-viewer': EvidencePanelP53,
   'video-playback': PlaybackPanel,
   timeline: TimelinePanel,
   'incident-details': DetailsPanel,
   'rule-explanation': RuleExplanationPanel,
-  assignments: AssignmentPanel,
-  comments: CommentsPanel,
+  'evidence-chain': EvidenceChainPanel,
+  // P-5.3 — these two became writable.
+  assignments: AssignmentPanelP53,
+  comments: CommentsPanelP53,
   attachments: AttachmentsPanel,
   'ai-recommendations': AiRecommendationsPanel,
   'related-events': RelatedEventsPanel,

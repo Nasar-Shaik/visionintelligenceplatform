@@ -17,6 +17,7 @@ import {
 import { server } from '@/test/server';
 import { renderWithProviders } from '@/test/render';
 import { resolveLayout, viewportTier } from './layout';
+import { deriveWorkspaceHealth } from './health';
 import { useWorkspaceState } from './useWorkspaceState';
 import { displayChord, matchesChord } from './useCommands';
 import { PANEL_BODIES } from './panels';
@@ -297,5 +298,95 @@ describe('the timeline panel tells an operator which kind of absence they are lo
       await screen.findByText(/don’t have permission to read this context/),
     ).toBeInTheDocument();
     expect(screen.getByText(/could not be reached/)).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// P-5.3 — workspace health, and the layout's additive growth.
+// ---------------------------------------------------------------------------------------------
+
+describe('workspace health — derived, never probed', () => {
+  const now = new Date('2026-08-03T00:00:00.000Z');
+
+  /*
+   * ⚠️ The design decision, asserted: health adds **zero** upstream calls. It projects over the
+   * timeline the workspace already fetched. A probe fan-out would put seven calls on the busiest
+   * screen in the product to answer a question the screen already answered.
+   */
+  it('⚠️ derives every dependency from a timeline that was already fetched', () => {
+    const health = deriveWorkspaceHealth({
+      tenantId: 'tnt_a',
+      now,
+      timeline: {
+        incidentId: '11111111-1111-4111-8111-111111111111',
+        incidentVersion: 1,
+        entries: [],
+        sources: ['incident', 'events', 'evidence', 'notify'],
+        gaps: [
+          { source: 'events', reason: 'forbidden', detail: 'not permitted to read events' },
+          { source: 'evidence', reason: 'truncated', detail: 'showing the most recent 200' },
+        ],
+        derivedAt: now.toISOString(),
+      },
+    });
+
+    const byDep = Object.fromEntries(health.dependencies.map((d) => [d.dependency, d]));
+    expect(byDep['events']?.state).toBe('forbidden');
+    /* ⚠️ Truncated is degraded, not ready — the source answered, and answered incompletely. */
+    expect(byDep['evidence']?.state).toBe('degraded');
+    expect(byDep['notifications']?.state).toBe('ready');
+  });
+
+  /*
+   * ⚠️ Three different kinds of "not working", because each leads to a different action: wait for a
+   * release, change a config, page someone.
+   */
+  it('⚠️ reports the capabilities with no producer as not-built, with a reason', () => {
+    const health = deriveWorkspaceHealth({ tenantId: 'tnt_a', now });
+    const byDep = Object.fromEntries(health.dependencies.map((d) => [d.dependency, d]));
+
+    for (const dependency of ['ai', 'playback', 'jobs', 'search'] as const) {
+      expect(byDep[dependency]?.state).toBe('not-built');
+      expect(byDep[dependency]?.detail).toBeTruthy();
+    }
+    expect(byDep['ai']?.detail).toContain('nothing has analysed');
+  });
+
+  /* ⚠️ An unexercised dependency and a working one are indistinguishable from here. */
+  it('⚠️ reports a dependency nothing exercised as unknown, never ready', () => {
+    const health = deriveWorkspaceHealth({ tenantId: 'tnt_a', now });
+    const events = health.dependencies.find((d) => d.dependency === 'events');
+    expect(events?.state).toBe('unknown');
+    expect(events?.observedAt).toBeUndefined();
+  });
+
+  it('points each dependency at the panels an operator can see it in', () => {
+    const health = deriveWorkspaceHealth({ tenantId: 'tnt_a', now });
+    const evidence = health.dependencies.find((d) => d.dependency === 'evidence');
+    expect(evidence?.panels).toContain('evidence-viewer');
+  });
+});
+
+describe('the layout grew additively in P-5.3', () => {
+  it('carries the two new panels and still resolves every one to a body', () => {
+    const ids = INVESTIGATION_WORKSPACE_LAYOUT.panels.map((p) => p.id);
+    expect(ids).toContain('workspace-health');
+    expect(ids).toContain('evidence-chain');
+    expect(Object.keys(PANEL_BODIES).sort()).toEqual([...ids].sort());
+  });
+
+  /*
+   * ⚠️ The point of per-panel state: adding two panels must not discard an operator's saved sizes.
+   * A layout saved against v1 still applies, and the new panels take their registry defaults.
+   */
+  it('⚠️ still applies a layout saved before the new panels existed', () => {
+    const layout = resolveLayout({
+      can: allow,
+      tier: 'wide',
+      panelState: [{ panelId: 'incident-queue', sizePx: 400, collapsed: false }],
+    });
+    const queue = layout.regions.left.find((r) => r.panel.id === 'incident-queue');
+    expect(queue?.sizePx).toBe(400);
+    expect(layout.regions.left.some((r) => r.panel.id === 'workspace-health')).toBe(true);
   });
 });

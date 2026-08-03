@@ -563,12 +563,31 @@ export type IncidentSlaStatus = z.infer<typeof IncidentSlaStatus>;
  *
  * `basis` and `producer` are required in spirit: an unattributable suggestion sitting in an
  * investigation record is indistinguishable from a finding, which is how it ends up in a report.
+ *
+ * ### ⚠️ "AI must never mutate without explicit human approval" — the platform goes further
+ *
+ * The P-5.3 review asked that AI never mutate incidents, evidence or rules *without explicit human
+ * approval*. On this platform an AI cannot mutate them **with** approval either, and that is a
+ * stronger guarantee, not a weaker one: an "approve this AI action" flow requires an AI-authored
+ * mutation to exist in order to be approved, and it would then be written into an immutable audit
+ * trail attributed — however carefully worded — to a machine.
+ *
+ * Instead, acting on a recommendation is an **ordinary operator action**. A human reads it and
+ * resolves the incident themselves; the audit trail records the human, because the human decided.
+ * The recommendation is `basis` for that decision, traceable through `IncidentRecommendation.id`,
+ * and nothing in the history is attributed to a model. Enforced three ways: no AI-writable
+ * permission exists, `assertMayMutate` refuses an `ai-advisor` actor, and `CommandRegistry` refuses
+ * an `ai-assistant` binding on a mutating command.
  */
 export const IncidentRecommendationKind = z.enum([
   'summary',
   'similar-incidents',
   'root-cause',
   'suggested-action',
+  // P-5.3 rec 11 — reserved categories. **No producer emits any of these.**
+  'similar-cameras',
+  'similar-rules',
+  'similar-evidence',
 ]);
 export type IncidentRecommendationKind = z.infer<typeof IncidentRecommendationKind>;
 

@@ -367,3 +367,57 @@ export const SearchResponse = z.object({
   derivedAt: IsoDateTime,
 });
 export type SearchResponse = z.infer<typeof SearchResponse>;
+
+// ---------------------------------------------------------------------------------------------
+// P-5.3 rec 10 — facets, reserved.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A dimension results can be narrowed by. **Reserved: nothing computes a facet count today.**
+ *
+ * ⚠️ **A facet is a promise about an index, not a UI affordance.** Rendering "Camera (14)" beside a
+ * search box requires grouping and counting the whole matching set — an aggregation, not a bounded
+ * page — and doing that without an index is the collection scan entry criterion G-4 forbids. So the
+ * facets are declared, and `SearchFacet.counted` states whether the number is real.
+ *
+ * The list mirrors the review's: Incident, Rule, Camera, Evidence, Operator, Location, Time and AI
+ * Detection. Note that `entity` is not among them — entity *is* the grouping (`SearchResultGroup`),
+ * and a facet over it would be a second, weaker spelling of the same thing.
+ */
+export const SearchFacetKind = z.enum([
+  'severity',
+  'status',
+  'category',
+  'camera',
+  'location',
+  'rule',
+  'operator',
+  /** Bucketed time — hour, day, week. The bucketing is the server's, stated per facet. */
+  'time',
+  /** ⚠️ Reserved. Faceting by detection class needs an index the perception path does not have. */
+  'ai-detection',
+]);
+export type SearchFacetKind = z.infer<typeof SearchFacetKind>;
+
+export const SearchFacetValue = z.object({
+  value: z.string().min(1).max(200),
+  label: z.string().min(1).max(200).optional(),
+  /** ⚠️ Absent when `counted` is false — never a placeholder zero. */
+  count: z.number().int().min(0).optional(),
+});
+export type SearchFacetValue = z.infer<typeof SearchFacetValue>;
+
+export const SearchFacet = z.object({
+  kind: SearchFacetKind,
+  entity: SearchEntityKind,
+  /**
+   * ⚠️ Whether the counts are real. `false` means the values are offered as filters but the numbers
+   * beside them are not computed — which is an honest, useful facet, and a *different* thing from
+   * one showing zeroes.
+   */
+  counted: z.boolean(),
+  values: z.array(SearchFacetValue).max(50).default([]),
+  /** Required when `counted` is false. */
+  limitation: z.string().min(1).max(300).optional(),
+});
+export type SearchFacet = z.infer<typeof SearchFacet>;

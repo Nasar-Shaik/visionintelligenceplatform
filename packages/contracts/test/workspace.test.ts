@@ -299,10 +299,14 @@ describe('WorkspaceUiState — references, never records', () => {
     expect(workspaceStateKey('tnt_a', 'usr_1')).not.toBe(workspaceStateKey('tnt_b', 'usr_1'));
   });
 
-  it('keeps the state schema version independent of the layout version', () => {
-    /* Bumping the layout must not discard saved sizes; bumping this must. */
+  /*
+   * ⚠️ The two counters have now genuinely diverged: P-5.3 added two panels (layout v2) and did not
+   * change the persisted shape (schema v1). That is exactly the independence they exist for — a
+   * single counter would have discarded every operator's saved sizes to add a panel.
+   */
+  it('⚠️ keeps the state schema version independent of the layout version', () => {
     expect(WORKSPACE_STATE_SCHEMA_VERSION).toBe(1);
-    expect(INVESTIGATION_WORKSPACE_LAYOUT.version).toBe(1);
+    expect(INVESTIGATION_WORKSPACE_LAYOUT.version).toBeGreaterThan(WORKSPACE_STATE_SCHEMA_VERSION);
   });
 });
 

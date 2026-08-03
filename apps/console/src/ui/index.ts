@@ -81,6 +81,7 @@ export { MetricCard } from './soc/metric-card';
 export { NotificationCard } from './soc/notification-card';
 export type { DeliveryStatus, NotificationChannelKind } from './soc/notification-card';
 export { PageHeader } from './soc/page-header';
+export { PageSkeleton } from './soc/page-skeleton';
 export type { Breadcrumb } from './soc/page-header';
 export { QueryBoundary, UnavailableState } from './soc/query-boundary';
 export { SeverityBadge, SEVERITY_BORDER } from './soc/severity-badge';

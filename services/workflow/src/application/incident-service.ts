@@ -24,6 +24,7 @@ import type {
   IncidentQuery,
   InvestigateIncidentInput,
   ResolveIncidentInput,
+  EvidenceChain,
 } from '@vip/contracts';
 import type { TenantScope } from '@vip/tenancy';
 import { canApply, isTerminal, type IncidentAction } from '../domain/incident-state.js';
@@ -39,8 +40,10 @@ import {
   buildTimeline,
   MAX_ENTRIES_PER_SOURCE,
   UPSTREAM_TIMEOUT_MS,
+  type RelatedEvidence,
   type TimelineInputs,
 } from '../domain/incident-timeline.js';
+import { buildChain, type ChainInputs } from '../domain/incident-chain.js';
 import { deriveSla, policyFor } from '../domain/incident-sla.js';
 import { assertMayMutate, operatorActor } from '../domain/incident-actor.js';
 import { conflict, notFound } from './errors.js';
@@ -357,6 +360,57 @@ export class IncidentService {
     if (evidence) inputs.evidence = evidence;
     if (automation) inputs.automation = automation;
     return buildTimeline(inputs);
+  }
+
+  /**
+   * The evidence chain (P-5.3, rec 7) — camera → detection → rule → incident → evidence → playback
+   * → export → report, derived.
+   *
+   * ⚠️ **One upstream call, not eight.** Four stages come from the incident document itself (it
+   * carries the camera, the triggering event and the rule as provenance copied at promotion), three
+   * have no producer at all, and only evidence needs a read — the same bounded, caller-scoped read
+   * the timeline makes. A chain that resolved every stage by fetching would be eight fan-outs on a
+   * panel, which is the shape §54 exists to prevent.
+   */
+  async chain(scope: TenantScope, id: string, caller?: TimelineCaller): Promise<EvidenceChain> {
+    const incident = await this.getOrThrow(scope, id);
+    const failures: {
+      source: IncidentTimelineSource;
+      reason: 'unavailable' | 'forbidden';
+      detail: string;
+    }[] = [];
+
+    let evidence: { items: RelatedEvidence[]; truncated: boolean } | undefined;
+    try {
+      evidence = await withTimeout(
+        this.sources.relatedEvidence(
+          scope,
+          incident.id,
+          incident.correlationId,
+          MAX_ENTRIES_PER_SOURCE,
+          caller,
+        ),
+        UPSTREAM_TIMEOUT_MS,
+        'evidence',
+      );
+    } catch (err) {
+      const forbidden =
+        typeof err === 'object' && err !== null && 'forbidden' in err && err.forbidden === true;
+      failures.push({
+        source: 'evidence',
+        reason: forbidden ? 'forbidden' : 'unavailable',
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    const chainInputs: ChainInputs = {
+      incident,
+      requested: ['evidence'],
+      failures,
+      now: this.now(),
+    };
+    if (evidence) chainInputs.evidence = evidence;
+    return buildChain(chainInputs);
   }
 
   /**

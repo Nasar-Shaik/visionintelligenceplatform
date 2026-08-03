@@ -2,17 +2,18 @@
   "name": "@vip/console",
   "version": "0.1.0",
   "private": true,
-  "description": "SOC Operations Console (P2-1) — the platform's first frontend. A thin, boundary-clean client of the API gateway (ADR-0019 / ED-0030). Types come from @vip/contracts; all data flows through the gateway. See docs/architecture/phase2/OPERATIONS_CONSOLE.md + DESIGN_SYSTEM.md.",
+  "description": "SOC Operations Console (P2-1) \u2014 the platform's first frontend. A thin, boundary-clean client of the API gateway (ADR-0019 / ED-0030). Types come from @vip/contracts; all data flows through the gateway. See docs/architecture/phase2/OPERATIONS_CONSOLE.md + DESIGN_SYSTEM.md.",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "build": "tsc -p tsconfig.json --noEmit && vite build && node scripts/check-bundle-budget.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src",
-    "clean": "rm -rf dist node_modules/.vite"
+    "clean": "rm -rf dist node_modules/.vite",
+    "perf:budget": "node scripts/check-bundle-budget.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.6",
