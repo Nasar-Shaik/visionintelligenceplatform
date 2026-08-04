@@ -571,6 +571,55 @@
     `videoTrackMissing()` after `loadedmetadata`; the overlay says a black player is not an empty
     recording._
 
+99. **A deployment is the only thing that proves a deployment.** Every verification that runs on the
+    machine that wrote the code shares that machine's coincidences. P-5.8 deployed the platform for
+    the first time and found that evidence playback had **never worked outside development** — signed
+    URLs pointed at `minio:9000`, a container-internal name no browser can resolve — after three
+    consecutive milestones verified playback and passed. — _enforced:
+    [ADR-0036](../adr/ADR-0036-browser-facing-object-storage-endpoint.md); `S3_PUBLIC_ENDPOINT`;
+    `docs/runbooks/DEPLOYMENT.md` §5 requires a human to press play._
+
+100.  **A health endpoint that cannot return the wrong answer is not a health endpoint.** Two
+      instances, both measured: `GET /health` at the edge returned the console's `index.html` with a
+      200 because the SPA fallback answers every unmatched path; and the gateway's `/ready` answered
+      `{"status":"pass","checks":[]}` unconditionally because it had never registered a dependency.
+      Both would have reported a healthy platform with all ten services down. — _enforced: explicit
+      `handle /health` and `handle /ready` at the edge; a NATS readiness check on the gateway; the
+      production checklist requires proving the probe can fail._
+
+101.  **A probe that hangs is worse than a probe that fails.** A failure is legible to a load
+      balancer; a stall just consumes its timeout and reports nothing. Measured: `/ready` produced no
+      response for ~25 seconds after the broker stopped, because `flush()` blocks through the client's
+      reconnect window. — _enforced: `NatsEventBus.ping(timeoutMs = 1000)`; exceeding the bound **is**
+      the negative answer._
+
+102.  **A backbone client waits for its broker for as long as the broker is gone.** The NATS client
+      default is ten reconnect attempts two seconds apart, so an outage over ~20 seconds closed the
+      connection permanently and the gateway never recovered. Every consumer shares one adapter, so a
+      single default turned a routine broker restart into a platform-wide outage needing manual
+      intervention. — _enforced: `maxReconnectAttempts: -1` with bounded jittered backoff in
+      `NatsEventBus.connect`._
+
+103.  **A build that succeeds is not an artefact that runs.** A circular chunk dependency shipped a
+      blank console to the production deployment: `vite build` succeeded, the bundle budget passed and
+      1,300 tests were green, because none of them loads the built bundle. ES module cycles evaluate
+      against uninitialised bindings. — _enforced: `check-bundle-budget.mjs` fails on any chunk cycle;
+      `manualChunks` splits by package **name**, never by path substring — under pnpm a substring also
+      matches the peer hash in the virtual-store directory._
+
+104.  **Bootstrap tooling must fail closed in production.** The seed that a deployment guide tells an
+      operator to run hard-coded the development password on an **owner** account, and printed it. —
+      _enforced: `resolveSeedPassword` requires a 12+ character `SEED_PASSWORD` under
+      `NODE_ENV=production` and refuses the dev default; compose declares it `${SEED_PASSWORD:?}`; a
+      supplied password is never echoed, because that output lands in a deployment log._
+
+105.  **Investigative metadata must not outlive a session on a shared workstation.** Tokens were
+      handled correctly — an access token is never persisted — but the workspace state key survived
+      logout carrying the principal id and the incident ids the operator had open, telling the next
+      person at the terminal who was here and what they were investigating. — _enforced:
+      `tokenStore.clear()` removes every `vip.workspace.state.*` key; pinned by
+      `tokenStore.test.ts`._
+
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._

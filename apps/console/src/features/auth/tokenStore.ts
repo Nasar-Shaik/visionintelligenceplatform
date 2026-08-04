@@ -41,5 +41,41 @@ export const tokenStore = {
   clear(): void {
     storage.removeItem(REFRESH_KEY);
     storage.removeItem(TENANT_KEY);
+    clearInvestigativeResidue();
   },
 };
+
+/**
+ * Per-operator state that must not outlive a session on a shared workstation.
+ *
+ * ⚠️ Found in P-5.8 by logging out of the production deployment and reading `localStorage`. The
+ * tokens were cleared correctly — an access token is never persisted at all — but
+ * `vip.workspace.state.<tenant>.<principal>` survived, and it holds the principal id and **the
+ * incident ids the operator had open**. On a shared SOC terminal that tells the next person who was
+ * here and what they were investigating. It is not evidence, so nothing was cached outside approved
+ * storage; it is investigative metadata, and it has no reason to persist past sign-out.
+ *
+ * ⚠️ Cleared on logout, not disabled: surviving a page refresh is the whole point of the workspace
+ * state (P-5.2), and a session that ends is exactly the boundary where it should stop — the same
+ * rule the playback preferences already follow ("within the current investigation session only").
+ *
+ * Prefix-matched rather than keyed by principal, because at logout the caller may no longer know
+ * which principal it was, and leaving one behind would defeat the purpose.
+ */
+const RESIDUE_PREFIXES = ['vip.workspace.state.'];
+
+function clearInvestigativeResidue(): void {
+  try {
+    const local = globalThis.localStorage;
+    if (local === undefined) return;
+    const doomed: string[] = [];
+    for (let i = 0; i < local.length; i += 1) {
+      const key = local.key(i);
+      if (key !== null && RESIDUE_PREFIXES.some((prefix) => key.startsWith(prefix)))
+        doomed.push(key);
+    }
+    for (const key of doomed) local.removeItem(key);
+  } catch {
+    /* Storage unavailable (private browsing, disabled) — nothing persisted, nothing to clear. */
+  }
+}

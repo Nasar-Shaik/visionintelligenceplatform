@@ -1,0 +1,353 @@
+# The production stack (P-5.8). Ten services, the console, the backing infrastructure and one edge.
+#
+#   docker compose -f infra/docker/docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# ⚠️ **Nothing is published except the edge.** Mongo, Redis, MinIO, NATS and all ten services bind
+# only to the compose network; the only ports on the host are 80 and 443 on the proxy. This is the
+# property that separates a deployment from a development stack, and it is verifiable rather than
+# asserted: `docker compose ps` shows one row with a host port. A database reachable from the host is
+# a database reachable from anything that can route to the host.
+#
+# ⚠️ `restart: unless-stopped` everywhere, so the recovery verification in this milestone measures
+# what an operator would actually experience — a service that is killed comes back, and the question
+# is only whether the UI recovers with it.
+#
+# See docs/guides/DEPLOYMENT.md.
+name: vip-prod
+
+# ── shared fragments ─────────────────────────────────────────────────────────────────────────────
+x-service-build: &service-build
+  context: ../..
+  dockerfile: infra/docker/Dockerfile.service
+
+x-service-env: &service-env
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  # Container-internal DSNs. These names resolve on the compose network and nowhere else.
+  MONGO_URI: mongodb://${MONGO_USER:?set MONGO_USER}:${MONGO_PASSWORD:?set MONGO_PASSWORD}@mongodb:27017/vip?authSource=admin
+  REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379
+  NATS_URL: nats://nats:4222
+  # ⚠️ No defaults for any secret. `:?` makes compose refuse to start rather than silently deploy
+  # with a development key — the failure mode that produces a "production" system signing tokens
+  # with `change_me_dev_only`.
+  JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+  JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+  JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+  CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:?set CREDENTIAL_ENCRYPTION_KEY}
+  INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY}
+  S3_ENDPOINT: http://minio:9000
+  # ⚠️ The name a **browser** uses. `S3_ENDPOINT` above resolves only on this network, so signed
+  # playback URLs built from it are unusable by any operator — measured in P-5.8, where playback
+  # returned `http://minio:9000/...` and no browser could resolve it. The edge proxies
+  # `/vip-recordings/*` to MinIO under this hostname, and SigV4 covers `Host`, so the signature is
+  # verified against exactly the name that was used.
+  S3_PUBLIC_ENDPOINT: ${VIP_PUBLIC_URL:?set VIP_PUBLIC_URL}
+  AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+  AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+  S3_RECORDINGS_BUCKET: ${S3_RECORDINGS_BUCKET:-vip-recordings}
+  S3_FORCE_PATH_STYLE: 'true'
+
+x-service-common: &service-common
+  restart: unless-stopped
+  # ⚠️ 20s to drain. The default is 10, and a service still writing an audit record when the runtime
+  # SIGKILLs it is exactly the kind of loss that immutable history cannot repair.
+  stop_grace_period: 20s
+  logging:
+    driver: json-file
+    options: { max-size: '10m', max-file: '5' }
+
+x-infra-deps: &infra-deps
+  mongodb: { condition: service_healthy }
+  nats: { condition: service_healthy }
+
+services:
+  # ══ infrastructure ═════════════════════════════════════════════════════════════════════════════
+  mongodb:
+    image: mongo:8
+    restart: unless-stopped
+    command: ['--quiet']
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:?set MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?set MONGO_PASSWORD}
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: { driver: json-file, options: { max-size: '10m', max-file: '3' } }
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      [
+        'redis-server',
+        '--appendonly',
+        'yes',
+        '--requirepass',
+        '${REDIS_PASSWORD:?set REDIS_PASSWORD}',
+      ]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD:?set REDIS_PASSWORD}', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: { driver: json-file, options: { max-size: '10m', max-file: '3' } }
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ['server', '/data']
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: { driver: json-file, options: { max-size: '10m', max-file: '3' } }
+
+  nats:
+    image: nats:2.10-alpine
+    restart: unless-stopped
+    command: ['-js', '-m', '8222', '-sd', '/data']
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '-', 'http://localhost:8222/healthz']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: { driver: json-file, options: { max-size: '10m', max-file: '3' } }
+
+  createbuckets:
+    image: minio/mc:latest
+    depends_on:
+      minio: { condition: service_healthy }
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+      S3_RECORDINGS_BUCKET: ${S3_RECORDINGS_BUCKET:-vip-recordings}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
+        mc mb --ignore-existing "local/$$S3_RECORDINGS_BUCKET" &&
+        echo "bucket ready: $$S3_RECORDINGS_BUCKET"
+    restart: 'no'
+
+  # ══ services ═══════════════════════════════════════════════════════════════════════════════════
+  # ⚠️ Every service waits for Mongo and NATS to be *healthy*, not merely started. Fail-fast config
+  # validation means a service that boots before its dependencies dies and restarts in a loop, which
+  # looks identical to a broken build in the logs.
+  identity:
+    <<: *service-common
+    build: { <<: *service-build, args: { SERVICE: identity } }
+    image: vip/identity:local
+    environment: { <<: *service-env, PORT: '8089', SERVICE_NAME: identity }
+    depends_on: *infra-deps
+
+  tenant:
+    <<: *service-common
+    build: { <<: *service-build, args: { SERVICE: tenant } }
+    image: vip/tenant:local
+    environment: { <<: *service-env, PORT: '8081', SERVICE_NAME: tenant }
+    depends_on: *infra-deps
+
+  camera:
+    <<: *service-common
+    build: { <<: *service-build, args: { SERVICE: camera } }
+    image: vip/camera:local
+    environment: { <<: *service-env, PORT: '8082', SERVICE_NAME: camera }
+    depends_on: *infra-deps
+
+  media:
+    <<: *service-common
+    build: { <<: *service-build, args: { SERVICE: media } }
+    image: vip/media:local
+    environment:
+      <<: *service-env
+      PORT: '8083'
+      SERVICE_NAME: media
+      CAMERA_URL: http://camera:8082
+    depends_on:
+      <<: *infra-deps
+      minio: { condition: service_healthy }
+
+  events:
+    <<: *service-common
+    build: { <<: *service-build, args: { SERVICE: events } }
+    image: vip/events:local
+    environment: { <<: *service-env, PORT: '8084', SERVICE_NAME: events }
+    depends_on: *infra-deps
+
+  rules:
+    <<: *service-common
+    build: { <<: *service-build, args: { SERVICE: rules } }
+    image: vip/rules:local
+    environment: { <<: *service-env, PORT: '8086', SERVICE_NAME: rules }
+    depends_on: *infra-deps
+
+  workflow:
+    <<: *service-common
+    build: { <<: *service-build, args: { SERVICE: workflow } }
+    image: vip/workflow:local
+    environment:
+      <<: *service-env
+      PORT: '8087'
+      SERVICE_NAME: workflow
+      # ⚠️ The Investigation Workspace reports its sources honestly: unset, these panels say
+      # "not configured for this deployment" even while the services behind them are running.
+      EVENTS_SERVICE_URL: http://events:8084
+      EVIDENCE_SERVICE_URL: http://evidence:8090
+      NOTIFY_SERVICE_URL: http://notify:8088
+    depends_on: *infra-deps
+
+  notify:
+    <<: *service-common
+    build: { <<: *service-build, args: { SERVICE: notify } }
+    image: vip/notify:local
+    environment: { <<: *service-env, PORT: '8088', SERVICE_NAME: notify }
+    depends_on: *infra-deps
+
+  evidence:
+    <<: *service-common
+    build: { <<: *service-build, args: { SERVICE: evidence } }
+    image: vip/evidence:local
+    environment:
+      <<: *service-env
+      PORT: '8090'
+      SERVICE_NAME: evidence
+      EVIDENCE_STORAGE_PROVIDER: s3
+      EVIDENCE_DOWNLOAD_TTL_SECONDS: ${EVIDENCE_DOWNLOAD_TTL_SECONDS:-900}
+    depends_on:
+      <<: *infra-deps
+      minio: { condition: service_healthy }
+      createbuckets: { condition: service_completed_successfully }
+
+  gateway:
+    <<: *service-common
+    build: { <<: *service-build, args: { SERVICE: gateway } }
+    image: vip/gateway:local
+    environment:
+      <<: *service-env
+      PORT: '8080'
+      SERVICE_NAME: gateway
+      IDENTITY_URL: http://identity:8089
+      TENANT_URL: http://tenant:8081
+      CAMERA_URL: http://camera:8082
+      MEDIA_URL: http://media:8083
+      EVENTS_URL: http://events:8084
+      RULES_URL: http://rules:8086
+      WORKFLOW_URL: http://workflow:8087
+      NOTIFY_URL: http://notify:8088
+      EVIDENCE_URL: http://evidence:8090
+      STREAM_ENABLED: 'true'
+      # ⚠️ Empty on purpose. The console is served from the same origin as the API, so no
+      # cross-origin request is ever made and no origin needs allowing. An entry here would widen
+      # the surface for nothing.
+      CORS_ALLOWED_ORIGINS: ''
+    depends_on: *infra-deps
+
+  # ══ edge ═══════════════════════════════════════════════════════════════════════════════════════
+  console:
+    <<: *service-common
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.console
+    image: vip/console:local
+
+  proxy:
+    <<: *service-common
+    image: caddy:2-alpine
+    ports:
+      - '${VIP_HTTP_PORT:-80}:80'
+      - '${VIP_HTTPS_PORT:-443}:443'
+    environment:
+      VIP_PUBLIC_URL: ${VIP_PUBLIC_URL:-https://localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The internal CA's root key lives here; losing it means every client re-trusts a new CA.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - gateway
+      - console
+      - minio
+
+  # ══ bootstrap (profile: seed) ══════════════════════════════════════════════════════════════════
+  # ⚠️ Seeding runs *inside* the network, not from the host — the host cannot reach Mongo, which is
+  # the point. `--profile seed` keeps it out of the normal `up`.
+  #   docker compose ... --profile seed run --rm seed
+  #   docker compose ... --profile seed run --rm seed pnpm --filter @vip/seed evidence
+  seed:
+    profiles: ['seed']
+    build: { <<: *service-build, args: { SERVICE: identity } }
+    image: vip/identity:local
+    # ⚠️ `tsx` from the workspace, not `pnpm --filter`. The runtime stage has no package manager on
+    # PATH — corepack is enabled only in the build stage — and reaching for one here would mean
+    # either shipping corepack into production images or having the first `pnpm` invocation download
+    # itself, which fails on an air-gapped host. The binary that is already in the image is enough.
+    working_dir: /app/tools/seed
+    entrypoint: ['/sbin/tini', '--']
+    command: ['node_modules/.bin/tsx', 'seed.ts']
+    environment:
+      <<: *service-env
+      VIP_PUBLIC_URL: ${VIP_PUBLIC_URL:-https://localhost}
+      SEED_IDENTITY_URL: http://identity:8089
+      SEED_EVIDENCE_URL: http://evidence:8090
+      SEED_TENANT_ID: ${SEED_TENANT_ID:-tnt_dev}
+      SEED_EMAIL: ${SEED_EMAIL:-owner@vip.dev}
+      # ⚠️ Required, with no fallback. Under `NODE_ENV=production` the seed refuses the development
+      # password outright, so an unset value stops the bootstrap here rather than creating an owner
+      # account whose password is published in this repository.
+      SEED_PASSWORD: ${SEED_PASSWORD:?set SEED_PASSWORD}
+    depends_on:
+      mongodb: { condition: service_healthy }
+    restart: 'no'
+
+  # ⚠️ Demo evidence — NOT part of a customer bootstrap. A real deployment gets its evidence from
+  # the media service ingesting recordings; this exists so a demonstration has something to play.
+  # It registers through the **real evidence API**, so custody opens and the integrity hash is
+  # computed from the stored bytes — a row written straight into Mongo would show the Evidence Chain
+  # panel a custody log the platform never produced.
+  #
+  #   SEED_EVIDENCE_DIR=$(pwd)/.data/demo-clips infra/docker/prod.sh --profile seed run --rm seed-evidence
+  seed-evidence:
+    profiles: ['seed']
+    # ⚠️ The **evidence** image, not identity. Each image is built with `--filter "<svc>..."`, so it
+    # contains only that service's dependency closure — and `@vip/storage` is in evidence's, not
+    # identity's. Running this from the identity image fails at import with ERR_MODULE_NOT_FOUND.
+    image: vip/evidence:local
+    working_dir: /app/tools/seed
+    entrypoint: ['/sbin/tini', '--']
+    command: ['node_modules/.bin/tsx', 'evidence.ts']
+    volumes:
+      - ${SEED_EVIDENCE_DIR:-./.placeholder}:/clips:ro
+    environment:
+      <<: *service-env
+      SEED_EVIDENCE_DIR: /clips
+      SEED_IDENTITY_URL: http://identity:8089
+      SEED_EVIDENCE_URL: http://evidence:8090
+      SEED_TENANT_ID: ${SEED_TENANT_ID:-tnt_dev}
+      SEED_EMAIL: ${SEED_EMAIL:-owner@vip.dev}
+      SEED_PASSWORD: ${SEED_PASSWORD:?set SEED_PASSWORD}
+    depends_on:
+      evidence: { condition: service_healthy }
+    restart: 'no'
+
+volumes:
+  mongo_data:
+  redis_data:
+  minio_data:
+  nats_data:
+  caddy_data:
+  caddy_config:

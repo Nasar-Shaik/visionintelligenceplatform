@@ -1,0 +1,61 @@
+# Production image for any VIP service (P-5.8).
+#
+# ⚠️ One Dockerfile, not ten. Every service is the same shape — a Fastify app compiled by `tsc` to
+# `dist/index.js` — so ten near-identical Dockerfiles would be ten places for a hardening change to
+# be applied nine times. The service is chosen at build time by `SERVICE`.
+#
+# ⚠️ The runtime stage carries the whole built workspace rather than a pruned bundle. `pnpm deploy`
+# would produce a smaller image, and it also rewrites the workspace layout in ways that have to be
+# re-verified per service. This milestone is about *verifying a deployment*, not about optimising
+# one; image size is recorded as debt (TD-35) rather than traded against correctness.
+
+# ── build ──────────────────────────────────────────────────────────────────────────────────────
+FROM node:22-alpine AS build
+WORKDIR /app
+
+RUN corepack enable
+
+# Manifests first, so a source-only change does not re-resolve the dependency graph.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY packages ./packages
+COPY services ./services
+COPY apps ./apps
+COPY tools ./tools
+
+# ⚠️ `--frozen-lockfile`: a production build must never silently resolve a different version than
+# the one that was tested (CONSTRAINTS §15).
+RUN pnpm install --frozen-lockfile --ignore-scripts
+
+ARG SERVICE
+RUN test -n "$SERVICE" || (echo "SERVICE build-arg is required" && exit 1)
+RUN pnpm --filter "@vip/service-${SERVICE}..." build
+
+# ── runtime ────────────────────────────────────────────────────────────────────────────────────
+FROM node:22-alpine AS runtime
+WORKDIR /app
+
+# ⚠️ Non-root. A container that runs as root turns any RCE into host-adjacent access, and nothing
+# here needs privileges: the process binds an unprivileged port and writes nothing to disk.
+RUN addgroup -S vip && adduser -S vip -G vip
+
+# `tini` so SIGTERM reaches Node as PID 1's child and the server can close connections in flight —
+# without it, `docker stop` kills mid-request and the operator sees a failed call on every deploy.
+RUN apk add --no-cache tini curl
+
+COPY --from=build --chown=vip:vip /app /app
+
+ARG SERVICE
+ENV SERVICE=${SERVICE} \
+    NODE_ENV=production \
+    NODE_OPTIONS=--enable-source-maps
+
+USER vip
+EXPOSE 8080
+
+# ⚠️ The container's own liveness check. Compose and orchestrators both read it, and a service that
+# cannot answer `/health` must not receive traffic.
+HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
+  CMD curl -fsS "http://127.0.0.1:${PORT:-8080}/health" || exit 1
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["sh", "-c", "node services/${SERVICE}/dist/index.js"]

@@ -57,6 +57,17 @@ export function registerGatewayRoutes(app: FastifyInstance, deps: GatewayRoutesD
     const headers = isPublicAuthPath(service, rest, request.method)
       ? buildPublicUpstreamHeaders(request.headers)
       : buildUpstreamHeaders(request.headers, await authenticateRequest(request, deps.jwt));
+
+    /**
+     * ⚠️ Carry the correlation id across the hop. Every service already honours an inbound
+     * `x-request-id` in `genReqId` — the gateway simply never sent one, so a single operator action
+     * produced two unrelated ids in two log streams and could not be traced end to end. Measured in
+     * P-5.8: the gateway logged `af4c8534…` for a request that workflow logged as `837cb352…`.
+     *
+     * The value is `request.id`, minted here (the edge strips any client-supplied one), so the id in
+     * every downstream log is the same id returned to the caller as `correlationId` on an error.
+     */
+    headers['x-request-id'] = String(request.id);
     const hasBody = request.method !== 'GET' && request.method !== 'HEAD' && request.body != null;
     const init: RequestInit = { method: request.method, headers };
     if (hasBody) {

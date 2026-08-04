@@ -30,12 +30,30 @@ describe('infrastructure config groups', () => {
     });
     expect(c).toEqual({
       endpoint: 'http://h:9000',
+      /* Unset ⇒ the browser reaches storage the same way services do (dev). */
+      publicEndpoint: 'http://h:9000',
       accessKeyId: 'k',
       secretAccessKey: 's',
       region: 'us-east-1',
       recordingsBucket: 'vip-recordings',
       forcePathStyle: true,
     });
+  });
+
+  /**
+   * ⚠️ The setting that made playback work in a real deployment (P-5.8, ADR-0034). Services reach
+   * object storage at a container-internal name; browsers cannot resolve it, so signed URLs must be
+   * built against the public one.
+   */
+  it('storage: S3_PUBLIC_ENDPOINT overrides only the browser-facing endpoint', () => {
+    const c = loadStorageConfig({
+      S3_ENDPOINT: 'http://minio:9000',
+      S3_PUBLIC_ENDPOINT: 'https://vip.example.com',
+      AWS_ACCESS_KEY_ID: 'k',
+      AWS_SECRET_ACCESS_KEY: 's',
+    });
+    expect(c.endpoint).toBe('http://minio:9000');
+    expect(c.publicEndpoint).toBe('https://vip.example.com');
   });
 
   it('internal: maps INTERNAL_API_KEY → apiKey (min length enforced)', () => {

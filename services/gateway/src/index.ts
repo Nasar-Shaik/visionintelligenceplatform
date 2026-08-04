@@ -5,7 +5,8 @@
  * (over NatsEventBus) + its Prometheus metrics onto the /metrics registry.
  */
 import { loadDotEnv } from '@vip/config';
-import { NatsEventBus, type EventBus } from '@vip/messaging';
+import { NatsEventBus } from '@vip/messaging';
+import { ReadinessRegistry } from './application/readiness.js';
 import { loadConfig } from './config/env.js';
 import { buildServer } from './transport/server.js';
 import { StreamHub } from './application/stream-hub.js';
@@ -16,7 +17,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
 
   // Real-time delivery (G-5): dial the backbone and stand up the StreamHub, or stay a pure proxy.
-  let bus: EventBus | undefined;
+  let bus: NatsEventBus | undefined;
   let hub: StreamHub | undefined;
   if (config.stream.enabled) {
     bus = await NatsEventBus.connect({ servers: config.nats.url, name: 'gateway' });
@@ -32,7 +33,31 @@ async function main(): Promise<void> {
     });
   }
 
-  const { app, registry } = await buildServer({ config, streamHub: hub });
+  /**
+   * ⚠️ Found by deploying (P-5.8): the gateway registered **no** readiness checks, so `/ready`
+   * answered `{"status":"pass","checks":[]}` unconditionally — a probe structurally incapable of
+   * failing, on the one service a load balancer actually gates traffic on. Every other service
+   * registers its dependencies; this one had kept the Phase-0 empty registry.
+   *
+   * ⚠️ Only the backbone is checked, and the omission is deliberate. Upstream services are *not*
+   * probed here: the gateway can still serve the other eight when one is down, so failing readiness
+   * for a single broken upstream would take the entire platform out of rotation — a much larger
+   * outage than the one being reported. Upstream health is each service's own `/ready`.
+   */
+  const readiness = new ReadinessRegistry();
+  if (bus) {
+    const backbone = bus;
+    readiness.register('nats', async () => {
+      try {
+        await backbone.ping();
+        return { status: 'pass' };
+      } catch (err) {
+        return { status: 'fail', detail: err instanceof Error ? err.message : 'nats unreachable' };
+      }
+    });
+  }
+
+  const { app, registry } = await buildServer({ config, readiness, streamHub: hub });
   if (hub) {
     hub.useMetrics(new StreamMetrics(registry));
     app.log.info('real-time delivery (SSE) enabled');

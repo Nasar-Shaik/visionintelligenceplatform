@@ -20,7 +20,25 @@ import type { ObjectBody, ObjectStore, ObjectSummary, PutObjectInput } from './o
 import { StorageError } from './errors.js';
 
 export interface S3ObjectStoreOptions {
+  /** Endpoint this *process* uses to reach object storage (server-side get/put/head/list). */
   endpoint: string;
+  /**
+   * Endpoint to sign **browser-facing** URLs against. Defaults to `endpoint`.
+   *
+   * ⚠️ Added in P-5.8 because presigned playback was broken in every containerised deployment, and
+   * the failure was invisible until the stack was actually deployed. A service reaches MinIO at
+   * `http://minio:9000` — a name that resolves on the container network and nowhere else — so every
+   * URL handed to an operator's browser pointed at a host it could not look up, over plaintext,
+   * from an HTTPS page. Development never showed it: there, browser and service both say
+   * `localhost:49000`, so one endpoint appeared to be enough.
+   *
+   * ⚠️ Signing against a different host is safe **only** because SigV4 covers the `Host` header.
+   * The signature is computed for the public name, so the object store validates it against the
+   * name the browser actually used — provided the reverse proxy forwards `Host` unchanged (Caddy
+   * does by default; nginx needs `proxy_set_header Host $host`). Get that wrong and every URL is
+   * rejected as unauthorised, which is the correct failure: the proxy gains reach, never authority.
+   */
+  publicEndpoint?: string;
   accessKeyId: string;
   secretAccessKey: string;
   bucket: string;
@@ -33,6 +51,8 @@ export interface S3ObjectStoreOptions {
 
 export class S3ObjectStore implements ObjectStore {
   readonly #client: S3Client;
+  /** Signs browser-facing URLs. Same credentials, different endpoint; never sends a request. */
+  readonly #signer: S3Client;
   readonly #bucket: string;
 
   constructor(opts: S3ObjectStoreOptions) {
@@ -51,6 +71,12 @@ export class S3ObjectStore implements ObjectStore {
         : {}),
     };
     this.#client = new S3Client(config);
+    // A second client only when the public name differs — otherwise reuse, so the default path
+    // allocates nothing extra and behaves exactly as it did before.
+    this.#signer =
+      opts.publicEndpoint === undefined || opts.publicEndpoint === opts.endpoint
+        ? this.#client
+        : new S3Client({ ...config, endpoint: opts.publicEndpoint });
     this.#bucket = opts.bucket;
   }
 
@@ -121,8 +147,9 @@ export class S3ObjectStore implements ObjectStore {
     await this.#client.send(new DeleteObjectCommand({ Bucket: this.#bucket, Key: key }));
   }
 
+  /** Signed with `#signer`, so the URL carries the name the *browser* can reach. */
   async presignGet(key: string, ttlSeconds: number): Promise<string> {
-    return getSignedUrl(this.#client, new GetObjectCommand({ Bucket: this.#bucket, Key: key }), {
+    return getSignedUrl(this.#signer, new GetObjectCommand({ Bucket: this.#bucket, Key: key }), {
       expiresIn: ttlSeconds,
     });
   }

@@ -1207,3 +1207,101 @@ TD-28.
 what the platform does, and you must ask what it is evidence of. ED-0068: **a green suite shows that
 the code does what you told it to, and says nothing about whether anyone can get to it.** The only
 way to learn that is to deploy the thing and try to use it.
+
+---
+
+## ED-0069 — P-5.8: the environment was the untested dependency
+
+**Context.** P-5.5 built evidence playback. P-5.6 hardened it across four browser engines, measuring
+codec behaviour rather than assuming parity. P-5.7 verified it under network failure, at scale, and
+through a complete operator workflow, and found seven defects. Three milestones, all passed, all run
+against `pnpm dev`.
+
+P-5.8 deployed the platform — Docker images, a Caddy edge, TLS, no dev server anywhere — and the
+first playback request returned:
+
+```
+"url": "http://minio:9000/vip-recordings/tnt_dev/cam_dev_1/clip-003-h265.mp4?X-Amz-Signature=…"
+```
+
+**Decision.** Separate the endpoint a _service_ uses to reach object storage from the one that
+browser-facing URLs are signed against ([ADR-0036](../adr/ADR-0036-browser-facing-object-storage-endpoint.md)),
+and treat "deploy it and use it" as a mandatory verification step rather than an infrastructure
+chore (CONSTRAINTS §99).
+
+**Why it hid for three milestones.** In development the browser and the services both reach MinIO at
+`localhost:49000`. One value served two different roles and nothing distinguished them, so every
+test, every screenshot and every browser-engine measurement was correct about an environment in
+which the two roles happen to coincide. The defect was a single field in a single JSON response,
+visible the whole time, and nothing had reason to look at it.
+
+**The same shape, four more times.** Once the platform was actually deployed, the same class of
+defect appeared repeatedly — each one invisible to every existing gate:
+
+- The console was a **blank page**: a circular chunk dependency, because `manualChunks` matched
+  `react-dom` as a path _substring_ and under pnpm that also matches the peer hash in the
+  virtual-store directory. `vite build` succeeded; the bundle budget passed; 1,300 tests were green.
+  None of them loads the built bundle (CONSTRAINTS §103).
+- `GET /health` returned the console's HTML with a **200**, because the SPA fallback answers every
+  unmatched path. An uptime monitor would have reported a healthy platform with all ten services
+  down (§100).
+- The gateway's `/ready` answered `pass` with an **empty check list** — a probe structurally
+  incapable of failing, on the one service a load balancer gates traffic on (§100).
+- The production bootstrap set every account's password to `123456`, on an **owner** account, and
+  printed it (§104).
+
+**What this changes about verification.** Not "write more tests". Every one of these passed every
+test. The missing step was running the artefact in the shape it will actually run in, and then using
+it as a person. The production checklist now ends with a browser walkthrough whose last instruction
+is: _do not skip the playback step — every health check was green throughout the deployment in which
+playback was completely broken._
+
+**Cost.** One ADR, one additive option on a storage adapter, one config variable, one vite config
+fix, one build gate. No new service, no new abstraction, no contract change. The fixes were small;
+finding them required a deployment.
+
+---
+
+## ED-0070 — P-5.8: honest failure is a feature, and it has to be verified failing
+
+**Context.** With MinIO stopped mid-playback, the player told the operator: _"This browser refused the
+recording. The browser declined to open the file even though it reported support for the format…
+try another browser or download the original."_
+
+The browser had refused nothing. The object store was unreachable.
+
+**Why the message was wrong.** `MEDIA_ERR_SRC_NOT_SUPPORTED` (code 4) is ambiguous. P-5.6 measured
+engines genuinely refusing files they had claimed to support, and named that case `refused` with
+copy that helps. That measurement was correct. What it missed is that the engine reports the same
+code when it could not fetch the file at all — it has nothing to parse either way.
+
+**Decision.** On the ambiguous verdicts, the player asks instead of guessing: one
+`Range: bytes=0-0` against the same signed URL. Unreachable → `network`, which is recoverable and
+whose Retry actually works. Reachable → the engine really did refuse it, and the original copy
+stands.
+
+**The general point.** Misdiagnosis during an incident is expensive in a way a generic error is not.
+"Try another browser" sends an investigator down a path that cannot work, while the real fault —
+storage is down — goes unreported. A system that fails honestly must also fail _accurately_, and
+accuracy sometimes costs one extra request.
+
+**How it was found, and nearly missed.** The first recovery harness restarted six dependencies and
+reported six clean recoveries. It was watching a 10-second clip that had already buffered end to end,
+so restarting the object store could not disturb it, and it took no action requiring the restarted
+service. Every probe came back byte-identical to the baseline — which is what _nothing was
+exercised_ looks like, not what _recovered_ looks like. Rebuilt on the 1-hour clip with seeks past
+the buffer, it produced this finding immediately.
+
+Three other measurements in the same milestone were invalid before they were valid: a readiness
+"failure" measured with the broker still running (a shell variable that never word-split), three
+security "failures" that were my own harness sending a JSON content-type with no body, and a demo
+certification that opened a load-test incident with no evidence attached. Each was checked before
+being reported.
+
+**The general lesson.** ED-0066: a screenshot shows what you shipped. ED-0067: a measurement shows
+what the platform does, and you must ask what it is evidence of. ED-0068: a green suite shows the
+code does what you told it to, and says nothing about whether anyone can get to it. **ED-0069: all
+three are statements about the environment they ran in — and until you have deployed it, that
+environment is the only one you have ever tested.** ED-0070 adds the corollary: an error path that
+has never actually errored is not a verified error path, and a recovery test that disturbs nothing
+proves nothing.

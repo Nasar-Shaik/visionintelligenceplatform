@@ -34,7 +34,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { S3ObjectStore } from '@vip/storage';
-import { loadDotEnv } from '@vip/config';
+import { loadDotEnv, loadStorageConfig } from '@vip/config';
 
 loadDotEnv(resolve(dirname(fileURLToPath(import.meta.url)), '../../.env'));
 
@@ -140,16 +140,35 @@ const CLIPS: Clip[] = [
   },
 ];
 
+/**
+ * ⚠️ Where the clips come from, and why it is configurable (P-5.8).
+ *
+ * Generation needs ffmpeg, which this script runs as a container — so it needs a Docker socket.
+ * Upload needs MinIO, which in a production deployment publishes **no host port**: it is reachable
+ * only from inside the compose network. Those two requirements cannot be satisfied by the same
+ * process, and the fix is not to punch a hole in the deployment so a seed script can reach the
+ * object store.
+ *
+ * So the halves separate. `SEED_EVIDENCE_DIR` points at clips that already exist; the script then
+ * only uploads and registers, and can run inside the network as a one-shot container. Unset, it
+ * behaves exactly as before and generates them itself (the development path).
+ */
+const PREGENERATED_DIR = process.env.SEED_EVIDENCE_DIR;
+
 async function main(): Promise<void> {
   const token = await login();
   const store = buildStore();
-  const work = mkdtempSync(join(tmpdir(), 'vip-seed-'));
+  const work = PREGENERATED_DIR ?? mkdtempSync(join(tmpdir(), 'vip-seed-'));
   const capturedBase = Date.now();
 
   try {
     for (const clip of CLIPS) {
-      process.stdout.write(`  • generating ${clip.file} … `);
-      generate(work, clip);
+      if (PREGENERATED_DIR === undefined) {
+        process.stdout.write(`  • generating ${clip.file} … `);
+        generate(work, clip);
+      } else {
+        process.stdout.write(`  • ${clip.file} (pre-generated) … `);
+      }
 
       const key = `${CAMERA}/${clip.file}`;
       const bytes = readFileSync(join(work, clip.file));
@@ -181,7 +200,8 @@ async function main(): Promise<void> {
       console.log(`registered ${registered}`);
     }
   } finally {
-    rmSync(work, { recursive: true, force: true });
+    // Never delete a directory the caller supplied — only the temp one this script created.
+    if (PREGENERATED_DIR === undefined) rmSync(work, { recursive: true, force: true });
   }
 
   console.log('\n✔ Evidence seeded. In the console:');
@@ -195,14 +215,28 @@ async function main(): Promise<void> {
   console.log('     but not CCTV. See docs/review/p56/NVR_VALIDATION.md.');
 }
 
+/**
+ * ⚠️ Credentials come from `@vip/config`, not from a second set of variable names.
+ *
+ * This function used to read `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` with development defaults,
+ * while every service reads `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` through
+ * `loadStorageConfig`. Two names for one credential is a duplicate source of truth, and it failed
+ * exactly where you would expect: against the production deployment, which sets only the names the
+ * platform actually uses, this script fell back to its baked-in dev defaults and MinIO answered
+ * "The Access Key Id you provided does not exist in our records."
+ *
+ * Reading the same config the services read means the seed cannot drift from them again.
+ */
 function buildStore(): S3ObjectStore {
+  const storage = loadStorageConfig();
   return new S3ObjectStore({
-    endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:49000',
-    accessKeyId: process.env.MINIO_ROOT_USER ?? 'vip_dev',
-    secretAccessKey: process.env.MINIO_ROOT_PASSWORD ?? 'change_me_dev_only',
-    region: process.env.S3_REGION ?? 'us-east-1',
-    bucket: process.env.S3_RECORDINGS_BUCKET ?? 'vip-recordings',
-    forcePathStyle: true,
+    endpoint: storage.endpoint,
+    publicEndpoint: storage.publicEndpoint,
+    accessKeyId: storage.accessKeyId,
+    secretAccessKey: storage.secretAccessKey,
+    region: storage.region,
+    bucket: storage.recordingsBucket,
+    forcePathStyle: storage.forcePathStyle,
   });
 }
 

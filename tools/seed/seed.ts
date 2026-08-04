@@ -39,6 +39,38 @@ const TENANT_SLUG = 'dev';
 // stronger min-length rule applies to user *creation* via the API, which the seed bypasses.
 const DEV_PASSWORD = '123456';
 
+/**
+ * ⚠️ The seed is the documented bootstrap step for a *production* deployment too
+ * (`docker compose --profile seed run --rm seed`), which made this hard-coded password a way to
+ * stand up a real system with `123456` on an owner account. Found in P-5.8 by running the
+ * production bootstrap and reading what it printed.
+ *
+ * So it now fails closed: under `NODE_ENV=production` a strong `SEED_PASSWORD` is required, and the
+ * dev default is refused outright. Development is untouched — no variable, same password as always.
+ */
+const MIN_PRODUCTION_PASSWORD_LENGTH = 12;
+
+function resolveSeedPassword(env: NodeJS.ProcessEnv): string {
+  const supplied = env.SEED_PASSWORD;
+  if (env.NODE_ENV !== 'production')
+    return supplied && supplied.length > 0 ? supplied : DEV_PASSWORD;
+
+  if (supplied === undefined || supplied.length === 0) {
+    throw new Error(
+      'SEED_PASSWORD must be set when NODE_ENV=production — refusing to seed accounts with the development password.',
+    );
+  }
+  if (supplied === DEV_PASSWORD || supplied.length < MIN_PRODUCTION_PASSWORD_LENGTH) {
+    throw new Error(
+      `SEED_PASSWORD is too weak for a production seed (needs ${MIN_PRODUCTION_PASSWORD_LENGTH}+ characters and must not be the development default).`,
+    );
+  }
+  return supplied;
+}
+
+const SEED_PASSWORD = resolveSeedPassword(process.env);
+const PASSWORD_FROM_ENV = SEED_PASSWORD !== DEV_PASSWORD;
+
 // One account per role, so you can log in and exercise each permission tier (deny-by-default gating).
 const USERS = [
   { id: 'usr_dev_owner', email: 'owner@vip.dev', roles: ['owner'] },
@@ -118,7 +150,7 @@ async function main(): Promise<void> {
           _id: user.id,
           tenantId: TENANT_ID,
           email: user.email.toLowerCase(),
-          passwordHash: await hashPassword(DEV_PASSWORD),
+          passwordHash: await hashPassword(SEED_PASSWORD),
           roles: user.roles,
           status: 'active',
           createdAt: now,
@@ -288,9 +320,17 @@ async function main(): Promise<void> {
     );
 
     console.log('✔ Seed complete.\n');
-    console.log('  Log in to the Operations Console (http://localhost:5173):');
+    console.log(
+      `  Log in to the Operations Console (${process.env.VIP_PUBLIC_URL ?? 'http://localhost:5173'}):`,
+    );
     console.log(`    Tenant:   ${TENANT_ID}`);
-    console.log(`    Password: ${DEV_PASSWORD}   (same for every account below)`);
+    // ⚠️ Never echo a password that came from the environment. This output is captured by
+    // `docker compose run` and lands in the deployment log the operator pastes into a ticket.
+    console.log(
+      PASSWORD_FROM_ENV
+        ? '    Password: (the SEED_PASSWORD you supplied — not echoed)'
+        : `    Password: ${DEV_PASSWORD}   (same for every account below)`,
+    );
     for (const u of USERS) {
       console.log(`    ${u.roles[0]?.padEnd(9)} ${u.email}`);
     }

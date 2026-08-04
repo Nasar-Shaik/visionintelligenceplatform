@@ -49,9 +49,31 @@ export class NatsEventBus implements EventBus {
     private readonly maxAgeMs: number,
   ) {}
 
-  /** Connect and initialise JetStream. Throws if the broker is unreachable (fail-fast). */
+  /**
+   * Connect and initialise JetStream. Throws if the broker is unreachable at startup (fail-fast).
+   *
+   * ⚠️ Reconnection is unlimited, and this is a production fix, not a preference. The client's
+   * default budget is ten attempts two seconds apart, so **a broker outage longer than about twenty
+   * seconds closes the connection permanently** — measured in P-5.8 by stopping NATS and starting it
+   * again: the gateway never recovered, and reported `nats connection is closed` until the process
+   * was restarted. Every consumer in the platform shares this adapter, so that one default turned a
+   * routine broker restart into a platform-wide outage requiring manual intervention.
+   *
+   * A backbone client should wait for its broker for as long as the broker is gone. The jitter
+   * matters too: without it, ten services that all lost the same broker reconnect in lockstep and
+   * arrive together the moment it opens its listener.
+   */
   static async connect(opts: NatsEventBusOptions): Promise<NatsEventBus> {
-    const nc = await connect({ servers: opts.servers, name: opts.name ?? 'vip-messaging' });
+    const nc = await connect({
+      servers: opts.servers,
+      name: opts.name ?? 'vip-messaging',
+      maxReconnectAttempts: -1,
+      reconnectTimeWait: 1_000,
+      reconnectJitter: 500,
+      // Detect a broker that has gone away silently (no FIN — a partition, not a shutdown).
+      pingInterval: 20_000,
+      maxPingOut: 3,
+    });
     const jsm = await jetstreamManager(nc);
     const js = jetstream(nc);
     return new NatsEventBus(nc, js, jsm, opts.maxAgeMs ?? DEFAULT_MAX_AGE_MS);
@@ -126,6 +148,40 @@ export class NatsEventBus implements EventBus {
       // Unhandled failure: retry until the ceiling, then dead-letter (term) instead of looping.
       if (deliveryCount >= maxDeliver) m.term();
       else m.nak();
+    }
+  }
+
+  /**
+   * Readiness probe: the broker connection is live. Additive to this adapter only — deliberately
+   * NOT on the {@link EventBus} interface, which stays exactly as frozen.
+   *
+   * ⚠️ `flush()` rather than an `isClosed()` flag: the flag reports what the client last believed,
+   * and a connection that has silently gone away still reads as open until the next write fails.
+   * `flush()` completes a real PING/PONG round trip with the broker, so a probe built on it can
+   * actually fail.
+   *
+   * ⚠️ …but `flush()` alone **hangs** while the client is inside its reconnect window, and that is
+   * measured, not theoretical: with the broker stopped, `/ready` produced no response at all for
+   * roughly twenty-five seconds before finally reporting a closed connection. A readiness endpoint
+   * that hangs is worse than one that fails — the failure is at least legible to a load balancer,
+   * whereas a stalled probe just consumes its timeout and tells an operator nothing. So the round
+   * trip is bounded, and exceeding the bound *is* the negative answer.
+   */
+  async ping(timeoutMs = 1_000): Promise<void> {
+    if (this.nc.isClosed()) throw new Error('nats connection is closed');
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        this.nc.flush(),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`nats did not respond in ${timeoutMs}ms`)),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 

@@ -131,6 +131,35 @@ export function videoTrackMissing(
  * depends on whether the session's own clock says the signature is still alive, so the clock is a
  * required argument rather than a hint.
  */
+/**
+ * Is the segment actually fetchable right now?
+ *
+ * ⚠️ Exists because `MEDIA_ERR_SRC_NOT_SUPPORTED` (code 4) is **ambiguous**, which P-5.8 found by
+ * stopping the object store during playback. The engine reports code 4 both when it genuinely
+ * refuses a file it could fetch *and* when it could not fetch one at all — it has nothing to parse
+ * either way. Classified on the code alone, a storage outage told the operator "this browser
+ * refused the recording… try another browser", advice that cannot possibly help and which quietly
+ * blames the wrong component during an incident.
+ *
+ * One byte settles it. A `Range: bytes=0-0` request is the cheapest possible question, and it is
+ * the same signed URL the player is already using — so it tests exactly the path that failed,
+ * including the signature's expiry.
+ */
+export async function sourceReachable(url: string, signal?: AbortSignal): Promise<boolean> {
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Range: 'bytes=0-0' },
+      cache: 'no-store',
+      ...(signal ? { signal } : {}),
+    });
+    return response.ok || response.status === 206;
+  } catch {
+    // Network error, DNS failure, TLS failure, aborted — all mean "not reachable".
+    return false;
+  }
+}
+
 export function classifyFailure(code: number | undefined, clockExpired: boolean): PlaybackFailure {
   if (clockExpired) return 'expired';
   switch (code) {

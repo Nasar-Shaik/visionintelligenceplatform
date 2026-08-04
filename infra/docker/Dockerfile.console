@@ -1,0 +1,32 @@
+# Production image for the Operations Console (P-5.8).
+#
+# ⚠️ The console is a **static bundle**. It ships no server of its own and holds no secret: the API
+# base is the relative path `/api`, so the reverse proxy in front of it decides where the gateway
+# lives. That is why there is no `VITE_API_URL` baked in here — an origin compiled into the bundle
+# is an origin that cannot be changed without a rebuild, and it is the single most common reason a
+# customer's deployment cannot be pointed at their own gateway.
+
+FROM node:22-alpine AS build
+WORKDIR /app
+RUN corepack enable
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY packages ./packages
+COPY services ./services
+COPY apps ./apps
+COPY tools ./tools
+
+RUN pnpm install --frozen-lockfile --ignore-scripts
+# ⚠️ `build` runs the bundle-budget gate, so an image cannot be produced from a bundle that
+# regressed past its budget. The check is not advisory in CI and it is not advisory here.
+RUN pnpm --filter @vip/console... build
+
+# ── runtime ────────────────────────────────────────────────────────────────────────────────────
+# Caddy serves the files. Headers, compression and TLS all live in the edge proxy (see Caddyfile);
+# this image only has to hand over bytes and answer a health probe.
+FROM caddy:2-alpine AS runtime
+COPY --from=build /app/apps/console/dist /srv
+COPY infra/docker/console.Caddyfile /etc/caddy/Caddyfile
+EXPOSE 8080
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1

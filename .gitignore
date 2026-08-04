@@ -6,9 +6,15 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+!.env.production.example
 *.pem
 *.key
 secrets/
+# ⚠️ Backup directories hold `config.env` — a verbatim copy of the production environment, including
+# the credential-encryption key. `backup.sh` writes it 0600; committing one would publish it.
+backups/
+# Local runtime data: the `local` evidence provider's store and generated demo clips.
+.data/
 
 # Node / TS
 node_modules/

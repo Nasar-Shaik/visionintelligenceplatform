@@ -1,0 +1,133 @@
+# The public edge (P-5.8) — TLS termination, security headers, compression, and the single origin.
+#
+# ⚠️ **One origin.** The console is served at `/` and the API at `/api/*` from the same host, so the
+# browser makes no cross-origin request and CORS never enters the picture. That is not a
+# convenience: a same-origin deployment is the only one where `SameSite` cookies, a strict CSP with
+# no `connect-src` exceptions, and "no third-party origin can call our API" are all simultaneously
+# true.
+#
+# ⚠️ TLS is real, and locally it is issued by Caddy's **internal CA**. `tls internal` produces a
+# genuine certificate from a CA the machine can be told to trust — which means HTTPS, HSTS and
+# secure-cookie behaviour are all exercised for real, rather than verified against a plaintext
+# listener and assumed to work once a certificate appears. In a customer deployment, replace
+# `tls internal` with the ACME email or the certificate paths; nothing else here changes.
+
+{
+	# Caddy's own admin API is off: it can reconfigure the proxy at runtime and nothing needs it.
+	admin off
+	# ⚠️ The plaintext listener stays on, serving nothing but a 308 to HTTPS. Disabling it (which is
+	# what `auto_https disable_redirects` does) makes port 80 reset the connection — so an operator
+	# who types the hostname without a scheme gets "connection reset", not the console. Worse, HSTS
+	# only protects a browser that has already completed one HTTPS visit; the redirect is what gets
+	# it there. Measured, not assumed: with redirects disabled, `curl http://localhost/` returned
+	# `(56) Recv failure: Connection reset by peer`.
+}
+
+(security_headers) {
+	header {
+		# ⚠️ HSTS with a two-year max-age. Once a browser has seen this it will refuse plaintext to
+		# this host, which is the point — a downgrade must not be one DNS answer away.
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+
+		# The console renders no third-party content and is never framed.
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+
+		# ⚠️ Deny the device APIs this product has no use for. A surveillance console asking for the
+		# operator's own camera or microphone would be indistinguishable, to a browser, from one that
+		# had been compromised into doing so.
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+
+		# Caddy advertises itself by default; a version banner is free reconnaissance.
+		-Server
+	}
+}
+
+(csp) {
+	# ⚠️ The Content-Security-Policy, and every relaxation in it is deliberate.
+	#
+	# - `default-src 'self'` — one origin, nothing external. There is no CDN, no font host, no
+	#   analytics; the bundle is entirely self-contained, so nothing needs an exception.
+	# - `style-src 'unsafe-inline'` — required, and it is the one genuine compromise here. React
+	#   sets inline `style` attributes for layout the timeline computes at runtime (playhead
+	#   position, gap widths, density-bar heights); those are geometry, not markup, but a browser
+	#   cannot tell the difference. Removing it needs a nonce plumbed through every inline style.
+	#   Recorded as TD-36 rather than quietly accepted.
+	# - `img-src 'self' data: blob:` — `data:` for the inline SVG icons, `blob:` for frames the
+	#   player may render locally.
+	# - `media-src 'self' blob:` **plus the evidence origin**, because playback streams from
+	#   pre-signed object-storage URLs. In this deployment the proxy fronts MinIO on the same
+	#   origin, so `'self'` covers it; a deployment using S3 directly must add that host here.
+	# - `frame-ancestors 'none'` — the header form of X-Frame-Options, and the one browsers honour.
+	# - `object-src 'none'`, `base-uri 'self'`, `form-action 'self'` — close the three classic
+	#   injection escapes that `default-src` does not cover.
+	header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+}
+
+{$VIP_PUBLIC_URL:https://localhost} {
+	tls internal
+
+	import security_headers
+	import csp
+
+	# ⚠️ Compression at the edge only. Compressing inside each service would spend CPU on every hop
+	# and defeat the proxy's own negotiation; `zstd` first because every browser that speaks it
+	# prefers it, `gzip` for everything else.
+	encode zstd gzip
+
+	# ── probes ─────────────────────────────────────────────────────────────────────────────────
+	# ⚠️ These must be routed explicitly, because the console's SPA fallback answers *every*
+	# unmatched path with `index.html` and HTTP 200. Measured before this block existed:
+	# `GET /health` returned `200 text/html` with the console's markup — an uptime monitor pointed
+	# at the obvious URL would have reported the platform healthy while all ten services were down.
+	# A check that cannot fail is not a check (CONSTRAINTS §44).
+	#
+	# `/health` is liveness (the gateway process answers) and `/ready` is readiness (503 when a
+	# dependency is unreachable), so an alerting rule can distinguish "restart it" from
+	# "something it depends on is broken".
+	handle /health {
+		header Cache-Control "no-store"
+		reverse_proxy gateway:8080
+	}
+
+	handle /ready {
+		header Cache-Control "no-store"
+		reverse_proxy gateway:8080
+	}
+
+	# ⚠️ `/metrics` is deliberately NOT exposed here. The registry carries tenant-scoped stream
+	# counts and the full internal route table; Prometheus scrapes it on the compose network, where
+	# reaching it already requires being inside the deployment.
+
+	# ── the API ────────────────────────────────────────────────────────────────────────────────
+	handle /api/* {
+		# ⚠️ API responses are never cached. Evidence listings, incident state and playback sessions
+		# are all authorization-dependent, and a shared cache in front of them is a cross-tenant
+		# disclosure waiting for a second operator to hit the same path.
+		header Cache-Control "no-store"
+		header -Content-Security-Policy
+
+		reverse_proxy gateway:8080 {
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+			# ⚠️ Strip any client-supplied request id: the edge is where a correlation id is minted,
+			# and a caller who can choose their own can forge another tenant's trace.
+			header_up -X-Request-Id
+		}
+	}
+
+	# ── evidence blobs ─────────────────────────────────────────────────────────────────────────
+	# ⚠️ Object storage is proxied rather than exposed, so pre-signed URLs stay same-origin and the
+	# CSP needs no `media-src` exception. The signature is still verified by MinIO itself — the
+	# proxy adds reach, never authority.
+	handle /vip-recordings/* {
+		header -Content-Security-Policy
+		reverse_proxy minio:9000
+	}
+
+	# ── the console ────────────────────────────────────────────────────────────────────────────
+	handle {
+		reverse_proxy console:8080
+	}
+}

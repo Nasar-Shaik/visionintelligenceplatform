@@ -1,0 +1,23 @@
+# Build-context exclusions (P-5.8).
+#
+# ⚠️ `.env` first, and it is not a size optimisation. The root `.env` holds the development JWT
+# secret and credential-encryption key; a `COPY . .` that swept it into a production image would
+# ship those keys to whoever can pull it — and `loadDotEnv()` walks up from cwd, so the file would
+# also be *read*, silently overriding the orchestrator's real environment with dev values.
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+.git
+.gitignore
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+**/.vite
+
+# Review artefacts, screenshots and harnesses — large, and none of it runs in production.
+docs/review/**/screenshots
+.data

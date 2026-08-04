@@ -23,6 +23,10 @@ export const STRIPPED_CLIENT_HEADERS = [
   // Internal service-to-service key — clients must never be able to inject it through the gateway
   // (it authenticates trusted internal callers only, e.g. media → camera credential resolve).
   'x-internal-key',
+  // ⚠️ Correlation id: stripped here and re-set from `request.id` by the proxy route, so the value
+  // an upstream sees is always the one the gateway minted. A caller who could choose it could
+  // collide with another tenant's trace, and every service honours it verbatim in `genReqId`.
+  'x-request-id',
   // hop-by-hop
   'host',
   'connection',

@@ -13,6 +13,7 @@ import {
   secondsRemaining,
   sessionClock,
   sessionExpired,
+  sourceReachable,
   videoTrackMissing,
 } from './recovery';
 
@@ -194,5 +195,67 @@ describe('⚠️ P-5.7 — a missing video decoder shows black and says nothing'
     expect(copy.detail).toMatch(/evidence is intact/i);
     /* A missing decoder is missing on the second attempt too. */
     expect(copy.recoverable).toBe(false);
+  });
+});
+
+/**
+ * ⚠️ `sourceReachable` exists because `MEDIA_ERR_SRC_NOT_SUPPORTED` is ambiguous, and P-5.8 found
+ * out the expensive way: with the object store stopped mid-playback, the overlay told the operator
+ * "this browser refused the recording… try another browser" — advice that cannot help, during an
+ * incident, blaming the wrong component. The player now asks the network before choosing a message.
+ */
+describe('sourceReachable', () => {
+  const withFetch = async <T>(impl: typeof fetch, run: () => Promise<T>): Promise<T> => {
+    const original = globalThis.fetch;
+    globalThis.fetch = impl;
+    try {
+      return await run();
+    } finally {
+      globalThis.fetch = original;
+    }
+  };
+
+  it('reports reachable on 206 Partial Content — what a Range request actually returns', async () => {
+    const result = await withFetch(
+      (async () => new Response('x', { status: 206 })) as typeof fetch,
+      () => sourceReachable('https://example.test/clip.mp4'),
+    );
+    expect(result).toBe(true);
+  });
+
+  it('reports reachable on a plain 200', async () => {
+    const result = await withFetch(
+      (async () => new Response('x', { status: 200 })) as typeof fetch,
+      () => sourceReachable('https://example.test/clip.mp4'),
+    );
+    expect(result).toBe(true);
+  });
+
+  it('⚠️ reports UNreachable on 403 — an expired or tampered signature is not a decode problem', async () => {
+    const result = await withFetch(
+      (async () => new Response('', { status: 403 })) as typeof fetch,
+      () => sourceReachable('https://example.test/clip.mp4'),
+    );
+    expect(result).toBe(false);
+  });
+
+  it('⚠️ reports UNreachable when the request throws — a dead object store, measured in P-5.8', async () => {
+    const result = await withFetch(
+      (() => Promise.reject(new TypeError('Failed to fetch'))) as typeof fetch,
+      () => sourceReachable('https://example.test/clip.mp4'),
+    );
+    expect(result).toBe(false);
+  });
+
+  it('asks for one byte, not the file', async () => {
+    let seen: HeadersInit | undefined;
+    await withFetch(
+      (async (_url: unknown, init?: RequestInit) => {
+        seen = init?.headers;
+        return new Response('x', { status: 206 });
+      }) as unknown as typeof fetch,
+      () => sourceReachable('https://example.test/clip.mp4'),
+    );
+    expect(seen).toEqual({ Range: 'bytes=0-0' });
   });
 });

@@ -17,6 +17,9 @@ export function buildStorageProvider(config: ServiceConfig): ObjectStore {
   }
   return new S3ObjectStore({
     endpoint: config.storage.endpoint,
+    // ⚠️ Playback URLs are handed to a browser, so they must carry the public name — not the
+    // container-internal one this service dials. See `StorageConfig.publicEndpoint`.
+    publicEndpoint: config.storage.publicEndpoint,
     accessKeyId: config.storage.accessKeyId,
     secretAccessKey: config.storage.secretAccessKey,
     region: config.storage.region,

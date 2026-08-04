@@ -9,6 +9,23 @@ import { defineConfig } from 'vite';
 // enabler G-5 in deployed environments). Gateway dev URL is overridable via env.
 const GATEWAY_URL = process.env.VITE_GATEWAY_URL ?? 'http://localhost:8080';
 
+/**
+ * The npm package a resolved module belongs to, or `undefined` for first-party source.
+ *
+ * The package name is whatever follows the **last** `node_modules/` — which is what makes this
+ * correct under pnpm, where everything before that is a virtual-store directory whose name embeds
+ * versions and peer hashes and must never be pattern-matched.
+ */
+function packageNameOf(id: string): string | undefined {
+  const marker = 'node_modules/';
+  const at = id.lastIndexOf(marker);
+  if (at === -1) return undefined;
+  const parts = id.slice(at + marker.length).split('/');
+  const [first, second] = parts;
+  if (first === undefined) return undefined;
+  return first.startsWith('@') && second !== undefined ? `${first}/${second}` : first;
+}
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
@@ -24,14 +41,36 @@ export default defineConfig({
          * Recharts is its own chunk because it is the single largest dependency and only the
          * dashboard needs it.
          */
+        /*
+         * ⚠️ Split by **package name**, never by substring of the module path.
+         *
+         * The previous rule tested `id.includes('react-dom')`, which under pnpm matches the
+         * peer-dependency hash in the virtual store — a Radix module resolves to
+         * `.pnpm/@radix-ui+react-dialog@1.1.15_@types+react-dom@19.2.3_react@19.2.7/node_modules/…`.
+         * So Radix, react-router, sonner, react-smooth and @floating-ui all landed in
+         * `vendor-react`. They import utilities that live in `vendor`, while `vendor` imports React
+         * back out of `vendor-react`: a **circular chunk dependency**. In an ES module cycle one
+         * side evaluates against the other's uninitialised bindings, and the console died at load
+         * with `Cannot read properties of undefined (reading 'forwardRef')` — a blank page.
+         *
+         * ⚠️ It was invisible for three milestones because `vite build` succeeded, the bundle
+         * budget passed, and every test ran against the dev server or jsdom. Nothing had ever
+         * *loaded the built bundle in a browser*. `scripts/check-bundle-budget.mjs` now fails the
+         * build on any chunk cycle, so this cannot come back quietly.
+         */
         manualChunks: (id: string): string | undefined => {
-          if (!id.includes('node_modules')) return undefined;
-          if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts';
-          if (id.includes('react-dom') || id.includes('/react/') || id.includes('scheduler')) {
-            return 'vendor-react';
+          const pkg = packageNameOf(id);
+          if (pkg === undefined) return undefined;
+          if (pkg === 'recharts' || pkg.startsWith('d3-') || pkg === 'victory-vendor') {
+            return 'vendor-charts';
           }
-          if (id.includes('@radix-ui')) return 'vendor-radix';
-          if (id.includes('@reduxjs') || id.includes('react-redux') || id.includes('@tanstack')) {
+          if (pkg === 'react' || pkg === 'react-dom' || pkg === 'scheduler') return 'vendor-react';
+          if (pkg.startsWith('@radix-ui/')) return 'vendor-radix';
+          if (
+            pkg.startsWith('@reduxjs/') ||
+            pkg === 'react-redux' ||
+            pkg.startsWith('@tanstack/')
+          ) {
             return 'vendor-state';
           }
           return 'vendor';

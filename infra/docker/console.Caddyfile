@@ -1,0 +1,28 @@
+# The console container's own file server (P-5.8). The public edge is `Caddyfile`; this one only
+# serves the bundle and answers a probe.
+:8080 {
+	root * /srv
+	encode zstd gzip
+
+	# ⚠️ A liveness path that is **not** the SPA fallback. Without it every probe would hit
+	# `try_files` and get `index.html` with a 200 — a container that answers "healthy" while the
+	# bundle is missing entirely.
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	# ⚠️ Hashed assets are immutable; `index.html` must never be. Vite fingerprints every asset, so
+	# the bundle can be cached for a year — but a cached `index.html` pins an operator to the
+	# previous release until their browser decides otherwise, which is how a fixed bug appears not
+	# to be fixed.
+	@immutable path /assets/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+	@html path / /index.html
+	header @html Cache-Control "no-cache"
+
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}

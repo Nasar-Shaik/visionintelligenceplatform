@@ -20,7 +20,7 @@
  * silently passes because nobody built first is a check that could not run being reported as one
  * that passed (CONSTRAINTS §44).
  */
-import { readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 
 const DIST = fileURLToPath(new URL('../dist/assets', import.meta.url));
@@ -89,6 +89,73 @@ if (vendorKb > VENDOR_TOTAL_MAX_KB) {
 }
 
 console.log('bundle-budget:\n' + report.join('\n'));
+
+/*
+ * ── chunk cycles ────────────────────────────────────────────────────────────────────────────────
+ *
+ * ⚠️ Added in P-5.8 after a circular chunk dependency shipped a **blank console** to the production
+ * deployment. `manualChunks` matched `react-dom` as a substring, which under pnpm also matches the
+ * peer hash in the virtual-store path, so Radix and react-router were pulled into `vendor-react`;
+ * they import utilities from `vendor`, and `vendor` imports React back. In an ES module cycle one
+ * side runs against the other's uninitialised bindings, and the app died with
+ * `Cannot read properties of undefined (reading 'forwardRef')`.
+ *
+ * Every existing gate passed: the build succeeded, the budget passed, 1,300 tests were green. None
+ * of them loads the built bundle, so none of them could see it. This check reads the emitted chunks
+ * and fails on any cycle — cheap, deterministic, and it fails for the actual reason.
+ */
+const jsFiles = files.filter((name) => name.endsWith('.js'));
+const graph = new Map(
+  jsFiles.map((name) => {
+    const source = readFileSync(`${DIST}/${name}`, 'utf8');
+    const edges = new Set();
+    // Static `import … from "./chunk.js"` and re-exports. Dynamic `import()` is deliberately
+    // ignored: it is deferred, so it cannot produce an evaluation-order cycle.
+    for (const match of source.matchAll(/(?:^|[});\s])(?:import|export)[^;]*?from\s*["'](\.\/[^"']+)["']/g)) {
+      edges.add(match[1].replace(/^\.\//, ''));
+    }
+    for (const match of source.matchAll(/(?:^|[});\s])import\s*["'](\.\/[^"']+)["']/g)) {
+      edges.add(match[1].replace(/^\.\//, ''));
+    }
+    return [name, edges];
+  }),
+);
+
+/** Depth-first search recording the first cycle found, as a readable path. */
+function findCycle() {
+  const state = new Map(); // name → 'visiting' | 'done'
+  const stack = [];
+  const walk = (node) => {
+    if (state.get(node) === 'done') return undefined;
+    if (state.get(node) === 'visiting') return [...stack.slice(stack.indexOf(node)), node];
+    state.set(node, 'visiting');
+    stack.push(node);
+    for (const next of graph.get(node) ?? []) {
+      if (!graph.has(next)) continue;
+      const cycle = walk(next);
+      if (cycle) return cycle;
+    }
+    stack.pop();
+    state.set(node, 'done');
+    return undefined;
+  };
+  for (const node of graph.keys()) {
+    const cycle = walk(node);
+    if (cycle) return cycle;
+  }
+  return undefined;
+}
+
+const cycle = findCycle();
+if (cycle) {
+  failures.push(
+    `chunk cycle: ${cycle.join(' → ')}\n    ` +
+      'Circular chunks evaluate against uninitialised bindings and blank the page at load. ' +
+      'Fix `manualChunks` in vite.config.ts — split by package NAME, never by path substring.',
+  );
+} else {
+  console.log(`  ${'chunk cycles'.padEnd(32)} ${'none'.padStart(7)}  (${graph.size} chunks)`);
+}
 
 if (failures.length > 0) {
   console.error('\nbundle-budget: FAIL\n  ' + failures.join('\n  '));

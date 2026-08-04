@@ -25,6 +25,9 @@ async function main(): Promise<void> {
 
   const objectStore = new S3ObjectStore({
     endpoint: config.storage.endpoint,
+    // Media only writes segments today, but a store that can hand out an unreachable URL is a trap
+    // for whoever adds the first read. Same public name as evidence uses.
+    publicEndpoint: config.storage.publicEndpoint,
     accessKeyId: config.storage.accessKeyId,
     secretAccessKey: config.storage.secretAccessKey,
     region: config.storage.region,

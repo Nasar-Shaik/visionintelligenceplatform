@@ -70,6 +70,7 @@ import { VideoPlayerContainer, type PlayerAspect } from '@/ui';
 import { codecVerdict } from './codecs';
 import {
   classifyFailure,
+  sourceReachable,
   endedEarly,
   failureCopy,
   sessionClock,
@@ -968,7 +969,29 @@ function EvidencePlayerImpl({
               }}
               onError={(event) => {
                 const code = event.currentTarget.error?.code;
-                setFailure(classifyFailure(code, sessionExpired(clock, new Date())));
+                const source = event.currentTarget.currentSrc;
+                const classified = classifyFailure(code, sessionExpired(clock, new Date()));
+                setFailure(classified);
+
+                /*
+                 * ⚠️ `refused` and `unknown` are the two verdicts that could equally well mean
+                 * "the bytes never arrived", so the player asks instead of guessing: one
+                 * `Range: bytes=0-0` against the same signed URL. If it is unreachable, the honest
+                 * answer is `network` — recoverable, with a Retry that will actually work — rather
+                 * than telling an operator mid-incident to try a different browser.
+                 *
+                 * Deliberately not awaited: the overlay renders immediately from the synchronous
+                 * verdict and is corrected a moment later if the probe disagrees. Guarded by the
+                 * source URL so a stale probe cannot overwrite a newer clip's state.
+                 */
+                if ((classified === 'refused' || classified === 'unknown') && source !== '') {
+                  void sourceReachable(source).then((reachable) => {
+                    if (reachable) return;
+                    const current = videoRef.current;
+                    if (current !== null && current.currentSrc !== source) return;
+                    setFailure('network');
+                  });
+                }
               }}
             />
           )}
