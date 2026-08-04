@@ -23,7 +23,10 @@ than only in this file.
 > anywhere in the repository** — no service route, no console call — so a milestone scoped as
 > "complete the UI" over them is a back-end milestone wearing a UI label. They are now sequenced
 > with the services that must exist first: **Q-7/Q-8 → P-9**, **Q-5/Q-6/Q-9 → P-10**, **Q-4 → P-11**,
-> **Q-3 → P-6** (Notify already has the routes). See [PRODUCT_ROADMAP](PRODUCT_ROADMAP.md).
+> **Q-3 → P-7** (the transport seam exists; the channel enum needs an additive extension).
+> Re-verified 2026-08-04 against the code — see
+> [IMPLEMENTATION_READINESS](IMPLEMENTATION_READINESS.md) for the per-symbol evidence and
+> [PRODUCT_ROADMAP](PRODUCT_ROADMAP.md) for the plan.
 
 ## Queued contract freezes
 

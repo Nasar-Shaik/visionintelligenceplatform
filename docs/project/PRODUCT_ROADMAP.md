@@ -1,211 +1,357 @@
-# Product Roadmap
+# Product Roadmap — the execution plan
 
-**Status:** canonical from 2026-08-04. Supersedes the delivery sequence in
-[PROJECT_ROADMAP](PROJECT_ROADMAP.md) (kept as history) and re-groups
-[PRODUCT_ROADMAP_QUEUE](PRODUCT_ROADMAP_QUEUE.md) by customer capability rather than by contract.
+**Canonical from 2026-08-04.** Built on [IMPLEMENTATION_READINESS](IMPLEMENTATION_READINESS.md),
+which classified every remaining capability against the code rather than the design documents.
 
-**Governance unchanged.** This document does not authorise anything. Each phase is authorised at
-review, on its merits, in sequence. The [PLATFORM_ROADMAP](PLATFORM_ROADMAP.md) layering still holds
-and the six foundations stay frozen.
+Supersedes the delivery sequence in [PROJECT_ROADMAP](PROJECT_ROADMAP.md) (kept as history) and
+regroups [PRODUCT_ROADMAP_QUEUE](PRODUCT_ROADMAP_QUEUE.md) by customer capability.
 
----
-
-## The P-5.x series is closed
-
-P-5 ran from incident management to customer certification in nine slices. It has finished the job
-it existed to do:
-
-| Slice | Delivered                                            |
-| ----- | ---------------------------------------------------- |
-| P-5.1 | Incident lifecycle                                   |
-| P-5.2 | Investigation Workspace + frozen workspace contracts |
-| P-5.3 | Workspace panels, code-splitting, health surface     |
-| P-5.4 | Timeline                                             |
-| P-5.5 | Evidence playback                                    |
-| P-5.6 | Playback production verification                     |
-| P-5.7 | Production verification                              |
-| P-5.8 | Production deployment hardening                      |
-| P-5.9 | Customer certification                               |
-
-**Recommendation: close P-5.x permanently and do not open P-5.10.**
-
-The reason is not tidiness. A decimal series signals "more of the same slice", and the remaining
-work is not more of the same slice — it is a different question. P-5.x asked _"is what we built
-correct, deployable and presentable?"_ The answer is yes. The next question is _"is what we built
-enough for someone to pay for?"_, and that question is answered by capability, not by another
-verification pass.
-
-**No new architecture milestone is proposed.** Two items below need an ADR before implementation
-(live video transport, evidence export packaging), and each carries the ADR inside its phase rather
-than as a phase of its own.
+**Governance unchanged.** This authorises nothing. Each milestone is authorised at review, in
+sequence. The six foundations stay frozen; the [PLATFORM_ROADMAP](PLATFORM_ROADMAP.md) layering
+holds. **No milestone below requires a new service.**
 
 ---
 
-## What a customer can and cannot do today
+## P-5.x is closed
 
-Measured against the running production deployment on 2026-08-04, not against the design.
-
-| A customer can                                           | A customer cannot                                         |
-| -------------------------------------------------------- | --------------------------------------------------------- |
-| Sign in, work a queue, investigate, resolve, close       | **See a live camera** — the page is a placeholder         |
-| Play recorded evidence with custody and integrity intact | **Edit an existing rule** — the form cannot be saved      |
-| Register cameras, probe them, read real health           | **Detect theft, loitering or intrusion** — no analyzer    |
-| Author a new rule and watch it raise an incident         | **Export evidence or generate a report**                  |
-| Receive and acknowledge notifications                    | **Search across the platform, or save an investigation**  |
-| Be branded, deployed, backed up, restored and upgraded   | **Manage users, roles or tenant settings in the console** |
-
-Everything in the right column is customer-visible. Nothing in the right column is an architecture
-problem.
+Nine slices answered _"is what we built correct, deployable and presentable?"_ — and the answer is
+yes. The remaining work answers _"is it enough for someone to pay for?"_, which is answered by
+capability, not by another verification pass. **Do not open P-5.10.**
 
 ---
 
-## The phases
-
-Ordered by customer value against dependency, not by contract-freeze order. Two changes from the
-sequence suggested at review, both argued in
-[the roadmap review](../review/roadmap-2026-08/README.md):
-
-1. **Search, reporting and dashboards move later.** All three are back-end-absent today (§ below),
-   so "complete the UI" for them is not a UI milestone.
-2. **Live video and real perception move earlier**, because they are the two gaps a buyer notices
-   in the first ten minutes of a demo of a _CCTV_ product.
+## The sequence
 
 ```
-P-6  Make the Product Whole      ← everything with a real API today
-P-7  Live Video & Real Perception ← the two gaps a buyer notices first
-P-8  Real CCTV & NVR Validation   ← hardware; nothing above is trustworthy without it
-P-9  Reporting & Evidence Export
-P-10 Search & Saved Work
-P-11 Dashboards & Analytics
-P-12 Pilot Customer Release
-P-13 General Availability
+P-6   Make the Product Whole            ← everything with a backend today
+P-7   Alerting Beyond the Console       ← the smallest high-value gap
+P-8   Live Video & Real Perception      ← the two gaps a buyer meets first
+P-9   Real CCTV & NVR Validation        ← procurement starts at P-6 kickoff
+P-10  First Customer Pilot              ← the gate; everything after is informed by it
+P-11  Reporting & Evidence Export
+P-12  Search, Saved Work & Access Audit
+P-13  Dashboards & Analytics
+P-14  General Availability
 ```
 
-### P-6 · Make the Product Whole
+### What dependency analysis changed, and what it did not
 
-**The test for inclusion: the backend already exists, so this is genuinely a UI milestone.**
+**Not reordered.** P-6 first (nothing blocks it), reporting before search (both need jobs, reporting
+carries more value), dashboards last of the feature phases (it aggregates what the others produce —
+building it earlier means charting the demo dataset).
 
-| Item                                                                              | Why a customer notices                                                            |
-| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| **Fix rule editing** (TD-21)                                                      | A customer cannot change a rule after creating it. Showstopper.                   |
-| **Administration screens** — users, roles, tenant settings                        | `/settings` is a placeholder; today user admin needs `curl`                       |
-| **System Health page**                                                            | `/health` is a placeholder; the data exists on every service                      |
-| **Notification centre**                                                           | Notify has full CRUD + ack; nothing surfaces it outside the bell                  |
-| **Camera management depth** — capabilities, probe history, bulk, retire/reinstate | 20 camera routes exist and the client already calls them; the UI shows a fraction |
-| **Investigation Workspace completion**                                            | The remaining panel polish from P-5.3                                             |
-| **Tenant discovery at login** (TD-40)                                             | An operator must know a tenant slug to sign in                                    |
-| **`shortId` crash on missing field** (TD-33)                                      | A contract-required field arriving absent white-screens a page                    |
-| **Touch target on the two sliders** (TD-31)                                       | Scrubber and volume are 24 px on touch, not 44 px                                 |
+**Changed — three things, each with its reason:**
 
-**Deliberately excluded from P-6 and why:** search federation UI, saved investigations, report
-generation, background-job monitoring, evidence export. Each has a frozen contract and **zero
-implementation on the server** — see the gap table below. Building screens for them means building
-the services, which is P-9 and P-10 work wearing a UI label.
+1. **Alerting was inserted at P-7.** It was not on the roadmap at all. A security manager's first two
+   wants are _"show me"_ and _"tell me when something happens"_; the platform answers the second
+   only if the operator is already looking at the screen. It is a small milestone — an additive
+   contract extension over a transport seam that already exists — with disproportionate value, and a
+   pilot customer asks for it on day one. It must precede the pilot.
 
-### P-7 · Live Video & Real Perception
+2. **The pilot moved from last to P-10.** A pilot is not the end of the roadmap; it is the gate that
+   tells you whether the rest of the roadmap is right. Everything after P-10 is deliberately
+   sequenced _after_ first contact with a real customer and real cameras.
 
-The two biggest customer-visible gaps, grouped because they unblock from the same place: the media
-service's frame path (TD-4).
+3. **P-9 runs in parallel, because its dependency is not engineering.** It is gated on hardware
+   arriving. Procurement begins at P-6 kickoff. Nothing in P-7 or P-8 depends on P-9, and P-9 does
+   not depend on P-8's live transport — validating a camera means probing, onboarding and recording
+   it, all of which work today.
 
-- Live view transport — **needs an ADR** (HLS / LL-HLS / WebRTC / fMP4-over-WebSocket). TD-28.
-- Media → inference frame bus. TD-4, TD-5.
-- Upload a recording and analyse it. TD-9 G-2.
-- Manifest-driven label → event-type mapping. TD-13.
-- Behaviour analyzer — loitering, theft, intrusion, crowding. TD-14.
-- Auto-captured evidence from a live incident. TD-15.
+**Not split, deliberately:** background jobs stays inside P-11 with reporting and export. On its own
+it has no customer value whatsoever, and a milestone whose exit criterion is "a worker loop exists"
+is exactly the engineering-only work that must not delay customer-visible value.
 
-⚠️ Until TD-14 ships, the phrase "suspicious activity" is a demo caption, not a product capability.
-That is the single largest gap between what the platform is sold as and what it does.
-
-### P-8 · Real CCTV & NVR Validation
-
-No camera or NVR has ever been connected. Plan and minimum hardware:
-[CCTV_READINESS](../review/p59/CCTV_READINESS.md), refreshed in
-[the roadmap review](../review/roadmap-2026-08/README.md#6--cctv-readiness).
-
-### P-9 · Reporting & Evidence Export
-
-Q-7 (background jobs) → Q-8 (report model) → TD-16 (signed, watermarked export bundles). The job
-runner is the prerequisite: a report is a long-running job, and there is no worker in any service.
-Evidence export **needs an ADR** — a signed bundle leaving the platform is a custody boundary.
-
-### P-10 · Search & Saved Work
-
-Q-6 (federator) and Q-5 (saved searches, investigations, pins), plus TD-23 (incidents are not
-searchable by behaviour). ⚠️ Q-9's access audit lands here and carries the sharpest constraint in
-the backlog: **no query route may be exposed until covering indexes are declared** — it will be the
-highest-volume collection in the product.
-
-### P-11 · Dashboards & Analytics
-
-Q-4 contracts, then read models. Sequenced last of the feature phases deliberately: a dashboard
-aggregates what the other phases produce, and building it first means charting the demo dataset.
-
-### P-12 · Pilot Customer Release
-
-[PILOT_INSTALLATION_CHECKLIST](../runbooks/PILOT_INSTALLATION_CHECKLIST.md) executed against a real
-customer, on their hardware. Findings feed back into P-8.
-
-### P-13 · General Availability
-
-Licensing and entitlements · per-tenant branding (TD-42) · rate limiting (TD-39) · retention sweeps
-(TD-18) · point-in-time backup (TD-38) · distributed rule state (TD-7) · permission model tightening
-(TD-26).
+**Not merged, deliberately:** the in-app notification centre (P-6) and external notification
+transports (P-7) are separate. The centre is UI over a live API; the transports need a contract
+extension and integrations. They are not tightly coupled — the centre works without email.
 
 ---
 
-## The gap that reshaped this roadmap
+## P-6 · Make the Product Whole
 
-Five contract families were frozen during P-5 and **have no consumer anywhere in the repository** —
-not in a service, not in the console. Verified 2026-08-04 by searching every service and the console
-for the exported type names:
+**Goal:** a customer can do everything the product claims, on every screen it shows them. **Zero
+placeholder pages.**
 
-| Frozen contract                      | Server implementation | Console consumer | Phase |
-| ------------------------------------ | --------------------- | ---------------- | ----- |
-| `SearchResponse` (Q-6)               | none                  | none             | P-10  |
-| `SavedSearch` / investigations (Q-5) | none                  | none             | P-10  |
-| `Job` / `JobSchedule` (Q-7)          | none                  | none             | P-9   |
-| `ReportModel` (Q-8)                  | none                  | none             | P-9   |
-| `AccessAuditEntry` (Q-9)             | none                  | none             | P-10  |
+**Test for inclusion:** the backend already exists, so this is genuinely a UI milestone. Every item
+was verified to have a live route.
 
-No route exists under `/search`, `/jobs`, `/reports`, `/saved-searches` or `/audit` on any of the
-ten services.
+**Dependencies:** none. This is why it is first.
 
-This is not a defect — it is exactly what "freeze the contract before implementing" was meant to
-produce, and the workspace already declares these dependencies `not-built` to the operator rather
-than showing an empty panel. It is recorded here because it is the fact that determines what a
-UI-completion milestone can honestly contain.
+| #   | Work                                                                                                                                                       | Why                                                                                     |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| 1   | **Fix rule editing** (TD-21)                                                                                                                               | A customer cannot change a rule after creating it. Shortest path from broken to working |
+| 2   | **User administration** — freeze `UpdateUserInput`, add `PATCH /users/:id`, `POST /users/:id/disable`, `POST /users/:id/password`, plus the screen (TD-44) | An offboarded employee keeps access to a security product                               |
+| 3   | **Tenant settings screen** over the existing `PATCH /tenants/:tenantId`                                                                                    | `/settings` is a placeholder                                                            |
+| 4   | **System Health page** over `/health`, `/ready`, `/streams/health`, `/cameras/:id/health/summary`                                                          | `/health` is a placeholder and the data already exists                                  |
+| 5   | **Notification centre** (in-app)                                                                                                                           | Notify has full CRUD and ack; nothing surfaces it beyond the bell                       |
+| 6   | **Camera management depth**                                                                                                                                | 20 routes exist, the client already calls them, the UI shows a fraction                 |
+| 7   | **Media catalogue** — clips and recordings per camera                                                                                                      | A whole service with no console client                                                  |
+| 8   | **Investigation workspace completion**                                                                                                                     | Empty-state UX; six identical "No incident selected" panels                             |
+| 9   | **`/live` tells the truth**                                                                                                                                | Not a fake player. An honest statement of what arrives in P-8                           |
+| 10  | **Global search box wired or disabled** (TD-46, D-3)                                                                                                       | It currently eats keystrokes and undermines every honest empty state                    |
+| 11  | **Command palette promoted to the shell**                                                                                                                  | It already exists inside the workspace                                                  |
+| 12  | **Responsive shell below `md`** (TD-45)                                                                                                                    | Sign out is off-screen on a phone                                                       |
+| 13  | **Table sort + result count** (TD-47)                                                                                                                      | Invisible at 6 rows; it is the product at 600                                           |
+| 14  | **TD-40 · TD-31 · TD-3**                                                                                                                                   | Tenant discovery at login (needs **D-1**), 44 px sliders, zone existence check          |
+
+**Exit criteria**
+
+- [ ] `verify.mjs` — every route renders, zero console errors, **and no route is a placeholder**
+- [ ] `overflow.mjs` — nothing painted off-screen at **390 → 1920**, phone included
+- [ ] A rule can be created, edited, versioned and rolled back entirely in the console
+- [ ] A user can be created, have their role changed, and be **disabled** entirely in the console
+- [ ] No string containing an internal slice number (`P2-1.13`) is reachable by a customer
+- [ ] **D-1 decided** (tenant identity at sign-in)
+- [ ] Full gate green; bundle budget green; no chunk cycles
+- [ ] Screenshots of every screen against the **deployment**
+
+**Explicitly out of scope:** search federation, saved investigations, report generation,
+background-job monitoring, evidence export. All five have frozen contracts and **no server**.
 
 ---
 
-## Deferred, with the reason stated
+## P-7 · Alerting Beyond the Console
 
-Moved out of the critical path by the "will a paying customer notice this?" test. Full reasoning in
-[CUSTOMER_VALUE_MATRIX](../review/roadmap-2026-08/CUSTOMER_VALUE_MATRIX.md).
+**Goal:** an incident reaches a human who is not looking at the screen.
 
-| Item                                          | Where it went                                    |
-| --------------------------------------------- | ------------------------------------------------ |
-| TypeScript 7 upgrade (TD-1)                   | Technical debt — no customer-visible effect      |
-| Event upcaster, dedup, ordering (TD-10/11/12) | Technical debt — correct today at current scale  |
-| Pruned service images (TD-35)                 | Technical debt — deployment size only            |
-| CSP `unsafe-inline`, Zod JIT probe (TD-36/37) | Technical debt — recorded, no exposure           |
-| Light theme (TD-43)                           | **Product decision required** — see below        |
-| Face recognition · LPR · PTZ · audio · GIS    | Post-GA. Biometrics need a DPIA before a schema. |
+**Dependencies:** Q-3 contract extension — `NotificationChannelType` is `['in-app','webhook']`
+today. The extension is **additive; no ADR**. The transport-agnostic seam already exists in
+`channel-sender.ts`.
 
-### One requirement that contradicts a recorded decision
+- Extend the channel contract: email · SMS · Slack · Teams (+ per-transport config and delivery
+  state).
+- Implement the transports behind the existing sender port.
+- **Notification policies** — who is told what, through which channel, under what conditions,
+  scoped to a hierarchy node.
+- **Escalation** — unacknowledged after _n_ minutes goes further up.
+- Delivery state, retry and failure surfaced in the console. ⚠️ A notification that silently failed
+  to send is worse than one never configured.
 
-The review asked to "verify dark mode and light mode consistency". **There is no light mode.**
-TD-43 records dark-only as a deliberate choice for a SOC product; the token layer would support a
-light palette but no light palette exists, so this is a decision to take rather than a check to run.
-Recommendation: **stay dark-only through P-8**, and revisit if a pilot customer asks. Building and
-maintaining a second palette costs every future component twice.
+**Exit criteria**
+
+- [ ] A critical incident on a demo camera delivers an email and an SMS to a real address and number
+- [ ] A failed delivery is **visible in the console**, with the reason
+- [ ] Escalation fires on a genuinely unacknowledged incident, proven by waiting
+- [ ] Delivery is scoped by hierarchy node, not by a list of camera ids
+- [ ] Contract change is additive — no existing consumer changes
+
+---
+
+## P-8 · Live Video & Real Perception
+
+**Goal:** the product does the two things a buyer assumes it already does.
+
+Grouped because both unblock from the same place: the media service's frame path (TD-4). Splitting
+them would mean building the frame bus twice.
+
+**Dependencies:** **an ADR for the live transport** (HLS · LL-HLS · WebRTC · fMP4-over-WebSocket) —
+a service-sized decision, not a milestone task. **D-4** decides the behaviour set.
+
+| Work                                                                | Debt     |
+| ------------------------------------------------------------------- | -------- |
+| Live view transport + the player                                    | TD-28    |
+| Media → inference frame bus (replace `NullFrameSink`)               | TD-4     |
+| Real ONNX backend as the default, not `stub`                        | TD-5     |
+| Upload a recording and analyse it                                   | TD-9 G-2 |
+| Manifest-driven label → event-type mapping                          | TD-13    |
+| **Behaviour analyzer** — loitering · intrusion · crowding (**D-4**) | TD-14    |
+| Auto-captured evidence from a live incident                         | TD-15    |
+
+⚠️ **Until TD-14 ships, "suspicious activity" is a demo caption, not a product capability.** This is
+the largest gap between what the platform is sold as and what it does.
+
+**Exit criteria**
+
+- [ ] A live camera renders in Chrome, Edge, Firefox and Safari against the **deployment**
+- [ ] An uploaded MP4 produces detections → events → an incident → attached evidence, unaided
+- [ ] Loitering, intrusion and crowding each fire on recorded footage a **human** labelled first
+- [ ] At least one **negative** case per behaviour — a false positive costs a deployment more than a miss
+- [ ] Latency budget measured and recorded, not asserted
+- [ ] The AI Playground artifact of record accompanies every perception change (§22)
+
+---
+
+## P-9 · Real CCTV & NVR Validation
+
+**Goal:** stop saying "unverified".
+
+⚠️ **Procurement starts at P-6 kickoff.** This is the only milestone gated on something that is not
+engineering, and the only one whose start date is not under our control.
+
+**Minimum hardware:** one camera per vendor family — **Hikvision · Dahua · CP Plus · UNV · Axis** —
+each exercised in **H.264 and H.265**, plus **one NVR with at least four channels**. A DVR/NVR is a
+different integration from a camera, and the channel-path templates in `DVR_TEMPLATES` have never met
+one. Roughly two engineer-weeks once hardware is present.
+
+**Coverage:** RTSP against real firmware · ONVIF discovery · NVR channel playback · exported
+recordings · H.265 **decode** (probed only today, never decoded — TD-29) · night vision · IR ·
+variable bitrate · long recordings · missing frames · corrupted clips.
+
+**Exit criteria**
+
+- [ ] Every camera reaches `first-frame`; codec, resolution and frame rate **measured** per model
+- [ ] A deliberately wrong password fails at `authentication`; an unplugged camera fails at `tcp`/`dns`
+- [ ] **Every deviation recorded** — vendor, model, firmware, what happened
+- [ ] `profiles/cameras/*.json` gains a certified entry per validated model (§21)
+- [ ] `CCTV_READINESS.md` becomes a **supported-hardware list** rather than a plan
+- [ ] ⚠️ **Nothing is marked certified without hardware evidence** (§18) — no simulation promotes a status
+
+---
+
+## P-10 · First Customer Pilot
+
+**Goal:** a real customer, their cameras, their site, their staff.
+
+**Dependencies:** P-6 blockers cleared · P-7 alerting · P-8 perception · P-9 findings.
+
+Execute [PILOT_INSTALLATION_CHECKLIST](../runbooks/PILOT_INSTALLATION_CHECKLIST.md). Read
+[KNOWN_LIMITATIONS](../review/p59/KNOWN_LIMITATIONS.md) **with** the customer, not at them. Test the
+restore — do not merely run the backup.
+
+**Exit criteria**
+
+- [ ] Installed from [DEPLOYMENT.md](../runbooks/DEPLOYMENT.md) alone, no improvisation. **If a step is wrong, fix the guide**
+- [ ] The customer's own operators work a real incident **unaided**
+- [ ] A restore is performed and **verified** on their host
+- [ ] Every camera deviation fed back against TD-27
+- [ ] [CUSTOMER_ACCEPTANCE_CHECKLIST](../review/p59/CUSTOMER_ACCEPTANCE_CHECKLIST.md) signed
+- [ ] ⚠️ **The pilot's findings re-open this roadmap.** P-11 onward is provisional until then
+
+---
+
+## P-11 · Reporting & Evidence Export
+
+**Goal:** something a customer can hand to a third party — police, insurer, HR, a regulator.
+
+**Dependencies:** jobs → reports → export, strictly in that order. **An ADR for evidence export**: a
+signed bundle leaving the platform is a custody boundary.
+
+- **Background jobs** — a shared `@vip/jobs` package (lease/claim protocol) with the worker loop
+  inside each owning service. ⚠️ **Not a new service:** a job runner needs the data of the context it
+  serves, and a central job service would need read access to every context — [§5](CONSTRAINTS.md)
+  violated by construction.
+- Report generation over the frozen `ReportModel` · theme presets in configuration.
+- **Signed, watermarked evidence export bundles** (TD-16).
+- Background-job monitoring UI.
+- **Point-in-time evidence ancestry** (TD-20) — ⚠️ a report currently states the camera is in the
+  zone it is in _now_, not where it was when the incident happened. Rarely wrong, catastrophically
+  so.
+
+**Exit criteria**
+
+- [ ] A report generates asynchronously, survives a service restart mid-job, and is downloadable
+- [ ] An export bundle verifies its own integrity **outside** the platform
+- [ ] The custody chain records the export, naming who exported and why
+- [ ] A report about a historical incident names the location **as it was**
+- [ ] A stuck job is visible and can be retried by an administrator
+
+---
+
+## P-12 · Search, Saved Work & Access Audit
+
+**Goal:** find anything; keep your work; know who looked at what.
+
+**Dependencies:** **an ADR for where federation lives** (gateway vs per-context vs client).
+
+- Per-context `/search` routes; federation holding the caller's permissions.
+- Saved searches · saved investigations · pins · recents.
+- Incidents searchable by behaviour (TD-23).
+- **Access audit** (Q-9).
+
+> ⚠️ **The sharpest constraint in the backlog.** The access audit will be the highest-volume
+> collection in the product. **No query route may be exposed until covering indexes are declared**
+> ([§40](CONSTRAINTS.md)). A query without one there is not a slow page — it is the query that takes
+> the cluster down.
+
+**Exit criteria**
+
+- [ ] Search returns results from ≥4 contexts in one response, permission-filtered per context
+- [ ] An entity the caller may not read **never appears**, not even as a count
+- [ ] Every audit query is index-covered — proven by `explain`, not by timing
+- [ ] Benchmarked at realistic volume before the route is exposed
+- [ ] An investigation survives a shift change and reopens exactly as it was left
+
+---
+
+## P-13 · Dashboards & Analytics
+
+**Goal:** answer _"is this getting worse?"_ — the question the current dashboard cannot.
+
+**Dependencies:** Q-4 contract freeze (`DashboardWidget` · `DashboardLayout` · `DashboardMetric` ·
+`DashboardFilter` · `DashboardPreset` · `DashboardPermission` — **none exist**), and the data the
+earlier phases produce.
+
+- Read models · trends and deltas on every stat · estate-level and executive views · scheduled
+  reports over the P-11 job runner.
+
+**Exit criteria**
+
+- [ ] **No number appears without direction** — a sparkline or a delta
+- [ ] Every widget is permission-scoped independently
+- [ ] Aggregates derive; nothing is a second source of truth ([§46](CONSTRAINTS.md))
+- [ ] Zero per-event queries; benchmarked before optimised
+
+---
+
+## P-14 · General Availability
+
+**Goal:** sellable, supportable, multi-customer.
+
+| Work                                                           | Debt / decision                                                        |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Licensing & entitlements — camera counts, feature gates, plans | contract missing                                                       |
+| **Per-tenant branding**                                        | TD-42, **D-2** (depends on **D-1**)                                    |
+| Rate limiting at the edge                                      | TD-39                                                                  |
+| Automated retention sweeps and tier transitions                | TD-18                                                                  |
+| Point-in-time backup                                           | TD-38                                                                  |
+| Distributed rule state (Redis)                                 | TD-7 — ⚠️ a second replica silently under-counts threshold rules today |
+| **Narrow `*:read`**                                            | TD-26, **D-6**                                                         |
+| Legal hold approval + redaction                                | TD-17 — regulated customers                                            |
+| Real-time delivery hardening                                   | TD-19                                                                  |
+
+**Exit criteria**
+
+- [ ] A tenant exceeding its camera entitlement is refused at the boundary, not warned in a log
+- [ ] Two replicas produce the same threshold-rule results as one — **measured**
+- [ ] A retention sweep deletes on schedule and **respects legal hold**, proven
+- [ ] No role holds a wildcard read
+- [ ] A restore from a point-in-time backup is verified
+
+---
+
+## Off the critical path
+
+Recorded, not scheduled. **None of these may delay a milestone above.**
+
+TypeScript 7 (TD-1) · tracker doc consolidation (TD-2) · event upcaster (TD-10) · dedup and ordering
+notes (TD-11/12) · CI flake (TD-24) · pruned images (TD-35) · CSP notes (TD-36/37) · light theme
+(TD-43, **D-5**).
+
+**Post-GA, deliberately not contracts:** Face Recognition · LPR · PTZ · Audio · GIS · Drone · Cloud
+Sync · Edge Sync.
+
+⚠️ Face recognition and LPR are **biometric processing** under GDPR Art. 9 and equivalents: a lawful
+basis, a DPIA, a retention position and a subject-rights path come _before_ there is a schema to
+store a faceprint in. PTZ is the platform's first camera-**control** write path — a security-boundary
+decision. Both need an ADR, not an enum.
+
+---
+
+## The three ADRs this roadmap will need
+
+Named now so they are not discovered mid-milestone. Each is carried **inside** its phase; none
+justifies an architecture milestone of its own.
+
+| ADR                              | Phase    | Decision                                                                                       |
+| -------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| Live video transport             | **P-8**  | HLS · LL-HLS · WebRTC · fMP4-over-WebSocket; session authorization; latency budget             |
+| Evidence export custody boundary | **P-11** | What a signed bundle asserts once it has left the platform, and what the custody chain records |
+| Search federation placement      | **P-12** | Gateway vs per-context vs client, and where permission filtering happens                       |
 
 ---
 
 ## Related
 
-- [Roadmap review](../review/roadmap-2026-08/README.md) — the analysis behind this document, with Go/No-Go
-- [CUSTOMER_VALUE_MATRIX](../review/roadmap-2026-08/CUSTOMER_VALUE_MATRIX.md)
-- [PILOT_READINESS_MATRIX](../review/roadmap-2026-08/PILOT_READINESS_MATRIX.md)
-- [PRODUCTION_READINESS_MATRIX](../review/p59/PRODUCTION_READINESS_MATRIX.md) · [KNOWN_LIMITATIONS](../review/p59/KNOWN_LIMITATIONS.md)
+- [IMPLEMENTATION_READINESS](IMPLEMENTATION_READINESS.md) — the matrix this plan is built on
+- [Roadmap review](../review/roadmap-2026-08/README.md) · [CUSTOMER_VALUE_MATRIX](../review/roadmap-2026-08/CUSTOMER_VALUE_MATRIX.md) · [PILOT_READINESS_MATRIX](../review/roadmap-2026-08/PILOT_READINESS_MATRIX.md) · [UI_BENCHMARK](../review/roadmap-2026-08/UI_BENCHMARK.md)
 - [TECH-DEBT](../../tracking/TECH-DEBT.md) · [RISK_REGISTER](RISK_REGISTER.md) · [MASTER_PROGRESS](../tracker/MASTER_PROGRESS.md)
