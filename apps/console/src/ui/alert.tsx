@@ -35,11 +35,32 @@ export interface AlertProps
   title?: string;
 }
 
+/**
+ * ⚠️ **The ARIA role follows the variant. It used to be `alert` for all four, which was wrong.**
+ *
+ * `role="alert"` is an *assertive* live region: it interrupts a screen reader mid-sentence. That is
+ * right for a failed save and wrong for a paragraph of standing explanation — an informational
+ * panel that never changes was being announced as though something had just gone wrong, every time
+ * it rendered.
+ *
+ * So: `critical` and `warning` keep `alert`; `success` becomes `status` (polite — it is worth
+ * hearing, at the next pause); `info` gets **no live region at all**, because static prose is read
+ * in document order like any other text. Found in P-6.3, when a settings page with one standing
+ * note and one validation message announced both as alerts and a test could not tell them apart —
+ * which is exactly the confusion a screen-reader user would have had.
+ */
+const ROLE = {
+  info: undefined,
+  success: 'status',
+  warning: 'alert',
+  critical: 'alert',
+} as const;
+
 export function Alert({ className, variant = 'info', title, children, ...props }: AlertProps) {
   const v = variant ?? 'info';
   const Icon = ICON[v];
   return (
-    <div role="alert" className={cn(alertVariants({ variant }), className)} {...props}>
+    <div role={ROLE[v]} className={cn(alertVariants({ variant }), className)} {...props}>
       <Icon className={cn('mt-0.5 size-4 shrink-0', ICON_COLOR[v])} aria-hidden />
       <div className="space-y-0.5">
         {title ? <p className="font-medium">{title}</p> : null}

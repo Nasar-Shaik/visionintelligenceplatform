@@ -41,11 +41,34 @@ export const CreateTenantInput = z.object({
 });
 export type CreateTenantInput = z.infer<typeof CreateTenantInput>;
 
-/** Input to update a tenant (name and/or lifecycle transition). */
+/**
+ * Input to update a tenant (name and/or lifecycle transition).
+ *
+ * ⚠️ `slug` is **absent and stays absent.** It is DNS-safe and documented as stable for the life of
+ * the tenant; it is used as a key and namespace prefix, so changing it would strand every reference
+ * that already spells it. A tenant that needs a different slug is a new tenant.
+ *
+ * ### `expectedUpdatedAt` — optimistic concurrency, added in P-6.3
+ *
+ * ⚠️ **Optional, and that is a compatibility decision rather than a soft guarantee.** Making it
+ * required would break every existing caller — the seed, the runbooks, `curl` — on a schema whose
+ * whole point is that it is additive. When it is supplied the server compares it with the stored
+ * `updatedAt` and refuses a mismatch with **409**; when it is omitted the write proceeds as it
+ * always has, last-write-wins.
+ *
+ * The console always sends it. Two administrators editing the same tenant therefore see a conflict
+ * rather than one of them silently losing their change — which is the behaviour that matters,
+ * because the losing administrator has no way to discover the loss.
+ *
+ * `updatedAt` is the version token rather than a separate counter: the tenant record has no version
+ * field, and adding one would mean a migration plus a second thing that can disagree with the
+ * timestamp already there.
+ */
 export const UpdateTenantInput = z
   .object({
     name: z.string().min(1).max(200).optional(),
     status: TenantStatus.optional(),
+    expectedUpdatedAt: IsoDateTime.optional(),
   })
   .refine((v) => v.name !== undefined || v.status !== undefined, {
     message: 'at least one of name or status is required',

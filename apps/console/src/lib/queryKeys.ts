@@ -19,6 +19,9 @@ export const queryKeys = {
   // `all()` rather than a node — the set of changed nodes is the traversal the server just did.
   organization: {
     all: () => ['organization'] as const,
+    // P-6.3. The tenant record itself. Keyed apart from the estate: renaming the tenant must not
+    // refetch the whole hierarchy, and archiving a location must not refetch the tenant.
+    tenant: (tenantId: string) => ['organization', 'tenant', tenantId] as const,
     tree: (under?: string) => ['organization', 'tree', under ?? null] as const,
     locations: (params?: Record<string, unknown>) =>
       ['organization', 'locations', params ?? {}] as const,

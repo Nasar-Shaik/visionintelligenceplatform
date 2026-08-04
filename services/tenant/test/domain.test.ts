@@ -66,6 +66,31 @@ describe('applyTenantUpdate', () => {
     expect(updated.updatedAt).toBe(later.toISOString());
     expect(updated.createdAt).toBe(at.toISOString());
   });
+
+  /**
+   * ⚠️ **`updatedAt` must strictly increase, because P-6.3 made it the concurrency token.**
+   *
+   * Found by a frozen clock: every write produced an identical timestamp, so a stale
+   * `expectedUpdatedAt` still matched and the second administrator silently overwrote the first —
+   * the exact failure the check exists to prevent. In production the window is one millisecond
+   * rather than always, which makes it rarer and no less real.
+   */
+  it('advances updatedAt even when the clock has not moved', () => {
+    const t = newTenant({ slug: 'acme', name: 'Acme' }, 'tnt_1', at);
+    const first = applyTenantUpdate(t, { name: 'One' }, at);
+    expect(first.updatedAt).not.toBe(t.updatedAt);
+
+    const second = applyTenantUpdate(first, { name: 'Two' }, at);
+    expect(second.updatedAt).not.toBe(first.updatedAt);
+    expect(Date.parse(second.updatedAt)).toBeGreaterThan(Date.parse(first.updatedAt));
+  });
+
+  it('uses the wall clock when it has moved on, rather than drifting forward forever', () => {
+    // The nudge is a floor, not an increment — it must not make `updatedAt` run away from real time.
+    const t = newTenant({ slug: 'acme', name: 'Acme' }, 'tnt_1', at);
+    const updated = applyTenantUpdate(t, { name: 'Later' }, later);
+    expect(updated.updatedAt).toBe(later.toISOString());
+  });
 });
 
 describe('mappers', () => {

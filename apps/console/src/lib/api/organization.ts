@@ -4,7 +4,9 @@ import type {
   OrgLocationPage,
   OrgNode,
   OrgTree,
+  Tenant,
   UpdateOrgNodeInput,
+  UpdateTenantInput,
 } from '@vip/contracts';
 import { http } from './http';
 
@@ -20,6 +22,19 @@ import { http } from './http';
  * into a dangling id.
  */
 export const organizationApi = {
+  /** The tenant record itself — name, slug, status, timestamps. */
+  tenant: (tenantId: string) => http.get<Tenant>(`/tenant/tenants/${tenantId}`),
+
+  /**
+   * Rename the tenant (or move its lifecycle).
+   *
+   * ⚠️ `expectedUpdatedAt` is always sent. It is optional in the contract so that callers older
+   * than P-6.3 keep working, but a console that omitted it would let one administrator's change
+   * silently replace another's — and the loser would never find out.
+   */
+  updateTenant: (tenantId: string, patch: UpdateTenantInput) =>
+    http.patch<Tenant>(`/tenant/tenants/${tenantId}`, patch),
+
   tree: (tenantId: string, under?: string) =>
     http.get<OrgTree>(
       `/tenant/tenants/${tenantId}/org-tree${under ? `?under=${encodeURIComponent(under)}` : ''}`,

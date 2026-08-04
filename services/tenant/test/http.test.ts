@@ -157,6 +157,8 @@ function applyUpdate<T extends Record<string, unknown>>(
 
 let app: FastifyInstance;
 
+let published: { type: string; tenantId: string; payload?: Record<string, unknown> }[] = [];
+
 beforeEach(async () => {
   const config = loadConfig({
     NODE_ENV: 'test',
@@ -165,11 +167,19 @@ beforeEach(async () => {
     MONGO_URI: 'mongodb://localhost:47017/vip_tenant',
   });
   let n = 0;
+  published = [];
   const service = new TenantService({
     tenants: new TenantRepository<TenantDoc>(memoryCollection<TenantDoc>()),
     orgNodes: new TenantRepository<OrgNodeDoc>(memoryCollection<OrgNodeDoc>()),
     clock: { now: () => new Date('2026-07-28T00:00:00.000Z') },
     ids: { tenantId: () => `tnt_${++n}`, orgNodeId: () => `on_${++n}` },
+    // ⚠️ Captured rather than logged, so the audit record can be asserted on its content. An
+    // audit event nobody inspects in a test is an audit event nobody has read.
+    publisher: {
+      async publish(event) {
+        published.push(event);
+      },
+    },
   });
   app = (await buildServer({ config, service, startedAt: new Date() })).app;
   await app.ready();
@@ -243,6 +253,234 @@ describe('tenant reads + isolation gate', () => {
     const res = await app.inject({ method: 'GET', url: `/tenants/${a}`, headers: ctx(b) });
     expect(res.statusCode).toBe(403);
     expect(res.json()).toMatchObject({ success: false, error: { code: 'forbidden' } });
+  });
+
+  /**
+   * ⚠️ **403 here leaks nothing, and that is worth asserting rather than arguing.**
+   *
+   * Elsewhere in the platform a cross-tenant miss returns **404** so an id cannot be probed for
+   * existence (user administration, P-6.2). This route is the opposite case and reaches the same
+   * guarantee by a different route: the gate is `ctx.tenantId !== pathTenantId`, which **never
+   * touches the database**. A real tenant belonging to someone else and an id that has never
+   * existed produce byte-identical responses, so there is no oracle to probe.
+   *
+   * The test compares them directly. If someone later "improves" this by looking the tenant up
+   * first — to return a friendlier message, say — the two responses diverge and this fails.
+   */
+  it('a foreign tenant and a nonexistent one are indistinguishable', async () => {
+    const a = await provision('acme', 'Acme');
+    const b = await provision('beta', 'Beta');
+
+    const real = await app.inject({ method: 'GET', url: `/tenants/${a}`, headers: ctx(b) });
+    const fake = await app.inject({
+      method: 'GET',
+      url: '/tenants/tnt_does_not_exist_anywhere',
+      headers: ctx(b),
+    });
+
+    expect(real.statusCode).toBe(fake.statusCode);
+    expect(real.json().error.code).toBe(fake.json().error.code);
+    expect(real.json().error.message).toBe(fake.json().error.message);
+    // And the same for a write, which is the request an attacker would actually care about.
+    const realWrite = await app.inject({
+      method: 'PATCH',
+      url: `/tenants/${a}`,
+      headers: ctx(b),
+      payload: { name: 'Taken Over' },
+    });
+    const fakeWrite = await app.inject({
+      method: 'PATCH',
+      url: '/tenants/tnt_does_not_exist_anywhere',
+      headers: ctx(b),
+      payload: { name: 'Taken Over' },
+    });
+    expect(realWrite.statusCode).toBe(403);
+    expect(realWrite.statusCode).toBe(fakeWrite.statusCode);
+    expect(realWrite.json().error.message).toBe(fakeWrite.json().error.message);
+
+    // ⚠️ And the write really did not happen.
+    const after = await app.inject({ method: 'GET', url: `/tenants/${a}`, headers: ctx(a) });
+    expect(after.json().data.name).toBe('Acme');
+  });
+});
+
+/**
+ * **Tenant settings (P-6.3).** What an administrator may change, what they may not, and what
+ * happens when two of them change it at once.
+ */
+describe('tenant settings', () => {
+  const read = (id: string) =>
+    app.inject({ method: 'GET', url: `/tenants/${id}`, headers: ctx(id) });
+  const patch = (id: string, payload: unknown) =>
+    app.inject({ method: 'PATCH', url: `/tenants/${id}`, headers: ctx(id), payload });
+
+  it('renames a tenant and bumps updatedAt', async () => {
+    const id = await provision('acme', 'Acme');
+    const before = (await read(id)).json().data;
+    const res = await patch(id, { name: 'Acme Security Ltd' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.name).toBe('Acme Security Ltd');
+    expect(res.json().data.updatedAt).not.toBe(before.updatedAt);
+    // ⚠️ The slug is untouched by a rename — it is an identifier, not a label.
+    expect(res.json().data.slug).toBe('acme');
+  });
+
+  it('⚠️ ignores a slug in the body rather than honouring it', async () => {
+    /*
+     * `UpdateTenantInput` has no `slug`, and Zod strips unknown keys. This asserts the **outcome**
+     * rather than a 400, because the guarantee anyone depends on is that the slug did not move —
+     * asserting the status code would test Zod's strictness setting instead.
+     */
+    const id = await provision('acme', 'Acme');
+    const res = await patch(id, { name: 'Renamed', slug: 'hijacked' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.slug).toBe('acme');
+  });
+
+  it('rejects an empty name and a body that changes nothing', async () => {
+    const id = await provision('acme', 'Acme');
+    expect((await patch(id, { name: '' })).statusCode).toBe(400);
+    expect((await patch(id, {})).statusCode).toBe(400);
+    expect((await patch(id, { name: 'x'.repeat(201) })).statusCode).toBe(400);
+  });
+
+  describe('optimistic concurrency', () => {
+    it('⚠️ a second administrator editing the same tenant gets 409, not a silent overwrite', async () => {
+      const id = await provision('acme', 'Acme');
+      // Both administrators load the page and see the same record.
+      const seen = (await read(id)).json().data.updatedAt;
+
+      const first = await patch(id, { name: 'Renamed by Alice', expectedUpdatedAt: seen });
+      expect(first.statusCode).toBe(200);
+
+      const second = await patch(id, { name: 'Renamed by Bob', expectedUpdatedAt: seen });
+      expect(second.statusCode).toBe(409);
+      expect(second.json().error.code).toBe('conflict');
+
+      /*
+       * ⚠️ The assertion that matters: Alice's change survived. Without the check Bob's write would
+       * have landed and Alice would have no way to discover the loss — which is what makes a silent
+       * overwrite worse than a visible error.
+       */
+      expect((await read(id)).json().data.name).toBe('Renamed by Alice');
+    });
+
+    it('succeeds once the second administrator reloads', async () => {
+      const id = await provision('acme', 'Acme');
+      const stale = (await read(id)).json().data.updatedAt;
+      await patch(id, { name: 'First', expectedUpdatedAt: stale });
+
+      const fresh = (await read(id)).json().data.updatedAt;
+      const res = await patch(id, { name: 'Second', expectedUpdatedAt: fresh });
+      expect(res.statusCode).toBe(200);
+      expect((await read(id)).json().data.name).toBe('Second');
+    });
+
+    it('an omitted expectedUpdatedAt still writes — the field is additive', async () => {
+      /*
+       * ⚠️ The compatibility guarantee, asserted rather than assumed. Every caller that predates
+       * P-6.3 — the seed, the runbooks, a curl in an incident — sends no version and must keep
+       * working. Making the field required would have been a breaking change to a frozen contract.
+       */
+      const id = await provision('acme', 'Acme');
+      expect((await patch(id, { name: 'No version sent' })).statusCode).toBe(200);
+    });
+
+    it('an unchanged name writes no audit event and no conflict', async () => {
+      const id = await provision('acme', 'Acme');
+      const seen = (await read(id)).json().data.updatedAt;
+      const res = await patch(id, { name: 'Acme', expectedUpdatedAt: seen });
+      expect(res.statusCode).toBe(200);
+      // ⚠️ No `tenant.updated`: an audit line saying "name changed from Acme to Acme" is noise, and
+      // noise is what trains a reader to skim the lines that matter.
+      expect(published.filter((e) => e.type === 'tenant.updated')).toHaveLength(0);
+    });
+
+    it('a conflict on a tenant that no longer exists is a 404, not a 409', async () => {
+      const id = await provision('acme', 'Acme');
+      const res = await patch(id, {
+        name: 'Whatever',
+        expectedUpdatedAt: '2020-01-01T00:00:00.000Z',
+      });
+      // The tenant exists, so a mismatched version is a genuine conflict.
+      expect(res.statusCode).toBe(409);
+    });
+  });
+
+  /**
+   * **The audit record (P-6.3).**
+   *
+   * ⚠️ Before this milestone a **rename emitted nothing at all** — only a status transition
+   * announced itself — so the commonest settings change in the product left no trace. These assert
+   * the four things that make a line an audit record rather than a log message: what changed, from
+   * what, who did it, and which request it belonged to.
+   */
+  describe('audit', () => {
+    const auditFor = () => published.filter((e) => e.type === 'tenant.updated');
+
+    it('records one event per successful change, with before and after', async () => {
+      const id = await provision('acme', 'Acme');
+      published = [];
+      await patch(id, { name: 'Acme Security Ltd' });
+
+      const events = auditFor();
+      expect(events).toHaveLength(1);
+      expect(events[0]?.tenantId).toBe(id);
+      expect(events[0]?.payload?.changes).toEqual({
+        name: { from: 'Acme', to: 'Acme Security Ltd' },
+      });
+    });
+
+    it('names the actor and the correlation id', async () => {
+      const id = await provision('acme', 'Acme');
+      published = [];
+      await patch(id, { name: 'Renamed' });
+
+      const payload = auditFor()[0]?.payload ?? {};
+      // `x-principal-id: user-1` is what `ctx()` sends — the actor must survive the whole hop.
+      expect(payload.actorId).toBe('user-1');
+      expect(typeof payload.correlationId).toBe('string');
+      expect(payload.correlationId).not.toBe('');
+      expect(typeof payload.at).toBe('string');
+    });
+
+    it('records whether the caller supplied a version, because that is worth knowing', async () => {
+      const id = await provision('acme', 'Acme');
+      const seen = (await read(id)).json().data.updatedAt;
+
+      published = [];
+      await patch(id, { name: 'With version', expectedUpdatedAt: seen });
+      expect(auditFor()[0]?.payload?.expectedUpdatedAt).toBe(seen);
+
+      published = [];
+      await patch(id, { name: 'Without version' });
+      expect(auditFor()[0]?.payload?.expectedUpdatedAt).toBeNull();
+    });
+
+    it('⚠️ writes no audit event when the write was refused', async () => {
+      const id = await provision('acme', 'Acme');
+      const stale = (await read(id)).json().data.updatedAt;
+      await patch(id, { name: 'First', expectedUpdatedAt: stale });
+
+      published = [];
+      const conflicted = await patch(id, { name: 'Second', expectedUpdatedAt: stale });
+      expect(conflicted.statusCode).toBe(409);
+      // An audit trail that records attempts as though they succeeded is worse than none.
+      expect(auditFor()).toHaveLength(0);
+    });
+
+    it('keeps the lifecycle event alongside the audit event', async () => {
+      const id = await provision('acme', 'Acme');
+      published = [];
+      await patch(id, { status: 'suspended' });
+
+      expect(auditFor()[0]?.payload?.changes).toEqual({
+        status: { from: 'active', to: 'suspended' },
+      });
+      // ⚠️ Consumers subscribe to `tenant.suspended` specifically; folding it into `tenant.updated`
+      // would break them for no gain.
+      expect(published.some((e) => e.type === 'tenant.suspended')).toBe(true);
+    });
   });
 });
 

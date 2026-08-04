@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreateOrgNodeInput, UpdateOrgNodeInput } from '@vip/contracts';
+import type { CreateOrgNodeInput, UpdateOrgNodeInput, UpdateTenantInput } from '@vip/contracts';
 import { organizationApi } from '@/lib/api/organization';
 import { queryKeys } from '@/lib/queryKeys';
 import { useSession } from '@/features/auth/useAuth';
@@ -16,6 +16,45 @@ export function useOrgTree(under?: string) {
     queryKey: queryKeys.organization.tree(under),
     queryFn: () => organizationApi.tree(tenantId as string, under),
     enabled: Boolean(tenantId),
+  });
+}
+
+/** The tenant record itself (P-6.3) — the settings screen's subject. */
+export function useTenant() {
+  const { tenantId } = useSession();
+  return useQuery({
+    queryKey: queryKeys.organization.tenant(tenantId ?? ''),
+    queryFn: () => organizationApi.tenant(tenantId as string),
+    enabled: Boolean(tenantId),
+  });
+}
+
+/**
+ * Rename the tenant.
+ *
+ * ⚠️ On success the tenant query is **replaced with the server's response and then invalidated**,
+ * not patched optimistically. The server owns `updatedAt`, and `updatedAt` is the concurrency token
+ * the next save sends back — so a locally-invented value would make the *following* edit conflict
+ * against a version that never existed. The one place a stale cache would cause a wrong answer is
+ * exactly the place optimistic UI is tempting.
+ */
+export function useUpdateTenant() {
+  const { tenantId } = useSession();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: UpdateTenantInput) =>
+      organizationApi.updateTenant(tenantId as string, patch),
+    onSuccess: (tenant) => {
+      qc.setQueryData(queryKeys.organization.tenant(tenantId ?? ''), tenant);
+      void qc.invalidateQueries({ queryKey: queryKeys.organization.tenant(tenantId ?? '') });
+    },
+    /*
+     * ⚠️ A 409 means our copy is stale, so refetch immediately. The administrator's next action is
+     * always "show me what it actually says now", and making them press reload to get it is making
+     * them do the client's job.
+     */
+    onError: () =>
+      void qc.invalidateQueries({ queryKey: queryKeys.organization.tenant(tenantId ?? '') }),
   });
 }
 

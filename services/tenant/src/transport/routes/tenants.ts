@@ -70,11 +70,26 @@ export function registerTenantRoutes(app: FastifyInstance, deps: TenantRoutesDep
     return reply.send(success(await service.get(scope)));
   });
 
-  // Update the caller's tenant (name and/or lifecycle transition).
+  /*
+   * Update the caller's tenant (name and/or lifecycle transition).
+   *
+   * ⚠️ The actor and the correlation id are passed down so the audit event can name **who** and
+   * **which request**. `TenantScope` deliberately carries only `tenantId`, so neither can be
+   * recovered inside the service — a settings change that records what happened but not who did it
+   * is not an audit record.
+   */
   app.patch<{ Params: TenantParams }>('/tenants/:tenantId', async (request, reply) => {
     const scope = scopeFor(request, request.params.tenantId);
     const patch = parse(UpdateTenantInput, request.body);
-    return reply.send(success(await service.update(scope, patch)));
+    const actorId = request.tenantContext?.principalId;
+    return reply.send(
+      success(
+        await service.update(scope, patch, {
+          ...(actorId !== undefined ? { actorId } : {}),
+          correlationId: String(request.id),
+        }),
+      ),
+    );
   });
 
   // List the caller's org-hierarchy nodes.

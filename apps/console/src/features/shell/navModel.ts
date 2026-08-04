@@ -71,7 +71,9 @@ export const NAV_GROUPS: NavGroup[] = [
        * addressed to the people who can act.
        */
       { to: '/users', label: 'Users', icon: Users, permission: 'user:update' },
-      { to: '/settings', label: 'Settings', icon: Settings, permission: 'user:create' },
+      // P-6.3 — `tenant:update`, the permission the page's one editable field actually requires.
+      // It was `user:create`, which was a stand-in from when the page was a placeholder.
+      { to: '/settings', label: 'Settings', icon: Settings, permission: 'tenant:update' },
     ],
   },
   {

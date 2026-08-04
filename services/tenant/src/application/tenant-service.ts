@@ -125,14 +125,57 @@ export class TenantService {
     return toTenant(doc as TenantDoc);
   }
 
-  /** Update a tenant (name and/or lifecycle) within the caller's scope. */
-  async update(scope: TenantScope, patch: UpdateTenantInput): Promise<Tenant> {
+  /**
+   * Update a tenant (name and/or lifecycle) within the caller's scope.
+   *
+   * ### ⚠️ Optimistic concurrency, and why the check is in the query rather than before it
+   *
+   * When `expectedUpdatedAt` is supplied it becomes part of the **update filter**, not an `if`
+   * above it. Reading the document, comparing, and then writing leaves a window between the read
+   * and the write in which another administrator can commit — the exact race the check exists to
+   * close, reintroduced by the shape of the check. Mongo matches and writes in one operation, so
+   * either the document still carries the timestamp the caller saw or nothing is written at all.
+   *
+   * A zero match is then disambiguated: the tenant is re-read, and a document that exists means a
+   * **409** (someone else got there first) while a missing one means a 404.
+   *
+   * ### The audit record
+   *
+   * ⚠️ Every successful update now emits **`tenant.updated`** carrying before/after for each field
+   * that actually moved, the actor and the correlation id. Previously a rename emitted **nothing** —
+   * only a status transition announced itself — so the commonest settings change in the product left
+   * no trace at all.
+   *
+   * ⚠️ **Where that record lands is a real limitation, and it is not hidden.** The tenant service
+   * still uses `LoggingEventPublisher`, so this is a structured log line, not a queryable audit
+   * store: `AccessAuditEntry` is frozen in the contracts with no consumer anywhere and no route on
+   * any service. Building one here would be a new subsystem in a milestone that is meant to be
+   * additive. The event is emitted in the shape a durable consumer will want, so wiring one later
+   * changes the sink and not the call site. Recorded as L-25 / TD-49.
+   */
+  async update(
+    scope: TenantScope,
+    patch: UpdateTenantInput,
+    context: { actorId?: string; correlationId?: string } = {},
+  ): Promise<Tenant> {
     const doc = await this.tenants.findOne(scope, { _id: scope.tenantId });
     if (!doc) throw notFound(`tenant "${scope.tenantId}" not found`);
+    /*
+     * ⚠️ Snapshot the before-values **now**, not after the write.
+     *
+     * Reading them afterwards assumes the document handed back by `findOne` is a private copy. The
+     * MongoDB driver deserializes a fresh object so that happens to hold — but the in-memory store
+     * the HTTP tests use returns the stored reference and `updateOne` mutates it in place, so the
+     * "before" name was already the *after* name and every audit event came out empty. The audit
+     * record's correctness should not depend on which store is underneath it.
+     */
+    const before = { name: (doc as TenantDoc).name, status: (doc as TenantDoc).status };
     const updated = applyTenantUpdate(doc as TenantDoc, patch, this.clock.now());
-    await this.tenants.updateOne(
+    const matched = await this.tenants.updateOne(
       scope,
-      { _id: scope.tenantId },
+      patch.expectedUpdatedAt !== undefined
+        ? { _id: scope.tenantId, updatedAt: patch.expectedUpdatedAt }
+        : { _id: scope.tenantId },
       {
         $set: {
           name: updated.name,
@@ -141,7 +184,46 @@ export class TenantService {
         },
       },
     );
-    if (patch.status && patch.status !== (doc as TenantDoc).status) {
+    if (matched === 0) {
+      const current = (await this.tenants.findOne(scope, {
+        _id: scope.tenantId,
+      })) as TenantDoc | null;
+      if (!current) throw notFound(`tenant "${scope.tenantId}" not found`);
+      throw conflict(
+        'this tenant was changed by someone else while you were editing. ' +
+          'Reload to see the current settings, then apply your change again.',
+      );
+    }
+    /*
+     * ⚠️ Only fields that actually moved. An audit line claiming `name` changed from "Acme" to
+     * "Acme" is noise that trains a reader to skim the ones that matter.
+     */
+    const changes: Record<string, { from: unknown; to: unknown }> = {};
+    if (patch.name !== undefined && patch.name !== before.name) {
+      changes.name = { from: before.name, to: updated.name };
+    }
+    if (patch.status !== undefined && patch.status !== before.status) {
+      changes.status = { from: before.status, to: updated.status };
+    }
+
+    if (Object.keys(changes).length > 0) {
+      await this.publisher.publish({
+        type: 'tenant.updated',
+        tenantId: scope.tenantId,
+        payload: {
+          changes,
+          actorId: context.actorId ?? null,
+          correlationId: context.correlationId ?? null,
+          at: updated.updatedAt,
+          /* The version the caller held. `null` means they did not supply one — worth auditing. */
+          expectedUpdatedAt: patch.expectedUpdatedAt ?? null,
+        },
+      });
+    }
+
+    // The lifecycle transition keeps its own event: consumers subscribe to `tenant.suspended`
+    // specifically, and folding it into `tenant.updated` would break them for no gain.
+    if (patch.status && patch.status !== before.status) {
       await this.publisher.publish({ type: `tenant.${patch.status}`, tenantId: scope.tenantId });
     }
     return toTenant(updated);

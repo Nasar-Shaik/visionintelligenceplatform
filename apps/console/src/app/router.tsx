@@ -51,6 +51,9 @@ const CamerasPage = lazy(() =>
 const LocationsPage = lazy(() =>
   import('@/features/organization/LocationsPage').then((m) => ({ default: m.LocationsPage })),
 );
+const SettingsPage = lazy(() =>
+  import('@/features/organization/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+);
 const UsersPage = lazy(() =>
   import('@/features/users/UsersPage').then((m) => ({ default: m.UsersPage })),
 );
@@ -106,10 +109,9 @@ export const router = createBrowserRouter([
             path: 'health',
             element: route(<PlaceholderPage title="System Health" slice="P2-1.13" />),
           },
-          {
-            path: 'settings',
-            element: route(<PlaceholderPage title="Settings" slice="P2-1.13" />),
-          },
+          // P-6.3 — tenant settings. Was a placeholder; the route is unchanged so every existing
+          // link, bookmark and runbook reference still lands somewhere real.
+          { path: 'settings', element: route(<SettingsPage />) },
         ],
       },
     ],

@@ -151,6 +151,45 @@ function applyBrandColor(color: string): void {
   root.setProperty('--color-ring', color);
 }
 
+/**
+ * What the accent colour actually scores, so the Settings screen can show it rather than assert it.
+ *
+ * ⚠️ Reports the **same numbers `applyBrandColor` decided on**, computed by the same functions —
+ * a second implementation for display would be free to disagree with the one that enforces, and
+ * the screen would then confidently show a passing ratio for a colour that was rejected.
+ *
+ * `applied` is false when the colour was refused for failing AA in both directions; the built-in
+ * accent stands in that case.
+ */
+export interface BrandContrast {
+  /** The configured colour, or `''` when none is set and the built-in accent is in use. */
+  color: string;
+  /** Best achievable ratio against white or near-black text. `undefined` if unparseable. */
+  ratio: number | undefined;
+  /** Which foreground wins, and therefore what the buttons use. */
+  foreground: 'light' | 'dark' | undefined;
+  applied: boolean;
+}
+
+export function brandContrast(b: Branding = cached): BrandContrast {
+  if (b.brandColor === '') {
+    return { color: '', ratio: undefined, foreground: undefined, applied: false };
+  }
+  const rgb = parseColor(b.brandColor);
+  if (rgb === undefined) {
+    return { color: b.brandColor, ratio: undefined, foreground: undefined, applied: false };
+  }
+  const onWhite = contrast(rgb, [255, 255, 255]);
+  const onBlack = contrast(rgb, [18, 20, 24]);
+  const ratio = Math.max(onWhite, onBlack);
+  return {
+    color: b.brandColor,
+    ratio,
+    foreground: onWhite >= onBlack ? 'light' : 'dark',
+    applied: ratio >= 4.5,
+  };
+}
+
 type Rgb = [number, number, number];
 
 /** `#rgb`, `#rrggbb` and `rgb(r g b)` — the forms a customer will actually paste into JSON. */

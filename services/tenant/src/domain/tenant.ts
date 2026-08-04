@@ -113,13 +113,33 @@ export function newOrgNode(
   };
 }
 
-/** Apply an update (name and/or lifecycle transition), bumping `updatedAt`. */
+/**
+ * Apply an update (name and/or lifecycle transition), bumping `updatedAt`.
+ *
+ * ### ⚠️ `updatedAt` strictly increases, because it is also the concurrency token
+ *
+ * P-6.3 made `updatedAt` the version an `expectedUpdatedAt` is compared against, and that only
+ * works while every write produces a *different* value. Two writes landing in the same millisecond
+ * leave it unchanged — at which point a stale token still matches and the second administrator
+ * silently overwrites the first, which is precisely the failure the check exists to prevent.
+ *
+ * This is not theoretical: it was found by a test whose harness uses a **frozen clock**, so every
+ * write produced an identical timestamp and the conflict check could never fire. A guarantee that
+ * depends on wall-clock resolution is not a guarantee.
+ *
+ * So a timestamp that would not advance is nudged forward by one millisecond. The cost is that
+ * `updatedAt` can read up to a few milliseconds ahead of the wall clock under a burst of writes;
+ * the alternative is a second version field on a frozen contract, and a monotonic timestamp is the
+ * smaller and more honest of the two.
+ */
 export function applyTenantUpdate(doc: TenantDoc, patch: UpdateTenantInput, at: Date): TenantDoc {
+  const previous = Date.parse(doc.updatedAt);
+  const next = Number.isNaN(previous) ? at.getTime() : Math.max(at.getTime(), previous + 1);
   return {
     ...doc,
     ...(patch.name !== undefined ? { name: patch.name } : {}),
     ...(patch.status !== undefined ? { status: patch.status } : {}),
-    updatedAt: at.toISOString(),
+    updatedAt: new Date(next).toISOString(),
   };
 }
 

@@ -208,6 +208,30 @@ cost of a missing one is a relationship.
 | **Customer impact**   | A dismissed employee with the console already open keeps read access for up to 15 minutes. Measured, not estimated. Shorten `JWT_ACCESS_TTL` to trade this against token-refresh traffic                                                            |
 | **Planned**           | Not planned as architecture. Closing it entirely means a revocation lookup on **every** request at the gateway; that is a real cost to pay against a real requirement, and no customer has stated one. Raise it in the pilot security review        |
 
+## L-24 · Suspending a tenant does not lock anyone out
+
+|                       |                                                                                                                                                                                                                                                             |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | A tenant carries a lifecycle status (`provisioning · active · suspended · deprovisioning`) and it is stored faithfully. ⚠️ **No code path reads it.** Nothing in identity, the gateway or the tenancy guard refuses a request because a tenant is suspended |
+| **Customer impact**   | None today, because the console shows the status **read-only** and does not offer a Suspend control — a button that claimed to lock everybody out and did nothing would be far worse than its absence. A reseller managing several tenants will want it     |
+| **Planned**           | **P-14**, with licensing and entitlements, where refusing a tenant at the boundary already has to exist                                                                                                                                                     |
+
+## L-25 · Settings changes are audited to the log, not to a queryable trail
+
+|                       |                                                                                                                                                                                                                                                             |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | Every tenant settings change emits `tenant.updated` with **before/after, the actor, the correlation id and the timestamp** — verified in the deployment's logs. It goes to the service log, not to a store anyone can query from the console                |
+| **Customer impact**   | "Who renamed the organisation last March?" is answerable from log retention, not from the product. An auditor asking for it in writing will not accept a `docker logs` pipe. ⚠️ Before P-6.3 a rename emitted **nothing at all**, so this is a floor rising |
+| **Planned**           | **P-13** · the access-audit surface. `AccessAuditEntry` is already frozen in the contracts with no consumer; the event is emitted in the shape that consumer will want                                                                                      |
+
+## L-26 · Branding is per-deployment, not per-tenant
+
+|                       |                                                                                                                                                                                                                                           |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | Branding is runtime configuration — edit `branding.json`, reload, done; **no rebuild and no redeploy**, verified by overwriting it inside the running container. It applies to the **whole deployment**: every tenant sees the same brand |
+| **Customer impact**   | A reseller hosting several customers in one deployment cannot brand them separately. ⚠️ The Settings screen states this on the page rather than leaving it to be discovered after a colour is set "for one customer"                      |
+| **Planned**           | Depends on **D-1** — branding is loaded before sign-in so the login screen can carry it, which means the tenant is not yet known. Per-tenant branding is impossible until a tenant is identifiable pre-authentication                     |
+
 ---
 
 ## How to use this in a pilot

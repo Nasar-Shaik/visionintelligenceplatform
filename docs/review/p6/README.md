@@ -7,15 +7,15 @@ closes. P-6 ends with a full review; what follows is the record so far.
 exercised through the edge. ⚠️ Never `pnpm dev` (gate 3; P-5.8 found evidence playback had never
 worked outside it).
 
-| Item                             | State   | Closed                                      |
-| -------------------------------- | ------- | ------------------------------------------- |
-| **P-6.0** product version        | ✅ done | root `package.json` → `0.4.0`               |
-| **P-6.1** a rule can be edited   | ✅ done | **TD-21 · C-25 · L-6** — a pilot blocker    |
-| **P-6.2** a user can be disabled | ✅ done | **TD-44 · C-03 · L-5** — the last blocker   |
-| P-6.3 tenant settings screen     | ⏳ next | C-05                                        |
-| P-6.4 System Health page         | ⏳      | placeholder today                           |
-| P-6.5 notification centre        | ⏳      | C-31                                        |
-| P-6.6 – P-6.14 (see the roadmap) | ⏳      | TD-45 · TD-46 · TD-47 · TD-40 (D-1) · TD-31 |
+| Item                             | State   | Closed                                         |
+| -------------------------------- | ------- | ---------------------------------------------- |
+| **P-6.0** product version        | ✅ done | root `package.json` → `0.4.0`                  |
+| **P-6.1** a rule can be edited   | ✅ done | **TD-21 · C-25 · L-6** — a pilot blocker       |
+| **P-6.2** a user can be disabled | ✅ done | **TD-44 · C-03 · L-5** — the last blocker      |
+| **P-6.3** tenant settings        | ✅ done | **C-05** — the first placeholder page replaced |
+| P-6.4 System Health page         | ⏳ next | placeholder today                              |
+| P-6.5 notification centre        | ⏳      | C-31                                           |
+| P-6.6 – P-6.14 (see the roadmap) | ⏳      | TD-45 · TD-46 · TD-47 · TD-40 (D-1) · TD-31    |
 
 > ✅ **Both pilot blockers are closed.** No entry in
 > [KNOWN_LIMITATIONS](../../project/KNOWN_LIMITATIONS.md) now blocks a first customer pilot.
@@ -179,13 +179,154 @@ from 390 to 1920.
   `describe`, so a second one ran against a closed Mongo client and failed with "Client must be
   connected" rather than anything about the behaviour it asserted.
 
-## Still open after P-6.2
+## P-6.3 · Tenant settings
 
-Every remaining P-6 item, unchanged: tenant settings · System Health · notification centre · camera
-depth · media catalogue · workspace empty states · `/live` telling the truth · global search
-(TD-46) · command palette · responsive shell (TD-45) · table sort and counts (TD-47) · **D-1**, which
-is a P-6 exit criterion and still undecided.
+**The first placeholder page replaced.** `/settings` said "coming in P2-1.13" — our sprint
+vocabulary on a customer's screen.
 
-New limitations recorded, none of them blocking: **L-21** email is immutable · **L-22** no
+### It is a management surface, not a PATCH form
+
+The backend supports exactly two mutable fields. The screen exposes **one**, and the reason each
+other field is absent is on the page rather than in a commit message:
+
+| Field         | Treatment                                                                                                                         |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Name**      | Editable. A label, referenced by nobody                                                                                           |
+| **Status**    | ⚠️ **Read-only.** See below — this was the milestone's sharpest finding                                                           |
+| **Slug**      | Immutable, with the reason shown: it is a key and namespace prefix, so changing it strands every reference that already spells it |
+| **Tenant ID** | Immutable, shown because it is what support asks for                                                                              |
+| **Branding**  | Read-only panel: what is in force, where it comes from, and **what it scores against WCAG**                                       |
+
+### ⚠️ Suspending a tenant does nothing, so there is no Suspend button
+
+`TenantStatus` is persisted and validated. Grepping every service found **no code path that reads
+it** — nothing in identity, the gateway or the tenancy guard refuses a request because a tenant is
+suspended.
+
+A "Suspend this tenant" control would therefore claim to lock an entire customer out and silently
+do nothing. On a security product that is the worst class of control there is. The status is shown
+read-only, labelled **"not enforced"**, and the page names the limitation. Recorded as **L-24 /
+TD-48**; it becomes editable when it is enforced, not before.
+
+### Optimistic concurrency
+
+`UpdateTenantInput` gains an **optional** `expectedUpdatedAt`. Optional is a compatibility
+decision, not a soft guarantee: making it required would break the seed, the runbooks and every
+`curl` on a schema whose whole point is being additive. The console always sends it.
+
+⚠️ **The check lives in the update filter, not in an `if` above it.** Read-compare-then-write
+leaves a window between the read and the write in which another administrator can commit — the
+exact race the check exists to close, reintroduced by the shape of the check.
+
+⚠️ **A frozen test clock found a real flaw.** `updatedAt` only works as a version while it strictly
+increases; two writes in the same millisecond leave it unchanged, and a stale token still matches.
+The harness froze the clock, so this happened _every_ time instead of rarely, and the conflict
+check could never fire. `applyTenantUpdate` now guarantees monotonicity. **A guarantee that depends
+on wall-clock resolution is not a guarantee.**
+
+### The audit record
+
+Every successful change emits `tenant.updated` with before/after **per field that actually moved**,
+the actor and the correlation id. Before this, a rename emitted **nothing at all** — only a status
+transition announced itself, so the commonest settings change in the product left no trace.
+
+⚠️ **An in-memory test double found an aliasing bug.** The before-values were read _after_ the
+write. The MongoDB driver returns a fresh object so it happened to work; the fake returns the
+stored reference and `updateOne` mutates it in place, so every audit event came out empty. Fixed by
+snapshotting before the write — the audit's correctness should not depend on which store is
+underneath it.
+
+⚠️ **Where it lands is a limitation, and it is recorded rather than dressed up:** the tenant service
+still uses `LoggingEventPublisher`, so this is a structured log line and not a queryable trail
+(**L-25 / TD-49**). `AccessAuditEntry` is frozen with no consumer anywhere. The event is emitted in
+the shape that consumer will want.
+
+### Verification
+
+**[`tenant-settings.mjs`](tenant-settings.mjs) — 22/22 through the gateway.** Mutable surface ·
+409 on a stale write with the first administrator's change surviving · the same race across two
+independent sessions · cross-tenant reads and writes refused · latency.
+
+⚠️ **On cross-tenant, the platform answers 403 here and 404 for users, and both are right.** The
+tenant gate is `ctx.tenantId !== pathTenantId` and **never touches the database**, so a real foreign
+tenant and an id that has never existed return byte-identical responses — asserted directly, so a
+future "friendlier message" that looks the tenant up first turns the test red.
+
+**Latency, measured rather than assumed** (n=30, through the gateway, deployed):
+
+|                      | p50        | p95         | max   |
+| -------------------- | ---------- | ----------- | ----- |
+| `PATCH /tenants/:id` | **7–8 ms** | **9–11 ms** | 11 ms |
+| `GET /tenants/:id`   | **6–7 ms** | **7–17 ms** | —     |
+
+**[`settings-ui.mjs`](settings-ui.mjs) — 36/36 in a real browser.** Eight render states, multi-tab
+conflict across two genuine sessions, reload, cache consistency, accessibility, keyboard, and
+overflow at six viewports with a 110-character multilingual name.
+
+**[`restart-persistence.mjs`](restart-persistence.mjs) — 6/6.** Written through the API, **every
+container restarted**, read back: the name survived and so did `updatedAt`, which is what proves
+the concurrency token is durable rather than in-memory.
+
+**[`branding-runtime.mjs`](branding-runtime.mjs) — 10/10.** ⚠️ Proves "no rebuild" by
+`docker cp`-ing a new `branding.json` **into the running container** — a test that reads the file
+already in the image proves only that the image is displayed. A new name, tagline and accent
+applied on reload; the foreground flipped automatically; **a colour below 4.5:1 was refused rather
+than shipped**; a malformed file fell back to defaults without blocking the console; and a second
+tenant saw the same branding, confirming L-26.
+
+⚠️ **The refusal test was wrong before it was right.** It used `#808080` on the assumption that
+mid-grey obviously fails — it scores **4.67:1 against near-black** and legitimately passes, so the
+check went red against correct behaviour. The band failing _both_ foregrounds is narrow (relative
+luminance ≈ 0.183–0.204). `#7a7a7a` sits in it at 4.29:1 and 4.30:1.
+
+### Three defects found by the browser, not by the tests
+
+1. ⚠️ **Every toast was cut off on a phone.** sonner's container computed `width: 100%` with a
+   16 px inset on both sides, painting 16 px past the right edge at 390 px — the save confirmation,
+   delivery failures and the critical-incident alert alike. Found **only because the responsive
+   check ran with a toast on screen**; a settled page measures clean. Setting sonner's own
+   `--width` did not fix it — the mobile rule never consults it — and `max-width` is what binds.
+   **The property a library documents is not necessarily the one that governs the case in front of
+   you, and only the computed box says which.**
+2. ⚠️ **The top bar showed `tnt_demo_retail`** — an internal id a customer never chose — which also
+   made this page's own description ("the name appears in the top bar") untrue. It now shows the
+   organisation name, with the id as the tooltip. That also made cache consistency checkable
+   against a _second consumer_ of the query rather than the field the response landed in.
+3. ⚠️ **`Alert` announced static prose assertively.** `role="alert"` was set for all four variants,
+   so a standing informational panel interrupted a screen reader on every render. Now
+   variant-driven; `info` has no live region at all.
+
+### Screenshots
+
+`screens/` — [loading](screens/settings-01-loading.png) ·
+[populated](screens/settings-02-populated.png) · [validation](screens/settings-03-validation.png) ·
+[saving](screens/settings-04-saving.png) · [saved](screens/settings-05-saved.png) ·
+[conflict](screens/settings-06-conflict.png) ·
+[backend failure](screens/settings-07-backend-failure.png) · [phone](screens/settings-08-phone.png) ·
+[permission denied](screens/settings-09-permission-denied.png) ·
+[white-label](screens/branding-01-white-label.png) ·
+[contrast refused](screens/branding-02-contrast-refused.png).
+
+⚠️ The **unavailable** state (a session carrying no tenant) is covered by unit test rather than a
+screenshot: producing it in a browser means corrupting a session, and a screenshot of a stubbed
+state would prove the component renders, not that the product reaches it.
+
+### Dataset
+
+Restored and verified: 17 users, five tenants at their seeded names. ⚠️ One restore initially put
+back a _leftover probe name_ rather than the seeded one — a restore is only correct if what it
+captured was, and the fix was to check against `tools/seed/demo.ts` instead of trusting the
+starting state.
+
+---
+
+## Still open after P-6.3
+
+System Health · notification centre · camera depth · media catalogue · workspace empty states ·
+`/live` telling the truth · global search (TD-46) · command palette · responsive shell (TD-45) ·
+table sort and counts (TD-47) · **D-1**, which is a P-6 exit criterion and still undecided.
+
+New limitations recorded, none of them blocking a pilot: **L-21** email is immutable · **L-22** no
 self-service password change (needs email delivery, P-7) · **L-23** a disabled user's access token
-stays valid for up to 15 minutes.
+stays valid for up to 15 minutes · **L-24** suspending a tenant is not enforced · **L-25** settings
+audit is log-only · **L-26** branding is per-deployment, not per-tenant.

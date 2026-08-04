@@ -30,14 +30,14 @@ references them rather than restating what a capability is.
 
 ## Platform & access
 
-| id       | Capability                                                   | Contract |         Backend         |           Frontend            | Demo |             Pilot             | Prod | Milestone  | Dependencies | Owner    |
-| -------- | ------------------------------------------------------------ | :------: | :---------------------: | :---------------------------: | :--: | :---------------------------: | :--: | ---------- | ------------ | -------- |
-| **C-01** | Authentication · session · refresh                           |    ✅    |           ✅            |              ✅               |  ✅  |              ✅               |  ✅  | done       | —            | identity |
-| **C-02** | Tenant isolation, fail-closed                                |    ✅    |           ✅            |              ✅               |  ✅  |              ✅               |  ✅  | done       | —            | platform |
-| **C-03** | **User administration** — create · role · disable · password |    ✅    |           ✅            |              ✅               |  ✅  |              ✅               |  ✅  | done (P-6) | —            | identity |
-| **C-04** | Roles & permissions (RBAC)                                   |    ✅    |           ✅            |   ⚠️ enforced, not editable   |  ✅  | ⚠️ `*:read` too broad (TD-26) |  ✅  | P-14       | D-6          | platform |
-| **C-05** | Tenant settings                                              |    ✅    | ✅ `PATCH /tenants/:id` |      ⛔ placeholder page      |  ⛔  |          ⚠️ API only          |  ✅  | **P-6**    | —            | tenant   |
-| **C-06** | Tenant identity at sign-in                                   |    ✅    |           ✅            | ⚠️ slug typed by hand (TD-40) |  ⚠️  |              ⚠️               |  ✅  | **P-6**    | **D-1**      | identity |
+| id       | Capability                                                   | Contract | Backend |           Frontend            | Demo |             Pilot             | Prod | Milestone  | Dependencies | Owner    |
+| -------- | ------------------------------------------------------------ | :------: | :-----: | :---------------------------: | :--: | :---------------------------: | :--: | ---------- | ------------ | -------- |
+| **C-01** | Authentication · session · refresh                           |    ✅    |   ✅    |              ✅               |  ✅  |              ✅               |  ✅  | done       | —            | identity |
+| **C-02** | Tenant isolation, fail-closed                                |    ✅    |   ✅    |              ✅               |  ✅  |              ✅               |  ✅  | done       | —            | platform |
+| **C-03** | **User administration** — create · role · disable · password |    ✅    |   ✅    |              ✅               |  ✅  |              ✅               |  ✅  | done (P-6) | —            | identity |
+| **C-04** | Roles & permissions (RBAC)                                   |    ✅    |   ✅    |   ⚠️ enforced, not editable   |  ✅  | ⚠️ `*:read` too broad (TD-26) |  ✅  | P-14       | D-6          | platform |
+| **C-05** | Tenant settings                                              |    ✅    |   ✅    |              ✅               |  ✅  |              ✅               |  ✅  | done (P-6) | —            | tenant   |
+| **C-06** | Tenant identity at sign-in                                   |    ✅    |   ✅    | ⚠️ slug typed by hand (TD-40) |  ⚠️  |              ⚠️               |  ✅  | **P-6**    | **D-1**      | identity |
 
 ## Estate
 
@@ -138,9 +138,9 @@ references them rather than restating what a capability is.
 
 |                                                        | Count |                                                                 |
 | ------------------------------------------------------ | ----- | --------------------------------------------------------------- |
-| **Production-verified**                                | 27    | Deployed, exercised under failure, survives destroy-and-restore |
-| **Demo-ready**                                         | 29    | Safe to show today, on the demo dataset                         |
-| **Pilot-ready**                                        | 27    | ✅ **No capability is short of pilot-ready any more**           |
+| **Production-verified**                                | 28    | Deployed, exercised under failure, survives destroy-and-restore |
+| **Demo-ready**                                         | 30    | Safe to show today, on the demo dataset                         |
+| **Pilot-ready**                                        | 28    | ✅ **No capability is short of pilot-ready any more**           |
 | **Architecture-only** (contract frozen, nothing built) | 6     | C-37 · C-38 · C-39 · C-46 · C-47 · C-48                         |
 | **Contract missing**                                   | 4     | C-22 · C-43 · C-51 · C-61                                       |
 | **Blocked on a product decision**                      | 4     | C-06 (D-1) · C-20 (D-4) · C-38 (D-3) · C-60 (D-2)               |

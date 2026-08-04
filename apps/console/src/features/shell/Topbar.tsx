@@ -16,6 +16,7 @@ import {
   Input,
   StatusIndicator,
 } from '@/ui';
+import { useTenant } from '@/features/organization/useOrganization';
 import { LiveClock } from './LiveClock';
 
 const CONNECTION_STATUS: Record<ConnectionState, { kind: StatusKind; label: string }> = {
@@ -32,13 +33,25 @@ export function Topbar() {
   const logout = useLogout();
   const navigate = useNavigate();
   const conn = CONNECTION_STATUS[connection];
+  /*
+   * ⚠️ The **organisation name**, not the raw tenant id. This read `tnt_demo_retail`, which is an
+   * internal identifier a customer never chose and cannot change — and it made the Settings page's
+   * own description ("the name appears in the top bar") untrue, which is how it was noticed.
+   *
+   * The id is kept as the tooltip: it is what support asks for. The query is the same cached one
+   * the Settings page uses, so this costs one request per session and stays correct after a rename
+   * because renaming invalidates that key. Falls back to the id while loading, so the bar never
+   * flashes empty.
+   */
+  const tenant = useTenant();
+  const organisation = tenant.data?.name ?? tenantId;
 
   return (
     <header className="flex h-14 items-center gap-3 border-b border-border bg-surface-1 px-4">
       <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
         <Building2 className="size-4" aria-hidden />
-        <span className="tabular max-w-40 truncate text-foreground" title={tenantId ?? undefined}>
-          {tenantId}
+        <span className="max-w-40 truncate text-foreground" title={tenantId ?? undefined}>
+          {organisation}
         </span>
       </div>
 
