@@ -232,6 +232,14 @@ cost of a missing one is a relationship.
 | **Customer impact**   | A reseller hosting several customers in one deployment cannot brand them separately. ⚠️ The Settings screen states this on the page rather than leaving it to be discovered after a colour is set "for one customer"                      |
 | **Planned**           | Depends on **D-1** — branding is loaded before sign-in so the login screen can carry it, which means the tenant is not yet known. Per-tenant branding is impossible until a tenant is identifiable pre-authentication                     |
 
+## L-27 · An API client that skips the version token can log a stale "before" value
+
+|                       |                                                                                                                                                                                                                                                                                                      |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | A tenant update reads the document, then writes it conditionally. The write is exactly-once — concurrent identical submissions produce **one** audit record, proven against real MongoDB — but the `from` value in that record is the one the winner _read_, not the one stored when it wrote        |
+| **Customer impact**   | None through the console, which always sends `expectedUpdatedAt`; a racing caller is refused with 409 before it can write. Reachable only by an API client that omits the token **and** races another writer. The `to` value and the actor are always correct; only `from` can be one revision stale |
+| **Planned**           | Closed by returning the pre-image from the write itself (`findOneAndUpdate`). Deferred because it means adding a method to the frozen `@vip/tenancy` repository that nothing else in the platform needs — a foundation change to improve one field of one log line                                   |
+
 ---
 
 ## How to use this in a pilot

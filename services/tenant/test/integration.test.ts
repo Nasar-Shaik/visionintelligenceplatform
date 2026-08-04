@@ -88,4 +88,44 @@ describe.skipIf(!online)('tenant isolation against real MongoDB', () => {
       statusCode: 409,
     });
   });
+
+  /**
+   * ⚠️ **Exactly one audit event per state transition — the case only a real database can decide.**
+   *
+   * Found in the P-6.3 freeze pass against the deployment: two identical submissions arriving
+   * together (a double-click, a retry, a browser resending on refresh) each read the old value, each
+   * wrote it, and each announced the change. One transition, two audit records claiming to be it.
+   *
+   * This assertion cannot live beside the HTTP tests. Their in-memory collection resolves without
+   * yielding, so the two requests serialize and the second sees the value already applied — the test
+   * goes green against the broken code. Here both writes reach MongoDB concurrently and the
+   * condition in the update filter is what decides the winner, which is the thing being tested.
+   */
+  it('⚠️ concurrent identical updates record the change once, not once per request', async () => {
+    const published: { type: string }[] = [];
+    const observed = new TenantService({
+      tenants: new TenantRepository(mongo!.tenants),
+      orgNodes: new TenantRepository(mongo!.orgNodes),
+      clock: { now: () => new Date() },
+      ids: { tenantId: () => `tnt_race_${Date.now()}`, orgNodeId: () => `on_race_${Date.now()}` },
+      publisher: {
+        publish: async (event) => {
+          published.push(event);
+        },
+      },
+    });
+
+    const { tenant } = await observed.provision({ slug: 'race-it', name: 'Race' });
+    const scope = TenantScope.fromTenantId(tenant.id);
+    published.length = 0;
+
+    const results = await Promise.all(
+      [1, 2, 3, 4, 5].map(() => observed.update(scope, { name: 'Renamed Once' })),
+    );
+
+    // Every caller succeeds: clicking twice is not an error, and the state they asked for is real.
+    expect(results.every((t) => t.name === 'Renamed Once')).toBe(true);
+    expect(published.filter((e) => e.type === 'tenant.updated')).toHaveLength(1);
+    expect((await observed.get(scope)).name).toBe('Renamed Once');
+  });
 });

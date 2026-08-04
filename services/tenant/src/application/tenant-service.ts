@@ -146,6 +146,15 @@ export class TenantService {
    * only a status transition announced itself — so the commonest settings change in the product left
    * no trace at all.
    *
+   * ⚠️ **One event per state transition, not one per request.** The write is conditional on a field
+   * actually differing (see below), so retries, double-submits and refresh-and-resave leave a single
+   * record. The residual case is a caller that omits `expectedUpdatedAt` **and** races another
+   * writer: the winner's `from` value is the one it read rather than the one that was stored at the
+   * instant it wrote, because the before-image is read and not returned by the write. The console
+   * always sends the token, so it cannot reach this; an API client that does not gets a `from` that
+   * may be one revision stale. Recorded as L-27 rather than fixed by adding a repository method the
+   * platform does not otherwise need.
+   *
    * ⚠️ **Where that record lands is a real limitation, and it is not hidden.** The tenant service
    * still uses `LoggingEventPublisher`, so this is a structured log line, not a queryable audit
    * store: `AccessAuditEntry` is frozen in the contracts with no consumer anywhere and no route on
@@ -171,24 +180,61 @@ export class TenantService {
      */
     const before = { name: (doc as TenantDoc).name, status: (doc as TenantDoc).status };
     const updated = applyTenantUpdate(doc as TenantDoc, patch, this.clock.now());
+
+    /*
+     * ⚠️ Only the fields the caller named are written.
+     *
+     * `applyTenantUpdate` fills the rest from the document that was just read, so `$set`-ing all of
+     * them turns a status-only PATCH into a rename back to whatever the name was a few milliseconds
+     * ago — a lost update produced by a request that never mentioned the field.
+     */
+    const write: Record<string, unknown> = { updatedAt: updated.updatedAt };
+    if (patch.name !== undefined) write.name = updated.name;
+    if (patch.status !== undefined) write.status = updated.status;
+
+    /*
+     * ⚠️ The write also requires that at least one named field is **actually different**, and that
+     * is what makes the audit trail exactly-once rather than once-per-request.
+     *
+     * Measured in the P-6.3 freeze pass: two identical submissions arriving together — a
+     * double-click, a retry, a refresh-and-resave — both read the old value, both wrote it, and both
+     * announced the same change. One state transition, two audit records claiming to be it.
+     *
+     * With the condition in the filter only one of them can match, so only one publishes. It also
+     * stops a no-op save from touching `updatedAt`: resubmitting an unchanged name used to bump the
+     * version token and hand a 409 to every *other* administrator who had the settings page open,
+     * for a change that never happened.
+     */
+    const changed: Record<string, unknown>[] = [];
+    if (patch.name !== undefined) changed.push({ name: { $ne: updated.name } });
+    if (patch.status !== undefined) changed.push({ status: { $ne: updated.status } });
+
     const matched = await this.tenants.updateOne(
       scope,
-      patch.expectedUpdatedAt !== undefined
-        ? { _id: scope.tenantId, updatedAt: patch.expectedUpdatedAt }
-        : { _id: scope.tenantId },
       {
-        $set: {
-          name: updated.name,
-          status: updated.status,
-          updatedAt: updated.updatedAt,
-        },
+        _id: scope.tenantId,
+        ...(patch.expectedUpdatedAt !== undefined ? { updatedAt: patch.expectedUpdatedAt } : {}),
+        ...(changed.length > 0 ? { $or: changed } : {}),
       },
+      { $set: write },
     );
     if (matched === 0) {
       const current = (await this.tenants.findOne(scope, {
         _id: scope.tenantId,
       })) as TenantDoc | null;
       if (!current) throw notFound(`tenant "${scope.tenantId}" not found`);
+      /*
+       * Zero matches now means one of two different things, and only one of them is an error: the
+       * version token was stale (409), or every named field already held the requested value
+       * (nothing to do). A no-op is a successful save — the caller asked for a state and the state
+       * is what they asked for.
+       */
+      const already =
+        (patch.name === undefined || current.name === updated.name) &&
+        (patch.status === undefined || current.status === updated.status);
+      const tokenHolds =
+        patch.expectedUpdatedAt === undefined || current.updatedAt === patch.expectedUpdatedAt;
+      if (already && tokenHolds) return toTenant(current);
       throw conflict(
         'this tenant was changed by someone else while you were editing. ' +
           'Reload to see the current settings, then apply your change again.',

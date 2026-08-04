@@ -307,9 +307,12 @@ luminance ≈ 0.183–0.204). `#7a7a7a` sits in it at 4.29:1 and 4.30:1.
 [white-label](screens/branding-01-white-label.png) ·
 [contrast refused](screens/branding-02-contrast-refused.png).
 
-⚠️ The **unavailable** state (a session carrying no tenant) is covered by unit test rather than a
-screenshot: producing it in a browser means corrupting a session, and a screenshot of a stubbed
-state would prove the component renders, not that the product reaches it.
+[unavailable](screens/settings-10-unavailable.png) was added in the freeze pass below, and is the
+one capture in this milestone that is **staged rather than reached**: `/settings` reports
+"unavailable" when the session carries no tenant, and sign-in requires a tenant, so no real session
+can be in that state. The identity responses are rewritten in flight to produce it. The branch
+exists for D-1 (tenant discovery at sign-in), which can produce one — and a page that rendered
+nothing at all in that case would be a white screen.
 
 ### Dataset
 
@@ -317,6 +320,57 @@ Restored and verified: 17 users, five tenants at their seeded names. ⚠️ One 
 back a _leftover probe name_ rather than the seeded one — a restore is only correct if what it
 captured was, and the fix was to check against `tools/seed/demo.ts` instead of trusting the
 starting state.
+
+### The freeze pass — and two defects it found
+
+Before P-6.3 was frozen, three claims that had never been measured were measured.
+[`p63-freeze.mjs`](p63-freeze.mjs) (26/26) and [`p63-freeze-ui.mjs`](p63-freeze-ui.mjs) (21/21), both
+against the deployment.
+
+**Is `/settings` the only tenant-administration surface?** Yes — one route, one nav entry, one
+editable tenant-name field, and exactly two modules that reach for the mutation (the API binding and
+its hook). ⚠️ The check that matters is not "is there a second route" but "is there a second
+**caller**": a duplicate edit surface arrives as a second component long before it arrives as a
+second URL.
+
+**Is every mutation audited exactly once?** It was not. Two defects, both real:
+
+1. ⚠️ **A double-click logged the change twice.** Two identical submissions arriving together each
+   read the old value, each wrote it, and each announced the same transition — one state change,
+   two audit records claiming to be it. The write is now conditional on a field actually differing,
+   so only one can match.
+2. ⚠️ **A no-op save moved the version token.** Resubmitting an unchanged name wrote a fresh
+   `updatedAt`, which handed a **409 to every other administrator** with the settings page open —
+   a conflict manufactured out of a change that never happened. A no-op now touches nothing.
+
+A third, found while fixing them: a status-only PATCH rewrote the **name** as well, from the value
+read a few milliseconds earlier. Only the fields a caller names are written now.
+
+⚠️ **The double-click test lives in `integration.test.ts`, against real MongoDB, and that was
+measured rather than assumed.** Written first beside the HTTP tests, it went green with the fix
+reverted: the in-memory collection resolves without yielding, so the two requests serialize and the
+second sees the value already applied. A check that cannot fail is not a check, so it lives where
+the race is real — where it fails with **3** events and passes with **1**.
+
+**Is the deployment an upgrade or a fresh install?** An upgrade, and provably: the running tenant
+image was built _after_ the documents it is serving were written, by a build that did not have
+optimistic concurrency in it. A record written by the previous image reads, patches without a
+version token (the compatibility guarantee), accepts its own pre-upgrade timestamp as a token, and
+refuses a stale one. No migration was required because no stored shape changed.
+
+**Navigation** — deep link, refresh, back, forward, and arriving from another page all restore the
+same state; a saved change survives leaving and returning, a hard refresh, and agrees with the top
+bar. **Branding across three simultaneously-open pages** — all three change together after refresh,
+all resolve the same accent token, and ⚠️ tabs open _across_ the change do not half-update.
+
+⚠️ Two checks in that script were wrong before they were right, both in the same way: they read a
+name that does not exist (`nav` textContent instead of `document.title`; `--brand` instead of
+`--color-brand`) and so reported "every page agrees" by comparing empty strings to each other. The
+branding implementation records falling into the `--brand` trap once already.
+
+**L-27** is the residual: a caller that omits the version token _and_ races another writer gets a
+`from` value one revision stale. The console cannot reach it. Closing it means adding a method to
+the frozen `@vip/tenancy` repository that nothing else needs.
 
 ---
 
@@ -329,4 +383,5 @@ table sort and counts (TD-47) · **D-1**, which is a P-6 exit criterion and stil
 New limitations recorded, none of them blocking a pilot: **L-21** email is immutable · **L-22** no
 self-service password change (needs email delivery, P-7) · **L-23** a disabled user's access token
 stays valid for up to 15 minutes · **L-24** suspending a tenant is not enforced · **L-25** settings
-audit is log-only · **L-26** branding is per-deployment, not per-tenant.
+audit is log-only · **L-26** branding is per-deployment, not per-tenant · **L-27** a token-less
+racing API client can log a stale `from` value.

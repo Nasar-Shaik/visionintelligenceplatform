@@ -469,6 +469,48 @@ describe('tenant settings', () => {
       expect(auditFor()).toHaveLength(0);
     });
 
+    /**
+     * ⚠️ **The concurrent double-submit is asserted in `integration.test.ts`, against real MongoDB,
+     * and deliberately not here.**
+     *
+     * The defect it pins — two identical submissions arriving together each announcing the same
+     * change — needs both requests to read before either writes. The in-memory collection resolves
+     * without yielding, so the two serialize and the second one sees the value already applied:
+     * the test passes against the broken code as readily as against the fixed code. Measured, not
+     * assumed — it was written here first, and it went green with the fix reverted.
+     *
+     * A check that cannot fail is not a check, so it lives where the race is real.
+     */
+    it('⚠️ a no-op save does not move the version token', async () => {
+      const id = await provision('acme', 'Acme');
+      const seen = (await read(id)).json().data.updatedAt;
+
+      expect((await patch(id, { name: 'Acme' })).statusCode).toBe(200);
+
+      /*
+       * ⚠️ Bumping `updatedAt` for a change that did not happen hands a 409 to every *other*
+       * administrator with the settings page open — a conflict manufactured out of nothing. The
+       * version token must move only when the version does.
+       */
+      expect((await read(id)).json().data.updatedAt).toBe(seen);
+      expect(auditFor()).toHaveLength(0);
+    });
+
+    it('⚠️ a status-only change does not rewrite the name', async () => {
+      const id = await provision('acme', 'Acme');
+      /*
+       * `applyTenantUpdate` fills unmentioned fields from the document it just read, so writing all
+       * of them turns a status change into a rename back to a value from a few milliseconds ago.
+       * Only the named fields are written.
+       */
+      const res = await patch(id, { status: 'suspended' });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().data.name).toBe('Acme');
+      expect(auditFor()[0]?.payload?.changes).toEqual({
+        status: { from: 'active', to: 'suspended' },
+      });
+    });
+
     it('keeps the lifecycle event alongside the audit event', async () => {
       const id = await provision('acme', 'Acme');
       published = [];
