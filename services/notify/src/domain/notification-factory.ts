@@ -4,7 +4,12 @@
  * unbroken) and sets `causationId` to the incident. The mark* helpers advance the delivery state:
  * `pending → sent → delivered|failed`, and (recipient) `delivered/sent → acked`. No I/O.
  */
-import type { Incident, Notification, NotificationChannel } from '@vip/contracts';
+import type {
+  Incident,
+  Notification,
+  NotificationChannel,
+  NotificationStatus,
+} from '@vip/contracts';
 
 export interface FactoryDeps {
   now: () => Date;
@@ -61,7 +66,18 @@ export function markAcked(n: Notification, by: string | undefined, now: () => Da
   return acked;
 }
 
+/**
+ * The statuses an acknowledgement may move a delivery **out of**.
+ *
+ * ⚠️ One expression of the rule, in the one place that owns it. The application layer needs the same
+ * rule in a form the database can enforce — the acknowledgement is decided by the write's filter,
+ * because two operators can reach for one alert at the same moment — and two expressions of a state
+ * transition are one edit away from disagreeing. The disagreement would surface as a race nobody
+ * could reproduce.
+ */
+export const ACKNOWLEDGEABLE: readonly NotificationStatus[] = ['sent', 'delivered'];
+
 /** A notification can be acknowledged only once it has been sent/delivered (not pending/failed). */
 export function canAck(n: Notification): boolean {
-  return n.status === 'sent' || n.status === 'delivered';
+  return ACKNOWLEDGEABLE.includes(n.status);
 }

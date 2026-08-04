@@ -55,8 +55,24 @@ import { useAckNotification, useNotificationsInfinite } from './useNotifications
  * The shell's SSE connection already invalidates this cache on the `alerts` topic, so a new alert
  * arrives without waiting for the poll. The 20-second interval underneath it is the fallback for a
  * dropped stream, not the primary path — ⚠️ one source of truth, not two.
+ *
+ * ### ⚠️ Why the queue stops loading, and what it cost to find out
+ *
+ * An infinite query refetches **every page it has loaded**, on every interval. Measured against the
+ * deployment with 5,000 deliveries: one page costs 29 KB per tick, twenty pages cost 610 KB — the
+ * background cost of this screen grew with every "Load more" and never came back down. On the one
+ * screen in the product designed to stay open for an entire shift, that is ~800 MB of polling per
+ * operator per day, and nothing in the code stopped it climbing.
+ *
+ * So the queue is **bounded**: ten pages, and then it says so. This is not an arbitrary limit —
+ * paging 500 deliveries into history is browsing, and browsing is what the triage filter and the
+ * incident itself are for. ⚠️ The cap is announced on screen rather than enforced silently; a
+ * "Load more" that quietly stops appearing is a queue that looks finished when it is not.
  */
 const POLL = { refetchInterval: 20_000 };
+
+/** Ten pages ≈ 500 deliveries. The ceiling on the DOM, the memory and the poll, all at once. */
+const MAX_PAGES = 10;
 
 type Triage = 'attention' | 'acknowledged' | 'all';
 
@@ -101,6 +117,10 @@ export function AlertsPage() {
   const deliveries = useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data]);
   const entries = useMemo(() => groupIntoInbox(deliveries), [deliveries]);
   const counts = useMemo(() => inboxCounts(entries), [entries]);
+  const atCap = (query.data?.pages.length ?? 0) >= MAX_PAGES;
+  const loadedDeliveries = deliveries.length;
+  /** A refresh failed but a reading survives — show the reading, and say that it is one. */
+  const stale = query.isError && query.data !== undefined;
 
   /**
    * Acknowledge every delivery on this entry that a recipient can acknowledge.
@@ -115,16 +135,38 @@ export function AlertsPage() {
     setAcking(entry.incidentId);
     void Promise.allSettled(targets.map((n) => ack.mutateAsync({ id: n.id, input: {} })))
       .then((results) => {
-        const failed = results.filter((r) => r.status === 'rejected').length;
-        if (failed === 0) {
+        /*
+         * ⚠️ **What an operator is told, in every combination — and losing a race is not a failure.**
+         *
+         * Acknowledging is per **delivery**; the operator acted on an **incident**. When two people
+         * press at the same moment those two facts come apart: measured on the deployment, an
+         * incident that had reached two channels was **split** between them, and each was told
+         * "1 of 2 could not be acknowledged" — which reads like a fault, on an incident that is now
+         * unambiguously taken. Before that, the loser of a clean race was told "1 of 1 could not be
+         * acknowledged", which reads like the product broke.
+         *
+         * So the message follows what is now **true of the incident**, not the tally of requests:
+         *   · anything succeeded  → it is taken, and the operator took part in taking it
+         *   · everything conflicted → somebody else has it, and the server names them
+         *   · anything failed for another reason → a real failure, reported as one
+         */
+        const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+        const conflicts = results.filter(
+          (r): r is PromiseRejectedResult =>
+            r.status === 'rejected' && (r.reason as { status?: number })?.status === 409,
+        );
+        const broke = results.length - succeeded - conflicts.length;
+
+        if (broke > 0) {
+          toast.error(`${broke} of ${targets.length} could not be acknowledged`);
+        } else if (succeeded > 0) {
           toast.success(
-            targets.length === 1
-              ? 'Alert acknowledged'
-              : `Acknowledged ${targets.length} deliveries for this incident`,
+            succeeded === targets.length && targets.length > 1
+              ? `Acknowledged ${targets.length} deliveries for this incident`
+              : 'Alert acknowledged',
           );
         } else {
-          /* ⚠️ Partial failure is reported as partial, never rounded up to success. */
-          toast.error(`${failed} of ${targets.length} could not be acknowledged`);
+          toast.info((conflicts[0]?.reason as Error).message);
         }
       })
       .finally(() => setAcking(null));
@@ -166,6 +208,27 @@ export function AlertsPage() {
       </FilterBar>
 
       {/*
+       * ⚠️ **The queue is kept when it cannot be refreshed**, and labelled.
+       *
+       * Measured by taking the gateway away with this page open: the whole queue was replaced by
+       * "Couldn't load · Request failed (502)" — twenty-five entries gone, for the twelve seconds
+       * the gateway took to come back, on the screen an operator watches all shift. That is the same
+       * defect P-6.4 found on System Health, on a more important page: an operator whose queue
+       * empties has no way to tell "nothing needs me" from "I cannot see".
+       *
+       * A list from thirty seconds ago is not current. It is also the only thing there is, and the
+       * alerts on it are real — so it stays, and the banner says what it is. ⚠️ The fact that it
+       * cannot be refreshed is itself the thing to act on, so it is stated first.
+       */}
+      {stale ? (
+        <Alert variant="critical" className="mb-4">
+          <span className="font-medium">This queue could not be refreshed.</span> What follows is
+          the reading from {timeAgo(new Date(query.dataUpdatedAt).toISOString())} — new alerts may
+          have arrived since, and the platform not answering is itself worth acting on.
+        </Alert>
+      ) : null}
+
+      {/*
        * ⚠️ Delivery failures get their own banner, above the queue and outside it. They are not
        * "one of the alerts" — they are the alerts that never arrived, and they are an
        * administrator's problem rather than an operator's.
@@ -183,7 +246,8 @@ export function AlertsPage() {
 
       <QueryBoundary
         isLoading={query.isPending}
-        isError={query.isError}
+        /* ⚠️ An error only replaces the queue when there is no queue to keep. */
+        isError={query.isError && query.data === undefined}
         error={query.error}
         isEmpty={entries.length === 0}
         skeleton={<TableSkeleton rows={6} cols={4} />}
@@ -217,14 +281,27 @@ export function AlertsPage() {
 
         {query.hasNextPage ? (
           <div className="mt-4 flex justify-center">
-            <Button
-              variant="outline"
-              size="sm"
-              loading={query.isFetchingNextPage}
-              onClick={() => void query.fetchNextPage()}
-            >
-              Load more
-            </Button>
+            {/*
+             * ⚠️ The count is interpolated as **one string**, not dropped into the middle of the
+             * sentence. `Showing the {n} most recent` renders as three separate text nodes, so the
+             * sentence is on screen and yet cannot be found by anything matching on it — including
+             * the check that exists to prove an operator was told the queue had stopped.
+             */}
+            {atCap ? (
+              <p className="max-w-md text-center text-xs text-text-subtle">
+                {`Showing the ${loadedDeliveries} most recent deliveries.`} There are older ones —
+                narrow with the triage filter, or open an incident to see everything sent for it.
+              </p>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                loading={query.isFetchingNextPage}
+                onClick={() => void query.fetchNextPage()}
+              >
+                Load more
+              </Button>
+            )}
           </div>
         ) : null}
       </QueryBoundary>

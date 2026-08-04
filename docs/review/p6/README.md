@@ -649,6 +649,279 @@ were expected, found while seeding the alerts.
 
 ---
 
+## P-6.5 freeze · the production-grade pass
+
+Twelve areas, against the deployment. Four defects, one of them the most serious thing found in P-6,
+and three checks that could not fail.
+
+### ⚠️ Two operators could both take the same alert
+
+`ack` read the record, checked it was acknowledgeable, and wrote it back. Two people seeing the same
+alert land both passed the check before either wrote, and **both were told they had the incident**.
+
+The first version of the test agreed with the code. Six simultaneous requests produced one `200` and
+five `409`s — and it was a fiction: `fetch` pools by origin, so all six left on **one socket** eight
+milliseconds apart and the server saw a neat queue. Given its own connection per racer, and repeated:
+
+```
+winners per round: 3, 4, 1, 1, 2, 3, 1, 2, 2, 4, 3, 2      ← before
+winners per round: 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1  ← after (15 rounds × 16 operators)
+```
+
+Six operators looked correct. Twelve did not. In a security product this is not a cosmetic race: two
+people each believe they own an alert, so each assumes the other is on it, the queue clears, and the
+record names whichever write landed last rather than the person who acted.
+
+Fixed by putting the acceptable statuses in the **filter** — `replaceIfStatus`, so MongoDB decides
+the winner. The pre-read survives only to explain _why_ to the loser, re-read from storage rather
+than assumed. ⚠️ The regression test lives in `mongo-integration.test.ts` against real MongoDB, and
+was **verified red there first: 10 winners out of 12.** Against the in-memory store the same test
+passes on the defect, which is exactly how it survived — `InMemoryNotificationStore.replaceIfStatus`
+carries a comment saying so.
+
+**Is it systemic?** The obvious next question, so it was asked rather than assumed. Every other
+state transition that writes after a read is already safe, for three different reasons: incidents
+carry a **version token** in the update filter (`replace(scope, next, expectedVersion)`); the Alert
+Engine's own `replace` calls have a **single writer** per record, guarded by the per-`(incident,
+channel)` uniqueness; and `disable`/`enable` on a user are **deliberately idempotent** — "already
+disabled is the requested end state, not a conflict" — because two administrators disabling the same
+leaver both succeeding is correct. Acknowledgement was the one transition where **exclusivity is the
+whole point**, and it was the one without a guard.
+
+The audit trail was never wrong, and not because of the HTTP layer: the publisher stamps
+`msgId = {tenant}:{id}:acked` and JetStream collapses duplicates for 120 seconds, so **exactly one
+`notification.acked` would have been published even while the row transitioned four times**. The
+msgId was carrying more weight than it looked like it was.
+
+### ⚠️ The demo dataset advertised a retry mechanism that does not exist
+
+The seed wrote `attempts: 3` and `"connect ETIMEDOUT … after 3 attempts"`. Driving the real Alert
+Engine over four real transports says otherwise: **every delivery, successful or failed, has
+`attempts: 1`.** There is no retry loop, and the fan-out's idempotency guard means a redelivered
+incident _skips_ a channel that already has a record — so a webhook that was down for thirty seconds
+never receives that alert and nothing tries again.
+
+A demo dataset showing a capability the product does not have is a promise somebody will be held to.
+Corrected to one attempt, recorded as **L-32**, and **TD-53** opened at high priority. The check that
+used to demand `attempts > 1` now asserts `attempts === 1`, so the day retries are built it goes red
+and somebody has to update the claim deliberately.
+
+### ⚠️ The queue disappeared during the outage it exists to survive
+
+P-6.4 found System Health blanking when the gateway went away, and fixed it there. Nobody asked the
+same question of the Inbox, which has the same shape and the same `QueryBoundary`. Asked here, with
+the gateway stopped and the page open:
+
+```
+the queue (25)  →  Couldn’t load · Request failed (502)  (0)
+```
+
+Twenty-five entries gone for the twelve seconds the gateway took to come back — on the screen an
+operator watches all shift, and an operator whose queue empties has no way to tell _nothing needs me_
+from _I cannot see_. The queue is now **kept and labelled** ("This queue could not be refreshed…"),
+and it repopulates in **2 s** instead of 12 because it never emptied. ⚠️ Keeping it silently would be
+the worse failure of the two, so the check asserts the banner as well as the rows — a retained list
+that does not say it is old is one an operator has no reason to doubt.
+
+Verified red before it was trusted: with the fix reverted, the banner never appears.
+
+### ⚠️ Two operators split one incident, and both were told it failed
+
+Acknowledging is per **delivery**; an operator acts on an **incident**. Under a real race those come
+apart — measured on the deployment, an incident that had reached two channels was **split** between
+two people, and each was told _"1 of 2 could not be acknowledged"_ about an incident that was now
+unambiguously taken. There was a second wording problem beside it: whether the loser got the useful
+sentence or `cannot acknowledge a notification in status 'acked'` depended on **how** they lost — a
+loser refused by the pre-read got the status enum, and that is the more likely of the two.
+
+Both fixed by answering the question the operator actually asked. The message now follows what became
+true of the incident — anything succeeded means it is taken; everything conflicting means somebody
+else has it, named — and the server produces one refusal sentence whichever path refuses. Found by
+reading the screenshots this pass produced, not by a test.
+
+### ⚠️ "fetch failed" is not a reason, in a second place
+
+A webhook to a dead host recorded `fetch failed`; one that never answered recorded
+`This operation was aborted`. Both met the letter of the 0.5 exit criterion — _a failed delivery is
+visible in the console, **with the reason**_ — and neither tells an operator which person to call.
+The same `undici` lesson as the gateway's readiness probes in P-6.4, in a second place. Now:
+
+```
+the endpoint rejected it (HTTP 503)   ·   no response within 5s
+connection refused by the endpoint    ·   the endpoint’s host name could not be resolved
+```
+
+### ⚠️ The one screen designed to stay open all shift got more expensive every time it was used
+
+An infinite query refetches **every page it has loaded** on every interval. Measured at 5,000
+deliveries: **29 KB per tick with one page, 610 KB with twenty** — about 800 MB per operator per
+eight-hour shift, growing with each "Load more" and never coming back down. The queue is now bounded
+at ten pages and **says so on screen**, because a "Load more" that quietly stops appearing is a queue
+that looks finished when it is not. **L-34**, **TD-54**.
+
+### Every state produced, and the three that do not exist
+
+`pending · sent · delivered · failed · acked` — all five produced by the product, none inferred.
+Delivered two ways (in-app, and a webhook answering 204); failed two ways (a 503, and a transport
+that never answered); `sent` caught while a transport was still deciding; `acked` through the API,
+attributed to the authenticated principal.
+
+`pending` was the interesting one. It exists for one database round trip per delivery, so sampling
+cannot catch it — eight `docker pause` snapshots caught the fan-out four times and never once inside
+the window. Changing the odds instead of the luck: every channel silenced, twelve **in-app** channels
+stood up so the fan-out is nothing but database writes, three hundred incidents raised in a single
+publish, then the process frozen while the same queue drained. Caught at freeze 9, and confirmed
+transient — it advanced to `delivered` as soon as the process ran again.
+
+⚠️ **`expired`, `retried` and `dismissed` do not exist.** The enum has exactly five members and the
+script asserts it, so adding a sixth forces somebody to come and say what it means.
+
+### Scale, measured
+
+5,000 deliveries loaded into the production log (and removed again, asserted back to the row it
+started at):
+
+|                       |                                                                      |
+| --------------------- | -------------------------------------------------------------------- |
+| queue query, p95      | **13.4 ms** · unfiltered 11.0 ms                                     |
+| page 20, keyset       | **18.7 ms** — page 20 costs what page 1 costs                        |
+| plan                  | `IXSCAN`, index-served sort, **9.2 documents read per row returned** |
+| first entry on screen | **837 ms** · expand **38 ms** · triage filter **648 ms**             |
+| DOM                   | 572 nodes for one page; the 5,000-row log is never in the browser    |
+
+⚠️ The 9.2:1 read ratio is the honest number: `status: {$ne:'acked'}` is not in the index, so a
+newest-first walk fetches and discards acknowledged rows. Fine here, worth knowing before a
+customer's queue reaches six figures rather than after.
+
+### Two operators, two browsers
+
+The API race proves the transition; this is the half an operator experiences. Both press at the same
+moment, and the loser used to be told **"1 of 1 could not be acknowledged"** — which sounds like the
+product broke. Now:
+
+> _this alert was acknowledged by security.manager@northgate.demo a moment ago_
+
+Losing a race is ordinary shift work, and it must not read like a fault. Pinned by a console test
+that mounts the real toaster, so what an operator is **told** is asserted as rendered text rather
+than as a spy on a function call.
+
+### Refresh, responsive, accessibility
+
+The waiting count survives a refresh; the triage filter survives (it is in the URL, so it survives a
+link too); an expanded row deliberately does not — a glance, not a setting. **A new critical alert
+reached an open screen in 1 second with no refresh and no click**, so no cache can hide one.
+
+Four screen sizes — 1920, 1440, 820, 390 — no horizontal scroll, nothing painted off-screen, no
+control under 24 px, no page errors at any size. Every control named, no heading skips, the expander
+reports its state, a live region carries the announcements, 30 tab stops all with a focus ring, and
+**both Acknowledge and Open incident reachable without a mouse**.
+
+⚠️ **Gate 5 is red, and not for anything in this milestone.** `overflow.mjs` clips at 768 px and
+390 px — **identically on every page**, including ones this pass never touched, and every clipped
+element sits outside `<main>` at `left: 429` on a 390 px viewport. That is the shell, which is
+**TD-45**, already open and still owed by P-6. The Inbox's own content is clean at all four sizes;
+this is reported rather than rounded up.
+
+### Forty minutes with both screens open
+
+Every dependency taken away one at a time and held down until the screen said so — a container out
+for three seconds behind a five-second cache on a fifteen-second refresh is invisible by arithmetic.
+
+| dependency                    | noticed | cleared | queue back |
+| ----------------------------- | ------- | ------- | ---------- |
+| MinIO (**Object storage**)    | 10 s    | 15 s    | —          |
+| NATS (**Message backbone**)   | 9 s     | 15 s    | —          |
+| evidence                      | 9 s     | 15 s    | —          |
+| media                         | 9 s     | 15 s    | —          |
+| workflow (row: **Incidents**) | 16 s    | 14 s    | 2 s        |
+| MongoDB (→ **Unknown**)       | 8–10 s  | 8 s     | 2 s        |
+| gateway (report marked stale) | 6 s     | 6 s     | 2 s        |
+
+⚠️ MongoDB reads **Unknown**, not Unavailable — nobody can speak for it, which is the distinction
+P-6.4 built. Over the run: **43 alerts raised, no duplicates after all the reconnecting, ordering
+held, no page errors, heap 12.1 → 9.5 MB** across 58 samples.
+
+⚠️ **Three of those seven were first reported as `NEVER`, and the page was right every time.** The
+soak's reader took each row's label from the first `<p>, span`, which for a _healthy_ row is the state
+dot's empty `<span>` — so healthy rows were dropped and MinIO "never recovered" on a platform where it
+recovered in fifteen seconds. Then two expectations named rows that do not exist: the workflow
+service's row is **Incidents**, MongoDB's is **MongoDB** rather than "database". ⚠️ **A check whose
+expectation names something that does not exist cannot pass** — the mirror of one that cannot fail,
+and just as worthless. Both scripts now assert every label against the page **before** the first
+container is stopped, so a mismatch is red at second zero instead of a `NEVER` twenty-three minutes
+in.
+
+### Eight checks that could not do their job
+
+Recorded together because the pattern is the point, not the individual mistakes. **Three could not
+fail**, and **five could not pass** — the second kind is rarer, louder, and just as worthless, since
+it sends you looking for a defect in a product that is behaving.
+
+_Could not fail:_
+
+1. **The race that never raced** — six requests serialised onto one socket, so the server saw a neat
+   queue and answered correctly. The script now asserts the requests genuinely overlapped before it
+   believes its own result.
+2. **`'' === ''`** — the bell count was read from the link's text content, found nothing, and
+   compared nothing to nothing across the refresh. It reads the accessible name now and asserts a
+   digit is present _before_ comparing.
+3. **The halves that added up to a page** — compared three single pages and read `200 + 200 = 200`
+   at 5,000 rows. It pages through the whole set now.
+
+_Could not pass:_
+
+4. **The reader that could not see healthy** — a row's label taken from the first `<p>, span`, which
+   for a healthy row is the state dot's empty `<span>`. Reported "never recovered" on a dependency
+   that recovered in 15 s.
+5. **Two labels that do not exist** — `workflow` and `database`, for rows the page calls **Incidents**
+   and **MongoDB**.
+6. **The toast that had already gone** — waited 2.5 s on one page then 2.5 s on the other before
+   reading either; five seconds after a click, by which time sonner had cleared both at its
+   four-second default. Reported that neither operator was told anything.
+7. **The banner read through the wrong element** — `[role="alert"]` scooped up the page's own
+   permanent delivery-failure banner and reported it as both operators' answer.
+8. **The sentence that was on screen** — the cap message failed three ways in a row: the number was
+   interpolated mid-sentence and split the text node; `getByText` with a regex then matched nothing
+   anyway; and the regex expected "most recent 500 deliveries" when the page reads "the **500 most
+   recent** deliveries". ⚠️ When a query disagrees with the page, believe the page.
+
+⚠️ Two of these were only caught because the run **printed what it saw** rather than only whether it
+passed. A check that reports `✗` and nothing else cannot be audited by the person reading it.
+
+### TD-52 paid, and more than was owed
+
+Incident ids are derived from the vertical and the spec index, so a re-run replaces instead of
+duplicating. ⚠️ Upserting alone was not enough: anything an earlier run left behind under different
+ids survived every subsequent run. The seed now **sweeps** — after writing, it removes demo-tenant
+documents in the three collections it owns whose ids it did not write, and reports what it removed.
+Verified by running it **three times in a row**: identical counts each time (19 incidents · 32
+notifications · 127 events), with the non-demo `tnt_dev` tenant's rows correctly untouched.
+
+---
+
+### The scripts, and what each one is for
+
+Every one runs against the **deployment**, through the edge, and reports what it measured rather than
+only whether it passed. The Playwright ones must be copied to a directory that has Playwright
+installed — it is deliberately not a repo dependency.
+
+| Script                                                     | Answers                                                                                                           |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| [`inbox.mjs`](inbox.mjs)                                   | The queue, delivery failures with their reasons, isolation, permissions, latency, and what every record carries   |
+| [`inbox-ux.mjs`](inbox-ux.mjs)                             | Two browser sessions on one alert · refresh recovery · four screen sizes · accessibility and keyboard-only        |
+| [`inbox-concurrency.mjs`](inbox-concurrency.mjs)           | The acknowledgement race — on **separate sockets**, and it proves the requests overlapped before believing itself |
+| [`inbox-scale.mjs`](inbox-scale.mjs)                       | `load` / `api` / `clean` — 5,000 deliveries, latency, `explain`, and proof the harness left nothing behind        |
+| [`inbox-scale-ui.mjs`](inbox-scale-ui.mjs)                 | The same 5,000 in a browser: render, interaction, DOM weight, and the polling ceiling                             |
+| [`notification-lifecycle.mjs`](notification-lifecycle.mjs) | Every delivery state **produced** by the product over four real transports; the three that do not exist           |
+| [`soak.mjs`](soak.mjs)                                     | Forty minutes with the Inbox and System Health open while every dependency is taken away and put back             |
+| [`p65-freeze-screens.mjs`](p65-freeze-screens.mjs)         | The production screenshots — including a real degradation and a real recovery                                     |
+
+⚠️ [`lifecycle-publish.mjs`](lifecycle-publish.mjs) is copied **into the notify container** and raises
+a real `incident.raised` on the backbone. Nothing in this package writes a delivery record directly:
+the Alert Engine produces every one of them, or the measurement is of nothing.
+
+---
+
 ## Still open after P-6.5
 
 Camera depth · media catalogue · workspace empty states ·
@@ -661,4 +934,8 @@ stays valid for up to 15 minutes · **L-24** suspending a tenant is not enforced
 audit is log-only · **L-26** branding is per-deployment, not per-tenant · **L-27** a token-less
 racing API client can log a stale `from` value · **L-28** System Health is a live reading, not a
 history · **L-29** a hung dependency reads as unavailable rather than degraded · **L-30** the inbox
-has no per-operator read state · **L-31** no bulk acknowledge and no snooze.
+has no per-operator read state · **L-31** no bulk acknowledge and no snooze · **L-32** ⛔ a failed
+delivery is never retried and nothing re-sends it — **say this before a customer wires their SOC to a
+webhook** · **L-33** a delivery interrupted mid-flight stays `pending` for ever · **L-34** the queue
+shows the most recent 500 deliveries and then says so · **L-35** a notification does not name the
+service that produced it.

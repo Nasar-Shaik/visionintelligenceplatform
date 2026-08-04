@@ -11,6 +11,7 @@ import type { Notification } from '@vip/contracts';
 import { connectMongo, type MongoAdapter } from '../src/adapters/mongo.js';
 import { MongoChannelStore } from '../src/adapters/mongo-channel-store.js';
 import { MongoNotificationStore } from '../src/adapters/mongo-notification-store.js';
+import { NotificationService } from '../src/application/notification-service.js';
 import { inAppChannelInput } from './helpers.js';
 
 const URI =
@@ -90,5 +91,40 @@ describe.skipIf(!online)('notify stores against real MongoDB', () => {
       notifications.insert(scopeA, notification(id2, 'inc_1', 'ch_1')),
     ).rejects.toThrow();
     expect(await notifications.existsForIncidentChannel(scopeA, 'inc_1', 'ch_1')).toBe(true);
+  });
+
+  /**
+   * ⚠️ **Two operators, one alert — and this test lives here because it cannot fail anywhere else.**
+   *
+   * `ack` used to read the record, check it was acknowledgeable, and write it back. Against the
+   * in-memory store that is flawless: nothing interleaves between the find and the assignment, so
+   * every unit test passed. Against real MongoDB, where each call is real I/O the event loop can
+   * suspend on, twelve simultaneous acknowledgements of one alert produced **two to four winners**,
+   * measured on the deployment — each operator told they had the incident, the record naming
+   * whichever write landed last.
+   *
+   * Verified red before the fix: this assertion saw 5 winners.
+   */
+  it('⚠️ concurrent acknowledgements of one alert produce exactly one winner', async () => {
+    const id = '66666666-6666-4666-8666-666666666666';
+    await notifications.insert(scopeA, notification(id, 'inc_race', 'ch_race'));
+
+    const service = new NotificationService({ store: notifications });
+    const results = await Promise.allSettled(
+      Array.from({ length: 12 }, (_, i) => service.ack(scopeA, id, {}, `operator-${i}@acme.test`)),
+    );
+
+    const winners = results.filter((r) => r.status === 'fulfilled');
+    expect(winners).toHaveLength(1);
+    /* Every loser is refused, and refused as a conflict rather than a crash. */
+    for (const loser of results.filter((r) => r.status === 'rejected')) {
+      expect((loser.reason as { statusCode?: number }).statusCode).toBe(409);
+    }
+    /* ⚠️ And the stored record names the operator who was told they had it. */
+    const stored = await notifications.get(scopeA, id);
+    expect(stored?.status).toBe('acked');
+    expect(stored?.ackedBy).toBe(
+      (winners[0] as PromiseFulfilledResult<Notification>).value.ackedBy,
+    );
   });
 });

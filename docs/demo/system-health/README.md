@@ -46,6 +46,22 @@ cached 5 s so concurrent viewers collapse into one — **p50 2.9 ms, p95 4.9 ms*
 [permission denied](../../review/p6/screens/health-06-forbidden.png) ·
 [phone](../../review/p6/screens/health-05-phone.png)
 
+## What the freeze pass measured
+
+Every dependency taken away one at a time, **held down until the screen said so** rather than
+restarted — a container that is out for three seconds behind a five-second cache on a fifteen-second
+refresh is invisible by arithmetic, which is what P-6.4 learned when six restart checks failed
+against a page that was right.
+
+⚠️ The reading tool had to be fixed before the readings meant anything: it took the row's label from
+the first `<p>, span` in the row, which for a **healthy** row is the state dot's empty `<span>`, so
+healthy rows were dropped entirely and the run reported that MinIO went away in ten seconds and
+**never came back** — on a platform where it had recovered in fifteen. _A reading that can only see
+the states it is looking for will confirm whatever it expects._
+
+Screenshots added: [degraded, live](../../review/p6/screens/freeze-system-02-degraded.png) ·
+[recovered after a restart](../../review/p6/screens/freeze-system-03-recovered-after-restart.png)
+
 ## ⚠️ Known limitations — say these before a customer finds them
 
 - **It is a live reading, not a history** (L-28). "Was it down last night?" is not answerable from

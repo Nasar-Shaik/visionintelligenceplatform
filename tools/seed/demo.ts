@@ -36,7 +36,7 @@
  */
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { MongoClient, type Db } from 'mongodb';
 import type { CameraHealthStatus } from '@vip/contracts';
 import { hashPassword } from '@vip/auth';
@@ -75,6 +75,19 @@ const PASSWORD = resolveDemoPassword(process.env);
 const NOW = Date.now();
 const iso = (ms: number): string => new Date(ms).toISOString();
 const minsAgo = (m: number): number => NOW - m * 60_000;
+
+/**
+ * A UUID derived from what a thing **is**, so re-seeding replaces it instead of adding another.
+ *
+ * ⚠️ Shaped as a valid v4 (the version and variant nibbles are forced) because every contract in the
+ * platform parses these as `Uuid` and a hash that merely looks like one is rejected — fail-closed
+ * validation working correctly, which is indistinguishable from a broken pipeline if you have not
+ * met it before.
+ */
+function stableUuid(seed: string): string {
+  const h = createHash('sha256').update(seed).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
 const hoursAgo = (h: number): number => NOW - h * 3_600_000;
 const daysAgo = (d: number): number => NOW - d * 86_400_000;
 
@@ -718,6 +731,19 @@ async function main(): Promise<void> {
       };
     }
 
+    /* ⚠️ Leave exactly the dataset described above — see `sweep` (TD-52). */
+    const swept = await sweep(
+      db,
+      VERTICALS.map((v) => v.tenantId),
+    );
+    if (Object.keys(swept).length > 0) {
+      console.log(
+        `\n  removed from earlier runs: ${Object.entries(swept)
+          .map(([c, n]) => `${n} ${c}`)
+          .join(' · ')}`,
+      );
+    }
+
     console.log(
       `\n✔ Demo dataset ready — ${totals.tenants} tenants · ${totals.nodes} locations · ` +
         `${totals.cameras} cameras · ${totals.users} operators · ${totals.rules} rules · ` +
@@ -947,7 +973,7 @@ async function seedVertical(
   let events = 0;
   /** How many incidents have reached the webhook channel, so exactly one of them can fail. */
   let webhookDeliveries = 0;
-  for (const spec of v.incidents) {
+  for (const [index, spec] of v.incidents.entries()) {
     const camera = v.cameras.find((c) => c.id === spec.camera);
     if (camera === undefined) throw new Error(`unknown camera ${spec.camera} in ${v.tenantId}`);
     const rule = v.rules.find((r) => r.eventTypes.includes(spec.eventType)) ?? v.rules[0]!;
@@ -1037,7 +1063,16 @@ async function seedVertical(
     }
 
     // ── the incident, with a lifecycle history that matches its status ──────────
-    const incidentId = randomUUID();
+    /*
+     * ⚠️ **Stable, so a second run replaces rather than multiplies (TD-52).**
+     *
+     * This was `randomUUID()`, which made every document downstream of it new: the upsert filters
+     * key on the incident, so a re-run inserted a second complete set instead of replacing the
+     * first. Two runs left 90 incidents where 18 were expected, and the only way back was to empty
+     * the collections by hand. Deriving the id from what the incident *is* makes the seed idempotent
+     * — running it twice is the same as running it once.
+     */
+    const incidentId = stableUuid(`incident:${v.tenantId}:${index}`);
     const history: Record<string, unknown>[] = [
       { from: null, to: 'raised', at: iso(occurredMs + 1200), by: 'system' },
     ];
@@ -1206,12 +1241,24 @@ async function seedVertical(
           title: spec.title,
           correlationId,
           causationId: incidentId,
-          attempts: webhookFails ? 3 : 1,
+          /*
+           * ⚠️ **One attempt, because the platform makes one attempt.**
+           *
+           * This used to seed `attempts: 3` and "…after 3 attempts", which reads well in a demo and
+           * describes a retry mechanism that does not exist: the Alert Engine attempts each channel
+           * exactly once, and the fan-out's idempotency guard means a redelivered incident never
+           * re-attempts a channel that already has a record. Measured on the deployment — four real
+           * deliveries, two of them failures, `attempts` of 1 across the board.
+           *
+           * A demo dataset that shows a capability the product does not have is a promise somebody
+           * will be held to. The wording is what the transport actually reports (P-6.5).
+           */
+          attempts: 1,
           sentAt: iso(alertAt),
           ...(webhookFails
             ? {
-                failedAt: iso(alertAt + 30_000),
-                lastError: 'connect ETIMEDOUT soc.example.internal:443 after 3 attempts',
+                failedAt: iso(alertAt + 5_000),
+                lastError: 'no response within 5s',
               }
             : { deliveredAt: iso(alertAt + 400) }),
           createdAt: iso(alertAt),
@@ -1247,6 +1294,9 @@ function ancestry(v: Vertical, key: string): string[] {
   return out;
 }
 
+/** Every `(collection, id)` this run wrote, so the sweep below knows what belongs. */
+const written = new Map<string, Set<string>>();
+
 async function put(
   db: Db,
   collection: string,
@@ -1254,6 +1304,40 @@ async function put(
   doc: Record<string, unknown>,
 ): Promise<void> {
   await db.collection(collection).replaceOne(filter, doc, { upsert: true });
+  if (typeof doc['id'] === 'string') {
+    const seen = written.get(collection) ?? new Set<string>();
+    seen.add(doc['id']);
+    written.set(collection, seen);
+  }
+}
+
+/**
+ * Remove demo-tenant documents this run did **not** write.
+ *
+ * ### ⚠️ Why upserting is not enough (TD-52)
+ *
+ * Upserts keep the dataset current; they cannot make it *correct*. Anything left behind by an
+ * earlier run with different ids — the random incident ids this seed used before, a probe from a
+ * verification script, an incident from a demonstration — survives every subsequent run and quietly
+ * accumulates. Two runs once left 90 incidents where 18 were expected, and the only way back was
+ * emptying collections by hand.
+ *
+ * ⚠️ **Scoped to the demo tenants and to collections this seed owns.** It never touches a real
+ * tenant, and it never touches a collection it does not write, because a seed that deletes what it
+ * does not understand is worse than one that leaves litter.
+ */
+async function sweep(db: Db, tenantIds: string[]): Promise<Record<string, number>> {
+  const owned = ['incidents', 'notifications', 'events'];
+  const removed: Record<string, number> = {};
+  for (const collection of owned) {
+    const keep = [...(written.get(collection) ?? new Set<string>())];
+    const result = await db.collection(collection).deleteMany({
+      tenantId: { $in: tenantIds },
+      id: { $nin: keep },
+    });
+    if (result.deletedCount > 0) removed[collection] = result.deletedCount;
+  }
+  return removed;
 }
 
 main().catch((error: unknown) => {

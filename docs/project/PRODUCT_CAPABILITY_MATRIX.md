@@ -163,6 +163,18 @@ it was full. P-6.5 seeds the channels and the deliveries the Alert Engine would 
 including one webhook failure per vertical, because a product that can only be shown succeeding has
 not been shown.
 
+⚠️ **C-41 delivers once, and that is the whole of it.** The P-6.5 freeze pass drove the real Alert
+Engine over four real transports and measured `attempts: 1` on every delivery, successful or failed.
+There is no retry, and the fan-out's idempotency guard means a redelivered incident **skips** a
+channel that already has a record — so a webhook that was down for thirty seconds loses those alerts
+permanently. The console shows the failure with its reason, which is the whole of what the platform
+offers here; visibility is not delivery. **L-32**, **TD-53** (high). ⚠️ The demo dataset used to say
+`attempts: 3`, describing a mechanism that does not exist; corrected.
+
+⚠️ **C-42's queue is bounded at 500 deliveries**, deliberately and visibly. The screen polls every
+page it has loaded, so its background cost grew with each "Load more" — 29 KB per tick at one page,
+610 KB at twenty, measured at 5,000 deliveries. **L-34**, **TD-54**.
+
 ⚠️ **C-52 was marked production-verified before the page existed**, on the strength of the services'
 `/health` and `/ready` probes — and the route walk agreed, because the edge answers `/health` with
 `{"status":"ok"}` and JSON logs no errors. The backend column was true; the frontend column was a

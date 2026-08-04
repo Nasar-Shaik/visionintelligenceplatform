@@ -103,7 +103,13 @@ Beyond the twelve gates. These are the things that make each _claim_ true.
 - [ ] A critical incident delivers an **email and an SMS** to a real address and number
 - [x] A **failed** delivery is visible in the console, with the reason (P-6.5 — called out above the
       queue, with the transport error and the attempt count on the entry). ⚠️ The **delivery** half is
-      done; the transports it can fail on are still in-app and webhook only
+      done; the transports it can fail on are still in-app and webhook only. ⚠️ The P-6.5 freeze pass
+      found the reason met the letter of this criterion and not its point: `undici` reports every
+      connection fault as `fetch failed` and a timeout as `This operation was aborted`, neither of
+      which tells an operator who to call. Now _"the endpoint rejected it (HTTP 503)"_, _"no response
+      within 5s"_, _"connection refused by the endpoint"_. ⚠️ And say the rest out loud in a demo:
+      **a failed delivery is never retried** (L-32, TD-53) — it is visible, and visibility is all
+      this criterion buys
 - [ ] The console is usable on a phone — including Sign out (C-63)
 - [ ] **D-1 decided** (tenant identity at sign-in)
 

@@ -2,7 +2,12 @@
  * A DB-free `NotificationStore` (delivery log) for unit tests and local wiring. Same tenant scoping,
  * per-(incident,channel) idempotency, and newest-first keyset pagination as the Mongo adapter.
  */
-import type { Notification, NotificationPage, NotificationQuery } from '@vip/contracts';
+import type {
+  Notification,
+  NotificationPage,
+  NotificationQuery,
+  NotificationStatus,
+} from '@vip/contracts';
 import { TenancyError, type TenantScope } from '@vip/tenancy';
 import { conflict } from '../application/errors.js';
 import type { NotificationStore } from '../application/ports.js';
@@ -31,6 +36,25 @@ export class InMemoryNotificationStore implements NotificationStore {
   async replace(scope: TenantScope, notification: Notification): Promise<boolean> {
     const idx = this.log.findIndex((n) => this.owned(scope, n) && n.id === notification.id);
     if (idx === -1) return false;
+    this.log[idx] = notification;
+    return true;
+  }
+
+  /**
+   * ⚠️ Faithful to the Mongo adapter's *contract*, and unable to reproduce its *race*. Nothing
+   * interleaves between the find and the assignment here, so a read-compare-write in the service
+   * would look correct against this store — which is precisely how the defect this method exists to
+   * fix survived. The race belongs to `docs/review/p6/inbox-concurrency.mjs`, against real MongoDB
+   * on real sockets; what a unit test can pin is the refusal, and it does.
+   */
+  async replaceIfStatus(
+    scope: TenantScope,
+    notification: Notification,
+    expected: readonly NotificationStatus[],
+  ): Promise<boolean> {
+    const idx = this.log.findIndex((n) => this.owned(scope, n) && n.id === notification.id);
+    if (idx === -1) return false;
+    if (!expected.includes(this.log[idx]!.status)) return false;
     this.log[idx] = notification;
     return true;
   }

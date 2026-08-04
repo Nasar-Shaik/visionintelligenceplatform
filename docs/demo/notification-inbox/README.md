@@ -62,3 +62,27 @@ own system was ever told.
   answers, arrives with the delivery channels in **P-7**.
 - **The alerts in a demonstration come from the demo dataset**, like the incidents they belong to
   (L-2). Nothing here was produced by watching video.
+- ⛔ **A failed delivery is never retried** (L-32). Each channel is attempted **once** — measured
+  across four real transports, `attempts: 1` on every delivery. A customer's webhook that blips for
+  thirty seconds loses those alerts permanently, and there is no re-send control anywhere. The
+  failure is visible with its reason, and **visibility is the whole of what this feature offers**.
+  ⚠️ Say this out loud before a customer wires their SOC to a webhook. **TD-53**, ranked high.
+- **The queue shows the most recent 500 deliveries** and then says so (L-34). Older alerts are
+  reached by narrowing the filter or opening the incident. Deliberate: the screen polls every page it
+  has loaded, and unbounded paging cost around 800 MB per operator per shift.
+- **`Pending` does not distinguish "in flight" from "stranded"** (L-33, PB-24). One resolves in a
+  millisecond; the other never will, if a process died at the wrong moment.
+
+## What the freeze pass changed
+
+Recorded 2026-08-04, after the production-grade verification pass:
+
+- ⚠️ **Two operators could both take the same alert.** Twelve simultaneous acknowledgements produced
+  two to four winners in nine rounds out of twelve — each told they had the incident. The transition
+  is now decided by the database write, and the loser is told **who** beat them to it rather than
+  that something failed. Worth demonstrating live in two windows: it is the moment the product looks
+  like it was built by people who have worked a control room.
+- ⚠️ **The demo dataset used to claim three delivery attempts.** It now says one, because one is what
+  the platform does.
+- **Delivery failures now read in an operator's words** — _"the endpoint rejected it (HTTP 503)"_,
+  _"no response within 5s"_ — instead of `fetch failed`.

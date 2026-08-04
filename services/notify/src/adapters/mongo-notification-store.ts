@@ -4,7 +4,12 @@
  * fan-out signal). `list` is newest-first keyset pagination.
  */
 import type { Collection } from 'mongodb';
-import type { Notification, NotificationPage, NotificationQuery } from '@vip/contracts';
+import type {
+  Notification,
+  NotificationPage,
+  NotificationQuery,
+  NotificationStatus,
+} from '@vip/contracts';
 import { TenantRepository, type TenantScope } from '@vip/tenancy';
 import { conflict } from '../application/errors.js';
 import type { NotificationStore } from '../application/ports.js';
@@ -62,6 +67,23 @@ export class MongoNotificationStore implements NotificationStore {
     const matched = await this.notifications.updateOne(
       scope,
       { id: notification.id } as never,
+      { $set: notification } as never,
+    );
+    return matched > 0;
+  }
+
+  /**
+   * ⚠️ The status goes in the **filter**, so MongoDB decides the winner rather than the application.
+   * `updateOne` matching on `status ∈ expected` is atomic; the loser matches nothing and is told.
+   */
+  async replaceIfStatus(
+    scope: TenantScope,
+    notification: Notification,
+    expected: readonly NotificationStatus[],
+  ): Promise<boolean> {
+    const matched = await this.notifications.updateOne(
+      scope,
+      { id: notification.id, status: { $in: expected } } as never,
       { $set: notification } as never,
     );
     return matched > 0;

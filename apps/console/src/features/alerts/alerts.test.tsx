@@ -6,7 +6,7 @@
  * than by the browser, that a failed delivery is visible with its reason, and that acknowledging an
  * incident does not quietly clear a delivery that never arrived.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { http as mswHttp, HttpResponse } from 'msw';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -15,6 +15,7 @@ import { store } from '@/app/store';
 import { authenticated, signedOut } from '@/store/sessionSlice';
 import { server } from '@/test/server';
 import { renderWithProviders } from '@/test/render';
+import { Toaster } from '@/ui';
 import { AlertsPage } from './AlertsPage';
 
 function authAs(roles: string[]) {
@@ -60,6 +61,20 @@ function mockList(items: unknown[]) {
 }
 
 const render = () => renderWithProviders(<AlertsPage />, { store });
+
+/*
+ * ⚠️ With the toaster mounted, so what an operator is *told* can be asserted as rendered text rather
+ * than as a spy on a function call. The shell mounts it in the running app; a test that stubs it out
+ * can only prove the code asked for a message, never that anybody would have seen one.
+ */
+const renderWithToasts = () =>
+  renderWithProviders(
+    <>
+      <AlertsPage />
+      <Toaster />
+    </>,
+    { store },
+  );
 
 describe('AlertsPage — the inbox', () => {
   /**
@@ -160,6 +175,40 @@ describe('AlertsPage — the inbox', () => {
     expect(acked).not.toContain('c');
   });
 
+  /**
+   * ⚠️ **Losing a race is not a failure, and it must not read like one.**
+   *
+   * Two operators reaching for the same alert is ordinary shift work. The loser used to be told
+   * "1 of 1 could not be acknowledged" — which sounds like the product broke and says nothing about
+   * what happened or what to do. The server knows precisely who got there first; this asserts the
+   * console shows *that* rather than a count of things that went wrong.
+   */
+  it('tells the operator who beat them to it, not that something went wrong', async () => {
+    mockList([notification({ id: 'a', channelType: 'in-app', status: 'delivered' })]);
+    server.use(
+      mswHttp.post('/api/notify/notifications/:id/ack', () =>
+        HttpResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'conflict',
+              message: 'this alert was acknowledged by sam@acme.test a moment ago',
+            },
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    authAs(['operator']);
+    renderWithToasts();
+
+    await userEvent.click(await screen.findByRole('button', { name: /^acknowledge$/i }));
+    expect(
+      await screen.findByText(/acknowledged by sam@acme\.test a moment ago/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/could not be acknowledged/i)).not.toBeInTheDocument();
+  });
+
   it('links every entry to the incident it belongs to', async () => {
     mockList([NOTIFICATION]);
     authAs(['operator']);
@@ -167,6 +216,86 @@ describe('AlertsPage — the inbox', () => {
 
     const link = await screen.findByRole('link', { name: /open incident/i });
     expect(link).toHaveAttribute('href', '/workspace/inc-1');
+  });
+
+  /**
+   * ⚠️ **A queue that cannot be refreshed is kept, and labelled.**
+   *
+   * Found by taking the gateway away with the page open against the deployment: twenty-five entries
+   * were replaced by "Couldn't load · Request failed (502)" for the twelve seconds it took to come
+   * back. The same defect P-6.4 found on System Health, on the screen an operator watches all shift
+   * — and an operator whose queue empties cannot tell "nothing needs me" from "I cannot see".
+   */
+  it('keeps the queue when a refresh fails, and says the reading is stale', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockList([NOTIFICATION]);
+    authAs(['operator']);
+    render();
+    expect(await screen.findByText('Person detected after hours')).toBeInTheDocument();
+
+    /* Every later request fails — the refetch, and its retries. */
+    server.use(
+      mswHttp.get('/api/notify/notifications', () =>
+        HttpResponse.json(
+          { success: false, error: { code: 'bad_gateway', message: 'Request failed (502)' } },
+          { status: 502 },
+        ),
+      ),
+    );
+
+    /*
+     * ⚠️ The page's **own 20-second poll** is what fails here, which is what happens in the
+     * deployment. Switching the filter would not do: that is a different query key with no cached
+     * reading to keep, so it exercises the empty-error path and proves nothing about this one. And a
+     * 10-second `staleTime` means switching away and back would not refetch at all.
+     */
+    await vi.advanceTimersByTimeAsync(21_000); // the poll
+    await vi.advanceTimersByTimeAsync(10_000); // its two retries and their backoff
+
+    expect(await screen.findByText(/could not be refreshed/i)).toBeInTheDocument();
+    /* ⚠️ And the alert is still on screen — the point of keeping it. */
+    expect(screen.getByText('Person detected after hours')).toBeInTheDocument();
+    /* ⚠️ And it must never read as an empty queue. */
+    expect(screen.queryByText('Nothing is waiting')).not.toBeInTheDocument();
+    expect(screen.queryByText('No alerts')).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  /**
+   * ⚠️ **A split incident is a taken incident.**
+   *
+   * Acknowledging is per delivery; the operator acted on an incident. Two operators pressing at the
+   * same moment can take one channel each — measured on the deployment — and both were then told
+   * "1 of 2 could not be acknowledged", on an incident that is now unambiguously taken. The message
+   * has to follow what became true, not the tally of requests.
+   */
+  it('reports a race-split acknowledgement as taken, not as a failure', async () => {
+    mockList([
+      notification({ id: 'a', channelId: 'c1', channelType: 'in-app', status: 'delivered' }),
+      notification({ id: 'b', channelId: 'c2', channelType: 'webhook', status: 'delivered' }),
+    ]);
+    server.use(
+      mswHttp.post('/api/notify/notifications/:id/ack', ({ params }) =>
+        params.id === 'a'
+          ? HttpResponse.json({ success: true, data: notification({ status: 'acked' }) })
+          : HttpResponse.json(
+              {
+                success: false,
+                error: {
+                  code: 'conflict',
+                  message: 'this alert was acknowledged by sam@acme.test a moment ago',
+                },
+              },
+              { status: 409 },
+            ),
+      ),
+    );
+    authAs(['operator']);
+    renderWithToasts();
+
+    await userEvent.click(await screen.findByRole('button', { name: /^acknowledge$/i }));
+    expect(await screen.findByText('Alert acknowledged')).toBeInTheDocument();
+    expect(screen.queryByText(/could not be acknowledged/i)).not.toBeInTheDocument();
   });
 
   it('hides the ack action from a read-only viewer', async () => {
