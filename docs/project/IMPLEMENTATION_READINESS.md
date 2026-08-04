@@ -1,5 +1,9 @@
 # Implementation Readiness Matrix
 
+> ⚠️ **This is a dated analysis, not the living tracker.** It records the dependency verification performed on 2026-08-04 before P-6 was authorised, and the **method** used, so the work can be re-run rather than re-argued.
+>
+> **The living source of truth for implementation progress is [PRODUCT_CAPABILITY_MATRIX](PRODUCT_CAPABILITY_MATRIX.md)** — update that one. This file is not maintained; it is evidence.
+
 **Verified against the repository and the running production deployment on 2026-08-04.** Every
 classification below was derived by searching for the symbol, the route and the client call — not
 from the design documents, which describe intent rather than state.
