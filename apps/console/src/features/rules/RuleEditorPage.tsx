@@ -184,13 +184,17 @@ function RuleEditorForm({ id, rule }: { id: string | undefined; rule: Rule | und
                 <Textarea id="description" rows={2} {...register('description')} />
               </Field>
               <div className="grid gap-4 sm:grid-cols-3">
-                <Field label="Lifecycle" error={errors.lifecycle?.message}>
+                {/* ⚠️ Each `Select` carries an id its `Field` label points at. Without one a
+                    screen reader announces the *value* ("Enabled, combobox") and never the
+                    purpose — the control is named, which is why an automated audit passed it,
+                    but named the wrong thing. */}
+                <Field label="Lifecycle" htmlFor="lifecycle" error={errors.lifecycle?.message}>
                   <Controller
                     control={control}
                     name="lifecycle"
                     render={({ field }) => (
                       <Select value={field.value} onValueChange={field.onChange}>
-                        <SelectTrigger>
+                        <SelectTrigger id="lifecycle">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -204,13 +208,13 @@ function RuleEditorForm({ id, rule }: { id: string | undefined; rule: Rule | und
                     )}
                   />
                 </Field>
-                <Field label="Severity" error={errors.severity?.message}>
+                <Field label="Severity" htmlFor="severity" error={errors.severity?.message}>
                   <Controller
                     control={control}
                     name="severity"
                     render={({ field }) => (
                       <Select value={field.value} onValueChange={field.onChange}>
-                        <SelectTrigger>
+                        <SelectTrigger id="severity">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -379,13 +383,17 @@ function RuleEditorForm({ id, rule }: { id: string | undefined; rule: Rule | und
                         {...register('windowCount', { valueAsNumber: true })}
                       />
                     </Field>
-                    <Field label="Group by" error={errors.windowGroupBy?.message}>
+                    <Field
+                      label="Group by"
+                      htmlFor="windowGroupBy"
+                      error={errors.windowGroupBy?.message}
+                    >
                       <Controller
                         control={control}
                         name="windowGroupBy"
                         render={({ field }) => (
                           <Select value={field.value} onValueChange={field.onChange}>
-                            <SelectTrigger>
+                            <SelectTrigger id="windowGroupBy">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -410,13 +418,13 @@ function RuleEditorForm({ id, rule }: { id: string | undefined; rule: Rule | und
               <CardDescription>What happens when the rule matches.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Field label="Action type" error={errors.actionType?.message}>
+              <Field label="Action type" htmlFor="actionType" error={errors.actionType?.message}>
                 <Controller
                   control={control}
                   name="actionType"
                   render={({ field }) => (
                     <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger>
+                      <SelectTrigger id="actionType">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -438,13 +446,17 @@ function RuleEditorForm({ id, rule }: { id: string | undefined; rule: Rule | und
                   >
                     <Input id="actionTitle" {...register('actionTitle')} />
                   </Field>
-                  <Field label="Severity override" error={errors.actionSeverity?.message}>
+                  <Field
+                    label="Severity override"
+                    htmlFor="actionSeverity"
+                    error={errors.actionSeverity?.message}
+                  >
                     <Controller
                       control={control}
                       name="actionSeverity"
                       render={({ field }) => (
                         <Select value={field.value} onValueChange={field.onChange}>
-                          <SelectTrigger>
+                          <SelectTrigger id="actionSeverity">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>

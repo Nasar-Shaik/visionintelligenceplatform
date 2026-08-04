@@ -7,6 +7,14 @@ export const queryKeys = {
   auth: {
     me: () => ['auth', 'me'] as const,
   },
+  // P-6.2. User administration. Every write here (re-role, disable, enable, password) changes a
+  // row the list renders, and the list is small and unpaged — so writes invalidate `all()` rather
+  // than patching a cached row, which would leave `updatedAt` stale.
+  users: {
+    all: () => ['users'] as const,
+    list: () => ['users', 'list'] as const,
+    detail: (id: string) => ['users', 'detail', id] as const,
+  },
   // P-3. The estate. A move rewrites descendants and an archive cascades, so writes invalidate
   // `all()` rather than a node — the set of changed nodes is the traversal the server just did.
   organization: {

@@ -33,6 +33,45 @@ export const CreateUserInput = z.object({
 });
 export type CreateUserInput = z.infer<typeof CreateUserInput>;
 
+/**
+ * Change what a user *is allowed to do*. **Roles only** — and the three fields that are absent are
+ * the decision, so each is stated rather than silently omitted.
+ *
+ * - **`email` is not mutable.** It is the login identity and half of the `{tenantId, email}` unique
+ *   key. Editing it silently changes who can sign in to an account that already owns incidents,
+ *   assignments and audit lines — a takeover that reads as a typo fix. A person whose address
+ *   changes gets a new account and the old one disabled, which leaves a trail. Recorded as L-21.
+ * - **`status` is not mutable here.** Disabling someone's access is a named act, not a field edit
+ *   (`POST /users/:id/disable`), for the same reason a location is archived rather than
+ *   `PATCH {status:'archived'}`: the transition has side effects — every refresh-token family is
+ *   revoked — and an audit line reading `user.disabled` says what happened where `user.updated`
+ *   does not. A PATCH can therefore never lock somebody out by accident.
+ * - **`password` is not mutable here.** A body that can carry both a role grant and a credential
+ *   makes one audit entry cover two different acts. `POST /users/:id/password` is its own route.
+ *
+ * ⚠️ `roles` is an array of role names resolved by `@vip/permissions` at authorization time.
+ * Contracts deliberately do not enumerate them: the role catalog is the policy engine's to own
+ * (tenant-defined roles are a post-GA candidate), and duplicating the list here would create a
+ * second source of truth that drifts. An unknown role grants nothing — it is not an error.
+ */
+export const UpdateUserInput = z.object({
+  roles: z.array(z.string().min(1)).min(1),
+});
+export type UpdateUserInput = z.infer<typeof UpdateUserInput>;
+
+/**
+ * An administrator setting another user's password (a reset, not a self-service change).
+ *
+ * ⚠️ Deliberately **does not** carry the caller's own password or a reset token. This route is
+ * authorized by `user:update` — the administrator's authority *is* the proof. A self-service
+ * "change my password" flow is a different act with a different check (present the current
+ * password) and is not this. Recorded as L-22.
+ */
+export const SetUserPasswordInput = z.object({
+  password: z.string().min(8).max(200),
+});
+export type SetUserPasswordInput = z.infer<typeof SetUserPasswordInput>;
+
 /** Credentials login. */
 export const LoginInput = z.object({
   email: z.email(),

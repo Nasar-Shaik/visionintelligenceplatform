@@ -26,6 +26,7 @@ const ROUTES = [
   ['workspace', '/workspace'],
   ['alerts', '/alerts'],
   ['rules', '/rules'],
+  ['users', '/users'],
   ['health', '/health'],
   ['settings', '/settings'],
 ];
@@ -64,9 +65,16 @@ for (const [name, path] of ROUTES) {
   await page.waitForTimeout(2500);
 
   /* The route error boundary is the signal: a page that rendered it did not render. */
-  const crashed = await page.getByText('This page stopped working').isVisible().catch(() => false);
+  const crashed = await page
+    .getByText('This page stopped working')
+    .isVisible()
+    .catch(() => false);
   const detail = crashed
-    ? await page.locator('code, pre').first().textContent().catch(() => null)
+    ? await page
+        .locator('code, pre')
+        .first()
+        .textContent()
+        .catch(() => null)
     : null;
 
   await page.screenshot({ path: `${OUT}/${name}.png` });

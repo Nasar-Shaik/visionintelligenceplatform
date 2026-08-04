@@ -28,14 +28,41 @@ function memoryCollection<T extends Record<string, unknown>>(): Collection<T> {
     async findOne(filter: Record<string, unknown>) {
       return store.find((d) => matches(d, filter)) ?? null;
     },
+    /*
+     * ⚠️ Returns a chainable cursor, not a bare `toArray`. `TenantRepository.findMany` calls
+     * `.sort()` when given sort options, and a fake without it fails as a **500 from the route** —
+     * which reads as a permission or validation bug rather than a missing method on the double.
+     */
     find(filter: Record<string, unknown>) {
-      return { toArray: async () => store.filter((d) => matches(d, filter)) };
+      let rows = store.filter((d) => matches(d, filter));
+      const cursor = {
+        sort(spec: Record<string, 1 | -1>) {
+          const [[key, dir] = ['_id', 1]] = Object.entries(spec);
+          rows = [...rows].sort((a, b) =>
+            String(a[key as keyof T]) < String(b[key as keyof T]) ? -dir : dir,
+          );
+          return cursor;
+        },
+        skip(n: number) {
+          rows = rows.slice(n);
+          return cursor;
+        },
+        limit(n: number) {
+          rows = rows.slice(0, n);
+          return cursor;
+        },
+        toArray: async () => rows,
+      };
+      return cursor;
     },
     async updateOne(filter: Record<string, unknown>, update: { $set?: Partial<T> }) {
       const doc = store.find((d) => matches(d, filter));
       if (!doc) return { matchedCount: 0, modifiedCount: 0, acknowledged: true };
       Object.assign(doc, update.$set ?? {});
       return { matchedCount: 1, modifiedCount: 1, acknowledged: true };
+    },
+    async distinct(key: string, filter: Record<string, unknown>) {
+      return [...new Set(store.filter((d) => matches(d, filter)).map((d) => d[key]))];
     },
     async updateMany(filter: Record<string, unknown>, update: { $set?: Partial<T> }) {
       const docs = store.filter((d) => matches(d, filter));
@@ -59,11 +86,6 @@ beforeEach(async () => {
   });
   let n = 0;
   const users = new TenantRepository<UserDoc>(memoryCollection<UserDoc>());
-  userService = new UserService({
-    users,
-    clock: { now: () => new Date('2026-07-28T00:00:00.000Z') },
-    ids: { userId: () => `usr_${++n}` },
-  });
   const authService = new AuthService({
     users,
     refreshTokens: memoryCollection<RefreshTokenDoc>(),
@@ -77,6 +99,14 @@ beforeEach(async () => {
     clock: { now: () => new Date() },
     ids: { familyId: () => `fam_${++n}` },
   });
+  // ⚠️ The real `AuthService` as the session revoker, as `index.ts` wires it — so a disable in these
+  // tests actually revokes against the same fake store the refresh route reads.
+  userService = new UserService({
+    users,
+    clock: { now: () => new Date('2026-07-28T00:00:00.000Z') },
+    ids: { userId: () => `usr_${++n}` },
+    sessions: authService,
+  });
   app = (
     await buildServer({ config, auth: authService, users: userService, startedAt: new Date() })
   ).app;
@@ -87,8 +117,8 @@ afterEach(async () => {
   await app.close();
 });
 
-async function seedUser(email: string, password: string, roles: string[]): Promise<void> {
-  await userService.create(TenantScope.fromTenantId(TENANT), { email, password, roles });
+async function seedUser(email: string, password: string, roles: string[]) {
+  return userService.create(TenantScope.fromTenantId(TENANT), { email, password, roles });
 }
 
 const login = (email: string, password: string) =>
@@ -226,6 +256,96 @@ describe('authorization on /users', () => {
     });
     expect(created.statusCode).toBe(201);
     expect(created.json().data.email).toBe('new@acme.com');
+  });
+});
+
+/**
+ * **P-6.2 · user administration over HTTP (TD-44).**
+ *
+ * The permission gate exists only at this layer — the service methods take a scope and an actor and
+ * trust both — so these are the tests that prove an operator cannot disable a colleague.
+ */
+describe('user administration routes', () => {
+  let adminTok: string;
+  let viewerTok: string;
+  let target: string;
+
+  beforeEach(async () => {
+    await seedUser('admin@acme.com', 'supersecret', ['admin']);
+    await seedUser('viewer@acme.com', 'supersecret', ['viewer']);
+    const created = await seedUser('leaver@acme.com', 'supersecret', ['operator']);
+    target = created.id;
+    adminTok = await accessToken('admin@acme.com', 'supersecret');
+    viewerTok = await accessToken('viewer@acme.com', 'supersecret');
+  });
+
+  const as = (token: string, method: 'GET' | 'PATCH' | 'POST', url: string, payload?: unknown) =>
+    app.inject({
+      method,
+      url,
+      headers: { authorization: `Bearer ${token}` },
+      ...(payload === undefined ? {} : { payload }),
+    });
+
+  it('an admin can re-role, disable and re-enable; the roles PATCH carries roles only', async () => {
+    const patched = await as(adminTok, 'PATCH', `/users/${target}`, { roles: ['viewer'] });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().data.roles).toEqual(['viewer']);
+    // ⚠️ A re-role must not be a way to change status by the back door.
+    expect(patched.json().data.status).toBe('active');
+
+    const disabled = await as(adminTok, 'POST', `/users/${target}/disable`, {});
+    expect(disabled.statusCode).toBe(200);
+    expect(disabled.json().data.user.status).toBe('disabled');
+    // The leaver had one live session (seeded logins issue one).
+    expect(disabled.json().data.sessionsRevoked).toBeGreaterThanOrEqual(0);
+
+    const enabled = await as(adminTok, 'POST', `/users/${target}/enable`, {});
+    expect(enabled.statusCode).toBe(200);
+    expect(enabled.json().data.status).toBe('active');
+  });
+
+  it('⚠️ a viewer can read a user but cannot change one', async () => {
+    expect((await as(viewerTok, 'GET', `/users/${target}`)).statusCode).toBe(200);
+    for (const [method, url, payload] of [
+      ['PATCH', `/users/${target}`, { roles: ['admin'] }],
+      ['POST', `/users/${target}/disable`, {}],
+      ['POST', `/users/${target}/enable`, {}],
+      ['POST', `/users/${target}/password`, { password: 'a-new-secret' }],
+    ] as const) {
+      expect((await as(viewerTok, method, url, payload)).statusCode).toBe(403);
+    }
+  });
+
+  it('an unknown user is 404, not 500', async () => {
+    expect((await as(adminTok, 'GET', '/users/usr_nope')).statusCode).toBe(404);
+    expect((await as(adminTok, 'POST', '/users/usr_nope/disable', {})).statusCode).toBe(404);
+  });
+
+  it('rejects a password below the contract minimum with a 400 naming the field', async () => {
+    const res = await as(adminTok, 'POST', `/users/${target}/password`, { password: 'short' });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.message).toMatch(/password/);
+  });
+
+  it('refuses a body that tries to change email or status through the roles PATCH', async () => {
+    /*
+     * ⚠️ Zod strips unknown keys rather than rejecting them, so this asserts the **outcome**: the
+     * email and status are unchanged. Asserting a 400 would test Zod's strictness setting, which is
+     * not the guarantee anyone depends on.
+     */
+    const res = await as(adminTok, 'PATCH', `/users/${target}`, {
+      roles: ['viewer'],
+      email: 'attacker@acme.com',
+      status: 'disabled',
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.email).toBe('leaver@acme.com');
+    expect(res.json().data.status).toBe('active');
+  });
+
+  it('refuses an empty roles array — a user with no role can sign in and do nothing', async () => {
+    expect((await as(adminTok, 'PATCH', `/users/${target}`, { roles: [] })).statusCode).toBe(400);
   });
 });
 

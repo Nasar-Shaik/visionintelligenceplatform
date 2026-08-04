@@ -10,6 +10,7 @@ import {
   ShieldAlert,
   Telescope,
   SlidersHorizontal,
+  Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -63,6 +64,13 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Configure',
     items: [
       { to: '/rules', label: 'Rules', icon: SlidersHorizontal, permission: 'rule:read' },
+      /*
+       * ⚠️ Gated on `user:update`, not `user:read`. Every role holds `*:read`, so `user:read` would
+       * put an administration screen in a viewer's sidebar — the TD-26 wildcard hazard again. The
+       * route itself stays reachable for anyone the API would answer; it is the *entry* that is
+       * addressed to the people who can act.
+       */
+      { to: '/users', label: 'Users', icon: Users, permission: 'user:update' },
       { to: '/settings', label: 'Settings', icon: Settings, permission: 'user:create' },
     ],
   },

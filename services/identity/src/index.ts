@@ -38,12 +38,6 @@ async function main(): Promise<void> {
   );
 
   const users = new TenantRepository(mongo.users);
-  const userService = new UserService({
-    users,
-    clock,
-    ids: { userId: () => `usr_${randomUUID().replace(/-/g, '')}` },
-    publisher,
-  });
   const authService = new AuthService({
     users,
     refreshTokens: mongo.refreshTokens,
@@ -57,6 +51,18 @@ async function main(): Promise<void> {
     clock,
     ids: { familyId: () => `fam_${randomUUID().replace(/-/g, '')}` },
     publisher,
+  });
+  /*
+   * ⚠️ Constructed after `authService` because it depends on it: disabling a user and resetting a
+   * password both end that user's sessions, and `AuthService` is the only owner of `refresh_tokens`.
+   * The dependency is a one-method port (`SessionRevoker`), not the collection.
+   */
+  const userService = new UserService({
+    users,
+    clock,
+    ids: { userId: () => `usr_${randomUUID().replace(/-/g, '')}` },
+    publisher,
+    sessions: authService,
   });
 
   const { app } = await buildServer({ config, auth: authService, users: userService, readiness });

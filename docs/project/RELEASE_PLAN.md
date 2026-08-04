@@ -9,13 +9,13 @@ A release is not a milestone. A milestone is a body of work that gets reviewed; 
 
 ## Where the version actually is
 
-⚠️ **The repository has never been versioned as a product.** `package.json` at the root says
-`1.0.0` — a scaffolding default that has never meant anything — while every workspace package says
-`0.1.0`. Neither number has ever been changed deliberately.
+Until P-6 the repository had never been versioned as a product: `package.json` at the root said
+`1.0.0` — a scaffolding default that never meant anything — while every workspace package said
+`0.1.0`. Neither number had ever been changed deliberately.
 
-**First action of P-6: set the root to `0.4.0` and stop pretending.** Workspace packages stay
-`0.1.0`; they are private and not published, and versioning nineteen packages in lockstep buys
-nothing. **The product has one version; the packages do not.**
+**Done in P-6.0: the root reads `0.4.0`.** Workspace packages stay `0.1.0`; they are private and not
+published, and versioning nineteen packages in lockstep buys nothing. **The product has one version;
+the packages do not.**
 
 |           |                                                                   |
 | --------- | ----------------------------------------------------------------- |
@@ -94,8 +94,8 @@ Beyond the twelve gates. These are the things that make each _claim_ true.
 ### 0.5 · Pilot Ready — P-6 · P-7
 
 - [ ] **Zero placeholder pages.** No route says "coming in P2-1.13" to a customer
-- [ ] A user can be created, re-roled and **disabled** in the console (C-03 — pilot blocker)
-- [ ] A rule can be created, **edited**, versioned and rolled back in the console (C-25 — pilot blocker)
+- [x] A user can be created, re-roled and **disabled** in the console (C-03 — was a pilot blocker; P-6.2)
+- [x] A rule can be created, **edited**, versioned and rolled back in the console (C-25 — was a pilot blocker; P-6.1)
 - [ ] A critical incident delivers an **email and an SMS** to a real address and number
 - [ ] A **failed** delivery is visible in the console, with the reason
 - [ ] The console is usable on a phone — including Sign out (C-63)

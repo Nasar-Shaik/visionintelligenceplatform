@@ -5,13 +5,19 @@ const c = await b.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1440,
 const p = await c.newPage();
 
 const log = [];
-p.on('console', (m) => { if (m.type() === 'error') log.push('[console] ' + m.text().slice(0, 200)); });
+p.on('console', (m) => {
+  if (m.type() === 'error') log.push('[console] ' + m.text().slice(0, 200));
+});
 p.on('pageerror', (e) => log.push('[pageerror] ' + e.message));
 const reqs = [];
-p.on('request', (r) => { if (r.url().includes('/api/rules/')) reqs.push(`→ ${r.method()} ${r.url().replace(B,'')}`); });
+p.on('request', (r) => {
+  if (r.url().includes('/api/rules/')) reqs.push(`→ ${r.method()} ${r.url().replace(B, '')}`);
+});
 p.on('response', async (r) => {
   if (r.url().includes('/api/rules/') && r.request().method() !== 'GET')
-    reqs.push(`← ${r.status()} ${r.url().replace(B,'')} ${(await r.text().catch(()=>'')).slice(0,200)}`);
+    reqs.push(
+      `← ${r.status()} ${r.url().replace(B, '')} ${(await r.text().catch(() => '')).slice(0, 200)}`,
+    );
 });
 
 await p.goto(`${B}/login`, { waitUntil: 'domcontentloaded' });
@@ -44,8 +50,11 @@ const errs = await p.evaluate(() =>
     .slice(0, 8),
 );
 
-console.log('\n── network ──'); console.log(reqs.join('\n') || '(no rules mutation request fired)');
-console.log('\n── validation messages ──'); console.log(errs.join('\n') || '(none)');
-console.log('\n── console ──'); console.log(log.join('\n') || '(clean)');
+console.log('\n── network ──');
+console.log(reqs.join('\n') || '(no rules mutation request fired)');
+console.log('\n── validation messages ──');
+console.log(errs.join('\n') || '(none)');
+console.log('\n── console ──');
+console.log(log.join('\n') || '(clean)');
 await p.screenshot({ path: process.env.OUT + '/td21-repro.png' });
 await b.close();

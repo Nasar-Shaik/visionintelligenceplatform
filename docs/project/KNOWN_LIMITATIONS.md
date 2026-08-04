@@ -52,13 +52,17 @@ cost of a missing one is a relationship.
 | **Customer impact**   | An operator who is not looking at the screen learns nothing. For an out-of-hours site this is the difference between a system and a recording |
 | **Planned**           | **P-7** · email, SMS, Slack and Teams, plus notification policies and escalation                                                              |
 
-## L-5 · A user account cannot be disabled
+## ~~L-5 · A user account cannot be disabled~~ — **CLOSED 2026-08-04 (P-6.2)**
 
-|                       |                                                                                                                                                   |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Current behaviour** | Users can be **created** and **listed**. There is no way — console, API or CLI — to change a role, reset a password, or **deactivate an account** |
-| **Customer impact**   | ⛔ **An offboarded employee keeps their access.** A customer's own security policy will require this before they sign                             |
-| **Planned**           | **P-6** · with L-6 now closed, this is the **last remaining pilot blocker**                                                                       |
+|                       |                                                                                                                                                                                                                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | Users could be **created** and **listed** and nothing else — no role change, no password reset, **no deactivation**                                                                                                 |
+| **Customer impact**   | ⛔ **An offboarded employee kept their access.** A customer's own security policy requires this before they sign                                                                                                    |
+| **Resolved**          | **P-6.2.** A user can be created, re-roled, disabled, re-enabled and given a new password from the console. Disabling **ends every open session immediately** and reports how many. Verified against the deployment |
+
+> ⚠️ **This was the last pilot blocker.** With L-5 and L-6 closed, no limitation in this register
+> blocks a first customer pilot. See L-21, L-22 and L-23 for what user administration deliberately
+> does **not** do.
 
 ## ~~L-6 · A rule cannot be edited~~ — **CLOSED 2026-08-04 (P-6)**
 
@@ -180,13 +184,38 @@ cost of a missing one is a relationship.
 | **Customer impact**   | The 10- and 50-camera figures are measured. The 500-camera figure is an estimate and is labelled as one                                                                                                                  |
 | **Planned**           | Measured at the scale a real customer brings                                                                                                                                                                             |
 
+## L-21 · A user's email address cannot be changed
+
+|                       |                                                                                                                                                                                                                                                                                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | The address is the login identity and is fixed at creation. A role can be changed, a password reset, the account disabled — the address cannot                                                                                                                                                                                                          |
+| **Customer impact**   | Someone who changes their name or their employer's domain needs a **new account**, with the old one disabled. ⚠️ Deliberate: editing the address silently changes who can sign in to an account that already owns incidents, assignments and audit lines — a takeover that reads as a typo fix. Two accounts leave a trail; one edited account does not |
+| **Planned**           | Not planned. It would be reconsidered only alongside an identity-provider integration (SSO/OIDC, post-GA), where the provider owns the address                                                                                                                                                                                                          |
+
+## L-22 · There is no self-service password change
+
+|                       |                                                                                                                                                                              |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | An administrator can set anyone's password. A user cannot change their own, and there is no "forgot password" email                                                          |
+| **Customer impact**   | Every password change goes through an administrator, who must communicate the new one over a channel the user already trusts. Workable for a pilot; a helpdesk cost at scale |
+| **Planned**           | **P-7**, with the notification channels — a reset link needs email delivery (L-4) before it can exist, so it is genuinely blocked rather than deferred                       |
+
+## L-23 · Disabling an account leaves an access token valid for up to 15 minutes
+
+|                       |                                                                                                                                                                                                                                                     |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | Disabling a user **revokes every refresh token immediately** — they cannot obtain a new access token and cannot sign in. An access token already issued stays valid until it expires: `JWT_ACCESS_TTL`, **15 minutes** in the shipped configuration |
+| **Customer impact**   | A dismissed employee with the console already open keeps read access for up to 15 minutes. Measured, not estimated. Shorten `JWT_ACCESS_TTL` to trade this against token-refresh traffic                                                            |
+| **Planned**           | Not planned as architecture. Closing it entirely means a revocation lookup on **every** request at the gateway; that is a real cost to pay against a real requirement, and no customer has stated one. Raise it in the pilot security review        |
+
 ---
 
 ## How to use this in a pilot
 
 1. **Read L-1 through L-7 aloud with the customer before they sign.** Every one of them is something
    they would otherwise discover in week one.
-2. **L-5 and L-6 are pilot blockers** — do not start a pilot before P-6 closes them.
+2. ✅ **No limitation here blocks a pilot any more.** L-5 and L-6 were the two, and both closed in
+   P-6. ⚠️ L-23 belongs in the customer's security review, not in the sales conversation.
 3. **Agree the backup interval (L-18) in writing**, because it is the only limitation here whose
    impact is unbounded.
 4. **Never claim a behaviour that L-2 says does not exist**, and never claim a camera model that L-1

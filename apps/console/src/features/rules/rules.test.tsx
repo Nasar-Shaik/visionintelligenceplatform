@@ -193,10 +193,9 @@ describe('rule scope and validation (P-4)', () => {
   /**
    * The form → contract mapping, tested directly.
    *
-   * Driving this through a full save would depend on the editor's lifecycle/severity `Select`s, which
-   * have a **pre-existing** edit-mode validation defect unrelated to P-4 (reproduced against the
-   * original editor before these changes; recorded as TD-21). Testing the mapping where it lives is
-   * both unaffected by that and a better test of the thing P-4 actually added.
+   * Testing the mapping where it lives is a better test of the thing P-4 actually added than driving
+   * it through a save. (When this was written it also side-stepped TD-21, the edit-mode `Select`
+   * defect — fixed in P-6.1, and now guarded by `ruleEditor.regression.test.tsx`.)
    */
   it('maps the scope onto the contract in both directions', () => {
     const values = ruleToFormValues({

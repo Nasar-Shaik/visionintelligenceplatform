@@ -30,14 +30,14 @@ references them rather than restating what a capability is.
 
 ## Platform & access
 
-| id       | Capability                                                   |           Contract           |           Backend           |           Frontend            | Demo |             Pilot             | Prod | Milestone | Dependencies             | Owner    |
-| -------- | ------------------------------------------------------------ | :--------------------------: | :-------------------------: | :---------------------------: | :--: | :---------------------------: | :--: | --------- | ------------------------ | -------- |
-| **C-01** | Authentication · session · refresh                           |              ✅              |             ✅              |              ✅               |  ✅  |              ✅               |  ✅  | done      | —                        | identity |
-| **C-02** | Tenant isolation, fail-closed                                |              ✅              |             ✅              |              ✅               |  ✅  |              ✅               |  ✅  | done      | —                        | platform |
-| **C-03** | **User administration** — create · role · disable · password | ⛔ `UpdateUserInput` missing | ⚠️ `POST`/`GET /users` only |              ⛔               |  ⛔  |              ⛔               |  ⛔  | **P-6**   | freeze `UpdateUserInput` | identity |
-| **C-04** | Roles & permissions (RBAC)                                   |              ✅              |             ✅              |   ⚠️ enforced, not editable   |  ✅  | ⚠️ `*:read` too broad (TD-26) |  ✅  | P-14      | D-6                      | platform |
-| **C-05** | Tenant settings                                              |              ✅              |   ✅ `PATCH /tenants/:id`   |      ⛔ placeholder page      |  ⛔  |          ⚠️ API only          |  ✅  | **P-6**   | —                        | tenant   |
-| **C-06** | Tenant identity at sign-in                                   |              ✅              |             ✅              | ⚠️ slug typed by hand (TD-40) |  ⚠️  |              ⚠️               |  ✅  | **P-6**   | **D-1**                  | identity |
+| id       | Capability                                                   | Contract |         Backend         |           Frontend            | Demo |             Pilot             | Prod | Milestone  | Dependencies | Owner    |
+| -------- | ------------------------------------------------------------ | :------: | :---------------------: | :---------------------------: | :--: | :---------------------------: | :--: | ---------- | ------------ | -------- |
+| **C-01** | Authentication · session · refresh                           |    ✅    |           ✅            |              ✅               |  ✅  |              ✅               |  ✅  | done       | —            | identity |
+| **C-02** | Tenant isolation, fail-closed                                |    ✅    |           ✅            |              ✅               |  ✅  |              ✅               |  ✅  | done       | —            | platform |
+| **C-03** | **User administration** — create · role · disable · password |    ✅    |           ✅            |              ✅               |  ✅  |              ✅               |  ✅  | done (P-6) | —            | identity |
+| **C-04** | Roles & permissions (RBAC)                                   |    ✅    |           ✅            |   ⚠️ enforced, not editable   |  ✅  | ⚠️ `*:read` too broad (TD-26) |  ✅  | P-14       | D-6          | platform |
+| **C-05** | Tenant settings                                              |    ✅    | ✅ `PATCH /tenants/:id` |      ⛔ placeholder page      |  ⛔  |          ⚠️ API only          |  ✅  | **P-6**    | —            | tenant   |
+| **C-06** | Tenant identity at sign-in                                   |    ✅    |           ✅            | ⚠️ slug typed by hand (TD-40) |  ⚠️  |              ⚠️               |  ✅  | **P-6**    | **D-1**      | identity |
 
 ## Estate
 
@@ -138,19 +138,23 @@ references them rather than restating what a capability is.
 
 |                                                        | Count |                                                                 |
 | ------------------------------------------------------ | ----- | --------------------------------------------------------------- |
-| **Production-verified**                                | 25    | Deployed, exercised under failure, survives destroy-and-restore |
-| **Demo-ready**                                         | 27    | Safe to show today, on the demo dataset                         |
-| **Pilot-ready**                                        | 25    | Everything production-verified, minus C-03 and C-25             |
+| **Production-verified**                                | 27    | Deployed, exercised under failure, survives destroy-and-restore |
+| **Demo-ready**                                         | 29    | Safe to show today, on the demo dataset                         |
+| **Pilot-ready**                                        | 27    | ✅ **No capability is short of pilot-ready any more**           |
 | **Architecture-only** (contract frozen, nothing built) | 6     | C-37 · C-38 · C-39 · C-46 · C-47 · C-48                         |
-| **Contract missing**                                   | 5     | C-03 · C-22 · C-43 · C-51 · C-61                                |
+| **Contract missing**                                   | 4     | C-22 · C-43 · C-51 · C-61                                       |
 | **Blocked on a product decision**                      | 4     | C-06 (D-1) · C-20 (D-4) · C-38 (D-3) · C-60 (D-2)               |
 | **Blocked by a missing service**                       | **0** | Every capability has an owner that exists                       |
 | **Never met real hardware**                            | 4     | C-09 · C-11 · C-13 and, through them, C-10                      |
 
-### The two pilot blockers
+### ✅ Both pilot blockers are closed
 
-**C-03** — a user account cannot be disabled. An offboarded employee keeps access to a security
-product. **C-25** — a rule cannot be edited. Both are P-6, both small, neither architectural.
+**C-25** — a rule can be edited (P-6.1). **C-03** — a user can be re-roled, disabled, re-enabled and
+given a new password, and disabling **ends every open session immediately** (P-6.2). Both were
+verified against the production deployment rather than the test suite.
+
+⚠️ Closed does not mean finished: P-6 still owes tenant settings, System Health, the notification
+centre, a responsive shell and the placeholder pages. **Pilot-ready is a floor, not a ceiling.**
 
 ---
 

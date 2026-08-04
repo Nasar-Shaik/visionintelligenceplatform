@@ -51,6 +51,9 @@ const CamerasPage = lazy(() =>
 const LocationsPage = lazy(() =>
   import('@/features/organization/LocationsPage').then((m) => ({ default: m.LocationsPage })),
 );
+const UsersPage = lazy(() =>
+  import('@/features/users/UsersPage').then((m) => ({ default: m.UsersPage })),
+);
 const PlaceholderPage = lazy(() =>
   import('@/routes/PlaceholderPage').then((m) => ({ default: m.PlaceholderPage })),
 );
@@ -96,6 +99,9 @@ export const router = createBrowserRouter([
           { path: 'rules', element: route(<RulesListPage />) },
           { path: 'rules/new', element: route(<RuleEditorPage />) },
           { path: 'rules/:id', element: route(<RuleEditorPage />) },
+          // P-6.2 — user administration. The route is open to anyone the API would serve
+          // (`user:read`); the actions inside it are gated on `user:update` individually.
+          { path: 'users', element: route(<UsersPage />) },
           {
             path: 'health',
             element: route(<PlaceholderPage title="System Health" slice="P2-1.13" />),

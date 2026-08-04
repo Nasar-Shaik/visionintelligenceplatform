@@ -131,6 +131,39 @@ export class AuthService {
     });
   }
 
+  /**
+   * Revoke **every** refresh-token family belonging to a principal — sign them out everywhere.
+   *
+   * ⚠️ This is the enforcement half of disabling an account, and it lives here because this class
+   * is the only owner of `refresh_tokens`. `UserService` calls it through a one-method port rather
+   * than reaching into the collection itself, so there stays exactly one place that knows how a
+   * session is ended.
+   *
+   * ⚠️ **It does not invalidate an access token already in someone's hands.** Those are stateless
+   * and self-verifying by design; the gateway checks a signature, not a database. The window is
+   * therefore bounded by `JWT_ACCESS_TTL` (15 minutes deployed) — after which the refresh this
+   * revoked is the only way to get another, and it fails. Recorded as L-23; closing the window
+   * entirely means a per-request revocation lookup at the gateway, which is a measured decision to
+   * take when there is evidence it is needed, not a thing to add speculatively.
+   *
+   * @returns how many **sessions** were ended — distinct families, not token records.
+   *
+   * ⚠️ **The distinction was measured, not reasoned about.** Counting modified rows reported `3`
+   * for a user with two open sessions, because rotating a refresh token leaves the used record in
+   * place and inserts a new one in the same family. An administrator reading "3 sessions ended"
+   * for a person with two devices is being told something false about a security action, and the
+   * number would drift further the longer someone stayed signed in. A **family is a session**: one
+   * lineage, one sign-in, one device.
+   */
+  async revokeAllForPrincipal(tenantId: string, principalId: string): Promise<number> {
+    const open = { tenantId, principalId, revokedAt: null };
+    const families = await this.refreshTokens.distinct('familyId', open);
+    await this.refreshTokens.updateMany(open, {
+      $set: { revokedAt: this.clock.now().toISOString() },
+    });
+    return families.length;
+  }
+
   private async issueTokens(user: UserDoc, familyId: string): Promise<TokenPair> {
     const { token: accessToken, expiresIn } = await signAccessToken(
       {
