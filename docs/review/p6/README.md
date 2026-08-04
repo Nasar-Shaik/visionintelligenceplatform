@@ -13,8 +13,8 @@ worked outside it).
 | **P-6.1** a rule can be edited   | ✅ done | **TD-21 · C-25 · L-6** — a pilot blocker       |
 | **P-6.2** a user can be disabled | ✅ done | **TD-44 · C-03 · L-5** — the last blocker      |
 | **P-6.3** tenant settings        | ✅ done | **C-05** — the first placeholder page replaced |
-| P-6.4 System Health page         | ⏳ next | placeholder today                              |
-| P-6.5 notification centre        | ⏳      | C-31                                           |
+| **P-6.4** System Health          | ✅ done | **C-52** — and a page nobody could reach       |
+| P-6.5 notification centre        | ⏳ next | C-31                                           |
 | P-6.6 – P-6.14 (see the roadmap) | ⏳      | TD-45 · TD-46 · TD-47 · TD-40 (D-1) · TD-31    |
 
 > ✅ **Both pilot blockers are closed.** No entry in
@@ -374,9 +374,140 @@ the frozen `@vip/tenancy` repository that nothing else needs.
 
 ---
 
-## Still open after P-6.3
+## P-6.4 · System Health
 
-System Health · notification centre · camera depth · media catalogue · workspace empty states ·
+The brief was explicit: **not a dashboard full of green icons.** Seven states, kept apart, and never
+"Healthy" without evidence.
+
+### The seven states already existed
+
+`WorkspaceDependencyState` was frozen in P-5.3 to draw exactly this distinction one level down —
+`ready · not-built · not-configured · degraded · unreachable · forbidden · unknown`. So
+`SystemComponentState` **is** that enum, aliased, not copied. A second spelling of a state machine is
+a second thing to keep in sync, and the first divergence would be silent.
+
+### ⚠️ `/health` is not evidence of health, and that is demonstrated rather than argued
+
+Every service exposes `GET /health` returning `{"status":"ok"}` unconditionally. It proves a process
+is up, which is what an orchestrator restarts on; it **cannot fail while the process can answer**.
+
+So the page is built on `/ready`, which runs the registered dependency checks — and the verification
+proves the difference by pausing MongoDB and asking both. With the database paused:
+
+```
+✓ C1 · ⚠️ every liveness probe still answers "ok" — tenant:ok events:ok rules:ok
+✓ C2 · …and the health page does not say healthy — identity:unreachable tenant:unreachable …
+```
+
+A System Health page built on `/health` would have been **entirely green** at that moment, with the
+platform unable to serve a single request.
+
+### Three things it refuses to do
+
+- **It never says "All systems operational."** That sentence is true only if every component is
+  `ready`, and `unknown` is not `ready`. The summary counts what is actually known and says so.
+- **It never lists a dependency nothing checks.** Redis is in the production compose stack and **no
+  service connects to it**. A row reading "Redis · unknown" is indistinguishable, to a customer, from
+  "Redis · broken", and it would be the gateway asserting something is part of the system — the one
+  thing the gateway cannot know.
+- **It never counts a missing capability as a fault.** "Live video · Not built · planned for P-8" is
+  a roadmap fact. Folding it into the outage count trains an operator to ignore the banner.
+
+### One call, not ten
+
+The gateway assembles the report: it asks every upstream's readiness inside the cluster, derives the
+infrastructure rows from what those services say about **their own** dependencies — nothing here
+opens a socket to MongoDB — and caches for 5 seconds so concurrent viewers collapse into one
+fan-out. Measured: **p50 2.9 ms · p95 4.9 ms** (n=30, through the edge).
+
+### ⚠️ The permission was wrong in both directions at once
+
+`system:read` was written first. `*:read` would have handed the deployment's component and dependency
+topology to every **viewer** — the TD-26 wildcard hazard, third instance — and `admin`, which holds
+no `*:read` at all, would have been **refused a page its own operators could see**. The route test
+failed as `admin` before anyone reasoned about the viewer half.
+
+`system:inspect`, for the same reason `audit:inspect` is not `audit:read`. Granted to `admin` and
+`operator`; `owner` holds it through `*`. A viewer is refused — and the sidebar entry is gated too,
+because advertising a page that will refuse you is the worst of both.
+
+### ⚠️ Two defects the deployment found, and one it had been hiding
+
+**1 · The MongoDB row vanished during a database outage.** Pausing MongoDB made every service's
+readiness probe block; all ten timed out as `unreachable`; none reported a check; and the dependency
+they all share **disappeared from the report**. Ten red rows during a total database outage and not
+one word about the database. A silent service now contributes its _last known_ dependency names, so
+the row survives as `Unknown — nothing can speak for it`. Claiming `unreachable` would be an
+inference, and inference is what sends someone to the wrong place.
+
+**2 · "fetch failed" is not a reason.** That is what a stopped container reported — a sentence adding
+nothing to the word "Unavailable". `undici` keeps the real cause one level down; it now reads
+`fetch failed (ENOTFOUND)`.
+
+**3 · ⛔ The page could not be reached at all.** The edge routes `/health` to the gateway's liveness
+probe — deliberately, with a comment explaining that an uptime monitor pointed at the obvious URL
+must not get the SPA fallback and a cheerful 200. So a **console** route at `/health` is unreachable
+in any deployment: the browser is handed `{"status":"ok"}` and never reaches the bundle.
+
+The probe keeps the path; renaming something a customer's alerting points at, to make room for a
+page, is the wrong way round. The page lives at **`/system`**, and ⚠️ **no redirect is possible** —
+the request never arrives at the SPA to be redirected.
+
+⚠️ **The placeholder had been equally unreachable, and `verify.mjs` reported the route as rendering
+for two milestones**, because a JSON body logs no console errors and shows no crash boundary. The
+route walk now asserts the **console shell** rendered. Proven against the old path:
+
+```
+✗ NOT THE CONSOLE  system      {"status":"ok"}
+```
+
+C-52 had been marked production-verified on the strength of the services' probes. The backend column
+was true. The frontend column was a placeholder nobody could open.
+
+### Verification
+
+**[`system-health.mjs`](system-health.mjs) — 26/26**, through the edge, by breaking the deployment:
+a service stopped (`Unavailable`, with a cause, and ⚠️ its silence _not_ counted as evidence about
+the database), the database paused (the liveness/readiness contrast above), the permission boundary,
+the cache, and latency.
+
+**[`system-health-ui.mjs`](system-health-ui.mjs) — 24/24**, in a real browser. ⚠️ **Three of the six
+screenshots are taken while the platform is actually broken** — a health page photographed only
+against a healthy deployment proves the layout, not the product. Also: nothing painted off-screen at
+390 px, zero unnamed controls, no heading skips, and the one control operable by keyboard alone.
+
+**[`verify.mjs`](../roadmap-2026-08/verify.mjs) — 12/12 routes**, with the stricter assertion, and it
+now exits non-zero.
+
+Unit: gateway **62** (every aggregation case drives a real failure) · console **11** · permissions
+**31**. ⚠️ The two deployment defects are pinned by tests **verified red** against the unfixed code.
+
+### Screenshots
+
+`screens/` — [loading](screens/health-01-loading.png) · [healthy](screens/health-02-healthy.png) ·
+[one service down](screens/health-03-service-down.png) ·
+[a database outage](screens/health-04-database-outage.png) · [phone](screens/health-05-phone.png) ·
+[permission denied](screens/health-06-forbidden.png).
+
+### Dataset
+
+Restored and verified: **17 users, five tenants at their seeded names.** ⚠️ The probe accounts these
+scripts create are removed rather than left disabled — there is no DELETE route, so the cleanup is a
+`mongosh` line, and it is printed by the scripts that create them.
+
+### Honest limits
+
+**L-28** — it is a live reading, not a history: "was it down last night?" is not answerable from the
+product. **L-29** — a _hung_ dependency makes a service read `Unavailable` rather than `Degraded`,
+because a blocked check and a stopped container look the same from outside (**TD-50** — the fix is
+in every service's Mongo probe, not in the page). **TD-51** — nothing structurally prevents the next
+edge/router path collision; the Caddyfile and `router.tsx` still know nothing about each other.
+
+---
+
+## Still open after P-6.4
+
+Notification centre · camera depth · media catalogue · workspace empty states ·
 `/live` telling the truth · global search (TD-46) · command palette · responsive shell (TD-45) ·
 table sort and counts (TD-47) · **D-1**, which is a P-6 exit criterion and still undecided.
 
@@ -384,4 +515,5 @@ New limitations recorded, none of them blocking a pilot: **L-21** email is immut
 self-service password change (needs email delivery, P-7) · **L-23** a disabled user's access token
 stays valid for up to 15 minutes · **L-24** suspending a tenant is not enforced · **L-25** settings
 audit is log-only · **L-26** branding is per-deployment, not per-tenant · **L-27** a token-less
-racing API client can log a stale `from` value.
+racing API client can log a stale `from` value · **L-28** System Health is a live reading, not a
+history · **L-29** a hung dependency reads as unavailable rather than degraded.

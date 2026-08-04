@@ -240,6 +240,22 @@ cost of a missing one is a relationship.
 | **Customer impact**   | None through the console, which always sends `expectedUpdatedAt`; a racing caller is refused with 409 before it can write. Reachable only by an API client that omits the token **and** races another writer. The `to` value and the actor are always correct; only `from` can be one revision stale |
 | **Planned**           | Closed by returning the pre-image from the write itself (`findOneAndUpdate`). Deferred because it means adding a method to the frozen `@vip/tenancy` repository that nothing else in the platform needs — a foundation change to improve one field of one log line                                   |
 
+## L-28 · System Health is a live reading, not a history
+
+|                       |                                                                                                                                                                                                                                                                                           |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | `/system` reports what every service says about itself **right now**, refreshed every 15 seconds while the page is open. Nothing is stored: there is no trend, no uptime figure, and no record that a service was unavailable at 03:10 if nobody was looking at 03:10                     |
+| **Customer impact**   | "Was it down last night?" is not answerable from the product. It is answerable from the container logs and from whatever the customer's own monitoring recorded — ⚠️ which is why the deployment exposes `/health` and `/ready` for an uptime monitor to poll, and why they kept the path |
+| **Planned**           | **P-13**, with dashboards and the metrics history they need. ⚠️ Alerting on platform health belongs to the customer's monitoring, not to a page an operator has to be watching                                                                                                            |
+
+## L-29 · A hung dependency makes a service look unreachable, not degraded
+
+|                       |                                                                                                                                                                                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Current behaviour** | Readiness is asked with a 2-second budget. A service whose database has **stopped answering** (rather than refused) blocks inside its own check and times out, so it is reported `Unavailable` — the same word as a stopped container. Measured by pausing MongoDB |
+| **Customer impact**   | An operator sees ten unavailable services rather than "one dependency is hung". ⚠️ Mitigated on the page: the dependency keeps its own row and reads `Unknown — nothing can speak for it`, which is the signal that the services share a cause                     |
+| **Planned**           | Closed by a readiness check that fails fast rather than blocking. That is a change in every service's Mongo probe, not in the health page                                                                                                                          |
+
 ---
 
 ## How to use this in a pilot

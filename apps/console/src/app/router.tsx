@@ -57,6 +57,9 @@ const SettingsPage = lazy(() =>
 const UsersPage = lazy(() =>
   import('@/features/users/UsersPage').then((m) => ({ default: m.UsersPage })),
 );
+const SystemHealthPage = lazy(() =>
+  import('@/features/system/SystemHealthPage').then((m) => ({ default: m.SystemHealthPage })),
+);
 const PlaceholderPage = lazy(() =>
   import('@/routes/PlaceholderPage').then((m) => ({ default: m.PlaceholderPage })),
 );
@@ -105,10 +108,23 @@ export const router = createBrowserRouter([
           // P-6.2 — user administration. The route is open to anyone the API would serve
           // (`user:read`); the actions inside it are gated on `user:update` individually.
           { path: 'users', element: route(<UsersPage />) },
-          {
-            path: 'health',
-            element: route(<PlaceholderPage title="System Health" slice="P2-1.13" />),
-          },
+          /*
+           * P-6.4 — system health, at `/system` and ⚠️ **not** at `/health`.
+           *
+           * The edge routes `/health` to the gateway's **liveness probe**, deliberately and with a
+           * comment explaining why (an uptime monitor pointed at the obvious URL must not get the
+           * SPA fallback and a cheerful 200). So a console route at `/health` is unreachable in any
+           * real deployment: the browser is handed `{"status":"ok"}` and never reaches the bundle.
+           *
+           * The probe keeps the path. Renaming something a customer's alerting already points at,
+           * to make room for a page, is the wrong way round — and ⚠️ **no redirect is possible**,
+           * because the request never arrives at the SPA to be redirected.
+           *
+           * Found by deploying. The placeholder that lived here was equally unreachable, and
+           * `verify.mjs` reported the route as rendering for two milestones because JSON logs no
+           * errors and shows no crash boundary.
+           */
+          { path: 'system', element: route(<SystemHealthPage />) },
           // P-6.3 — tenant settings. Was a placeholder; the route is unchanged so every existing
           // link, bookmark and runbook reference still lands somewhere real.
           { path: 'settings', element: route(<SettingsPage />) },

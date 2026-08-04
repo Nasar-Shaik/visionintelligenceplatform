@@ -44,6 +44,16 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
      * viewer (TD-26, §69). Aggregate metrics need no such grant.
      */
     'metrics:workload',
+    /*
+     * ⚠️ P-6.4 — system health. `system:read` was the obvious name and would have been **wrong in
+     * both directions at once**: `*:read` would have handed the platform's internal component and
+     * dependency topology to every `viewer`, while `admin` — which holds no `*:read` — would have
+     * been **refused a page its own operators could see**. Measured, not reasoned: the route test
+     * failed as `admin` before it failed as anything else.
+     *
+     * `inspect`, for the same reason `audit:inspect` is not `audit:read` (TD-26, §69).
+     */
+    'system:inspect',
   ],
   operator: [
     '*:read',
@@ -75,6 +85,14 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'investigation:write',
     /* Cancelling a runaway export you started. Reading jobs already arrives via `*:read`. */
     'job:cancel',
+    /*
+     * ⚠️ P-6.4 — the operator on shift is the person who has to decide whether the platform being
+     * slow is worth phoning someone about. Withholding system health from them would leave that
+     * decision to a role that is not in the room at 3am. A `viewer` does not get it: "MongoDB is
+     * failing for Events" is not actionable by someone who only reads incidents, and it is the
+     * deployment's internal topology.
+     */
+    'system:inspect',
   ],
   viewer: ['*:read'],
 };

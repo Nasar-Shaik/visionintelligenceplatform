@@ -100,6 +100,10 @@ export * from './workspace/extensions.js';
 export * from './workspace/health.js';
 export * from './workspace/surfaces.js';
 
+// platform health (P-6.4) — the deployment's view of itself. ⚠️ Exported after `workspace/health`,
+// whose state enum it aliases rather than duplicates.
+export * from './platform/health.js';
+
 // playback — recorded CCTV review (rec 2)
 export * from './playback/playback.js';
 export * from './playback/viewer.js';

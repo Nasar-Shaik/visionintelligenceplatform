@@ -78,6 +78,20 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'System',
-    items: [{ to: '/health', label: 'System Health', icon: HeartPulse }],
+    /*
+     * P-6.4 — gated, where it previously was not. The entry was ungated while the page was a
+     * placeholder; now that it reports the deployment's components and dependencies it follows the
+     * route, which requires `system:inspect`. ⚠️ Leaving it open would put a link to a page that
+     * always says "Not authorized" in a viewer's sidebar — the worst of both, since it advertises
+     * the surface and refuses it.
+     */
+    /*
+     * ⚠️ `/system`, not `/health`: the edge owns `/health` for the gateway's liveness probe, so a
+     * console route there is unreachable in a deployment. This link pointed at it for two
+     * milestones and led to `{"status":"ok"}`.
+     */
+    items: [
+      { to: '/system', label: 'System Health', icon: HeartPulse, permission: 'system:inspect' },
+    ],
   },
 ];

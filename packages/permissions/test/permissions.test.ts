@@ -150,6 +150,35 @@ describe('the workspace permission catalog (P-5.2.0)', () => {
 });
 
 /**
+ * P-6.4 — system health.
+ *
+ * ⚠️ The third instance of the same finding, and the first one that was wrong in **two** directions.
+ * `system:read` would have handed the deployment's component and dependency topology to every
+ * `viewer` through `*:read` — and would have **refused it to `admin`**, which holds no `*:read` at
+ * all. An administrator denied a page their own operators can see is not a subtle bug, and it was
+ * found by a route test rather than by reading the role table.
+ */
+describe('P-6.4 system health permissions', () => {
+  it('⚠️ reaches the two roles that act on it, and no further', () => {
+    expect(can(ROLE_PERMISSIONS.admin, 'system:inspect')).toBe(true);
+    expect(can(ROLE_PERMISSIONS.operator, 'system:inspect')).toBe(true);
+    expect(can(ROLE_PERMISSIONS.owner, 'system:inspect')).toBe(true);
+    /* A viewer reads incidents. Infrastructure topology is neither theirs to act on nor to see. */
+    expect(can(ROLE_PERMISSIONS.viewer, 'system:inspect')).toBe(false);
+  });
+
+  it('⚠️ proves the hazard: the read-spelling would have been granted to every viewer', () => {
+    expect(can(ROLE_PERMISSIONS.viewer, 'system:read')).toBe(true);
+    /* …and refused to the administrator, which is the half nobody expects. */
+    expect(can(ROLE_PERMISSIONS.admin, 'system:read')).toBe(false);
+  });
+
+  it('a principal with no roles holds nothing — the `forbidden` state is reachable', () => {
+    expect(can([], 'system:inspect')).toBe(false);
+  });
+});
+
+/**
  * P-5.4 — investigation metrics.
  *
  * ⚠️ The same finding as `audit:inspect`, one milestone later and in a friendlier costume: a

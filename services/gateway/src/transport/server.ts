@@ -16,6 +16,8 @@ import { registerRootRoute } from './routes/root.js';
 import { registerGatewayRoutes } from './routes/gateway.js';
 import { registerCors } from './plugins/cors.js';
 import { registerStreamRoutes } from './routes/stream.js';
+import { assertSystemPrefixFree, registerSystemRoutes } from './routes/system.js';
+import { SystemHealthService } from '../application/system-health.js';
 import type { StreamHub } from '../application/stream-hub.js';
 
 export interface BuildServerOptions {
@@ -79,6 +81,31 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
       reconnectRetryMs: config.stream.reconnectRetryMs,
     });
   }
+  /*
+   * P-6.4 — the platform's view of itself. Registered before the proxy for the same reason the
+   * stream route is: `/api/system/health` is a static path beside `/api/:service/*`, and the boot
+   * assertion is what stops an upstream from ever being named `system`.
+   */
+  assertSystemPrefixFree(config.upstreams);
+  registerSystemRoutes(app, {
+    jwt,
+    health: new SystemHealthService({
+      upstreams: config.upstreams,
+      ownReadiness: async () => {
+        const report = await readiness.run();
+        return {
+          status: report.status,
+          checks: report.checks.map((c) =>
+            c.detail === undefined
+              ? { name: c.name, status: c.status }
+              : { name: c.name, status: c.status, detail: c.detail },
+          ),
+        };
+      },
+      streamEnabled: config.stream.enabled,
+    }),
+  });
+
   // Proxy routes register the catch-all `/api/:service/*`; keep them AFTER the specific
   // `/api/stream` route so the stream route wins.
   registerGatewayRoutes(app, { jwt, upstreams: config.upstreams });

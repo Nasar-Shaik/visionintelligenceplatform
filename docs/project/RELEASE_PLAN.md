@@ -93,7 +93,11 @@ Beyond the twelve gates. These are the things that make each _claim_ true.
 
 ### 0.5 · Pilot Ready — P-6 · P-7
 
-- [ ] **Zero placeholder pages.** `/settings` is done (P-6.3); `/live` and `/health` remain
+- [ ] **Zero placeholder pages.** `/settings` (P-6.3) and System Health (P-6.4) are done; **`/live`
+      alone remains**. ⚠️ P-6.4 found that the System Health placeholder had never been reachable in
+      a deployment at all — the edge owns `/health` for the gateway's liveness probe — so the page
+      lives at `/system`, and the route walk now asserts the console rendered rather than that
+      nothing crashed
 - [x] A user can be created, re-roled and **disabled** in the console (C-03 — was a pilot blocker; P-6.2)
 - [x] A rule can be created, **edited**, versioned and rolled back in the console (C-25 — was a pilot blocker; P-6.1)
 - [ ] A critical incident delivers an **email and an SMS** to a real address and number

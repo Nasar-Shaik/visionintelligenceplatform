@@ -118,7 +118,7 @@ references them rather than restating what a capability is.
 
 | id       | Capability                                                  |     Contract      |          Backend          |             Frontend              | Demo | Pilot | Prod | Milestone | Dependencies      | Owner    |
 | -------- | ----------------------------------------------------------- | :---------------: | :-----------------------: | :-------------------------------: | :--: | :---: | :--: | --------- | ----------------- | -------- |
-| **C-52** | System health page                                          |        ✅         |            ✅             |          ⛔ placeholder           |  ⛔  |  ⛔   |  ✅  | **P-6**   | —                 | console  |
+| **C-52** | System health page                                          |        ✅         |            ✅             |                ✅                 |  ✅  |  ✅   |  ✅  | done      | —                 | console  |
 | **C-53** | Deployment · backup · restore · upgrade · rollback          |        n/a        |            ✅             |                n/a                |  ✅  |  ✅   |  ✅  | done      | —                 | infra    |
 | **C-54** | Observability — structured logs · correlation ids · metrics |        ✅         |            ✅             |                n/a                |  ✅  |  ✅   |  ✅  | done      | —                 | platform |
 | **C-55** | Point-in-time backup                                        |        n/a        | ⚠️ per-collection (TD-38) |                n/a                |  ✅  |  ⚠️   |  ⚠️  | P-14      | —                 | infra    |
@@ -138,9 +138,9 @@ references them rather than restating what a capability is.
 
 |                                                        | Count |                                                                 |
 | ------------------------------------------------------ | ----- | --------------------------------------------------------------- |
-| **Production-verified**                                | 28    | Deployed, exercised under failure, survives destroy-and-restore |
-| **Demo-ready**                                         | 30    | Safe to show today, on the demo dataset                         |
-| **Pilot-ready**                                        | 28    | ✅ **No capability is short of pilot-ready any more**           |
+| **Production-verified**                                | 29    | Deployed, exercised under failure, survives destroy-and-restore |
+| **Demo-ready**                                         | 31    | Safe to show today, on the demo dataset                         |
+| **Pilot-ready**                                        | 29    | ✅ **No capability is short of pilot-ready any more**           |
 | **Architecture-only** (contract frozen, nothing built) | 6     | C-37 · C-38 · C-39 · C-46 · C-47 · C-48                         |
 | **Contract missing**                                   | 4     | C-22 · C-43 · C-51 · C-61                                       |
 | **Blocked on a product decision**                      | 4     | C-06 (D-1) · C-20 (D-4) · C-38 (D-3) · C-60 (D-2)               |
@@ -153,8 +153,14 @@ references them rather than restating what a capability is.
 given a new password, and disabling **ends every open session immediately** (P-6.2). Both were
 verified against the production deployment rather than the test suite.
 
-⚠️ Closed does not mean finished: P-6 still owes tenant settings, System Health, the notification
-centre, a responsive shell and the placeholder pages. **Pilot-ready is a floor, not a ceiling.**
+⚠️ Closed does not mean finished: P-6 still owes the notification centre, camera management depth,
+the media catalogue, a responsive shell and `/live`. **Pilot-ready is a floor, not a ceiling.**
+
+⚠️ **C-52 was marked production-verified before the page existed**, on the strength of the services'
+`/health` and `/ready` probes — and the route walk agreed, because the edge answers `/health` with
+`{"status":"ok"}` and JSON logs no errors. The backend column was true; the frontend column was a
+placeholder nobody could reach. P-6.4 built the page, moved it to `/system`, and made the route walk
+assert that the **console** rendered rather than that nothing crashed.
 
 ---
 

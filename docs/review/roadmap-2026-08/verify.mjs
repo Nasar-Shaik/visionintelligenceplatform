@@ -27,7 +27,13 @@ const ROUTES = [
   ['alerts', '/alerts'],
   ['rules', '/rules'],
   ['users', '/users'],
-  ['health', '/health'],
+  /*
+   * ⚠️ `/system`, not `/health`. The edge routes `/health` to the **gateway's liveness probe**, so a
+   * console route at that path can never be reached in a deployment — the browser gets
+   * `{"status":"ok"}`. This list said `/health` for two milestones and reported it as rendering,
+   * because the JSON body logs no errors and shows no crash boundary. See the assertion below.
+   */
+  ['system', '/system'],
   ['settings', '/settings'],
 ];
 
@@ -42,6 +48,7 @@ const page = await context.newPage();
 
 /** Errors are collected per route, so a crash is attributed to the page that caused it. */
 let current = 'login';
+let failures = 0;
 const findings = [];
 page.on('pageerror', (e) => findings.push({ route: current, kind: 'pageerror', text: e.message }));
 page.on('console', (m) => {
@@ -77,8 +84,26 @@ for (const [name, path] of ROUTES) {
         .catch(() => null)
     : null;
 
+  /*
+   * ⚠️ **"No crash and no console error" is not evidence that the console rendered.**
+   *
+   * P-6.4 found `/health` answering `{"status":"ok"}` from the edge's liveness probe rather than
+   * reaching the console at all — and this script had been reporting it as a rendering route,
+   * because a JSON body logs nothing and shows no error boundary. It would have passed for a path
+   * that had never been implemented.
+   *
+   * The shell is the proof. Every route below the auth guard renders inside it, so a page that
+   * produced no `<nav>` did not render the console, whatever else it produced.
+   */
+  const shell = await page.evaluate(() => document.querySelectorAll('nav a').length);
+  const missing = shell === 0;
+
   await page.screenshot({ path: `${OUT}/${name}.png` });
-  console.log(`${crashed ? '✗ CRASHED' : '✓ ok     '}  ${name.padEnd(11)} ${detail ?? ''}`);
+  const verdict = crashed ? '✗ CRASHED' : missing ? '✗ NOT THE CONSOLE' : '✓ ok     ';
+  console.log(
+    `${verdict}  ${name.padEnd(11)} ${detail ?? (missing ? await page.evaluate(() => document.body.innerText.slice(0, 60)) : '')}`,
+  );
+  if (crashed || missing) failures += 1;
 }
 
 console.log('\n── errors ──');
@@ -86,3 +111,5 @@ if (findings.length === 0) console.log('none');
 for (const f of findings) console.log(`  [${f.route}] ${f.kind}: ${f.text.slice(0, 160)}`);
 
 await browser.close();
+/* ⚠️ Exits non-zero. A verification script that always succeeds is a log file. */
+process.exit(failures === 0 && findings.length === 0 ? 0 : 1);

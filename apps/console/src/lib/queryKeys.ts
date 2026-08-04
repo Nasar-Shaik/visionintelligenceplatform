@@ -78,8 +78,11 @@ export const queryKeys = {
     all: () => ['notifications'] as const,
     list: (params?: Record<string, unknown>) => ['notifications', 'list', params ?? {}] as const,
   },
+  // P-6.4. One key, because there is one call: the gateway assembles the whole report server-side.
+  // ⚠️ `service()` was scaffolded here in Phase 0 and never used; a per-service key would mean the
+  // browser fanning out to ten readiness probes, which is the thing the aggregate exists to avoid.
   health: {
     all: () => ['health'] as const,
-    service: (service: string) => ['health', service] as const,
+    system: () => ['health', 'system'] as const,
   },
 } as const;
