@@ -256,6 +256,22 @@ cost of a missing one is a relationship.
 | **Customer impact**   | An operator sees ten unavailable services rather than "one dependency is hung". ⚠️ Mitigated on the page: the dependency keeps its own row and reads `Unknown — nothing can speak for it`, which is the signal that the services share a cause                     |
 | **Planned**           | Closed by a readiness check that fails fast rather than blocking. That is a change in every service's Mongo probe, not in the health page                                                                                                                          |
 
+## L-30 · The inbox has no per-operator read state
+
+|                       |                                                                                                                                                                                                                                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | The only state an alert carries is **acknowledged**, by one named operator, for the whole tenant. There is no personal read/unread: an operator who looked at an incident and did not take it leaves the entry emphasised for everybody               |
+| **Customer impact**   | Correct for a shared control-room queue and wrong for an organisation where several people each want their own list. ⚠️ Worth saying out loud in a demonstration, because the word "inbox" sets an expectation of per-person state that email created |
+| **Planned**           | Not scheduled. It becomes a real requirement only alongside notification policies (**P-7**), where "who was told" starts differing per person                                                                                                         |
+
+## L-31 · There is no "acknowledge all", and no snooze
+
+|                       |                                                                                                                                                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Current behaviour** | Acknowledging acts on **one incident** — every channel it reached, at once. There is no bulk clear, no snooze, and no assignment from the inbox                                                                                                  |
+| **Customer impact**   | An operator returning to fifty alerts after a busy night acknowledges fifty times. ⚠️ **Deliberate**: clearing a queue of alerts nobody read is the fastest way to make a queue worthless, and the control that offers it is the one used at 6am |
+| **Planned**           | Revisited with escalation in **P-7**, where "nobody answered" needs a defined outcome. Any bulk control must make the number being cleared unmissable                                                                                            |
+
 ---
 
 ## How to use this in a pilot

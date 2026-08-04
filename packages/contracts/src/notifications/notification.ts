@@ -104,10 +104,26 @@ export type Notification = z.infer<typeof Notification>;
 export const AckNotificationInput = z.object({ by: z.string().max(200).optional() });
 export type AckNotificationInput = z.infer<typeof AckNotificationInput>;
 
-/** Cursor-paged delivery-log query (tenant-scoped). */
+/**
+ * Cursor-paged delivery-log query (tenant-scoped).
+ *
+ * ### ⚠️ `acknowledged` exists because "not acked" is not a status
+ *
+ * `status` selects **one** state, and the question an operator's inbox asks is the complement of
+ * one: *what has nobody dealt with yet* — which is `pending`, `sent`, `delivered` **and** `failed`,
+ * everything except `acked`. Fetching all of them and filtering in the browser answers it for the
+ * rows that happen to be loaded and silently wrongly for the rest, which is the kind of counting
+ * that turns an unread badge into a lie.
+ *
+ * Additive and optional, so every caller that predates the inbox keeps working unchanged (P-6.5).
+ * ⚠️ A `failed` delivery counts as **unacknowledged**: it reached nobody, so nobody can have dealt
+ * with it, and it is the one row that most needs to be in front of someone.
+ */
 export const NotificationQuery = z.object({
   incidentId: Uuid.optional(),
   status: NotificationStatus.optional(),
+  /** `false` ⇒ everything except `acked`. `true` ⇒ only `acked`. Omitted ⇒ no filter. */
+  acknowledged: z.boolean().optional(),
   limit: z.number().int().min(1).max(200).default(50),
   cursor: z.string().optional(),
 });

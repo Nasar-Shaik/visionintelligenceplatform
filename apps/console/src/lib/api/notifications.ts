@@ -6,7 +6,9 @@ import type {
 } from '@vip/contracts';
 import { http } from './http';
 
-type ListParams = Partial<Pick<NotificationQuery, 'incidentId' | 'status' | 'limit' | 'cursor'>>;
+type ListParams = Partial<
+  Pick<NotificationQuery, 'incidentId' | 'status' | 'acknowledged' | 'limit' | 'cursor'>
+>;
 
 /**
  * Alert delivery-log reads + recipient ack (through the gateway: `/api/notify/*`). Notifications are

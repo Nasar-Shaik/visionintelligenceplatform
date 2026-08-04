@@ -14,7 +14,7 @@ worked outside it).
 | **P-6.2** a user can be disabled | ✅ done | **TD-44 · C-03 · L-5** — the last blocker      |
 | **P-6.3** tenant settings        | ✅ done | **C-05** — the first placeholder page replaced |
 | **P-6.4** System Health          | ✅ done | **C-52** — and a page nobody could reach       |
-| P-6.5 notification centre        | ⏳ next | C-31                                           |
+| **P-6.5** the Inbox              | ✅ done | **C-41 · C-42** — and an empty demo dataset    |
 | P-6.6 – P-6.14 (see the roadmap) | ⏳      | TD-45 · TD-46 · TD-47 · TD-40 (D-1) · TD-31    |
 
 > ✅ **Both pilot blockers are closed.** No entry in
@@ -537,9 +537,121 @@ edge/router path collision; the Caddyfile and `router.tsx` still know nothing ab
 
 ---
 
-## Still open after P-6.4
+## P-6.5 · The Inbox
 
-Notification centre · camera depth · media catalogue · workspace empty states ·
+The brief was explicit: **not merely a notification list — the operator's event inbox.**
+
+### A delivery log is not an inbox, and the difference is who is asking
+
+`/alerts` was a delivery log: one row per channel per incident, answering the question an engineer
+asks — _did the webhook POST succeed?_ An operator opening it asks a different question: _what needs
+me?_ One incident that fanned out to three channels is **one** thing to deal with, and a screen that
+lists it three times teaches people to skim the screen that exists to stop them skimming.
+
+It is now grouped by incident, triaged by whether anybody has taken it, and every entry links to the
+incident. ⚠️ **The per-channel records are not deleted** — they expand underneath, because "the
+webhook to the customer's SOC never fired" is still something somebody has to know.
+
+### ⚠️ Two questions, deliberately not collapsed
+
+- **Has anyone dealt with this?** — the queue, and the number on the bell.
+- **Did every channel deliver?** — shown beside it, and **not** cleared by acknowledging.
+
+An operator taking an incident says nothing about whether the customer's own system was told. Merging
+the two would either hide delivery failures behind an acknowledgement or leave handled incidents in
+the queue because a webhook is misconfigured. Both produce a queue nobody trusts.
+
+### The count that follows you
+
+A bell in the top bar carries the number of **incidents** waiting, on every screen, and moves the
+moment somebody takes one. ⚠️ A queue you have to remember to visit is a page. It counts incidents
+rather than delivery records (three channels would otherwise read "3"), caps honestly at one page
+(`50+`, never a number that silently stops rising), and shows **nothing at all** when it is zero or
+when the request failed — a bell reading "0" because the fetch failed is a lie in the shape of an
+all-clear.
+
+### One additive contract field, and why the browser could not do it
+
+`NotificationQuery.acknowledged` — optional, additive. `status` selects **one** state and the inbox's
+question is the complement of one (`pending`, `sent`, `delivered` **and** `failed`). Filtering in the
+browser answers it correctly for the rows that happen to be loaded and silently wrongly for the rest,
+which is how an unread badge becomes a lie. ⚠️ A `failed` delivery counts as unacknowledged: it
+reached nobody, so nobody can have dealt with it.
+
+⚠️ It is parsed as two literal words, because a query string carries text and `Boolean('false')` is
+`true` — a coercion that turns "unread only" into "everything" while every test passing a real
+boolean stays green. Pinned by a test that fails against exactly that bug.
+
+### ⚠️ Two defects, and neither was in the new code
+
+**1 · The acknowledger was whatever the caller typed.** `ackedBy` came **entirely from the request
+body**. The console sent nothing, so every acknowledgement it made was **unattributed** — a queue
+nobody signs is a queue nobody owns — and a caller who did send it could name **anyone**. The record
+of who took a security alert was client-supplied.
+
+Found by looking at what the handled view rendered: "taken", with no name. The server now records the
+**authenticated principal**; `by` stays in the contract for compatibility and is deliberately ignored.
+⚠️ An audit field a caller can choose is not an audit field. ⚠️ The existing test **asserted the
+defect** — it passed a `by` and checked it came back — so it was rewritten to assert attribution and
+joined by one that forges a name and proves it is discarded.
+
+**2 · The demo dataset had no alerts at all.** The seed wrote incidents and **no notifications**, so
+the one screen that answers "what does an operator do when something happens" showed a prospect
+nothing, while the incident queue beside it was full — through every demonstration this product has
+ever had. The seed now writes the channels and the deliveries the Alert Engine would have produced,
+consistent with each incident's own lifecycle: an incident somebody acknowledged has an acknowledged
+in-app delivery **by the same person**, so the two screens agree.
+
+⚠️ Including **one webhook failure per vertical**. A product that can only be shown succeeding has not
+been shown, and "a failed delivery is visible in the console, with the reason" is a 0.5 exit
+criterion that cannot be demonstrated against a dataset in which nothing ever fails. ⚠️ The first
+attempt keyed the failure on "the oldest high-severity incident" and fired for **no vertical at all**
+— every incident old enough happened to be low severity. A fixture that depends on a coincidence in
+the fixtures is not a fixture.
+
+### Verification
+
+**[`inbox.mjs`](inbox.mjs) — 20/20** through the edge: the two halves of the queue add up to the
+whole, a failed delivery sits in the queue rather than being filed as handled, acknowledging removes
+it from the server's answer, a failed delivery **cannot** be acknowledged (409 — there was no
+recipient), tenant isolation, and an operator may clear the queue where a viewer may not. p50 7.8 ms,
+p95 9.1 ms.
+
+**[`inbox-ui.mjs`](inbox-ui.mjs) — 24/24** in a real browser, including the bell moving without a
+reload. ⚠️ **The script supplies its own subject.** Acknowledging is one-way by design, so a
+verification that consumes the demo queue works once and reports "there is nothing to take" forever
+after — which is what the first run did. One disposable delivery is inserted, used, and removed.
+
+⚠️ Three of its checks were wrong before they were right, each in a way worth keeping: it demanded
+the numeric form of "reached N of M channels" and went red against the entry reading **"reached no
+channel"** — the one whose wording matters most; it intercepted a route with a glob containing `?`,
+which is a wildcard, so it matched nothing and reported the live queue as empty; and it asserted
+every historical acknowledgement was attributed, which reported a permanent past as a present defect.
+
+Unit: notify **21** · console **20** (11 on the pure grouping, 9 on the screen).
+
+### Screenshots
+
+[the queue](screens/inbox-01-queue.png) ·
+[a delivery that never arrived](screens/inbox-02-delivery-failure.png) ·
+[after acknowledging](screens/inbox-03-after-acknowledge.png) ·
+[handled](screens/inbox-04-handled.png) · [an empty queue](screens/inbox-05-empty-queue.png) ·
+[phone](screens/inbox-06-phone.png) · [as a viewer](screens/inbox-07-viewer.png)
+
+### Honest limits
+
+**L-30** — there is no per-operator read state; the only state is "somebody acknowledged this", which
+is right for a shared control room and worth saying out loud because the word "inbox" sets a
+different expectation. **L-31** — no bulk clear and no snooze; acknowledging acts on one incident,
+⚠️ and "acknowledge all" is refused on purpose. **L-4** stands: in-app and webhook only.
+**TD-52** — ⚠️ the demo seed is **not idempotent**: two consecutive runs left 90 incidents where 18
+were expected, found while seeding the alerts.
+
+---
+
+## Still open after P-6.5
+
+Camera depth · media catalogue · workspace empty states ·
 `/live` telling the truth · global search (TD-46) · command palette · responsive shell (TD-45) ·
 table sort and counts (TD-47) · **D-1**, which is a P-6 exit criterion and still undecided.
 
@@ -548,4 +660,5 @@ self-service password change (needs email delivery, P-7) · **L-23** a disabled 
 stays valid for up to 15 minutes · **L-24** suspending a tenant is not enforced · **L-25** settings
 audit is log-only · **L-26** branding is per-deployment, not per-tenant · **L-27** a token-less
 racing API client can log a stale `from` value · **L-28** System Health is a live reading, not a
-history · **L-29** a hung dependency reads as unavailable rather than degraded.
+history · **L-29** a hung dependency reads as unavailable rather than degraded · **L-30** the inbox
+has no per-operator read state · **L-31** no bulk acknowledge and no snooze.

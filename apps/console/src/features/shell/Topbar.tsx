@@ -1,5 +1,5 @@
-import { useNavigate } from 'react-router-dom';
-import { Building2, ChevronDown, LogOut, Search, User } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Bell, Building2, ChevronDown, LogOut, Search, User } from 'lucide-react';
 import { useAppSelector } from '@/app/hooks';
 import { useLogout, useSession } from '@/features/auth/useAuth';
 import { cn } from '@/lib/cn';
@@ -17,6 +17,7 @@ import {
   StatusIndicator,
 } from '@/ui';
 import { useTenant } from '@/features/organization/useOrganization';
+import { useInboxCount } from '@/features/alerts/useNotifications';
 import { LiveClock } from './LiveClock';
 
 const CONNECTION_STATUS: Record<ConnectionState, { kind: StatusKind; label: string }> = {
@@ -26,7 +27,7 @@ const CONNECTION_STATUS: Record<ConnectionState, { kind: StatusKind; label: stri
   disconnected: { kind: 'idle', label: 'Offline' },
 };
 
-/** Top bar: tenant context · global search · live clock · feed connection · user menu. */
+/** Top bar: tenant context · global search · inbox · live clock · feed connection · user menu. */
 export function Topbar() {
   const { user, tenantId } = useSession();
   const connection = useAppSelector((s) => s.live.connection);
@@ -68,6 +69,7 @@ export function Topbar() {
       </div>
 
       <div className="ml-auto flex items-center gap-4">
+        <InboxBell />
         <LiveClock />
         <StatusIndicator
           status={conn.kind}
@@ -116,5 +118,47 @@ export function Topbar() {
         </DropdownMenu>
       </div>
     </header>
+  );
+}
+
+/**
+ * How many incidents are waiting for somebody, wherever you are in the console.
+ *
+ * ⚠️ **This is what makes the inbox an inbox.** A queue you have to remember to visit is a page; a
+ * count that follows you is a queue. Without it an operator working an incident has no way to know
+ * that three more arrived while they were reading.
+ *
+ * ⚠️ **Silent when it is zero, and silent when it fails.** A bell showing "0" is decoration, and a
+ * bell showing "0" *because the request failed* is a lie in the shape of an all-clear — so the badge
+ * is absent in both cases and the link stays, which is the only honest thing a shell can do about a
+ * number it could not fetch. The page itself reports the failure properly.
+ *
+ * ⚠️ It reuses the query the inbox page uses, so this costs one request per interval for the whole
+ * console rather than one per screen — and acknowledging an alert updates both, because they are the
+ * same cache entry.
+ */
+function InboxBell() {
+  const { count, capped, isError } = useInboxCount({ refetchInterval: 30_000 });
+  const waiting = isError ? 0 : count;
+
+  return (
+    <Button asChild variant="ghost" size="sm" className="relative gap-2 px-2">
+      <Link
+        to="/alerts"
+        aria-label={
+          waiting === 0
+            ? 'Inbox'
+            : `Inbox — ${waiting}${capped ? ' or more' : ''} incident${waiting === 1 ? '' : 's'} waiting`
+        }
+      >
+        <Bell className="size-4" aria-hidden />
+        {waiting > 0 ? (
+          <span className="min-w-5 rounded-full bg-critical px-1.5 py-0.5 text-2xs font-semibold tabular-nums text-critical-foreground">
+            {waiting}
+            {capped ? '+' : ''}
+          </span>
+        ) : null}
+      </Link>
+    </Button>
   );
 }

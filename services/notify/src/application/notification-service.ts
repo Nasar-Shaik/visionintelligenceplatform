@@ -51,12 +51,32 @@ export class NotificationService {
     return notification;
   }
 
-  async ack(scope: TenantScope, id: string, input: AckNotificationInput): Promise<Notification> {
+  /**
+   * Acknowledge a delivery — *somebody has this incident*.
+   *
+   * ### ⚠️ The acknowledger is the authenticated principal, and `input.by` is deliberately ignored
+   *
+   * `ackedBy` used to come **entirely from the request body**. Two consequences, both found in P-6.5
+   * by looking at what the inbox actually rendered: the console sent nothing, so every
+   * acknowledgement it made was **unattributed** — a queue nobody signs is a queue nobody owns — and
+   * a caller who did send it could name **anyone**, so the record of who took a security alert was
+   * whatever the caller typed.
+   *
+   * The field stays in the contract (removing it would break every existing caller) and is no longer
+   * honoured. ⚠️ An audit field a caller can choose is not an audit field.
+   */
+  async ack(
+    scope: TenantScope,
+    id: string,
+    input: AckNotificationInput,
+    actor?: string,
+  ): Promise<Notification> {
     const current = await this.get(scope, id);
     if (!canAck(current)) {
       throw conflict(`cannot acknowledge a notification in status '${current.status}'`);
     }
-    const acked = markAcked(current, input.by, this.now);
+    void input;
+    const acked = markAcked(current, actor, this.now);
     await this.store.replace(scope, acked);
     this.metrics?.notificationsAcked.inc();
     await this.publisher.publish(acked);

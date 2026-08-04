@@ -131,6 +131,37 @@ await run('system-health', async (page) => {
   await beat(2_000);
 });
 
+// ── The Inbox (P-6.5) ───────────────────────────────────────────────────────────────────────────
+/*
+ * ⚠️ The clip ends **without** clearing the queue. Acknowledging is one-way, and a recording that
+ * consumed the demo dataset would leave the next demonstration with an empty inbox — which is the
+ * state this milestone existed to fix. It shows the queue, the delivery that never arrived and its
+ * reason, and the handled view; the acknowledge button is pointed at, not pressed.
+ */
+await run('notification-inbox', async (page) => {
+  await page.goto(`${B}/alerts`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('main ul > li', { timeout: 20_000 });
+  await beat(3_000);
+
+  const toggle = page.getByRole('button', { name: /show delivery detail/i }).first();
+  if (await toggle.isVisible().catch(() => false)) {
+    await toggle.click();
+    await beat(3_500); // the per-channel records, and the failure reason
+    await toggle.click().catch(() => {});
+    await beat(800);
+  }
+
+  const filter = page.getByLabel('Triage filter');
+  await filter.click();
+  await beat(900);
+  await page.getByRole('option', { name: 'Acknowledged' }).click();
+  await beat(3_000);
+  await filter.click();
+  await beat(700);
+  await page.getByRole('option', { name: 'Needs attention' }).click();
+  await beat(2_500);
+});
+
 // ── Tenant Settings (P-6.3) ─────────────────────────────────────────────────────────────────────
 await run('tenant-settings', async (page) => {
   await page.goto(`${B}/settings`, { waitUntil: 'domcontentloaded' });

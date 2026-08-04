@@ -101,7 +101,9 @@ Beyond the twelve gates. These are the things that make each _claim_ true.
 - [x] A user can be created, re-roled and **disabled** in the console (C-03 — was a pilot blocker; P-6.2)
 - [x] A rule can be created, **edited**, versioned and rolled back in the console (C-25 — was a pilot blocker; P-6.1)
 - [ ] A critical incident delivers an **email and an SMS** to a real address and number
-- [ ] A **failed** delivery is visible in the console, with the reason
+- [x] A **failed** delivery is visible in the console, with the reason (P-6.5 — called out above the
+      queue, with the transport error and the attempt count on the entry). ⚠️ The **delivery** half is
+      done; the transports it can fail on are still in-app and webhook only
 - [ ] The console is usable on a phone — including Sign out (C-63)
 - [ ] **D-1 decided** (tenant identity at sign-in)
 

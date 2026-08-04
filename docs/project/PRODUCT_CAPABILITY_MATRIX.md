@@ -95,13 +95,13 @@ references them rather than restating what a capability is.
 
 ## Communication
 
-| id       | Capability                                            |             Contract              | Backend |   Frontend   | Demo | Pilot | Prod | Milestone | Dependencies           | Owner   |
-| -------- | ----------------------------------------------------- | :-------------------------------: | :-----: | :----------: | :--: | :---: | :--: | --------- | ---------------------- | ------- |
-| **C-41** | In-app notifications · webhook delivery               |                ✅                 |   ✅    | ⚠️ bell only |  ⚠️  |  ⚠️   |  ✅  | **P-6**   | —                      | notify  |
-| **C-42** | Notification centre UI                                |                ✅                 |   ✅    |      ⛔      |  ⛔  |  ⛔   |  ⛔  | **P-6**   | —                      | console |
-| **C-43** | **External transports** — email · SMS · Slack · Teams | ⛔ enum is `['in-app','webhook']` |   ⛔    |      ⛔      |  ⛔  |  ⛔   |  ⛔  | **P-7**   | Q-3 additive extension | notify  |
-| **C-44** | Notification policies · escalation                    |                ⚠️                 |   ⛔    |      ⛔      |  ⛔  |  ⛔   |  ⛔  | **P-7**   | C-43                   | notify  |
-| **C-45** | Real-time delivery (SSE)                              |                ✅                 |   ✅    |      ✅      |  ✅  |  ✅   |  ✅  | done      | —                      | gateway |
+| id       | Capability                                            |             Contract              | Backend | Frontend | Demo | Pilot | Prod | Milestone | Dependencies           | Owner   |
+| -------- | ----------------------------------------------------- | :-------------------------------: | :-----: | :------: | :--: | :---: | :--: | --------- | ---------------------- | ------- |
+| **C-41** | In-app notifications · webhook delivery               |                ✅                 |   ✅    |    ✅    |  ✅  |  ✅   |  ✅  | done      | —                      | notify  |
+| **C-42** | Notification centre UI                                |                ✅                 |   ✅    |    ✅    |  ✅  |  ✅   |  ✅  | done      | —                      | console |
+| **C-43** | **External transports** — email · SMS · Slack · Teams | ⛔ enum is `['in-app','webhook']` |   ⛔    |    ⛔    |  ⛔  |  ⛔   |  ⛔  | **P-7**   | Q-3 additive extension | notify  |
+| **C-44** | Notification policies · escalation                    |                ⚠️                 |   ⛔    |    ⛔    |  ⛔  |  ⛔   |  ⛔  | **P-7**   | C-43                   | notify  |
+| **C-45** | Real-time delivery (SSE)                              |                ✅                 |   ✅    |    ✅    |  ✅  |  ✅   |  ✅  | done      | —                      | gateway |
 
 ## Reporting & analytics
 
@@ -138,9 +138,9 @@ references them rather than restating what a capability is.
 
 |                                                        | Count |                                                                 |
 | ------------------------------------------------------ | ----- | --------------------------------------------------------------- |
-| **Production-verified**                                | 29    | Deployed, exercised under failure, survives destroy-and-restore |
-| **Demo-ready**                                         | 31    | Safe to show today, on the demo dataset                         |
-| **Pilot-ready**                                        | 29    | ✅ **No capability is short of pilot-ready any more**           |
+| **Production-verified**                                | 31    | Deployed, exercised under failure, survives destroy-and-restore |
+| **Demo-ready**                                         | 33    | Safe to show today, on the demo dataset                         |
+| **Pilot-ready**                                        | 31    | ✅ **No capability is short of pilot-ready any more**           |
 | **Architecture-only** (contract frozen, nothing built) | 6     | C-37 · C-38 · C-39 · C-46 · C-47 · C-48                         |
 | **Contract missing**                                   | 4     | C-22 · C-43 · C-51 · C-61                                       |
 | **Blocked on a product decision**                      | 4     | C-06 (D-1) · C-20 (D-4) · C-38 (D-3) · C-60 (D-2)               |
@@ -153,8 +153,15 @@ references them rather than restating what a capability is.
 given a new password, and disabling **ends every open session immediately** (P-6.2). Both were
 verified against the production deployment rather than the test suite.
 
-⚠️ Closed does not mean finished: P-6 still owes the notification centre, camera management depth,
-the media catalogue, a responsive shell and `/live`. **Pilot-ready is a floor, not a ceiling.**
+⚠️ Closed does not mean finished: P-6 still owes camera management depth, the media catalogue, a
+responsive shell and `/live`. **Pilot-ready is a floor, not a ceiling.**
+
+⚠️ **C-41's demo column was ⚠️ for a reason nobody had looked at: the demo dataset contained no
+notifications at all.** The seed wrote incidents and no alerts, so the one screen that answers "what
+does an operator do when something happens" showed a prospect nothing while the incident queue beside
+it was full. P-6.5 seeds the channels and the deliveries the Alert Engine would have produced —
+including one webhook failure per vertical, because a product that can only be shown succeeding has
+not been shown.
 
 ⚠️ **C-52 was marked production-verified before the page existed**, on the strength of the services'
 `/health` and `/ready` probes — and the route walk agreed, because the edge answers `/health` with

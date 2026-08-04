@@ -22,6 +22,7 @@ interface NotificationParams {
 interface RawQuery {
   incidentId?: string;
   status?: string;
+  acknowledged?: string;
   limit?: string;
   cursor?: string;
 }
@@ -42,6 +43,13 @@ export function registerNotificationRoutes(
       const query = parseBody(NotificationQuery, {
         incidentId: raw.incidentId,
         status: raw.status,
+        /*
+         * ⚠️ A query string carries text, and `Boolean('false')` is `true` — the sort of coercion
+         * that turns an "unread only" filter into "everything" while every test that passes an
+         * actual boolean stays green. Only the two words are accepted; anything else is no filter.
+         */
+        acknowledged:
+          raw.acknowledged === 'true' ? true : raw.acknowledged === 'false' ? false : undefined,
         limit: raw.limit !== undefined ? Number(raw.limit) : undefined,
         cursor: raw.cursor,
       });
@@ -64,7 +72,13 @@ export function registerNotificationRoutes(
     async (request, reply) => {
       const scope = scopeOf(request.principal!.tenantId);
       const input = parseBody(AckNotificationInput, request.body ?? {});
-      return reply.send(success(await service.ack(scope, request.params.id, input)));
+      /*
+       * ⚠️ The **authenticated** principal, never the body. Email rather than the opaque id because
+       * the value is read by a human on a queue, and `usr_01H...` tells a colleague nothing about
+       * who has the incident.
+       */
+      const actor = request.principal!.email || request.principal!.principalId;
+      return reply.send(success(await service.ack(scope, request.params.id, input, actor)));
     },
   );
 }

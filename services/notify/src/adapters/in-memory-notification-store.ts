@@ -51,7 +51,9 @@ export class InMemoryNotificationStore implements NotificationStore {
         (n) =>
           this.owned(scope, n) &&
           (query.incidentId === undefined || n.incidentId === query.incidentId) &&
-          (query.status === undefined || n.status === query.status),
+          (query.status === undefined || n.status === query.status) &&
+          (query.acknowledged === undefined ||
+            (query.acknowledged ? n.status === 'acked' : n.status !== 'acked')),
       )
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
 

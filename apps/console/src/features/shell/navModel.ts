@@ -57,7 +57,13 @@ export const NAV_GROUPS: NavGroup[] = [
        * must be chosen.
        */
       { to: '/workspace', label: 'Investigations', icon: Telescope, permission: 'incident:read' },
-      { to: '/alerts', label: 'Alerts', icon: Bell, permission: 'notification:read' },
+      /*
+       * P-6.5 — **Inbox**, not "Alerts". The screen stopped being a log of what the platform sent
+       * and became a queue of what somebody has to deal with, and the word in the sidebar is the
+       * first thing that tells an operator which of the two it is. The route is unchanged, so every
+       * existing link and runbook reference still lands.
+       */
+      { to: '/alerts', label: 'Inbox', icon: Bell, permission: 'notification:read' },
     ],
   },
   {

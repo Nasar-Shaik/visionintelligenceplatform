@@ -31,15 +31,16 @@ documentation and training, without a scramble.
 
 ## What is here
 
-| Feature                                     | Milestone | Shows                                                                 |
-| ------------------------------------------- | --------- | --------------------------------------------------------------------- |
-| [System Health](system-health/)             | P-6.4     | Truthful operational state — including a dependency failing, live     |
-| [Tenant Settings](tenant-settings/)         | P-6.3     | Organisation identity, validation, optimistic concurrency, branding   |
-| [User administration](user-administration/) | P-6.2     | Creating, re-roling and disabling an operator; sessions ended at once |
-| [Rule editing](rule-editing/)               | P-6.1     | Authoring and versioning a detection rule                             |
+| Feature                                     | Milestone | Shows                                                                   |
+| ------------------------------------------- | --------- | ----------------------------------------------------------------------- |
+| [The Inbox](notification-inbox/)            | P-6.5     | The operator's queue — grouped by incident, with a delivery that failed |
+| [System Health](system-health/)             | P-6.4     | Truthful operational state — including a dependency failing, live       |
+| [Tenant Settings](tenant-settings/)         | P-6.3     | Organisation identity, validation, optimistic concurrency, branding     |
+| [User administration](user-administration/) | P-6.2     | Creating, re-roling and disabling an operator; sessions ended at once   |
+| [Rule editing](rule-editing/)               | P-6.1     | Authoring and versioning a detection rule                               |
 
-Still to come, in the milestone that builds them: the notification centre (P-6.5), camera management
-depth, the media catalogue, live video (P-8), hardware validation (P-9), AI recommendations.
+Still to come, in the milestone that builds them: camera management depth, the media catalogue, live
+video (P-8), hardware validation (P-9), AI recommendations.
 
 ## Producing it
 

@@ -900,8 +900,53 @@ async function seedVertical(
     );
   }
 
+  /*
+   * ── notification channels ──────────────────────────────────────────────────
+   *
+   * ⚠️ Added in P-6.5, because the alert inbox was **empty in every demonstration**. The seed wrote
+   * incidents and no notifications, so the one screen that answers "what does an operator do when
+   * something happens" showed a customer nothing at all — while the incident queue beside it was
+   * full. Every vertical now carries the two channels the platform ships: the in-app inbox an
+   * operator reads, and a webhook to the customer's own system.
+   */
+  const inAppChannel = `chan_${v.tenantId}_inapp`;
+  const webhookChannel = `chan_${v.tenantId}_webhook`;
+  await put(
+    db,
+    'notification_channels',
+    { id: inAppChannel, tenantId: v.tenantId },
+    {
+      id: inAppChannel,
+      tenantId: v.tenantId,
+      name: 'In-app inbox',
+      type: 'in-app',
+      config: {},
+      enabled: true,
+      createdAt: iso(minsAgo(60 * 24 * 30)),
+      updatedAt: iso(minsAgo(60 * 24 * 30)),
+    },
+  );
+  await put(
+    db,
+    'notification_channels',
+    { id: webhookChannel, tenantId: v.tenantId },
+    {
+      id: webhookChannel,
+      tenantId: v.tenantId,
+      name: 'Control room webhook',
+      type: 'webhook',
+      config: { url: 'https://soc.example.internal/vip/alerts' },
+      enabled: true,
+      minSeverity: 'high',
+      createdAt: iso(minsAgo(60 * 24 * 30)),
+      updatedAt: iso(minsAgo(60 * 24 * 30)),
+    },
+  );
+
   // ── events + incidents ───────────────────────────────────────────────────────
   let events = 0;
+  /** How many incidents have reached the webhook channel, so exactly one of them can fail. */
+  let webhookDeliveries = 0;
   for (const spec of v.incidents) {
     const camera = v.cameras.find((c) => c.id === spec.camera);
     if (camera === undefined) throw new Error(`unknown camera ${spec.camera} in ${v.tenantId}`);
@@ -1087,6 +1132,93 @@ async function seedVertical(
         updatedAt: iso(stamp),
       },
     );
+
+    /*
+     * ── the alert deliveries ───────────────────────────────────────────────────
+     *
+     * One record per channel, exactly as the Alert Engine writes them from `incident.raised`.
+     *
+     * ⚠️ **The inbox must agree with the incident queue.** An incident somebody acknowledged has an
+     * acknowledged in-app delivery, by the same person; one nobody has touched is still waiting. A
+     * demo where the inbox says "nobody took it" beside an incident that says "acknowledged by Sam"
+     * is a demo that teaches a prospect the two screens disagree.
+     *
+     * ⚠️ The webhook honours the channel's `minSeverity` (`high`), so a low-severity incident
+     * genuinely reaches one channel and not two — the "reached 1 of 1" a customer sees is the
+     * routing working, not a gap.
+     */
+    const notified = ['critical', 'high'].includes(spec.severity);
+    const taken = steps.includes('acknowledged');
+    const alertAt = occurredMs + 1500;
+    const takenBy = spec.assignee ?? v.operators[1]?.email ?? 'operator';
+
+    await put(
+      db,
+      'notifications',
+      { incidentId, tenantId: v.tenantId, channelId: inAppChannel },
+      {
+        id: randomUUID(),
+        tenantId: v.tenantId,
+        incidentId,
+        channelId: inAppChannel,
+        channelType: 'in-app',
+        status: taken ? 'acked' : 'delivered',
+        severity: spec.severity,
+        title: spec.title,
+        correlationId,
+        causationId: incidentId,
+        attempts: 1,
+        sentAt: iso(alertAt),
+        deliveredAt: iso(alertAt),
+        ...(taken ? { ackedBy: takenBy, ackedAt: iso(occurredMs + 300_000) } : {}),
+        createdAt: iso(alertAt),
+        updatedAt: iso(taken ? occurredMs + 300_000 : alertAt),
+      },
+    );
+
+    if (notified) {
+      /*
+       * ⚠️ Exactly one webhook fails per vertical — the **first** incident that reaches the webhook
+       * at all. A product that can only be shown succeeding has not been shown: "a failed delivery
+       * is visible in the console, with the reason" is a release exit criterion, and it cannot be
+       * demonstrated against a dataset in which nothing ever fails.
+       *
+       * ⚠️ Chosen by a counter rather than by a property of the data. The first attempt keyed it on
+       * "the oldest high-severity incident", which fired for **no vertical at all** — every incident
+       * old enough happened to be low severity, so the condition was true of nothing and the dataset
+       * silently contained no failure. A demo fixture that depends on a coincidence in the fixtures
+       * is not a fixture.
+       */
+      const webhookFails = webhookDeliveries === 0;
+      webhookDeliveries += 1;
+      await put(
+        db,
+        'notifications',
+        { incidentId, tenantId: v.tenantId, channelId: webhookChannel },
+        {
+          id: randomUUID(),
+          tenantId: v.tenantId,
+          incidentId,
+          channelId: webhookChannel,
+          channelType: 'webhook',
+          status: webhookFails ? 'failed' : 'delivered',
+          severity: spec.severity,
+          title: spec.title,
+          correlationId,
+          causationId: incidentId,
+          attempts: webhookFails ? 3 : 1,
+          sentAt: iso(alertAt),
+          ...(webhookFails
+            ? {
+                failedAt: iso(alertAt + 30_000),
+                lastError: 'connect ETIMEDOUT soc.example.internal:443 after 3 attempts',
+              }
+            : { deliveredAt: iso(alertAt + 400) }),
+          createdAt: iso(alertAt),
+          updatedAt: iso(webhookFails ? alertAt + 30_000 : alertAt + 400),
+        },
+      );
+    }
   }
 
   console.log(

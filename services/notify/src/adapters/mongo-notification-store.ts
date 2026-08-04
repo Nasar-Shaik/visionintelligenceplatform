@@ -83,6 +83,14 @@ export class MongoNotificationStore implements NotificationStore {
     const filter: Record<string, unknown> = { tenantId: scope.tenantId };
     if (query.incidentId !== undefined) filter['incidentId'] = query.incidentId;
     if (query.status !== undefined) filter['status'] = query.status;
+    /*
+     * ⚠️ The inbox filter. `acknowledged: false` is the *complement* of one status, not a status —
+     * pending, sent, delivered and failed all mean "nobody has dealt with this". A `failed` delivery
+     * counts as unacknowledged deliberately: it reached nobody, so nobody can have acted on it.
+     */
+    if (query.acknowledged !== undefined) {
+      filter['status'] = query.acknowledged ? 'acked' : { $ne: 'acked' };
+    }
     if (query.cursor) {
       const c = decodeCursor(query.cursor);
       if (c) {
