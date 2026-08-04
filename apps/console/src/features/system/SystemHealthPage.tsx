@@ -91,9 +91,22 @@ export function SystemHealthPage() {
         description="What the platform reports about itself — and what it cannot report on."
       />
 
+      {/*
+       * ⚠️ `isError` is deliberately conditioned on there being **no reading at all**.
+       *
+       * Measured against the deployment by stopping the gateway with the page open: the whole
+       * report was replaced by "Couldn't load · Request failed (502)". Every row gone — during the
+       * exact outage this page exists to report, and the operator loses the last thing the platform
+       * managed to say about itself. A reading from twenty seconds ago is not current, but it is
+       * the only context there is, and it is far better than a blank page.
+       *
+       * So a failed refresh keeps the report and adds a banner naming its age. The bare error state
+       * is reserved for the case where nothing has ever loaded, where there is genuinely nothing to
+       * show.
+       */}
       <QueryBoundary
         isLoading={query.isPending}
-        isError={query.isError}
+        isError={query.isError && query.data === undefined}
         error={query.error}
         skeleton={
           <div className="space-y-4">
@@ -108,6 +121,7 @@ export function SystemHealthPage() {
             components={query.data.components}
             derivedAt={query.data.derivedAt}
             isFetching={query.isFetching}
+            staleSince={query.isError ? query.data.derivedAt : null}
             onRefresh={() => void query.refetch()}
           />
         ) : null}
@@ -120,11 +134,14 @@ function Report({
   components,
   derivedAt,
   isFetching,
+  staleSince,
   onRefresh,
 }: {
   components: SystemComponent[];
   derivedAt: string;
   isFetching: boolean;
+  /** Set when the last refresh failed: the rows below are this old, and are no longer current. */
+  staleSince: string | null;
   onRefresh: () => void;
 }) {
   const sections = useMemo(() => group(components), [components]);
@@ -135,9 +152,11 @@ function Report({
       <Card>
         <CardContent className="flex flex-wrap items-center justify-between gap-4 py-5">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground">{summary.headline}</p>
+            <p className="text-sm font-medium text-foreground">
+              {staleSince === null ? summary.headline : `Last known: ${summary.headline}`}
+            </p>
             <p className="mt-1 text-xs text-text-subtle">
-              Assembled {timeAgo(derivedAt)} ·{' '}
+              {staleSince === null ? 'Assembled' : 'Last read'} {timeAgo(derivedAt)} ·{' '}
               <time dateTime={derivedAt}>{formatTimestamp(derivedAt)}</time>
             </p>
           </div>
@@ -147,6 +166,19 @@ function Report({
           </Button>
         </CardContent>
       </Card>
+
+      {/*
+       * ⚠️ The most important banner on the page, because it is the only one that qualifies every
+       * other thing on it. Everything below is a reading from the past, and saying so is the
+       * difference between an old report and a wrong one.
+       */}
+      {staleSince !== null ? (
+        <Alert variant="critical">
+          <span className="font-medium">This report could not be refreshed.</span> Everything below
+          is the reading from {timeAgo(staleSince)} and is no longer current — the platform may have
+          changed since, and the fact that it cannot be reached is itself worth acting on.
+        </Alert>
+      ) : null}
 
       {summary.actionable.length > 0 ? (
         <Alert variant={summary.critical ? 'critical' : 'warning'}>

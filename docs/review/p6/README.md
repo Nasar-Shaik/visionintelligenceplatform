@@ -495,6 +495,38 @@ Restored and verified: **17 users, five tenants at their seeded names.** ⚠️ 
 scripts create are removed rather than left disabled — there is no DELETE route, so the cleanup is a
 `mongosh` line, and it is printed by the scripts that create them.
 
+### The freeze pass
+
+[`p64-freeze.mjs`](p64-freeze.mjs) **20/20** and [`p64-freeze-ui.mjs`](p64-freeze-ui.mjs) **31/31**,
+both against the deployment.
+
+**Every state, produced — not reasoned about.** `Healthy` from the baseline; `Degraded` by stopping
+MinIO, where evidence and media still _answer_ with a failing check; `Unavailable` from a stopped
+container and from a dependency every reporter says is failing; `Unknown` by pausing MongoDB;
+`Not configured` from a **throwaway gateway with `STREAM_ENABLED=false` beside the real one** —
+because that state belongs to a deployment's configuration, and turning real-time delivery off on the
+stack an operator is using is not a verification, it is an outage; `Not built` from the capability
+register; `Forbidden` from a viewer. ⚠️ Service-level `unknown` is the one state **not** produced,
+and it is stated rather than omitted: it means a process answered on the port with something that is
+not a readiness report, which in a deployment means deliberately serving a broken service.
+
+⚠️ **A defect found by leaving the page open and stopping the gateway.** The whole report was replaced
+by "Couldn't load · Request failed (502)" — every row gone, during the exact outage the page exists to
+report. A reading from twenty seconds ago is not current, but it is the only context there is. The
+report now survives a failed refresh, the summary reads `Last known: …`, and a banner says everything
+below is no longer current. The bare error state is reserved for having never loaded at all.
+
+⚠️ **Six of the restart checks failed, and the page was right.** They used `docker restart`, and a
+container that is down for three seconds — behind a five-second server cache, sampled every fifteen —
+is **invisible by arithmetic**. The check was demanding that a sampled reading report an event
+shorter than its own interval. Held open instead, every one of the six appears unattended in **14–18
+seconds** and clears in **14**: gateway, MongoDB, NATS, MinIO, evidence, workflow. The sampling limit
+is now stated in L-28 rather than discovered by a customer.
+
+**Polling, measured**: **4 requests in 62 seconds** on the stated 15-second interval, and **0 in 35
+seconds** after navigating away — a forgotten tab does not poll forever. Navigation: deep link,
+refresh, back, forward and the sidebar entry all restore the report.
+
 ### Honest limits
 
 **L-28** — it is a live reading, not a history: "was it down last night?" is not answerable from the

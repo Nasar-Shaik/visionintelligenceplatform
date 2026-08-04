@@ -248,6 +248,41 @@ describe('SystemHealthPage', () => {
     expect(screen.queryByText(/components report healthy/)).not.toBeInTheDocument();
   });
 
+  /**
+   * ⚠️ **Found by stopping the gateway with the page open.** The whole report was replaced by
+   * "Couldn't load · Request failed (502)" — every row gone, during the exact outage this page
+   * exists to report, and the operator loses the last thing the platform managed to say about
+   * itself. A reading from twenty seconds ago is not current, but it is the only context there is.
+   */
+  it('⚠️ keeps the last reading when a refresh fails, and says it is stale', async () => {
+    let calls = 0;
+    server.use(
+      mswHttp.get('/api/system/health', () => {
+        calls += 1;
+        if (calls > 1) return HttpResponse.error();
+        return HttpResponse.json({
+          success: true,
+          data: {
+            components: [component({ id: 'tenant', label: 'Tenant', state: 'ready' })],
+            derivedAt: '2026-08-04T12:00:00.000Z',
+            cacheTtlMs: 5000,
+          },
+        });
+      }),
+    );
+    authAs(['admin']);
+    render();
+
+    await screen.findByText('Tenant');
+    await userEvent.click(screen.getByRole('button', { name: /refresh/i }));
+
+    expect(await screen.findByText(/could not be refreshed/i)).toBeInTheDocument();
+    // The rows survive — and are labelled as a past reading rather than presented as current.
+    expect(screen.getByText('Tenant')).toBeInTheDocument();
+    expect(screen.getByText(/^Last known:/)).toBeInTheDocument();
+    expect(screen.queryByText('Couldn’t load')).not.toBeInTheDocument();
+  });
+
   it('re-reads on demand', async () => {
     let calls = 0;
     server.use(
