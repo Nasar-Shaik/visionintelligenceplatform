@@ -1305,3 +1305,60 @@ three are statements about the environment they ran in — and until you have de
 environment is the only one you have ever tested.** ED-0070 adds the corollary: an error path that
 has never actually errored is not a verified error path, and a recovery test that disturbs nothing
 proves nothing.
+
+---
+
+## ED-0071 — P-5.9: the dataset was the instrument
+
+**Context.** P-5.8 deployed the platform and found that a test suite describes the environment it
+ran in. P-5.9 asked a different question — not "does it work" but "would a customer pay for this" —
+and found the same shape one level up.
+
+The first thing this milestone built was not a fix. It was **data**: four fictional tenants across
+retail, warehouse, school and hospital, with 28 locations, 33 cameras, 13 operators, 126 events and
+18 incidents spanning the full lifecycle, with operator notes written the way an investigator writes
+them.
+
+Then every screen was reviewed again. Seven defects, none of them logic errors, all invisible the
+day before:
+
+- The incident queue and the dashboard rendered **raw database ids** in the column headed CAMERA.
+  In one component the prop was literally named `cameraName` and was being handed a `cameraId`. It
+  had been that way for five milestones, because the only seeded camera was `cam_dev_1` — an id
+  short enough to read like a name.
+- Workspace panel titles **clipped mid-word with no ellipsis** on a 1024×768 tablet.
+- The tablet layout hid **nine panels** while leaving 280 px of vertical space empty.
+- Three classes of sub-24 px tap target, and a skipped heading level.
+- **All branding required a rebuild**, and there was no favicon at all.
+
+**Decision.** Treat realistic seed data as a permanent instrument, not a demo convenience
+(CONSTRAINTS §106). `tools/seed/demo.ts` and `infra/docker/demo.sh` exist so any future UI review
+runs against a populated estate, and the review package says which dataset it was run against.
+
+**⚠️ Two of my own diagnoses were wrong, and the screenshot caught both.**
+
+The tablet clipping: I identified a missing `min-w-0` on a flex row — a real and correct fix for the
+classic `min-width: auto` trap — applied it, rebuilt, and the screenshot was unchanged. The actual
+cause was `sizeStyle()` applying an **inline pixel width** from the persisted panel layout, which
+knows nothing about the viewport it lands in. A confident, plausible, wrong diagnosis that a passing
+typecheck would have let through.
+
+The brand colour: the first implementation set an invented `--brand` custom property and reported
+success. The real tokens are `--color-brand` and `--color-primary`, so the log said "themed" while
+every button stayed blue. Caught by _looking at the screenshot_ rather than at the return value.
+
+The corrected version also checks WCAG contrast before applying a colour, because `theme.css`
+deliberately reasons about primary being darker than brand so white labels clear AA — and a customer
+colour carries no such guarantee (§110).
+
+**What was deliberately not done.** The tenant field at login is friction and was left alone: how a
+tenant is identified is a multi-tenancy product decision, not polish (TD-40). The dark-only theme was
+left alone: inventing a light palette during a certification pass would ship an unreviewed theme
+(TD-43). Zod's CSP violation was left alone, because adding `'unsafe-eval'` to quiet a console
+message would trade a real security boundary for a log line (TD-37).
+
+**The general lesson.** ED-0066: a screenshot shows what you shipped. ED-0067: a measurement shows
+what the platform does, and you must ask what it is evidence of. ED-0068: a green suite says nothing
+about whether anyone can reach the feature. ED-0069: all of those describe the environment they ran
+in. **ED-0071: a UI review describes the _data_ it was run against — and against one row, everything
+looks finished.**

@@ -124,7 +124,9 @@ export function RulesListPage() {
                   <TableCell>
                     <Link
                       to={`/rules/${rule.id}`}
-                      className="font-medium text-foreground hover:text-brand focus-ring rounded-sm"
+                      /* `min-h-6`: a block link in a table cell is not the "inline in a sentence"
+                         case WCAG 2.5.8 exempts, so it gets a real 24px target like every other. */
+                      className="focus-ring inline-flex min-h-6 items-center rounded-sm font-medium text-foreground hover:text-brand"
                     >
                       {rule.name}
                     </Link>

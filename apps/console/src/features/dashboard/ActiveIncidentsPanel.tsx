@@ -12,11 +12,13 @@ import {
   TableSkeleton,
 } from '@/ui';
 import { useIncidents } from '@/features/incidents/useIncidents';
+import { useCameraName } from '@/features/cameras/useCameras';
 
 const ACTIVE = new Set(['raised', 'acknowledged']);
 
 /** Newest active (raised/acknowledged) incidents. Polls every 15s (→ SSE with G-5). */
 export function ActiveIncidentsPanel() {
+  const cameraName = useCameraName();
   const navigate = useNavigate();
   const query = useIncidents({ limit: 50 }, { refetchInterval: 15_000 });
   const active: Incident[] = (query.data?.items ?? [])
@@ -44,6 +46,7 @@ export function ActiveIncidentsPanel() {
           }
         >
           <div className="space-y-2">
+            {/* ⚠️ `cameraName` used to be handed a camera *id*. See `useCameraName`. */}
             {active.map((incident) => (
               <IncidentCard
                 key={incident.id}
@@ -51,7 +54,10 @@ export function ActiveIncidentsPanel() {
                 severity={incident.severity}
                 status={incident.status}
                 {...(incident.triggeredBy.cameraId
-                  ? { cameraName: incident.triggeredBy.cameraId }
+                  ? {
+                      cameraName:
+                        cameraName(incident.triggeredBy.cameraId) ?? incident.triggeredBy.cameraId,
+                    }
                   : {})}
                 at={incident.raisedAt}
                 onClick={() => navigate(`/incidents/${incident.id}`)}

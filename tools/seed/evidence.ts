@@ -39,12 +39,24 @@ import { loadDotEnv, loadStorageConfig } from '@vip/config';
 loadDotEnv(resolve(dirname(fileURLToPath(import.meta.url)), '../../.env'));
 
 const TENANT = process.env.SEED_TENANT_ID ?? 'tnt_dev';
-const CAMERA = process.env.SEED_CAMERA_ID ?? 'cam_dev_1';
-const INCIDENT = process.env.SEED_INCIDENT_ID ?? '00000000-0000-4000-8000-0000000000c1';
 const IDENTITY = process.env.SEED_IDENTITY_URL ?? 'http://localhost:8089';
 const EVIDENCE = process.env.SEED_EVIDENCE_URL ?? 'http://localhost:8090';
+const WORKFLOW = process.env.SEED_WORKFLOW_URL ?? 'http://localhost:8087';
 const EMAIL = process.env.SEED_EMAIL ?? 'owner@vip.dev';
 const PASSWORD = process.env.SEED_PASSWORD ?? '123456';
+
+/**
+ * ⚠️ Which incident the clips attach to.
+ *
+ * Explicit ids still win, which is what the `tnt_dev` bootstrap uses. But the demo dataset
+ * (`demo.ts`) generates incidents with random UUIDs — a demonstration cannot hard-code them — so
+ * when they are unset the target is **resolved from the API**: the tenant's incident that is
+ * currently being investigated, which is exactly the one a walkthrough opens. Resolving it rather
+ * than guessing also means the camera on the evidence matches the camera on the incident, so the
+ * investigation workspace does not show a clip from a different part of the building.
+ */
+const EXPLICIT_INCIDENT = process.env.SEED_INCIDENT_ID;
+const EXPLICIT_CAMERA = process.env.SEED_CAMERA_ID;
 
 /** ffmpeg runs in a container so no local install is required — the dev stack already uses it. */
 const FFMPEG_IMAGE = 'jrottenberg/ffmpeg:6-alpine';
@@ -157,6 +169,9 @@ const PREGENERATED_DIR = process.env.SEED_EVIDENCE_DIR;
 
 async function main(): Promise<void> {
   const token = await login();
+  const target = await resolveTarget(token);
+  const { incidentId: INCIDENT, cameraId: CAMERA } = target;
+  console.log(`  → ${TENANT}: attaching to incident ${INCIDENT.slice(0, 8)} on ${CAMERA}`);
   const store = buildStore();
   const work = PREGENERATED_DIR ?? mkdtempSync(join(tmpdir(), 'vip-seed-'));
   const capturedBase = Date.now();
@@ -259,6 +274,49 @@ function generate(dir: string, clip: Clip): void {
     ],
     { stdio: ['ignore', 'ignore', 'pipe'] },
   );
+}
+
+/**
+ * The incident and camera the clips belong to.
+ *
+ * Prefers an explicit `SEED_INCIDENT_ID`/`SEED_CAMERA_ID`. Otherwise asks the workflow API for this
+ * tenant's incidents and picks the one under active investigation — falling back to the most
+ * recently raised. Fails loudly rather than inventing an id: evidence pointing at an incident that
+ * does not exist would render an investigation workspace with a clip and no context.
+ */
+async function resolveTarget(token: string): Promise<{ incidentId: string; cameraId: string }> {
+  if (EXPLICIT_INCIDENT !== undefined && EXPLICIT_CAMERA !== undefined) {
+    return { incidentId: EXPLICIT_INCIDENT, cameraId: EXPLICIT_CAMERA };
+  }
+
+  const response = await fetch(`${WORKFLOW}/incidents?limit=50`, {
+    headers: { authorization: `Bearer ${token}`, 'x-tenant-id': TENANT },
+  }).catch(() => undefined);
+  if (response === undefined) {
+    throw new Error(`the workflow service is not reachable at ${WORKFLOW}`);
+  }
+  const body = (await response.json()) as {
+    data?: {
+      items?: {
+        id: string;
+        status: string;
+        raisedAt: string;
+        triggeredBy?: { cameraId?: string };
+      }[];
+    };
+  };
+  const items = body.data?.items ?? [];
+  if (items.length === 0) {
+    throw new Error(`no incidents found for ${TENANT} — run the tenant's seed first`);
+  }
+  const chosen =
+    items.find((i) => i.status === 'investigating') ??
+    [...items].sort((a, b) => b.raisedAt.localeCompare(a.raisedAt))[0]!;
+  const cameraId = EXPLICIT_CAMERA ?? chosen.triggeredBy?.cameraId;
+  if (cameraId === undefined) {
+    throw new Error(`incident ${chosen.id} has no camera — cannot place evidence against it`);
+  }
+  return { incidentId: chosen.id, cameraId };
 }
 
 async function login(): Promise<string> {

@@ -314,6 +314,24 @@ services:
       mongodb: { condition: service_healthy }
     restart: 'no'
 
+  # ⚠️ The demo dataset — four fictional tenants across four verticals. Separate from `seed` because
+  # they answer different questions: `seed` is the minimum a deployment needs to be usable, this is
+  # what a customer demonstration needs to look like a working estate. Never run against a tenant
+  # that holds real data; it only ever writes `tnt_demo_*`.
+  #   infra/docker/demo.sh reset
+  seed-demo:
+    profiles: ['seed']
+    image: vip/identity:local
+    working_dir: /app/tools/seed
+    entrypoint: ['/sbin/tini', '--']
+    command: ['node_modules/.bin/tsx', 'demo.ts']
+    environment:
+      <<: *service-env
+      SEED_PASSWORD: ${SEED_PASSWORD:?set SEED_PASSWORD}
+    depends_on:
+      mongodb: { condition: service_healthy }
+    restart: 'no'
+
   # ⚠️ Demo evidence — NOT part of a customer bootstrap. A real deployment gets its evidence from
   # the media service ingesting recordings; this exists so a demonstration has something to play.
   # It registers through the **real evidence API**, so custody opens and the integrity hash is
@@ -337,6 +355,7 @@ services:
       SEED_EVIDENCE_DIR: /clips
       SEED_IDENTITY_URL: http://identity:8089
       SEED_EVIDENCE_URL: http://evidence:8090
+      SEED_WORKFLOW_URL: http://workflow:8087
       SEED_TENANT_ID: ${SEED_TENANT_ID:-tnt_dev}
       SEED_EMAIL: ${SEED_EMAIL:-owner@vip.dev}
       SEED_PASSWORD: ${SEED_PASSWORD:?set SEED_PASSWORD}

@@ -22,10 +22,15 @@ export const CardHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivEleme
   },
 );
 
+/**
+ * ⚠️ `h2`, not `h3`. Page headings are `h1`, so a card titled `h3` skipped a level and a screen
+ * reader's heading list read "Operations Overview → (nothing) → Active incidents". Measured on the
+ * dashboard in P-5.9. The visual size is set by the class, not the tag, so nothing moves.
+ */
 export const CardTitle = forwardRef<HTMLHeadingElement, HTMLAttributes<HTMLHeadingElement>>(
   function CardTitle({ className, ...props }, ref) {
     return (
-      <h3 ref={ref} className={cn('text-lg font-semibold leading-none', className)} {...props} />
+      <h2 ref={ref} className={cn('text-lg font-semibold leading-none', className)} {...props} />
     );
   },
 );

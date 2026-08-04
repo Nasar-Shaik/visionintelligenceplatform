@@ -54,7 +54,8 @@ export function PanelFrame({
             onClick={onToggleCollapse}
             aria-expanded={!collapsed}
             aria-controls={bodyId}
-            className="focus-ring -ml-1 rounded p-0.5 text-text-subtle hover:text-text"
+            /* 24px target around a 14px chevron (WCAG 2.5.8); negative margin preserves the header height. */
+            className="focus-ring -my-1 -ml-1.5 flex size-6 items-center justify-center rounded text-text-subtle hover:text-text"
           >
             <Chevron className="size-3.5" aria-hidden />
             <span className="sr-only">

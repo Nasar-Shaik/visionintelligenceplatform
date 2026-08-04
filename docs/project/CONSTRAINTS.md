@@ -620,6 +620,38 @@
       `tokenStore.clear()` removes every `vip.workspace.state.*` key; pinned by
       `tokenStore.test.ts`._
 
+106.  **A UI review describes the data it was run against.** Realistic seed data is an instrument,
+      not a convenience. Against a single camera named `cam_dev_1`, the incident queue and the
+      dashboard rendered raw database ids in the column headed CAMERA for five milestones and looked
+      finished — an id that short reads like a name. Loading four tenants and thirty-three cameras made
+      it obvious in seconds, along with panel titles clipping mid-word on a tablet and a panel capacity
+      set too low. — _enforced: `tools/seed/demo.ts` + `infra/docker/demo.sh`; UI review is performed
+      against the demo dataset, never the bootstrap seed._
+
+107.  **An id is stable and a name is editable, so the join happens at display time.** Incidents and
+      events store `cameraId` and resolve the name when it is shown. Denormalising the name into an
+      incident would freeze whatever the camera was called on the day it fired, and a decommissioned
+      camera still has incidents — so the fallback is the id, which is honest, rather than an invented
+      name. — _enforced: `useCameraName()`; no contract change was made._
+
+108.  **A stored size is a preference, not a promise.** A panel width persisted by the layout registry
+      knows nothing about the viewport it will be rendered into. Applied unbounded on a 1024×768
+      tablet, a panel wider than its region overflowed and the incident queue clipped titles mid-word
+      with no ellipsis — because the text never reached a box small enough to trigger one. — _enforced:
+      `sizeStyle()` pairs every stored dimension with a `max` bound._
+
+109.  **Branding is configuration, not a build input.** A product name compiled into a hashed asset
+      cannot be changed by the customer who bought it. Branding is fetched before first render, fails
+      soft in every direction — missing, malformed, or partial file — and can be bind-mounted so an
+      upgrade does not overwrite it. — _enforced: `app/branding.ts` + `/branding.json`; verified by
+      re-branding a **running** container with no rebuild._
+
+110.  **A theme that cannot be read is not a theme.** `theme.css` deliberately makes `--color-primary`
+      darker than `--color-brand` so white labels clear WCAG AA; a customer-supplied colour carries no
+      such guarantee. The foreground flips when white would fail, and a colour that cannot reach 4.5:1
+      against either is refused with a warning rather than shipping unreadable controls. — _enforced:
+      `applyBrandColor()` computes WCAG contrast before applying anything._
+
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._

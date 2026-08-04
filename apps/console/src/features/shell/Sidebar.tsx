@@ -6,6 +6,7 @@ import { toggleSidebar } from '@/store/uiSlice';
 import { cn } from '@/lib/cn';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui';
 import { NAV_GROUPS, type NavItem } from './navModel';
+import { branding } from '@/app/branding';
 
 function NavRow({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   const link = (
@@ -43,6 +44,7 @@ function NavRow({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
 
 /** Collapsible primary navigation rail — permission-gated, grouped by workflow. */
 export function Sidebar() {
+  const brand = branding();
   const dispatch = useAppDispatch();
   const collapsed = useAppSelector((s) => s.ui.sidebarCollapsed);
   const permissions = useAppSelector((s) => s.session.permissions);
@@ -65,11 +67,22 @@ export function Sidebar() {
           collapsed && 'justify-center',
         )}
       >
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand-muted text-brand">
-          <ShieldCheck className="size-5" aria-hidden />
-        </div>
+        {/* ⚠️ Customer logo when supplied, the built-in mark otherwise — see `app/branding.ts`. */}
+        {brand.logoUrl !== '' ? (
+          <img
+            src={brand.logoUrl}
+            alt={brand.productName}
+            className="size-8 shrink-0 rounded-md object-contain"
+          />
+        ) : (
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand-muted text-brand">
+            <ShieldCheck className="size-5" aria-hidden />
+          </div>
+        )}
         {!collapsed ? (
-          <span className="text-sm font-semibold text-foreground">VIP Console</span>
+          <span className="truncate text-sm font-semibold text-foreground">
+            {brand.productName}
+          </span>
         ) : null}
       </div>
 

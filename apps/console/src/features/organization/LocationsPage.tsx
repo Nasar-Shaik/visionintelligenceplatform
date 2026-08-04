@@ -129,7 +129,9 @@ export function LocationsPage() {
                     type="button"
                     onClick={() => toggle(node.id)}
                     aria-label={`${open.has(node.id) ? 'Collapse' : 'Expand'} ${node.name}`}
-                    className="text-muted-foreground hover:text-foreground"
+                    /* ⚠️ 24px hit area around a 16px glyph — WCAG 2.5.8 sizes the *target*, not
+                       the icon. `-m-1` keeps the visual row spacing unchanged. */
+                    className="focus-ring -m-1 flex size-6 items-center justify-center rounded p-1 text-muted-foreground hover:text-foreground"
                   >
                     {open.has(node.id) ? (
                       <ChevronDown className="size-4" />
@@ -143,7 +145,8 @@ export function LocationsPage() {
 
                 <button
                   type="button"
-                  className="flex-1 truncate text-left font-medium hover:underline"
+                  /* `min-h-6` so the row's hit area clears 24px; the label height is unchanged. */
+                  className="flex min-h-6 flex-1 items-center truncate text-left font-medium hover:underline"
                   onClick={() => setSelected(node.id)}
                 >
                   {node.name}

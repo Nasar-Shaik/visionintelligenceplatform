@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CreateCameraInput, DiscoverCamerasInput, UpdateCameraInput } from '@vip/contracts';
 import { camerasApi } from '@/lib/api/cameras';
@@ -10,6 +11,36 @@ export function useCameras(options?: { refetchInterval?: number }) {
     queryFn: () => camerasApi.list(),
     ...(options?.refetchInterval ? { refetchInterval: options.refetchInterval } : {}),
   });
+}
+
+/**
+ * Resolve a camera id to the name an operator recognises.
+ *
+ * ### ⚠️ Why this is a display-layer join and not a contract change
+ *
+ * Incidents and events store `cameraId`, and that is correct: an id is stable and a name is
+ * editable, so denormalising the name into an incident would freeze whatever the camera was called
+ * on the day it fired. The name belongs to the camera registry and is resolved when it is shown.
+ *
+ * ### ⚠️ What it fixes
+ *
+ * Found in P-5.9 by loading a realistic estate: the incident queue and the dashboard rendered
+ * **raw database ids** — `cam_retail_electronics2` — in the column headed CAMERA, on the two
+ * screens a security manager lives in. It was invisible for five milestones because the only
+ * seeded camera was `cam_dev_1`, and an id that short reads like a name.
+ *
+ * Falls back to the id when the camera is unknown: a decommissioned camera still has incidents, and
+ * showing its id is honest where inventing a name would not be.
+ */
+export function useCameraName(): (cameraId: string | undefined) => string | undefined {
+  const { data } = useCameras();
+  return useCallback(
+    (cameraId: string | undefined): string | undefined => {
+      if (cameraId === undefined) return undefined;
+      return data?.find((camera) => camera.id === cameraId)?.name ?? cameraId;
+    },
+    [data],
+  );
 }
 
 /** One camera by id. */

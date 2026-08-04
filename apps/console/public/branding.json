@@ -1,0 +1,9 @@
+{
+  "_comment": "White-label branding, read at runtime. Edit and reload — no rebuild, no redeploy. Bind-mount over this file to survive upgrades. See docs/runbooks/BRANDING.md.",
+  "productName": "VIP Console",
+  "productTagline": "Sign in to continue",
+  "logoUrl": "",
+  "favicon": "🛡️",
+  "brandColor": "",
+  "footerNote": ""
+}

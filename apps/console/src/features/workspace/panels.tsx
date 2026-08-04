@@ -89,7 +89,16 @@ function IncidentQueuePanel({ incidentId, onSelectIncident, filters }: PanelCont
                   : 'border-l-transparent hover:bg-surface-2',
               )}
             >
-              <span className="flex items-center gap-2">
+              {/*
+                ⚠️ `min-w-0` on the row, not just `truncate` on the text.
+                A flex item defaults to `min-width: auto`, so it refuses to shrink below its content
+                and `truncate` never gets a constrained box to ellipsise into. The text then
+                overflows and is hard-clipped by the panel's `overflow-hidden` — measured on a
+                1024×768 tablet, where queue titles read "Suspected concealment — Elec" with no
+                ellipsis at all. Clipping mid-word looks like a rendering fault; an ellipsis looks
+                like a design decision.
+              */}
+              <span className="flex min-w-0 items-center gap-2">
                 <SeverityBadge severity={incident.severity} />
                 <span className="truncate text-xs text-text">{incident.title}</span>
               </span>
@@ -119,7 +128,8 @@ function FiltersPanel({ filters, setFilters }: PanelContext) {
             onClick={() => setFilters(active === status ? {} : { ...filters, status })}
             aria-pressed={active === status}
             className={cn(
-              'focus-ring rounded-sm border px-2 py-0.5 text-2xs capitalize',
+              /* `min-h-6` — the chips measured 22px tall, two short of WCAG 2.5.8's 24px target. */
+              'focus-ring inline-flex min-h-6 items-center rounded-sm border px-2 py-0.5 text-2xs capitalize',
               active === status
                 ? 'border-brand-border bg-brand-muted text-text'
                 : 'border-border text-text-muted hover:text-text',

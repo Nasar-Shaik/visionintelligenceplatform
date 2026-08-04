@@ -21,6 +21,12 @@
 	@html path / /index.html
 	header @html Cache-Control "no-cache"
 
+	# ⚠️ Branding is read at runtime and must never be cached, or an operator who edits it sees no
+	# change and concludes the feature does not work. It is also the file most likely to be
+	# bind-mounted over, so it has to be re-read on every load rather than served from a hash.
+	@branding path /branding.json
+	header @branding Cache-Control "no-store"
+
 	handle {
 		try_files {path} /index.html
 		file_server

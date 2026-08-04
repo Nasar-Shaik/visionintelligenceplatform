@@ -76,7 +76,8 @@ export function EvidencePanel({ incidentId, unavailableReason }: PanelContext) {
       <ul className="flex flex-col gap-2">
         {query.data?.items.map((item) => (
           <li key={item.id} className="rounded border border-border bg-surface-2 p-2">
-            <div className="flex items-center justify-between gap-2">
+            {/* `min-w-0` so `truncate` has a box to shrink into — see panels.tsx. */}
+            <div className="flex min-w-0 items-center justify-between gap-2">
               <span className="truncate text-xs text-text">
                 {item.metadata.label ?? `${item.kind} · ${item.media.contentType}`}
               </span>

@@ -6,7 +6,8 @@
   "description": "Development bootstrap: seeds a tenant, org, admin user, and sample data (camera/rule/event/incident/alert) directly into MongoDB so the Operations Console has data on first login. No running services required.",
   "scripts": {
     "start": "tsx seed.ts",
-    "evidence": "tsx evidence.ts"
+    "evidence": "tsx evidence.ts",
+    "demo": "tsx demo.ts"
   },
   "dependencies": {
     "@vip/auth": "workspace:*",

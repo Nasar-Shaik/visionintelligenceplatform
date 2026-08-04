@@ -35,8 +35,16 @@ describe('DashboardPage', () => {
 
     // Active incident surfaces in the panel...
     expect(await screen.findByText('Intrusion — Zone A')).toBeInTheDocument();
-    // ...and the camera in the health panel.
-    expect(screen.getByText('Lobby — East')).toBeInTheDocument();
+
+    /*
+     * ...and the camera name appears TWICE: once in the health panel, once on the incident card.
+     * ⚠️ That second one is the P-5.9 fix. The incident card used to render the raw `cameraId`
+     * (`cam-1`), because the prop was named `cameraName` and was handed an id — so this assertion
+     * used to find exactly one match. `getAllByText` is the point of the test, not a workaround:
+     * two matches is the correct count, and one would mean the id is back.
+     */
+    expect(screen.getAllByText('Lobby — East')).toHaveLength(2);
+    expect(screen.queryByText('cam-1')).not.toBeInTheDocument();
 
     // KPIs: 1 active incident, 1/1 cameras online, 2 alerts.
     expect(screen.getByText('1', { selector: 'span' })).toBeInTheDocument(); // active incidents value

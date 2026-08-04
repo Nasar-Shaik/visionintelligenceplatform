@@ -26,7 +26,8 @@
     "dev:services": "turbo run dev --filter=./services/* --concurrency=12",
     "dev:web": "pnpm --filter @vip/console dev",
     "seed": "pnpm --filter @vip/seed start",
-    "seed:evidence": "pnpm --filter @vip/seed evidence"
+    "seed:evidence": "pnpm --filter @vip/seed evidence",
+    "seed:demo": "pnpm --filter @vip/seed demo"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

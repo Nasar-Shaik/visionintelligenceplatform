@@ -29,6 +29,7 @@ import {
 import { INCIDENT_STATUS } from './status';
 import { IncidentDetailSheet } from './IncidentDetailSheet';
 import { useIncidentsInfinite } from './useIncidents';
+import { useCameraName } from '@/features/cameras/useCameras';
 
 /** Derived from the contract, so a lifecycle state can never exist without a filter for it (G-1). */
 const STATUSES: IncidentStatus[] = IncidentStatusEnum.options;
@@ -36,6 +37,7 @@ const POLL = { refetchInterval: 20_000 };
 
 /** Incident queue — filterable, cursor-paginated, with a lifecycle detail drawer (ack/resolve/close). */
 export function IncidentsPage() {
+  const cameraName = useCameraName();
   const [params, setParams] = useSearchParams();
   const status = params.get('status') ?? 'all';
   const severity = params.get('severity') ?? 'all';
@@ -139,8 +141,9 @@ export function IncidentsPage() {
                     {INCIDENT_STATUS[incident.status].label}
                   </Badge>
                 </TableCell>
-                <TableCell className="tabular text-muted-foreground">
-                  {incident.triggeredBy.cameraId ?? '—'}
+                {/* The camera an operator recognises, not the row id. See `useCameraName`. */}
+                <TableCell className="text-muted-foreground">
+                  {cameraName(incident.triggeredBy.cameraId) ?? '—'}
                 </TableCell>
                 <TableCell
                   className="whitespace-nowrap text-muted-foreground"

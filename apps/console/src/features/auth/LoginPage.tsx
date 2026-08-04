@@ -6,6 +6,7 @@ import { ShieldCheck } from 'lucide-react';
 import { ApiRequestError } from '@/lib/api/http';
 import { Alert, Button, Input, Label } from '@/ui';
 import { useLogin, useSession } from './useAuth';
+import { branding } from '@/app/branding';
 
 const loginSchema = z.object({
   tenantId: z.string().min(1, 'Tenant is required'),
@@ -19,6 +20,7 @@ interface LocationState {
 }
 
 export function LoginPage() {
+  const brand = branding();
   const login = useLogin();
   const navigate = useNavigate();
   const location = useLocation();
@@ -57,12 +59,21 @@ export function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-bg px-6">
       <div className="w-full max-w-sm space-y-6">
         <div className="flex flex-col items-center gap-3 text-center">
-          <div className="flex size-12 items-center justify-center rounded-lg bg-brand-muted text-brand">
-            <ShieldCheck className="size-6" aria-hidden />
-          </div>
+          {/* ⚠️ The first screen a customer sees, so it is the first thing that must be theirs. */}
+          {brand.logoUrl !== '' ? (
+            <img
+              src={brand.logoUrl}
+              alt={brand.productName}
+              className="h-12 max-w-52 object-contain"
+            />
+          ) : (
+            <div className="flex size-12 items-center justify-center rounded-lg bg-brand-muted text-brand">
+              <ShieldCheck className="size-6" aria-hidden />
+            </div>
+          )}
           <div className="space-y-1">
-            <h1 className="text-xl font-semibold text-foreground">Operations Console</h1>
-            <p className="text-sm text-muted-foreground">Sign in to continue</p>
+            <h1 className="text-xl font-semibold text-foreground">{brand.productName}</h1>
+            <p className="text-sm text-muted-foreground">{brand.productTagline}</p>
           </div>
         </div>
 
@@ -116,6 +127,11 @@ export function LoginPage() {
             Sign in
           </Button>
         </form>
+
+        {/* Support contact, classification marking, or a legal notice — deployment's choice. */}
+        {brand.footerNote !== '' ? (
+          <p className="text-center text-xs text-muted-foreground">{brand.footerNote}</p>
+        ) : null}
       </div>
     </main>
   );

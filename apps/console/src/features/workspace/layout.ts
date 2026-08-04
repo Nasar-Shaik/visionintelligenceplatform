@@ -59,7 +59,18 @@ export function viewportTier(width: number): ViewportTier {
 const CAPACITY: Record<ViewportTier, number> = {
   wide: 99,
   desktop: 12,
-  laptop: 8,
+  /*
+   * ⚠️ 10, not 8. Measured in P-5.9 on a 1024×768 tablet — the standard control-room iPad: the
+   * eight rendered panels occupied 430 px of the 712 px available below the top bar, leaving ~280 px
+   * of empty space while the footer reported **nine panels hidden**. Panels carry declared heights,
+   * so the space does not get absorbed; it just sits there. Two more panels fit in the room that
+   * was already visibly free.
+   *
+   * Still a cap, not a removal: dropping remains a last resort after collapsing and tabbing, and
+   * the footer keeps saying exactly how many were dropped. Tuned against a measurement rather than
+   * raised until it looked full.
+   */
+  laptop: 10,
   compact: 5,
 };
 
@@ -131,8 +142,22 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayout {
   return { regions, dropped };
 }
 
-/** The CSS dimension a region's size applies to. Derived, never stored beside the region. */
+/**
+ * The CSS dimension a region's size applies to. Derived, never stored beside the region.
+ *
+ * ⚠️ Always paired with a `max` bound, because a panel size is a **preference, not a promise**.
+ * `sizePx` comes from the panel registry (or an operator's resize) and knows nothing about the
+ * viewport it will be rendered into. Applied unbounded on a 1024×768 tablet — the standard
+ * control-room iPad — a panel wider than its 256 px region overflowed it and the incident queue
+ * rendered titles as "Suspected concealment — Elec": hard-clipped mid-word, with no ellipsis,
+ * because the text never reached a box small enough to trigger one.
+ *
+ * Clamping here rather than at every call site means a stored size can never exceed the space that
+ * actually exists, on any viewport, for any panel.
+ */
 export function sizeStyle(region: WorkspaceRegion, sizePx: number | undefined) {
   if (sizePx === undefined) return undefined;
-  return regionAxis(region) === 'vertical' ? { height: sizePx } : { width: sizePx };
+  return regionAxis(region) === 'vertical'
+    ? { height: sizePx, maxHeight: '100%' }
+    : { width: sizePx, maxWidth: '100%' };
 }
