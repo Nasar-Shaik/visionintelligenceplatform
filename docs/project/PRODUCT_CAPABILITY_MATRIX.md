@@ -68,15 +68,15 @@ references them rather than restating what a capability is.
 
 ## Detection → response
 
-| id       | Capability                                         | Contract |         Backend          |             Frontend              | Demo |       Pilot       | Prod | Milestone | Dependencies | Owner    |
-| -------- | -------------------------------------------------- | :------: | :----------------------: | :-------------------------------: | :--: | :---------------: | :--: | --------- | ------------ | -------- |
-| **C-24** | Rule authoring (create)                            |    ✅    |            ✅            |                ✅                 |  ✅  |        ✅         |  ✅  | done      | —            | rules    |
-| **C-25** | **Rule editing**                                   |    ✅    |            ✅            | ⛔ **form cannot submit** (TD-21) |  ⛔  |        ⛔         |  ⛔  | **P-6**   | —            | rules    |
-| **C-26** | Rule versions · diff · rollback · dry-run · audit  |    ✅    |            ✅            |            ⚠️ partial             |  ⚠️  |        ⚠️         |  ✅  | **P-6**   | C-25         | rules    |
-| **C-27** | Rule scoping to hierarchy nodes                    |    ✅    |            ✅            |                ✅                 |  ✅  |        ✅         |  ✅  | done      | —            | rules    |
-| **C-28** | Rule state at scale (windowed thresholds)          |    ✅    | ⚠️ **in-process** (TD-7) |                n/a                |  ✅  | ✅ single replica |  ⚠️  | P-14      | Redis        | rules    |
-| **C-29** | Incident lifecycle — raise → ack → resolve → close |    ✅    |            ✅            |                ✅                 |  ✅  |        ✅         |  ✅  | done      | —            | workflow |
-| **C-30** | Incident assignment · SLA · activity               |    ✅    |            ✅            |                ✅                 |  ✅  |        ✅         |  ✅  | done      | —            | workflow |
+| id       | Capability                                         | Contract |         Backend          |  Frontend  | Demo |       Pilot       | Prod | Milestone  | Dependencies | Owner    |
+| -------- | -------------------------------------------------- | :------: | :----------------------: | :--------: | :--: | :---------------: | :--: | ---------- | ------------ | -------- |
+| **C-24** | Rule authoring (create)                            |    ✅    |            ✅            |     ✅     |  ✅  |        ✅         |  ✅  | done       | —            | rules    |
+| **C-25** | Rule editing                                       |    ✅    |            ✅            |     ✅     |  ✅  |        ✅         |  ✅  | done (P-6) | —            | rules    |
+| **C-26** | Rule versions · diff · rollback · dry-run · audit  |    ✅    |            ✅            | ⚠️ partial |  ⚠️  |        ⚠️         |  ✅  | **P-6**    | C-25         | rules    |
+| **C-27** | Rule scoping to hierarchy nodes                    |    ✅    |            ✅            |     ✅     |  ✅  |        ✅         |  ✅  | done       | —            | rules    |
+| **C-28** | Rule state at scale (windowed thresholds)          |    ✅    | ⚠️ **in-process** (TD-7) |    n/a     |  ✅  | ✅ single replica |  ⚠️  | P-14       | Redis        | rules    |
+| **C-29** | Incident lifecycle — raise → ack → resolve → close |    ✅    |            ✅            |     ✅     |  ✅  |        ✅         |  ✅  | done       | —            | workflow |
+| **C-30** | Incident assignment · SLA · activity               |    ✅    |            ✅            |     ✅     |  ✅  |        ✅         |  ✅  | done       | —            | workflow |
 
 ## Investigation
 

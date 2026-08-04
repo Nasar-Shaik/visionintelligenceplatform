@@ -205,7 +205,7 @@ variable bitrate · long recordings · missing frames · corrupted clips.
 **Dependencies:** P-6 blockers cleared · P-7 alerting · P-8 perception · P-9 findings.
 
 Execute [PILOT_INSTALLATION_CHECKLIST](../runbooks/PILOT_INSTALLATION_CHECKLIST.md). Read
-[KNOWN_LIMITATIONS](../review/p59/KNOWN_LIMITATIONS.md) **with** the customer, not at them. Test the
+[KNOWN_LIMITATIONS](KNOWN_LIMITATIONS.md) **with** the customer, not at them. Test the
 restore — do not merely run the backup.
 
 **Exit criteria**

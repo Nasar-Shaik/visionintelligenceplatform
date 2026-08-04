@@ -1,8 +1,8 @@
 {
   "name": "vision-intelligence-platform",
-  "version": "1.0.0",
+  "version": "0.4.0",
   "private": true,
-  "description": "Enterprise multi-tenant Vision Intelligence Platform (monorepo root). Architecture frozen v1.0 \u2014 see docs/.",
+  "description": "Enterprise multi-tenant Vision Intelligence Platform (monorepo root). Architecture frozen v1.0 — see docs/.",
   "type": "module",
   "packageManager": "pnpm@11.17.0",
   "engines": {

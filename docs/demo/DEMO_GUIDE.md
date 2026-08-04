@@ -134,7 +134,7 @@ against the alert, so the next person does not re-investigate it."
 ## What not to claim
 
 Be precise about these. Every one of them is written down in
-[KNOWN_LIMITATIONS.md](../review/p59/KNOWN_LIMITATIONS.md), and a prospect who discovers one after
+[KNOWN_LIMITATIONS.md](../project/KNOWN_LIMITATIONS.md), and a prospect who discovers one after
 you glossed over it will discount everything else you said.
 
 - **No real camera has ever been connected.** The clips are ffmpeg test patterns.

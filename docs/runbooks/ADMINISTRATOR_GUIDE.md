@@ -165,4 +165,4 @@ Tell your users, so they do not discover it during an incident.
 - **Backups are per-collection consistent, not point-in-time.**
 - **No rate limiting at the edge.** Put one in front for an internet-facing deployment.
 
-Full list: [KNOWN_LIMITATIONS.md](../review/p59/KNOWN_LIMITATIONS.md).
+Full list: [KNOWN_LIMITATIONS.md](../project/KNOWN_LIMITATIONS.md).

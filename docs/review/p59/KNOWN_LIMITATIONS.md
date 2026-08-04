@@ -1,4 +1,12 @@
-# Known limitations
+# Known limitations — P-5.9 snapshot
+
+> ⚠️ **Superseded as the living record.** This is the state as it stood at P-5.9 customer
+> certification (2026-08-03), kept because the review package it belongs to must stay readable
+> as it was reviewed.
+>
+> **The canonical, maintained list is
+> [docs/project/KNOWN_LIMITATIONS.md](../../project/KNOWN_LIMITATIONS.md)** — read that one with
+> a customer, and add new limitations there.
 
 Everything a customer would reasonably expect that this platform does not do. Written to be handed
 over, not to be discovered.

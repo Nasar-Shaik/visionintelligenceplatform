@@ -114,7 +114,7 @@ everything down.
 | 9.1 | Operator walked through a real incident, start to finish, unaided                                       | ☐    |
 | 9.2 | [OPERATOR_GUIDE.md](OPERATOR_GUIDE.md) handed over                                                      | ☐    |
 | 9.3 | [ADMINISTRATOR_GUIDE.md](ADMINISTRATOR_GUIDE.md) handed over                                            | ☐    |
-| 9.4 | [KNOWN_LIMITATIONS.md](../review/p59/KNOWN_LIMITATIONS.md) **read together, not just sent**             | ☐    |
+| 9.4 | [KNOWN_LIMITATIONS.md](../project/KNOWN_LIMITATIONS.md) **read together, not just sent**                | ☐    |
 | 9.5 | [CUSTOMER_ACCEPTANCE_CHECKLIST.md](../review/p59/CUSTOMER_ACCEPTANCE_CHECKLIST.md) completed and signed | ☐    |
 | 9.6 | Support route and escalation agreed                                                                     | ☐    |
 | 9.7 | Pilot review date booked                                                                                | ☐    |

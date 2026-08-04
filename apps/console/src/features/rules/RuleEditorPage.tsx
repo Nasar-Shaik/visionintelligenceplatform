@@ -1,10 +1,10 @@
-import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ShieldAlert } from 'lucide-react';
 import { EventCategory } from '@vip/contracts';
+import type { Rule } from '@vip/contracts';
 import { usePermission } from '@/app/hooks';
 import { ApiRequestError } from '@/lib/api/http';
 import { SEVERITY_ORDER, severityTokens } from '@/lib/severity';
@@ -69,36 +69,59 @@ function Field({
   );
 }
 
-/** Create / edit a rule (RHF + Zod). Maps the flat form to the strict CreateRuleInput on submit. */
-export function RuleEditorPage() {
-  const { id } = useParams<{ id: string }>();
+/**
+ * The form itself. **Mounted only once its initial values are known**, and keyed by rule id — see
+ * `RuleEditorPage` below for why that is load-bearing rather than tidy.
+ */
+function RuleEditorForm({ id, rule }: { id: string | undefined; rule: Rule | undefined }) {
   const isEdit = Boolean(id);
   const navigate = useNavigate();
 
-  const canCreate = usePermission('rule:create');
-  const canUpdate = usePermission('rule:update');
-  const authorized = isEdit ? canUpdate : canCreate;
-
-  const ruleQuery = useRule(id);
   const createRule = useCreateRule();
   const updateRule = useUpdateRule(id ?? '');
 
+  /**
+   * ⚠️ **The form is mounted with its values; it is never hydrated afterwards. That was TD-21.**
+   *
+   * An existing rule could not be saved: submit failed validation on `lifecycle` and `severity` with
+   * "Invalid input", so the PATCH never fired. Both are Radix `Select`s behind `Controller`s, and
+   * both were the fields whose stored value *differs* from the form default — `enabled` over
+   * `draft`, `critical` over `medium`. `actionType` and `actionSeverity` are also Controller-driven
+   * Selects and worked, because their stored values happen to equal the defaults. That was the clue.
+   *
+   * ⚠️ **A Radix `Select` cannot adopt a value that changes after it mounts, in this composition.**
+   * Its `SelectItem`s live inside `SelectPrimitive.Portal`, which is not mounted while the menu is
+   * closed — so a value arriving later has no item to resolve against. Radix falls back to its
+   * placeholder and reports an empty value, which is what reached the resolver. Measured in a real
+   * browser against the deployment: the hidden native select read `value=""` with `enabled` present
+   * in its options.
+   *
+   * ⚠️ Two fixes were tried and rejected against that measurement, and both are recorded because
+   * each looks obviously right:
+   *
+   * 1. **`reset()` in an effect** — the original code. Sets form state after mount. No effect on the
+   *    Selects.
+   * 2. **RHF's `values` option** — built for exactly this case, and it also sets state after mount.
+   *    Deployed, measured, still empty. ⚠️ Being the purpose-built API did not make it the right
+   *    one; the constraint is Radix's mount, not RHF's plumbing.
+   *
+   * A `key={field.value}` on each Select does work — measured — and is still wrong: it remounts the
+   * trigger on every selection, which drops keyboard focus and fails the accessibility gate.
+   *
+   * So the form is split. `RuleEditorPage` waits for the data and keys this component by rule id, so
+   * `defaultValues` is correct at the only moment RHF reads it, and every Select mounts once with
+   * the value it will show. It removes the whole class of bug rather than the two instances of it.
+   */
   const {
     register,
     control,
     handleSubmit,
-    reset,
     watch,
     formState: { errors, isDirty },
   } = useForm<RuleFormValues>({
     resolver: zodResolver(ruleFormSchema),
-    defaultValues: DEFAULT_RULE_FORM,
+    defaultValues: rule ? ruleToFormValues(rule) : DEFAULT_RULE_FORM,
   });
-
-  // Hydrate the form once the rule loads (edit mode).
-  useEffect(() => {
-    if (ruleQuery.data) reset(ruleToFormValues(ruleQuery.data));
-  }, [ruleQuery.data, reset]);
 
   const actionType = watch('actionType');
   const windowEnabled = watch('windowEnabled');
@@ -119,51 +142,10 @@ export function RuleEditorPage() {
     }
   });
 
-  if (!authorized) {
-    return (
-      <div className="mx-auto max-w-3xl px-6 py-6">
-        <EmptyState
-          icon={ShieldAlert}
-          title="Not authorized"
-          description={`You don't have permission to ${isEdit ? 'edit' : 'create'} rules.`}
-          action={
-            <Button asChild variant="outline" size="sm">
-              <Link to="/rules">Back to rules</Link>
-            </Button>
-          }
-        />
-      </div>
-    );
-  }
-
-  if (isEdit && ruleQuery.isPending) {
-    return (
-      <div className="mx-auto max-w-5xl space-y-4 px-6 py-6">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
-
-  if (isEdit && ruleQuery.isError) {
-    return (
-      <div className="mx-auto max-w-3xl px-6 py-6">
-        <Alert variant="critical">
-          {ruleQuery.error instanceof ApiRequestError && ruleQuery.error.status === 404
-            ? 'This rule no longer exists.'
-            : 'Could not load the rule.'}
-        </Alert>
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto max-w-5xl px-6 py-6">
       <PageHeader
-        breadcrumbs={[
-          { label: 'Rules' },
-          { label: isEdit ? (ruleQuery.data?.name ?? 'Rule') : 'New rule' },
-        ]}
+        breadcrumbs={[{ label: 'Rules' }, { label: isEdit ? (rule?.name ?? 'Rule') : 'New rule' }]}
         title={isEdit ? 'Edit rule' : 'New rule'}
         description="IF an event matches the triggers and condition, THEN run the action."
         actions={
@@ -524,4 +506,63 @@ export function RuleEditorPage() {
       </div>
     </div>
   );
+}
+
+/**
+ * Data, permission and guard shell for the rule editor.
+ *
+ * ⚠️ **`key={rule?.id ?? 'new'}` is the fix for TD-21, not a tidy-up.** React Hook Form reads
+ * `defaultValues` once, at mount, and a Radix `Select` cannot adopt a value that arrives later — its
+ * items are inside a portal that is unmounted while the menu is closed. Keying the form on the rule
+ * guarantees it mounts exactly once, with the values it will display.
+ *
+ * The guards live here so the form below can assume its data exists.
+ */
+export function RuleEditorPage() {
+  const { id } = useParams<{ id: string }>();
+  const isEdit = Boolean(id);
+  const canCreate = usePermission('rule:create');
+  const canUpdate = usePermission('rule:update');
+  const authorized = isEdit ? canUpdate : canCreate;
+  const ruleQuery = useRule(id);
+
+  if (!authorized) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 py-6">
+        <EmptyState
+          icon={ShieldAlert}
+          title="Not authorized"
+          description={`You don't have permission to ${isEdit ? 'edit' : 'create'} rules.`}
+          action={
+            <Button asChild variant="outline" size="sm">
+              <Link to="/rules">Back to rules</Link>
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
+  if (isEdit && ruleQuery.isPending) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-4 px-6 py-6">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (isEdit && ruleQuery.isError) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 py-6">
+        <Alert variant="critical">
+          {ruleQuery.error instanceof ApiRequestError && ruleQuery.error.status === 404
+            ? 'This rule no longer exists.'
+            : 'Could not load the rule.'}
+        </Alert>
+      </div>
+    );
+  }
+
+  return <RuleEditorForm key={ruleQuery.data?.id ?? 'new'} id={id} rule={ruleQuery.data} />;
 }
