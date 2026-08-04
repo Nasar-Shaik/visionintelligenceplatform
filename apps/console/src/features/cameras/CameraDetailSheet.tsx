@@ -31,13 +31,11 @@ import {
   DRIFT_LABEL,
   FRESHNESS_KIND,
   FRESHNESS_LABEL,
-  HEALTH_KIND,
-  HEALTH_LABEL,
-  LIFECYCLE_KIND,
-  LIFECYCLE_LABEL,
   LIFECYCLE_MEANING,
   SEVERITY_KIND,
   analysisProfile,
+  cameraLifecyclePresentation,
+  healthPresentation,
 } from './cameraPresentation';
 import { EvidenceTimelinePanel } from './EvidenceTimelinePanel';
 import { ProbeHistoryPanel } from './ProbeHistoryPanel';
@@ -91,14 +89,8 @@ export function CameraDetailSheet({
           <SheetTitle>{camera.name}</SheetTitle>
           <SheetDescription>
             <span className="flex items-center gap-3">
-              <StatusIndicator
-                status={LIFECYCLE_KIND[camera.lifecycle.state]}
-                label={LIFECYCLE_LABEL[camera.lifecycle.state]}
-              />
-              <StatusIndicator
-                status={HEALTH_KIND[camera.health.status]}
-                label={HEALTH_LABEL[camera.health.status]}
-              />
+              <StatusIndicator {...cameraLifecyclePresentation(camera.lifecycle.state)} />
+              <StatusIndicator {...healthPresentation(camera.health.status)} />
             </span>
           </SheetDescription>
         </SheetHeader>
@@ -438,7 +430,9 @@ export function CameraDetailSheet({
                       // an installer to a working camera.
                       return;
                     }
-                    toast.success(`Now ${LIFECYCLE_LABEL[report.lifecycle.state].toLowerCase()}`);
+                    toast.success(
+                      `Now ${cameraLifecyclePresentation(report.lifecycle.state).label.toLowerCase()}`,
+                    );
                   },
                   onError: () => toast.error('Could not test the connection'),
                 })
@@ -508,7 +502,7 @@ export function CameraDetailSheet({
               onClick={() =>
                 checkHealth.mutate(camera.id, {
                   onSuccess: (report) =>
-                    toast.success(`Health re-checked: ${HEALTH_LABEL[report.status]}`),
+                    toast.success(`Health re-checked: ${healthPresentation(report.status).label}`),
                   onError: () => toast.error('Could not re-check health'),
                 })
               }

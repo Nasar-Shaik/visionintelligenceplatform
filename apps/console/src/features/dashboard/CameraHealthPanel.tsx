@@ -1,5 +1,4 @@
 import { Camera } from 'lucide-react';
-import type { CameraHealthStatus } from '@vip/contracts';
 import {
   Card,
   CardContent,
@@ -10,15 +9,8 @@ import {
   StatusIndicator,
   TableSkeleton,
 } from '@/ui';
-import type { StatusKind } from '@/lib/status';
+import { healthPresentation } from '@/features/cameras/cameraPresentation';
 import { useCameras } from '@/features/cameras/useCameras';
-
-const HEALTH_KIND: Record<CameraHealthStatus, StatusKind> = {
-  online: 'ok',
-  unhealthy: 'warn',
-  offline: 'error',
-  unknown: 'idle',
-};
 
 /** Per-camera operational health. Polls every 15s. */
 export function CameraHealthPanel() {
@@ -49,11 +41,9 @@ export function CameraHealthPanel() {
             {cameras.map((camera) => (
               <li key={camera.id} className="flex items-center justify-between gap-2 py-2">
                 <span className="truncate text-sm text-foreground">{camera.name}</span>
-                <StatusIndicator
-                  status={HEALTH_KIND[camera.health.status]}
-                  label={camera.health.status}
-                  emphasis
-                />
+                {/* Shared with the Cameras page: one map, and one place an unmapped value is
+                    handled. This panel carried its own copy of it until the roadmap review. */}
+                <StatusIndicator {...healthPresentation(camera.health.status)} emphasis />
               </li>
             ))}
           </ul>

@@ -18,6 +18,13 @@ than only in this file.
 
 ---
 
+> ⚠️ **Regrouped 2026-08-04.** Q-3…Q-9 are unchanged and still unimplemented; what changed is
+> where they sit. The roadmap review found that Q-5, Q-6, Q-7, Q-8 and Q-9 have **no consumer
+> anywhere in the repository** — no service route, no console call — so a milestone scoped as
+> "complete the UI" over them is a back-end milestone wearing a UI label. They are now sequenced
+> with the services that must exist first: **Q-7/Q-8 → P-9**, **Q-5/Q-6/Q-9 → P-10**, **Q-4 → P-11**,
+> **Q-3 → P-6** (Notify already has the routes). See [PRODUCT_ROADMAP](PRODUCT_ROADMAP.md).
+
 ## Queued contract freezes
 
 Each of these was asked for as "define the contract before implementation". They are **their own

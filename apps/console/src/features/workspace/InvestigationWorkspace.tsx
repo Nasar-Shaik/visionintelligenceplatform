@@ -38,18 +38,32 @@ function useViewportTier(): ViewportTier {
 }
 
 /*
- * ⚠️ The side columns are fixed **only above `xl`**, and the centre has no minimum below it.
+ * ⚠️ The side columns are fixed **only above `2xl`**, and the centre has no minimum below it.
  *
  * Measured on a 1024×768 tablet: `w-80` (320 px) + `min-w-[480px]` + the 240 px shell sidebar is
  * 1040 px of hard minimum inside 1024 px of viewport, so the workspace overflowed horizontally and
  * the evidence and playback panels ran off the right edge — on the form factor an operator is most
- * likely to carry. A minimum width is a promise the layout cannot always keep; below `xl` the
- * columns shrink instead.
+ * likely to carry. A minimum width is a promise the layout cannot always keep; below the breakpoint
+ * the columns shrink instead.
+ *
+ * ⚠️ **That promise was moved once and it is worth saying why.** The step was on `xl` (1280 px),
+ * where it enlarges *both* columns and imposes the centre minimum at the same instant:
+ * 240 shell + 320 left + 480 centre + 384 right + gaps = **1448 px of hard minimum inside 1280 px**.
+ * Measured at 1280 and 1440, the right column painted 24 px past its parent and 25–44 elements were
+ * cut off.
+ *
+ * ⚠️ It survived a milestone that checked for horizontal overflow, because the check compared
+ * `document.scrollWidth` with `clientWidth` — and an ancestor here is `overflow-hidden`. **A
+ * container that clips its children reports no page overflow while cutting content off.** Overflow
+ * must be measured on painted boxes (`getBoundingClientRect().right > clientWidth`), not on whether
+ * the document scrolls.
+ *
+ * `2xl` (1536 px) is where the full layout actually fits: 240 + 320 + 480 + 384 + 24 = 1448.
  */
 const REGION_CLASS: Record<WorkspaceRegion, string> = {
-  left: 'flex w-64 flex-none flex-col gap-2 overflow-auto xl:w-80',
-  center: 'flex min-w-0 flex-1 flex-col gap-2 overflow-hidden xl:min-w-[480px]',
-  right: 'flex w-80 flex-none flex-col gap-2 overflow-auto xl:w-96',
+  left: 'flex w-64 flex-none flex-col gap-2 overflow-auto 2xl:w-80',
+  center: 'flex min-w-0 flex-1 flex-col gap-2 overflow-hidden 2xl:min-w-[480px]',
+  right: 'flex w-80 flex-none flex-col gap-2 overflow-auto 2xl:w-96',
   bottom: 'flex flex-none gap-2 overflow-auto',
 };
 

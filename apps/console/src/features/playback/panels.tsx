@@ -30,6 +30,7 @@ import { EvidencePlayer, PlayerSkeleton } from './EvidencePlayer';
 import { PlaybackTimeline } from './PlaybackTimeline';
 import { useBookmarkMutations, useBookmarks, usePlaybackSession } from './usePlayback';
 import { useEvidenceSelection } from './selection';
+import { useCameraName } from '@/features/cameras/useCameras';
 
 interface PanelProps {
   incidentId: string | undefined;
@@ -331,6 +332,7 @@ function MetadataRow({ label, children }: { label: string; children: React.React
 }
 
 export function EvidenceMetadataPanel({ incidentId, unavailableReason }: PanelProps) {
+  const cameraName = useCameraName();
   const evidence = useIncidentEvidence(incidentId);
   const { selectedEvidenceId } = useEvidenceSelection();
   const item: Evidence | undefined = useMemo(
@@ -374,7 +376,7 @@ export function EvidenceMetadataPanel({ incidentId, unavailableReason }: PanelPr
           </MetadataRow>
           <MetadataRow label="Status">{item.status}</MetadataRow>
           {item.source.cameraId ? (
-            <MetadataRow label="Camera">{item.source.cameraId}</MetadataRow>
+            <MetadataRow label="Camera">{cameraName(item.source.cameraId)}</MetadataRow>
           ) : null}
           <MetadataRow label="Retention">
             {item.retention.legalHold

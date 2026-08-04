@@ -23,6 +23,7 @@ import {
   toast,
 } from '@/ui';
 import type { TimelineItem } from '@/ui';
+import { useCameraName } from '@/features/cameras/useCameras';
 import { INCIDENT_STATUS, allowedActions } from './status';
 import {
   useAcknowledgeIncident,
@@ -73,6 +74,8 @@ interface IncidentDetailSheetProps {
 /** Right-side incident detail drawer — lifecycle timeline + operator transitions (ack/resolve/close). */
 export function IncidentDetailSheet({ incidentId, onClose }: IncidentDetailSheetProps) {
   const query = useIncident(incidentId ?? undefined);
+  /* The camera an operator recognises, not the row id. See `useCameraName`. */
+  const cameraName = useCameraName();
   const acknowledge = useAcknowledgeIncident();
   const resolve = useResolveIncident();
   const close = useCloseIncident();
@@ -160,7 +163,7 @@ export function IncidentDetailSheet({ incidentId, onClose }: IncidentDetailSheet
                 <MetaRow
                   icon={Camera}
                   label="Camera"
-                  value={incident.triggeredBy.cameraId ?? '—'}
+                  value={cameraName(incident.triggeredBy.cameraId) ?? '—'}
                 />
                 <MetaRow icon={GitBranch} label="Rule" value={incident.source.ruleName} />
                 <MetaRow icon={Layers} label="Matched" value={String(incident.matchedCount)} />

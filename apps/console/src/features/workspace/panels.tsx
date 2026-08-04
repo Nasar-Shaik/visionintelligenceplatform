@@ -30,6 +30,7 @@ import {
   WorkspaceHealthPanel,
 } from './panels-p53';
 import { EvidenceMetadataPanel, PlaybackPanel } from '@/features/playback/panels';
+import { useCameraName } from '@/features/cameras/useCameras';
 
 export interface PanelContext {
   incidentId: string | undefined;
@@ -221,6 +222,7 @@ function TimelinePanel({ incidentId, unavailableReason }: PanelContext) {
 
 function DetailsPanel({ incidentId, unavailableReason }: PanelContext) {
   const query = useIncident(incidentId);
+  const cameraName = useCameraName();
   const sla = useQuery({
     queryKey: queryKeys.incidents.sla(incidentId ?? ''),
     queryFn: () => incidentsApi.sla(incidentId!),
@@ -244,7 +246,8 @@ function DetailsPanel({ incidentId, unavailableReason }: PanelContext) {
         <Row label="Status" value={query.data?.status} />
         <Row label="Severity" value={query.data?.severity} />
         <Row label="Rule" value={query.data?.source.ruleName} />
-        <Row label="Camera" value={query.data?.triggeredBy.cameraId ?? '—'} />
+        {/* The camera an operator recognises, not the row id. See `useCameraName`. */}
+        <Row label="Camera" value={cameraName(query.data?.triggeredBy.cameraId) ?? '—'} />
         <Row label="Correlation" value={query.data?.correlationId} mono />
         {/*
          * ⚠️ `unknown` is rendered as "not measured", never as a pass. A dashboard that cannot tell

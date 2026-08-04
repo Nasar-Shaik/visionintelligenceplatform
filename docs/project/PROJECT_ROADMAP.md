@@ -1,5 +1,10 @@
 # Project Roadmap — Vision Intelligence Platform
 
+> ⚠️ **Superseded for forward planning by [PRODUCT_ROADMAP](PRODUCT_ROADMAP.md) (2026-08-04).**
+> This file is kept as the delivery _history_ of Phases 0–2 and is no longer updated. The
+> phase table below stops at P2-1; everything from P-3 onward is in
+> [MASTER_PROGRESS](../tracker/MASTER_PROGRESS.md).
+>
 > Top-level delivery map. Architecture is **frozen v1.0** (sections [01–28](../architecture/)); this is the _delivery sequence_ over that architecture. Phase 1 is planned in detail under [`../architecture/phase1/`](../architecture/phase1/README.md).
 
 ```text

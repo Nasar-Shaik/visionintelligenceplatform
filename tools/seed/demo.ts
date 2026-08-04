@@ -38,6 +38,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { MongoClient, type Db } from 'mongodb';
+import type { CameraHealthStatus } from '@vip/contracts';
 import { hashPassword } from '@vip/auth';
 import { loadDotEnv } from '@vip/config';
 
@@ -101,8 +102,19 @@ interface CameraSpec {
   name: string;
   /** Which zone (by local key) the camera sits in. */
   zone: string;
-  /** `offline` and `degraded` exist so the estate does not look implausibly perfect. */
-  health?: 'online' | 'offline' | 'degraded';
+  /**
+   * `offline` and `unhealthy` exist so the estate does not look implausibly perfect.
+   *
+   * ⚠️ **Typed from the contract, and it was not.** This field was declared as a local string union
+   * containing `'degraded'` — which is a *lifecycle* state, not a member of `CameraHealthStatus`.
+   * The seed writes straight to Mongo, so nothing validated it; the camera service served it; and
+   * `HEALTH_KIND['degraded']` returned `undefined`, which white-screened `/cameras` in three of the
+   * four demo tenants. It survived a milestone that certified the UI with zero findings.
+   *
+   * A seed that invents its own vocabulary is a seed that can write records the product cannot
+   * render. Every enum in this file comes from `@vip/contracts` for that reason.
+   */
+  health?: Extract<CameraHealthStatus, 'online' | 'offline' | 'unhealthy'>;
 }
 
 interface ZoneSpec {
@@ -170,7 +182,7 @@ const RETAIL: Vertical = {
       id: 'cam_retail_stockroom2',
       name: 'Stock Room — Rear Fire Exit',
       zone: 'stockroom',
-      health: 'degraded',
+      health: 'unhealthy',
     },
     { id: 'cam_retail_carpark', name: 'Car Park — North', zone: 'carpark' },
     {
@@ -325,7 +337,12 @@ const WAREHOUSE: Vertical = {
   cameras: [
     { id: 'cam_wh_fence_n', name: 'Perimeter — North Fence', zone: 'perimeter' },
     { id: 'cam_wh_fence_e', name: 'Perimeter — East Fence', zone: 'perimeter' },
-    { id: 'cam_wh_fence_w', name: 'Perimeter — West Fence', zone: 'perimeter', health: 'degraded' },
+    {
+      id: 'cam_wh_fence_w',
+      name: 'Perimeter — West Fence',
+      zone: 'perimeter',
+      health: 'unhealthy',
+    },
     { id: 'cam_wh_gate', name: 'Vehicle Gate', zone: 'perimeter' },
     { id: 'cam_wh_yard', name: 'Loading Yard — Overview', zone: 'yard' },
     { id: 'cam_wh_bay3', name: 'Loading Bay 3', zone: 'yard' },
@@ -556,7 +573,7 @@ const HOSPITAL: Vertical = {
     { id: 'cam_hosp_ward_corridor', name: 'Ward 4 — Corridor', zone: 'ward' },
     { id: 'cam_hosp_ward_bay', name: 'Ward 4 — Bay 2', zone: 'ward' },
     { id: 'cam_hosp_pharmacy', name: 'Pharmacy Store — Door', zone: 'pharmacy' },
-    { id: 'cam_hosp_carpark', name: 'Visitor Car Park', zone: 'carpark', health: 'degraded' },
+    { id: 'cam_hosp_carpark', name: 'Visitor Car Park', zone: 'carpark', health: 'unhealthy' },
   ],
   operators: [
     {

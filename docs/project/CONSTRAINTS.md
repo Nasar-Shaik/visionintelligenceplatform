@@ -652,6 +652,43 @@
       against either is refused with a warning rather than shipping unreadable controls. — _enforced:
       `applyBrandColor()` computes WCAG contrast before applying anything._
 
+111.  **The first thing a UI check asserts is that the page rendered.** P-5.9 audited eleven pages for
+      overflow, tap targets, focus rings and contrast and reported zero findings while `/cameras` was
+      rendering the route error boundary for three of the four demo tenants. A page that has crashed
+      has no overflow, no unlabelled controls and no contrast failures — **it scores perfectly.** —
+      _enforced: `docs/review/roadmap-2026-08/verify.mjs` fails on any `pageerror` or console error
+      before any other measurement runs._
+
+112.  **Overflow is measured on painted boxes, never on whether the document scrolls.** The same
+      milestone reported zero horizontal overflow across 11 pages × 5 viewports by comparing
+      `document.scrollWidth` with `clientWidth`, while the workspace painted its right column 24 px
+      past its parent at 1280 px and 1440 px. **A container that clips its children reports no page
+      overflow while cutting content off.** Anything inside an `overflow-x: auto` ancestor is excluded,
+      because a wide table that scrolls is correct behaviour. — _enforced:
+      `docs/review/roadmap-2026-08/overflow.mjs`._
+
+113.  **A seed consumes the contracts; it never invents a vocabulary.** `tools/seed/demo.ts` writes
+      straight to Mongo, so nothing validates it. It declared camera health as a local string union
+      containing `'degraded'` — a _lifecycle_ word, not a member of `CameraHealthStatus`. The service
+      served the record, the console's `Record<CameraHealthStatus, …>` lookup returned `undefined`, and
+      the page crashed. **Any writer that bypasses the service must import the contract types**, so the
+      compiler enforces what the schema would have. — _enforced: `CameraSpec.health` is typed from
+      `@vip/contracts`._
+
+114.  **A display map never crashes on a value outside its enum.** A `Record<DomainState, …>` lookup
+      type-checks at every call site and still returns `undefined` at runtime for a stored value that
+      never belonged to the enum. Presentation resolves through a function that falls back — the value
+      renders as itself, in a neutral tone, following `orgTypeLabel`: a missing translation should look
+      wrong, not look empty, and it must never look like a crash. — _enforced: `statusTokens` returns
+      `idle` rather than `undefined`; `healthPresentation` / `cameraLifecyclePresentation`; pinned by
+      `cameraPresentation.status.test.ts`._
+
+115.  **An affordance that does nothing is worse than an absent one.** The console carefully declares
+      unbuilt dependencies `not-built` to the operator, and simultaneously renders a global search
+      input — with a placeholder, in the centre of the top bar, on every screen — that has no `value`,
+      no `onChange` and no handler. Every honest empty state is undermined by one control that lies. A
+      control ships wired, disabled with a stated reason, or not at all. — _enforced: review; TD-46._
+
 ## Engineering process
 
 15. **Never choose a dependency version from memory.** Registry-verify latest stable; no alpha/beta/rc unless requested; document in [DEPENDENCIES](DEPENDENCIES.md). — _enforced: CI `--frozen-lockfile`; DEPENDENCIES review._

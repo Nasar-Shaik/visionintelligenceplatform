@@ -23,6 +23,41 @@
 | R-014 | MLflow/Postgres/S3 dev credentials are placeholders; MLflow runs without auth/TLS (dev-scoped)                                 | Security                 | High   | Low         | **Med**  | Dev-only; prod needs auth/TLS + KMS secrets (P0-6, [ED-0015](ENGINEERING_DECISION_LOG.md))                                                  | Claude | Open       |
 | R-015 | `.env`-only secrets have no built-in rotation/audit/leasing that a managed store provides                                      | Security / Operational   | Med    | Low         | **Low**  | Accepted for the self-host model (ADR-0018); protect env via OS/orchestrator; managed store is an optional future extension point           | Claude | Accepted   |
 
+## Re-scored 2026-08-04 — roadmap review
+
+⚠️ **This register had not been touched since Phase 0 Slice 4, while the platform reached customer
+certification.** Four risks above describe a world that no longer exists, and the risks that actually
+matter now were not in it. Both halves of that are recorded rather than quietly rewritten.
+
+### Closed by evidence
+
+| ID    | Why it closed                                                                                                                                                                |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R-004 | "Dev stack authored but not yet launched." The platform now runs as 16 containers in a production deployment that has been destroyed and restored twice (P-5.8)              |
+| R-005 | "No performance/load testing." P-5.8 pushed 3,000 detections through the real NATS pipeline → 3,000 events → 27 incidents at ≥600 events/s, reads p50 9 ms                   |
+| R-010 | "Tenant isolation is a non-enforcing seam." Enforced and verified — 25/25 security checks in P-5.8, including a token whose tenant header was ignored in favour of its claim |
+| R-003 | Security scanners have run. Local gate green across every milestone                                                                                                          |
+
+### Raised by this review
+
+| ID        | Description                                                                                                                                                                                | Category    | Impact | Prob | Severity | Mitigation                                                                                                                                      | Status     |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------- | ------ | ---- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| **R-016** | **No camera or NVR of any make has ever been connected.** Every claim about vendor compatibility is untested. This is the single largest unknown in the product                            | Customer    | High   | High | **High** | Recorded honestly, never simulated. [CCTV_READINESS](../review/p59/CCTV_READINESS.md): ~2 engineer-weeks, one camera per vendor family. **P-8** | Open       |
+| **R-017** | **The product is sold on "intelligence" and detects `person`.** No behaviour analyzer exists (TD-14); the media frame sink is null (TD-4); inference defaults to the `stub` backend (TD-5) | Customer    | High   | High | **High** | Named plainly in [KNOWN_LIMITATIONS](../review/p59/KNOWN_LIMITATIONS.md) and stated before a pilot is signed, not after. **P-7**                | Open       |
+| **R-018** | **A user account cannot be disabled** (TD-44). An offboarded employee keeps access to a security product                                                                                   | Security    | High   | High | **High** | Additive Identity routes + console screen. **P-6, blocking a pilot**                                                                            | Open       |
+| **R-019** | **A green check can certify a broken product.** Two P-5.9 measurements passed while the thing they measured was broken — a crashed page scored a perfect accessibility audit               | Process     | High   | Med  | **High** | §111/§112: render first, measure overflow on painted boxes. Both checks are now scripts in the review package rather than ad-hoc                | Mitigating |
+| **R-020** | **Five frozen contract families have no implementation** — search, saved investigations, jobs, reporting, access audit. A milestone scoped as "UI only" over them is a back-end milestone  | Delivery    | Med    | High | **Med**  | Made explicit in [PRODUCT_ROADMAP](PRODUCT_ROADMAP.md); those capabilities are sequenced as P-9/P-10 with their services                        | Mitigating |
+| **R-021** | **A demo dataset can write records the product cannot render** (ED-0072). The seed bypasses service validation by design                                                                   | Quality     | Med    | Med  | **Med**  | §113 — any writer bypassing the service imports the contract types. Enforced by the compiler in `demo.ts`                                       | Mitigating |
+| **R-022** | **`*:read` grants every future read permission to every viewer** (TD-26). Each new read permission silently widens existing roles                                                          | Security    | Med    | Med  | **Med**  | Enumerate read permissions per role before GA. **P-13**                                                                                         | Open       |
+| **R-023** | **Backups are per-collection consistent, not point-in-time** (TD-38); no rate limiting at the edge (TD-39); no retention sweeps (TD-18)                                                    | Operational | Med    | Med  | **Med**  | Each scheduled at P-13, where the pain first appears; restore itself is proven                                                                  | Open       |
+| **R-024** | **Rule windowed state is in-process** (TD-7). Starting a second replica silently under-counts threshold rules                                                                              | Scale       | High   | Low  | **Med**  | Single-replica is the pilot topology. Redis-backed state before any horizontal scale-out. **P-13**                                              | Accepted   |
+
+### Re-scored
+
+- **R-006** (product-market fit unvalidated) — raised to **High**. It has been open since Phase 0 and
+  is now the gating question: no customer has ever used this, and no camera has ever been connected.
+- **R-013**, **R-014** remain open and unchanged; both are dev-scoped MLOps concerns.
+
 ## New this sprint (Slice 3 + governance)
 
 - **R-010** raised — tenant seam is non-enforcing in Phase 0.

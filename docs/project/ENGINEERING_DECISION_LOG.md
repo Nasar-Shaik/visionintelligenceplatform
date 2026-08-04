@@ -1362,3 +1362,71 @@ what the platform does, and you must ask what it is evidence of. ED-0068: a gree
 about whether anyone can reach the feature. ED-0069: all of those describe the environment they ran
 in. **ED-0071: a UI review describes the _data_ it was run against — and against one row, everything
 looks finished.**
+
+## ED-0072 — the roadmap review: a check that cannot fail is not a check
+
+**Date:** 2026-08-04 · **Context:** roadmap review after P-5.9 approval, before P-6.
+
+The review was asked for as a product-owner exercise: group the backlog by customer capability, ask
+of every item "will a paying customer notice this?", and produce a roadmap that reads like a
+commercial product. It did that. It also, on the way, opened the product in the deployment it had
+just certified — and found the Cameras page white-screening.
+
+**What was found.** `/cameras` rendered the route error boundary with
+`TypeError: Cannot read properties of undefined (reading 'label')`, for every operator in three of
+the four demo tenants. The chain: `tools/seed/demo.ts` declared camera health as a local string union
+containing `'degraded'`, which is a _lifecycle_ word and not a member of `CameraHealthStatus`; the
+seed writes straight to Mongo, so nothing validated it; the camera service served the record
+unchanged; the console's `HEALTH_KIND[...]` returned `undefined`; `statusTokens(undefined)` returned
+`undefined`; and `StatusIndicator` read `.label` off it.
+
+Four things had to be true at once, and each of them individually looked reasonable.
+
+**⚠️ How it survived a milestone that certified the UI with zero findings.** The P-5.9 audit measured
+overflow, tap targets, focus rings, heading order and contrast across eleven pages. **A page that has
+crashed has no overflow, no unlabelled controls and no contrast failures. It scores perfectly.** The
+audit could not have found this defect, and reported a clean result with total confidence.
+
+**⚠️ And a second measurement in the same milestone was wrong in the same way.** "Zero horizontal
+overflow across 11 pages × 5 viewports" compared `document.scrollWidth` with `clientWidth`. The
+Investigation Workspace was painting its right column 24 px past its parent at 1280 px and 1440 px —
+the two most common operator laptop widths — with 25 to 44 elements cut off, because an ancestor is
+`overflow-hidden`. A container that clips its children reports no page overflow while cutting content
+off. The `xl:` breakpoint enlarged both side columns _and_ imposed a 480 px centre minimum at the same
+instant: 1448 px of hard minimum inside 1280 px of viewport.
+
+Rewriting that check honestly took two attempts. Measuring painted boxes reported 23 failures — most
+of them wide tables inside `overflow-x: auto` containers, which is correct behaviour. **A check that
+flags correct behaviour is as useless as one that misses a defect**, and both are the same error:
+measuring something adjacent to the question instead of the question.
+
+**What was decided.**
+
+1. **P-5.x is closed.** Nine slices took the platform from incident management to customer
+   certification and answered "is what we built correct, deployable and presentable?" The remaining
+   work answers a different question — "is it enough for someone to pay for?" — and that is answered
+   by capability, not another verification pass. New phases P-6…P-13, grouped by customer capability.
+2. **Search, reporting and dashboards moved later; live video and real perception moved earlier.**
+   Five contract families frozen during P-5 — search, saved investigations, jobs, reporting, access
+   audit — have **no consumer anywhere in the repository**. "Complete the UI" for them is a back-end
+   milestone wearing a UI label. Meanwhile the two gaps a buyer notices in the first ten minutes of a
+   demo of a _CCTV_ product — no live view, no behaviour detection — were not on the near roadmap at
+   all.
+3. **Ten backlog items left the critical path** under the "will a customer notice?" test, and are
+   recorded as debt rather than deleted.
+
+**What was fixed, because it was proven by running software.** The crash, at both ends: the seed now
+types its enums from `@vip/contracts`, and the presentation layer degrades instead of throwing
+(§113, §114). The workspace breakpoint moved to `2xl`, where the layout actually fits. Four surfaces
+still rendering a raw camera id under a column headed "Camera" — P-5.9 fixed two of six.
+
+**What was deliberately not fixed.** The unresponsive shell below `md` (TD-45) needs an off-canvas
+drawer, which is a design decision rather than a patch. The inert global search box (TD-46) needs a
+product decision — wire it or disable it — and both are P-6. Improvising either inside a roadmap
+review is how a review becomes an unreviewed milestone.
+
+**The general lesson.** ED-0066: a screenshot shows what you shipped. ED-0067: a measurement shows
+what the platform does — ask what it is evidence of. ED-0068: a green suite says nothing about
+whether anyone can reach the feature. ED-0069: all of those describe the environment they ran in.
+ED-0071: a UI review describes the data it was run against. **ED-0072: a check that cannot fail is
+not a check — and the way to tell is to ask what result would have made it red.**

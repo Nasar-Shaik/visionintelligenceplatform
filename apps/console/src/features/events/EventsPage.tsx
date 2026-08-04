@@ -26,6 +26,7 @@ import {
   TableRow,
   TableSkeleton,
 } from '@/ui';
+import { useCameraName } from '@/features/cameras/useCameras';
 import { useEventsInfinite } from './useEvents';
 
 /** Event timeline — URL-backed filters (severity + search), density toggle, cursor pagination. */
@@ -44,6 +45,8 @@ export function EventsPage() {
     setParams(next, { replace: true });
   };
 
+  /* The camera an operator recognises, not the row id — the same resolver the queue uses. */
+  const cameraName = useCameraName();
   const query = useEventsInfinite({ limit: 50 });
   const events = useMemo(() => query.data?.pages.flatMap((p) => p.events) ?? [], [query.data]);
 
@@ -129,7 +132,9 @@ export function EventsPage() {
                   {timeAgo(e.occurredAt)}
                 </TableCell>
                 <TableCell className="font-medium text-foreground">{e.type}</TableCell>
-                <TableCell className="tabular text-muted-foreground">{e.cameraId ?? '—'}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {cameraName(e.cameraId) ?? '—'}
+                </TableCell>
                 <TableCell>
                   <SeverityBadge severity={e.priority as EventPriority} dot />
                 </TableCell>

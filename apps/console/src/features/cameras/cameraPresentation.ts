@@ -36,6 +36,22 @@ export const HEALTH_LABEL: Record<CameraHealthStatus, string> = {
 };
 
 /**
+ * Read a stored health status through the maps above, tolerating one that is not in the enum.
+ *
+ * ⚠️ These maps are `Record<CameraHealthStatus, …>`, so every call site type-checks — and a value
+ * that reached the database without passing the contract still returns `undefined` at runtime. A
+ * demo camera stored `"degraded"` (a *lifecycle* word) and `/cameras` white-screened for every
+ * operator in that tenant.
+ *
+ * An unmapped value now renders as itself, in the `idle` colour, following `orgTypeLabel`: a missing
+ * translation should look wrong, not look empty — and it must never look like a crash.
+ */
+export function healthPresentation(status: string): { status: StatusKind; label: string } {
+  const known = status as CameraHealthStatus;
+  return { status: HEALTH_KIND[known] ?? 'idle', label: HEALTH_LABEL[known] ?? status };
+}
+
+/**
  * The stream profile the runtime will actually analyze, and why it matters to show it.
  *
  * Analyzing a 4K main stream when a 640×360 sub-stream would do wastes decode and inference budget
@@ -155,6 +171,15 @@ export const LIFECYCLE_KIND: Record<CameraLifecycleState, StatusKind> = {
   offline: 'error',
   retired: 'idle',
 };
+
+/**
+ * The lifecycle counterpart of `healthPresentation`, tolerant of a state outside the enum.
+ * Qualified `camera…` because rules have their own, different, `lifecyclePresentation`.
+ */
+export function cameraLifecyclePresentation(state: string): { status: StatusKind; label: string } {
+  const known = state as CameraLifecycleState;
+  return { status: LIFECYCLE_KIND[known] ?? 'idle', label: LIFECYCLE_LABEL[known] ?? state };
+}
 
 /** One line explaining what a lifecycle state actually means, for the operator who has not read the ADR. */
 export const LIFECYCLE_MEANING: Record<CameraLifecycleState, string> = {

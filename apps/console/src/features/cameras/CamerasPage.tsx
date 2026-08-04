@@ -34,11 +34,11 @@ import { AddCameraDialog } from './AddCameraDialog';
 import { CameraDetailSheet } from './CameraDetailSheet';
 import { DiscoveryDialog } from './DiscoveryDialog';
 import {
-  HEALTH_KIND,
   HEALTH_LABEL,
-  LIFECYCLE_KIND,
   LIFECYCLE_LABEL,
+  cameraLifecyclePresentation,
   capabilitySummary,
+  healthPresentation,
   matchesSearch,
 } from './cameraPresentation';
 import { useCameras, useDeleteCamera } from './useCameras';
@@ -272,16 +272,10 @@ export function CamerasPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <StatusIndicator
-                      status={LIFECYCLE_KIND[camera.lifecycle.state]}
-                      label={LIFECYCLE_LABEL[camera.lifecycle.state]}
-                    />
+                    <StatusIndicator {...cameraLifecyclePresentation(camera.lifecycle.state)} />
                   </TableCell>
                   <TableCell>
-                    <StatusIndicator
-                      status={HEALTH_KIND[camera.health.status]}
-                      label={HEALTH_LABEL[camera.health.status]}
-                    />
+                    <StatusIndicator {...healthPresentation(camera.health.status)} />
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {locationLabels.get(camera.zoneId) ?? '—'}

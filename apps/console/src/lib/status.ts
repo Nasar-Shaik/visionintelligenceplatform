@@ -18,8 +18,20 @@ const STATUS: Record<StatusKind, StatusTokens> = {
   idle: { token: 'status-idle', label: 'Idle' },
 };
 
-export function statusTokens(kind: StatusKind): StatusTokens {
-  return STATUS[kind];
+/**
+ * ⚠️ **Total, and it took a whole page down.** A single demo camera carried
+ * `health.status: "degraded"` — a *lifecycle* word, not a member of the frozen `CameraHealthStatus`
+ * enum. `HEALTH_KIND[...]` returned `undefined`, `STATUS[undefined]` returned `undefined`, and
+ * reading `.label` off it threw inside `StatusIndicator`. One unexpected string in one row of nine
+ * white-screened `/cameras` in the production deployment.
+ *
+ * The row was wrong and has been fixed at its source. This is the second half of that fix: a
+ * design-system primitive rendering an unknown status must degrade to `idle`, not take the page with
+ * it. The same class as TD-33 — a formatter that assumes its input is well-formed is a page crash
+ * waiting for the first record that is not.
+ */
+export function statusTokens(kind: StatusKind | undefined): StatusTokens {
+  return (kind === undefined ? undefined : STATUS[kind]) ?? STATUS.idle;
 }
 
 /** Map common domain state strings to a status kind (camera/stream/delivery/health). */

@@ -17,7 +17,12 @@ import {
   MessageSquare,
   ShieldCheck,
 } from 'lucide-react';
-import type { EvidenceChainLink, IncidentStatus, WorkspaceDependencyHealth } from '@vip/contracts';
+import type {
+  EvidenceChainLink,
+  IncidentStatus,
+  WorkspaceDependency,
+  WorkspaceDependencyHealth,
+} from '@vip/contracts';
 import { DEPENDENCY_STATE_RANK } from '@vip/contracts';
 import { incidentsApi } from '@/lib/api/incidents';
 import { evidenceApi } from '@/lib/api/evidence';
@@ -199,6 +204,17 @@ export function EvidenceChainPanel({ incidentId, unavailableReason }: PanelConte
 // Workspace health (rec 8)
 // ---------------------------------------------------------------------------------------------
 
+/** Dependency id → the word an operator reads. The one place an identifier becomes English. */
+const DEPENDENCY_LABEL: Record<WorkspaceDependency, string> = {
+  events: 'Events',
+  evidence: 'Evidence',
+  playback: 'Playback',
+  ai: 'AI',
+  notifications: 'Notifications',
+  jobs: 'Jobs',
+  search: 'Search',
+};
+
 const STATE_TONE: Record<string, string> = {
   unreachable: 'text-critical',
   degraded: 'text-warning',
@@ -246,7 +262,10 @@ export function WorkspaceHealthPanel({ incidentId }: PanelContext) {
                 aria-hidden
               />
             )}
-            <span className="text-xs capitalize text-text">{entry.dependency}</span>
+            {/* ⚠️ Named, not `capitalize`d. CSS title-casing turned the `ai` dependency into "Ai",
+                which sits beside "Jobs" and "Search" looking like a typo. An identifier becomes a
+                word in exactly one place, the same rule `orgTypeLabel` follows. */}
+            <span className="text-xs text-text">{DEPENDENCY_LABEL[entry.dependency]}</span>
             {/* ⚠️ Never colour alone — the state is spelled out (DESIGN_SYSTEM §12 rule 1). */}
             <span className={cn('ml-auto text-2xs', STATE_TONE[entry.state])}>
               {entry.state.replace('-', ' ')}

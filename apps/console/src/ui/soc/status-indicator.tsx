@@ -20,7 +20,13 @@ const TEXT: Record<StatusKind, string> = {
 };
 
 export interface StatusIndicatorProps extends HTMLAttributes<HTMLSpanElement> {
-  status: StatusKind;
+  /**
+   * ⚠️ Accepts `undefined` deliberately. Callers resolve this through a `Record<DomainState, …>`
+   * lookup, and a record that has fallen behind its enum — or a stored value that never belonged to
+   * one — hands this component `undefined` at runtime while type-checking cleanly at the call site.
+   * That happened, and it white-screened `/cameras`. See `statusTokens`.
+   */
+  status: StatusKind | undefined;
   label?: string;
   pulse?: boolean;
   /** Colour the label too (default: muted text, coloured dot only). */
@@ -28,13 +34,15 @@ export interface StatusIndicatorProps extends HTMLAttributes<HTMLSpanElement> {
 }
 
 export function StatusIndicator({
-  status,
+  status: kind,
   label,
   pulse = false,
   emphasis = false,
   className,
   ...props
 }: StatusIndicatorProps) {
+  /* Normalise once: an unknown kind renders as `idle` rather than throwing. */
+  const status: StatusKind = kind !== undefined && kind in DOT ? kind : 'idle';
   const resolved = label ?? statusTokens(status).label;
   // Empty label => dot-only, but keep an accessible name (never colour-only, a11y §8).
   const hidden = resolved === '';
