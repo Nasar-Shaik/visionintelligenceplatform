@@ -174,10 +174,29 @@ real bug in the engine that a green run would never have surfaced.
 To add a verification for a future milestone — ONVIF discovery, tracking accuracy, behaviour
 benchmarks:
 
-1. Write `scripts/nightly/stages/<id>.sh` following the contract above.
+1. Write `scripts/nightly/stages/<domain>/<id>.sh` following the contract above — the folder is the
+   domain it verifies, not the kind of check it is. `runtime/benchmark.sh` and `tracking/benchmark.sh`
+   are both benchmarks and are deliberately separate files, because what they measure diverges:
+   frames per second on one side, identity stability on the other. Grouping by check type instead
+   would produce one `benchmark.sh` that grows a branch per capability, and the first thing a new
+   capability would have to do is edit a file every other capability depends on.
 2. Add a `RUN_<ID>` switch and a `TIMEOUT_<ID>` to `nightly.config`.
 3. Add one line to the profiles that should include it.
 4. If it produces numbers worth trending, write `metrics/<id>.json` and teach `report.mjs` to read it.
 
 Until step 1 exists, the manifest line reports **not-implemented** — which is a useful state to ship
 deliberately, because it turns a roadmap item into something a run tells you about.
+
+### ⚠️ A stage may not write to a tracked file
+
+Every underlying script takes `OUT=` and is pointed into the run directory. This was found the hard
+way: three stages overwrote committed evidence, so every night rewrote the repository it was
+verifying and tripped the deployment-integrity check that asserts the tree is clean.
+
+### What P-8 Phase 4 added, as a worked example
+
+Object tracking arrived as **five stages in one new folder** (`tracking/`) plus five rows per
+profile. The engine was not touched, `report.mjs` was not touched, and no existing stage changed.
+That is the property the domain layout exists to preserve — and the reason the folders for rules,
+incidents, camera assignment, analytics and the verticals are named in
+[`stages/README.md`](../../scripts/nightly/stages/README.md) before anything fills them.

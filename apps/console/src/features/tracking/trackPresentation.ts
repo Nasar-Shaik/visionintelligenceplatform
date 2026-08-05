@@ -1,4 +1,3 @@
-import { Badge } from '@/ui';
 import type { TrackMotion, TrackState, TrackingOverview } from './useTracking';
 
 /**
@@ -24,22 +23,6 @@ export const STATE_DESCRIPTION: Record<TrackState, string> = {
   lost: 'Not visible right now — the engine is holding the identity open.',
   removed: 'Gone long enough that the identity was closed.',
 };
-
-const STATE_VARIANT: Record<TrackState, 'neutral' | 'outline' | 'warning' | 'success'> = {
-  created: 'outline',
-  tentative: 'outline',
-  confirmed: 'success',
-  lost: 'warning',
-  removed: 'neutral',
-};
-
-export function TrackStateBadge({ state }: { state: TrackState }) {
-  return (
-    <Badge variant={STATE_VARIANT[state]} title={STATE_DESCRIPTION[state]}>
-      {STATE_LABEL[state]}
-    </Badge>
-  );
-}
 
 /**
  * ⚠️ **"Not measured", never "0".**

@@ -41,20 +41,21 @@ references them rather than restating what a capability is.
 
 ## Estate
 
-| id        | Capability                                   | Contract |           Backend            |          Frontend           | Demo |           Pilot            | Prod | Milestone         | Dependencies | Owner     |
-| --------- | -------------------------------------------- | :------: | :--------------------------: | :-------------------------: | :--: | :------------------------: | :--: | ----------------- | ------------ | --------- |
-| **C-07**  | Location hierarchy (8 levels, skippable)     |    ✅    |              ✅              |             ✅              |  ✅  |             ✅             |  ✅  | done              | —            | tenant    |
-| **C-08**  | Camera registry & onboarding                 |    ✅    |              ✅              |             ✅              |  ✅  |             ✅             |  ✅  | done              | —            | camera    |
-| **C-09**  | Camera discovery (ONVIF)                     |    ✅    |              ✅              |             ✅              |  ✅  | ⬜ never met a real device |  ✅  | **P-9**           | hardware     | camera    |
-| **C-10**  | Camera capabilities & stream probes          |    ✅    |              ✅              | ⚠️ client calls it; UI thin |  ⚠️  |       ⬜ unvalidated       |  ✅  | **P-6** → **P-9** | hardware     | camera    |
-| **C-11**  | Camera health, measured                      |    ✅    |              ✅              |             ✅              |  ✅  |       ⬜ unvalidated       |  ✅  | **P-9**           | hardware     | camera    |
-| **C-12**  | Camera lifecycle — retire · reinstate · bulk |    ✅    |              ✅              |             ✅              |  ✅  |             ✅             |  ✅  | **P-6**           | —            | camera    |
-| **C-13**  | NVR / DVR channel onboarding                 |    ✅    |      ✅ templates exist      |             ✅              |  ⚠️  |  ⬜ **never met an NVR**   |  ⚠️  | **P-9**           | hardware     | camera    |
-| **C-14**  | Media catalogue — clips & recordings         |    ✅    |              ✅              |  ⛔ **no console client**   |  ⛔  |             ⛔             |  ✅  | **P-6**           | —            | media     |
-| **C-14a** | ⚠️ **Recording — corrected 2026-08-05**      |    ✅    |              ✅              |             n/a             |  ✅  |       ⬜ unvalidated       |  ✅  | **P-8 Phase 2**   | —            | media     |
-| **C-14b** | ⚠️ **AI inference — real detections**        |    ✅    |              ✅              |  ✅ reporting only (C-14c)  |  ✅  |       ⬜ unvalidated       |  ✅  | **P-8 Phase 3**   | —            | inference |
-| **C-14c** | Selective AI processing (per-camera enable)  |    ⛔    |              ⛔              |             ⛔              |  ⛔  |             ⛔             |  ⛔  | **P-8 Phase 4**   | C-14b        | media     |
-| **C-15**  | Camera zone referential integrity            |    ✅    | ⚠️ shape-checked only (TD-3) |             n/a             |  ✅  |             ⚠️             |  ⚠️  | **P-6**           | —            | camera    |
+| id        | Capability                                     | Contract |           Backend            |          Frontend           | Demo |           Pilot            | Prod | Milestone         | Dependencies | Owner     |
+| --------- | ---------------------------------------------- | :------: | :--------------------------: | :-------------------------: | :--: | :------------------------: | :--: | ----------------- | ------------ | --------- |
+| **C-07**  | Location hierarchy (8 levels, skippable)       |    ✅    |              ✅              |             ✅              |  ✅  |             ✅             |  ✅  | done              | —            | tenant    |
+| **C-08**  | Camera registry & onboarding                   |    ✅    |              ✅              |             ✅              |  ✅  |             ✅             |  ✅  | done              | —            | camera    |
+| **C-09**  | Camera discovery (ONVIF)                       |    ✅    |              ✅              |             ✅              |  ✅  | ⬜ never met a real device |  ✅  | **P-9**           | hardware     | camera    |
+| **C-10**  | Camera capabilities & stream probes            |    ✅    |              ✅              | ⚠️ client calls it; UI thin |  ⚠️  |       ⬜ unvalidated       |  ✅  | **P-6** → **P-9** | hardware     | camera    |
+| **C-11**  | Camera health, measured                        |    ✅    |              ✅              |             ✅              |  ✅  |       ⬜ unvalidated       |  ✅  | **P-9**           | hardware     | camera    |
+| **C-12**  | Camera lifecycle — retire · reinstate · bulk   |    ✅    |              ✅              |             ✅              |  ✅  |             ✅             |  ✅  | **P-6**           | —            | camera    |
+| **C-13**  | NVR / DVR channel onboarding                   |    ✅    |      ✅ templates exist      |             ✅              |  ⚠️  |  ⬜ **never met an NVR**   |  ⚠️  | **P-9**           | hardware     | camera    |
+| **C-14**  | Media catalogue — clips & recordings           |    ✅    |              ✅              |  ⛔ **no console client**   |  ⛔  |             ⛔             |  ✅  | **P-6**           | —            | media     |
+| **C-14a** | ⚠️ **Recording — corrected 2026-08-05**        |    ✅    |              ✅              |             n/a             |  ✅  |       ⬜ unvalidated       |  ✅  | **P-8 Phase 2**   | —            | media     |
+| **C-14b** | ⚠️ **AI inference — real detections**          |    ✅    |              ✅              |  ✅ reporting only (C-14c)  |  ✅  |       ⬜ unvalidated       |  ✅  | **P-8 Phase 3**   | —            | inference |
+| **C-14c** | Selective AI processing (per-camera enable)    |    ⛔    |              ⛔              |             ⛔              |  ⛔  |             ⛔             |  ⛔  | **P-9+**          | C-14b        | media     |
+| **C-14d** | ⚠️ **Object tracking — persistent identities** |    ✅    |              ✅              |    ✅ read-only, 4 pages    |  ✅  |       ⬜ unvalidated       |  ✅  | **P-8 Phase 4**   | C-14b        | inference |
+| **C-15**  | Camera zone referential integrity              |    ✅    | ⚠️ shape-checked only (TD-3) |             n/a             |  ✅  |             ⚠️             |  ⚠️  | **P-6**           | —            | camera    |
 
 > ⚠️ **C-14a is a correction, and it is the reason the row exists.** Until 2026-08-05 the media image
 > **contained no `ffmpeg`**, so every stream start in a deployment failed with `spawn ffmpeg ENOENT`
@@ -81,6 +82,27 @@ references them rather than restating what a capability is.
 > same commit, so it straddles the budget line and is marked provisional rather than quoted. ⚠️ **Detection consistency held at exactly 2.00
 > per frame at every rung including saturation** — under pressure the runtime drops whole frames
 > rather than returning worse answers, which is a capacity limit and not a correctness bug.
+>
+> ⚠️ **C-14d — tracking, P-8 Phase 4 (2026-08-05).** Detections became **identities**: the runtime now
+> holds tracking state per (tenant, camera) and answers "where did object X move?". Verified against
+> **authored ground truth** rather than observation — four clips with written-down trajectories played
+> through real RTSP — because "was the answer right?" is only askable when the right answer is known.
+> All five identity properties hold on the deployment: one id while continuously visible; the id
+> survives a 3.0 s occlusion; the frame genuinely empties on departure; a return gets a **new** id
+> linked to the old one (`identityId`, `precededBy`, `recoveries=1`); and two people crossing keep
+> their own lanes (vertical spread 0.004 and 0.006) rather than swapping. Tracking costs **≤0.11 ms
+> per frame** against ~50 ms of inference.
+>
+> ⚠️ **The frozen id policy was NOT relaxed to do it.** A returning object never gets its old id back —
+> that would break "ids are never reused" silently, for every consumer already holding one. Re-entry is
+> a link ([ADR-0038](../adr/ADR-0038-track-identity-across-gaps.md)).
+>
+> ⚠️ **Frontend is ✅ for reporting and nothing else.** Live Tracks, Track Detail, Track Timeline and
+> Runtime Track Statistics are read-only: no rule editing, no incident generation, no acknowledgement,
+> and no control that configures the engine. ⬜ Pilot stays unvalidated — the fixtures are composited
+> sprites on authored paths, not real CCTV, and [L-1](KNOWN_LIMITATIONS.md) stands. Limits disclosed as
+> [L-42](KNOWN_LIMITATIONS.md) (appearance-blind re-entry), [L-43](KNOWN_LIMITATIONS.md) (no
+> cross-camera identity) and [L-44](KNOWN_LIMITATIONS.md) (frame widths, not metres).
 >
 > ⛔ **C-14c is not built, and the row exists so nobody assumes otherwise.** A customer cannot choose
 > which cameras are analysed. Today every recording camera's frames are offered and the runtime drops

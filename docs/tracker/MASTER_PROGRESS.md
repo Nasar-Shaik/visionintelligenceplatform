@@ -155,6 +155,57 @@ _Last updated: 2026-08-05 · Claude_
   labelled series. Verified: `inference.mjs` all green · `runtime-ui.mjs` all green in a browser ·
   python **928** · media **51**. **TD-5 resolved · TD-63 escalated to high (6–8 cores at 16 cameras) ·
   TD-64 opened (no accuracy gates).** `15ab3a1`
+- **P-8 Phase 4 · object tracking ✅ complete, ⏳ awaiting review (2026-08-05)** — detections became
+  **identities**. Phase 3 proved a model runs; every result it produced was an observation in one
+  frame and nothing connected them. The live path had nowhere to keep tracking state: media posts
+  each frame to `POST /infer` as an independent request, with no session, no ordering guarantee and
+  nothing surviving between two frames of the same camera — which is exactly what a tracker needs. A
+  `RuntimeTracker` now holds state per **(tenant, camera)**, created lazily on the first frame that
+  actually arrives, so **Camera Processing Assignment (C-14c) can arrive without a redesign**: it
+  changes which frames are sent, and this module already only knows about cameras that sent
+  something. ⚠️ **The frozen `Track` contract's id policy was NOT relaxed to handle re-entry**, and
+  that was the design decision of the phase — the obvious implementation hands a returning object its
+  old id back, which breaks "ids are never reused" **silently**, for every consumer already holding
+  one. Re-entry is a **link** (`identityId`, `precededBy`, `recoveries`), never a reassignment
+  ([ADR-0038](../adr/ADR-0038-track-identity-across-gaps.md)). **Verified against authored ground
+  truth rather than observation**: the Phase 3 fixture loops a still photograph, so every identity
+  question — stability, occlusion, disappearance, termination, crossing — is unanswerable against it.
+  Four clips with written-down trajectories, built from the boxes the **deployed model** returns, now
+  play through real RTSP, and all five properties hold: **one id while continuously visible** (heading
+  measured as "right", the direction the clip was authored to walk); **the id survives a measured
+  3.0 s occlusion**; the frame **genuinely empties** on departure; a return gets a **new** id with
+  `identityId` and `precededBy` pointing at the old one after a **measured 6.5 s** absence; and two
+  people crossing keep their own lanes (vertical spread **0.004 and 0.006**). ⚠️ **The crossing clip
+  puts the two subjects at different heights on purpose** — after they cross, left and right have
+  swapped, so position alone cannot distinguish a correct tracker from one that exchanged the
+  identities, and an identity swap is the failure that costs nothing visible: both people still have
+  an id, the counts still add up, the dashboard is still green. Capacity ladder: identity intact
+  through the measured rungs with tracking costing **≤0.11 ms per frame** against ~50 ms of inference.
+  **Four operator pages, read-only** — Live Tracks, Track Detail, Track Timeline, Runtime Track
+  Statistics — with no rule editing, no incident generation, no acknowledgement, and a browser check
+  asserting **zero inputs** on the statistics page. ⚠️ Speed is reported in **frame widths per second**
+  with the unit on every reading, because metres per second needs camera calibration this platform
+  does not have and a bare number on a CCTV page will be read as m/s; dwell is labelled **geometry**
+  and the single occurrence of "loitering" on the detail page is the denial, counted by a test.
+  **Defects found by running it, and two were in the product:** ⚠️ `createdTracks` was summed across
+  **live** camera states, so releasing an idle camera made a lifetime total **fall** and the capacity
+  ladder differenced it into **−2 identities** — a total assembled from deliberately transient state
+  is not a total; and two tenants using the same camera id minted **byte-identical track ids**. The
+  rest were in the verification: association treated every healthy track as "coasting" so no identity
+  ever survived a frame; IoU cannot recover a real occlusion because it does not degrade but
+  **collapses** (a walker who slowed from 0.040 to 0.033 units/frame scored 0.43 against a 0.45 gate
+  and was issued a new identity); a fixed sampling window made a _faster_ walker appear hidden for
+  **longer**; the track-id mutation ran against a one-person clip where a recycled id is
+  indistinguishable from a correct one and reported green; and two benchmark checks passed
+  **vacuously** on zero identities. Nightly stages **tracking · tracking-deployment ·
+  tracking-browser · tracking-benchmark · tracking-mutations** registered, and the stage tree
+  restructured into domain folders (`platform/` `runtime/` `tracking/`) so a capability adds a folder
+  rather than editing a file every other capability depends on. Limits disclosed: **L-42**
+  (appearance-blind re-entry), **L-43** (no cross-camera identity), **L-44** (frame widths, not
+  metres); debt **TD-65** (`pnpm test` flaky under parallel load), **TD-66** (re-entry budgets
+  configured, not calibrated), **TD-67** (tracking state does not survive a restart).
+  [C-14d](../project/PRODUCT_CAPABILITY_MATRIX.md) · [ADR-0038](../adr/ADR-0038-track-identity-across-gaps.md).
+
 - **P-8 Phase 3H · production hardening ✅ complete, ⏳ awaiting review (2026-08-05)** — no new
   capability: the question was whether the inference platform is **sellable**, not whether it works.
   **Sizing is now measured and computed rather than estimated: 4 cameras per host at 2 fps on a

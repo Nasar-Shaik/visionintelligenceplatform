@@ -49,23 +49,39 @@ Every one accepts:
 | `report.mjs`  | Turns the journal, statuses and metrics into `summary.md`, `verification.md`, `benchmark.md`, `INDEX.md` |
 | `selftest.sh` | **Tests the runner itself** — 15 checks, no containers. Run it after changing the engine                 |
 
-### The 13 stages — `scripts/nightly/stages/`
+### The 18 stages — `scripts/nightly/stages/`
 
-| Stage         | What it verifies                                                                                 |            Roughly | Wraps                      |
-| ------------- | ------------------------------------------------------------------------------------------------ | -----------------: | -------------------------- |
-| `preflight`   | Docker up, containers healthy, disk, runtime healthy, tree clean. **Aborts the run if it fails** |                2 s | —                          |
-| `gate`        | format · typecheck · lint · unit tests · build · python                                          |           2–10 min | `pnpm` + `unittest`        |
-| `deployment`  | Every running byte is the committed byte                                                         |              2 min | `deployment-integrity.mjs` |
-| `boundary`    | Contracts, the perception boundary, the import graph                                             |               10 s | `verify:contracts`         |
-| `runtime`     | Real inference end to end through a camera                                                       |             10 min | `p8/inference.mjs`         |
-| `dashboard`   | The operator page in a real browser                                                              |              5 min | `p8/runtime-ui.mjs`        |
-| `integration` | Cross-service integration tests                                                                  |              5 min | `pnpm test:integration`    |
-| `stability`   | Continuous inference — memory, CPU, queue, latency, drops, detection consistency                 | **`SOAK_MINUTES`** | `p8/inference-soak.mjs`    |
-| `benchmark`   | Warm-up, reproducibility, the capacity ladder                                                    |             15 min | `p8/hardening.mjs`         |
-| `mutation`    | Break the platform 7 ways, confirm each verification goes red for its own reason                 |          45–60 min | `p8/mutations.mjs`         |
-| `cleanup`     | Prune runs, reclaim build cache (weekly only)                                                    |              1 min | `cleanup.sh`               |
-| `report`      | The morning summary. **Always runs, even after an abort**                                        |                2 s | `report.mjs`               |
-| `_preamble`   | Not a stage — the shared header every stage sources                                              |                  — | —                          |
+Stages are grouped by the **domain** they verify — `platform/`, `runtime/`, `tracking/` — so a new
+capability adds a folder and its rows rather than editing a file every other capability depends on.
+See [`scripts/nightly/stages/README.md`](nightly/stages/README.md) for the taxonomy and the folders
+reserved for rules, incidents, camera assignment, analytics and the verticals.
+
+| Stage                 | What it verifies                                                                                 |            Roughly | Wraps                       |
+| --------------------- | ------------------------------------------------------------------------------------------------ | -----------------: | --------------------------- |
+| `preflight`           | Docker up, containers healthy, disk, runtime healthy, tree clean. **Aborts the run if it fails** |                2 s | —                           |
+| `gate`                | format · typecheck · lint · unit tests · build · python                                          |           2–10 min | `pnpm` + `unittest`         |
+| `deployment`          | Every running byte is the committed byte                                                         |              2 min | `deployment-integrity.mjs`  |
+| `boundary`            | Contracts, the perception boundary, the import graph                                             |               10 s | `verify:contracts`          |
+| `runtime`             | Real inference end to end through a camera                                                       |             10 min | `p8/inference.mjs`          |
+| `dashboard`           | The operator page in a real browser                                                              |              5 min | `p8/runtime-ui.mjs`         |
+| `integration`         | Cross-service integration tests                                                                  |              5 min | `pnpm test:integration`     |
+| `stability`           | Continuous inference — memory, CPU, queue, latency, drops, detection consistency                 | **`SOAK_MINUTES`** | `p8/inference-soak.mjs`     |
+| `benchmark`           | Warm-up, reproducibility, the capacity ladder                                                    |             15 min | `p8/hardening.mjs`          |
+| `mutation`            | Break the platform 7 ways, confirm each verification goes red for its own reason                 |          45–60 min | `p8/mutations.mjs`          |
+| `tracking`            | ⚠️ The five identity properties against **authored** ground truth, over real RTSP                |              4 min | `p8/tracking.mjs`           |
+| `tracking-deployment` | The tracking engine is in the running image, reachable, still off the gateway                    |               15 s | `p8/tracking-deploy.mjs`    |
+| `tracking-browser`    | The four track pages, every number traced to the payload behind it                               |              3 min | `p8/tracking-ui.mjs`        |
+| `tracking-benchmark`  | tracks/s, identity stability, lost, recovered, CPU, RAM at 1→16 cameras                          |              8 min | `p8/tracking-benchmark.mjs` |
+| `tracking-mutations`  | Break tracking 5 ways — id, association, occlusion, direction, lifetime                          |          25–35 min | `p8/tracking-mutations.mjs` |
+| `cleanup`             | Prune runs, reclaim build cache (weekly only)                                                    |              1 min | `cleanup.sh`                |
+| `report`              | The morning summary. **Always runs, even after an abort**                                        |                2 s | `report.mjs`                |
+| `_preamble`           | Not a stage — the shared header every stage sources                                              |                  — | —                           |
+
+⚠️ **`tracking` is the only stage that asks whether the answer was RIGHT.** Every other stage asks
+whether the platform produced one. It can ask the harder question because its input is authored: four
+clips whose trajectories are written down before the run. The clips are **generated on every run**
+from the boxes the deployed model returns, so a model change that moves the crops moves the fixtures
+with it.
 
 ---
 

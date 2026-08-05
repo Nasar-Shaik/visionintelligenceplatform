@@ -20,13 +20,8 @@ import {
   TableRow,
 } from '@/ui';
 import { useLiveTracks, useTrackingOverview, type Track } from './useTracking';
-import {
-  TrackStateBadge,
-  asDistance,
-  asSpeed,
-  headingText,
-  unavailableReason,
-} from './trackPresentation';
+import { TrackStateBadge } from './TrackStateBadge';
+import { asDistance, asSpeed, headingText, unavailableReason } from './trackPresentation';
 
 const STATES = ['all', 'confirmed', 'tentative', 'lost'] as const;
 

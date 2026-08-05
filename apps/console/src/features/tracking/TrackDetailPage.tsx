@@ -17,14 +17,8 @@ import {
   QueryBoundary,
 } from '@/ui';
 import { useTrackDetail, type Track } from './useTracking';
-import {
-  TrackStateBadge,
-  asDistance,
-  asPercent,
-  asSeconds,
-  asSpeed,
-  headingText,
-} from './trackPresentation';
+import { TrackStateBadge } from './TrackStateBadge';
+import { asDistance, asPercent, asSeconds, asSpeed, headingText } from './trackPresentation';
 import { TrackPath } from './TrackPath';
 
 /**

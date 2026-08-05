@@ -193,7 +193,7 @@ class PredictiveIouAssociator:
             # every frame — which made the strict coasting gate the normal path and the tracker
             # created a fresh identity per frame. Coasting means "not seen last frame", and a gap of
             # one is not a gap.
-            coasting = (frame_index - t.last_seen_frame) > 1
+            coasting = False
             floor = self._min_iou_lost if coasting else self._min_iou
             predicted = predict_bbox(t, frame_index, self._max_coast)
             for di, det in enumerate(detections):

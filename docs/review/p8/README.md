@@ -381,3 +381,50 @@ pnpm verify:contracts                      # includes tools/contracts/perception
 snapshot in a `finally`, and `restore` reverses the exact substitutions if a run is killed — but it
 is the one script here that writes to the working tree, and it should not be run with unrelated
 work in flight.
+
+## P-8 Phase 4 — object tracking
+
+Detections became **identities**. The scripts below are the evidence.
+
+| Script                   | Asks                                                                         |
+| ------------------------ | ---------------------------------------------------------------------------- |
+| `tracking-fixtures.mjs`  | can the deployed model see the clips at all, and is the background empty?    |
+| `tracking.mjs`           | do the five identity properties hold, against **authored** ground truth?     |
+| `tracking-deploy.mjs`    | is the engine in the running image, reachable, and still off the gateway?    |
+| `tracking-ui.mjs`        | does every number on the four pages trace to a payload the browser received? |
+| `tracking-benchmark.mjs` | what does tracking cost, and does identity survive load?                     |
+| `tracking-mutations.mjs` | does each verification fail at the check that **names** the fault?           |
+
+### ⚠️ This is the first verification here that asks whether the answer was RIGHT
+
+Everything else in this directory asks whether the platform produced an answer. Identity questions
+cannot be asked that way: "did this person keep the same id?" has no answer unless you already know
+it was the same person. So the input is four clips with **written-down trajectories** — real person
+pixels cropped at the boxes the deployed model returns, composited on a plain background, played
+through the same `mediamtx → ffmpeg → JPEG → runtime` path production uses.
+
+⚠️ **They are not real CCTV footage.** No motion blur, no lighting change, no perspective, no gait.
+[L-1](../../project/KNOWN_LIMITATIONS.md) stands. They prove the tracking **logic** on known input;
+tracker performance on real video is P-9's question. That is exactly why the ground truth is
+authored — on real footage nobody knows the right answer, so nothing can be asserted, only observed.
+
+### The clips are generated, not committed
+
+`ground-truth.json` is committed because it is the contract the assertions are written against and
+must be reviewable in a diff. The `.mp4` and `.png` files are not: they are derived binary that any
+machine rebuilds in twenty seconds, and a committed video is a thing that silently stops matching the
+generator that claims to produce it.
+
+Regenerate before running anything:
+
+```sh
+node docs/review/p8/tracking-fixtures.mjs --verify
+```
+
+### ⚠️ The crossing scenario, and why the two people walk at different heights
+
+An identity **swap** is the failure that costs nothing visible: both people still have an id, the
+counts still add up, the dashboard is still green. It is only wrong at "who was that?". After two
+people cross, left and right have exchanged places — so position alone cannot distinguish a correct
+tracker from one that swapped them. Height does not swap. Without that, the scenario would look
+rigorous and assert nothing.

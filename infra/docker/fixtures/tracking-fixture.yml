@@ -34,7 +34,7 @@ paths:
   # one camera was running or two, so only ONE camera was ever receiving video and every rung above
   # the first was silently measuring a single stream. Independent paths also match what the ladder
   # claims to be simulating — real cameras are separate sources, not readers of a shared one.
-  "~^walk[0-9]+$":
+  '~^walk[0-9]+$':
     runOnDemand: >-
       ffmpeg -re -i /fixtures/media/tracking/walk.mp4
       -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p

@@ -174,6 +174,49 @@ deployment advertises is set by the AI tier, not by the video tier.
 
 ---
 
+## 🧭 Object tracking — what identity costs (P-8 Phase 4)
+
+**Clean host.** One walking person per camera, each on its own RTSP path, 20 s window after 8 s
+warm-up. Raw samples: [`docs/review/p8/tracking-capacity.json`](../review/p8/tracking-capacity.json).
+
+⚠️ **The source is a motion clip, not the still photograph the ladder above uses.** A stationary
+subject produces one track that never has to be re-associated, so identity stability against it is
+100 % by construction and measures nothing.
+
+| Cameras | Offered fps | Analysed fps | Identities (truth = cameras) | Extra identities | Tracking cost/frame |
+| ------: | ----------: | -----------: | ---------------------------: | ---------------: | ------------------: |
+|   **1** |         2.0 |          2.0 |                        **1** |            **0** |             0.10 ms |
+|   **2** |         4.0 |          4.0 |                        **2** |            **0** |             0.10 ms |
+|   **4** |         8.1 |          8.1 |                        **4** |            **0** |             0.11 ms |
+
+⚠️ **Tracking is a rounding error beside inference.** ~0.1 ms per frame against ~50 ms of inference —
+about **0.2 %**. Identity is not what limits camera count; frame throughput is, and the sizing above
+is unchanged by tracking.
+
+⚠️ **"Extra identities" is ground-truth based and named for what it measures.** One walking person
+per camera means `cameras` identities is the right answer; anything above it is the engine
+fragmenting or switching. It is **not** an identity-switch count — distinguishing a fragment from a
+swap needs a labelled dataset. Swap behaviour is proved separately, against authored scenarios.
+
+### Identity behaviour, measured against authored ground truth
+
+Not a benchmark — a set of assertions, each with a written-down right answer. See
+[`docs/review/p8/tracking.mjs`](../review/p8/tracking.mjs).
+
+| Property                           | Measured                                                            |
+| ---------------------------------- | ------------------------------------------------------------------- |
+| Continuously visible → one id      | **1 id**, heading reported as the authored direction                |
+| Survives occlusion                 | **1 id** across a **3.0 s** blind window (engine holds 4 s)         |
+| Survives a disappearance           | frame genuinely empties; **6.5 s** absence measured                 |
+| Terminates, and a return is linked | **new** id, `precededBy` + `identityId` on the old, `recoveries=1`  |
+| Two people crossing                | **2 ids**, vertical spread **0.004** and **0.006** — no lane change |
+
+⚠️ **Composited sprites on a plain background, not real CCTV.** No motion blur, no lighting change,
+no perspective, no gait. [L-1](KNOWN_LIMITATIONS.md) stands. These prove the tracking logic on known
+input; tracker performance on real video is P-9's question.
+
+---
+
 ## Model warm-up — measured, and it earns less than expected
 
 |                          | Unwarmed (`INFERENCE_ONNX_WARMUP=0`) | Warmed (committed default) |

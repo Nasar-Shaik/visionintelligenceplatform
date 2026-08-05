@@ -108,14 +108,19 @@ const MUTATIONS = [
   {
     name: 'trackid',
     breaks: 'track ids are recycled instead of being unique per session',
-    scenario: 'walk',
+    scenario: 'crossing',
     /*
-     * ⚠️ A constant id makes every detection look like the same object forever. On the walk clip
-     * that still yields "one id", so the check that must catch it is the IDENTITY one: a first
-     * appearance must be its own identity, and with a fixed id the second track's identityId points
-     * at the first track's id.
+     * ⚠️ CROSSING, not walk — and the first version got this wrong in an instructive way.
+     *
+     * A constant track id makes every object look like the same object forever. On a clip with ONE
+     * person that is indistinguishable from correct behaviour: there is one identity either way, so
+     * "exactly one track id" passes and the mutation reported green. Measured, not reasoned.
+     *
+     * Two people is where a recycled id becomes visible: the second spawn overwrites the first in
+     * the live store, so two people collapse into one identity and the crossing check fails on the
+     * count. That is the check that names this fault.
      */
-    expect: ['a continuously visible person holds exactly ONE track id', 'a first appearance is its own identity'],
+    expect: ['both people were tracked'],
     file: 'ai/inference/track_manager.py',
     apply: () =>
       rewrite('ai/inference/track_manager.py', (s) =>
@@ -143,7 +148,9 @@ const MUTATIONS = [
     name: 'occlusion',
     breaks: 'a coasting track is not predicted forward, so it cannot be re-acquired',
     scenario: 'occlusion',
-    expect: ['the identity SURVIVES the occlusion — one id across the gap'],
+    // ⚠️ The label only, no detail. `verify()` splits each red line on ' — ' to separate the
+    // check from its detail, so an expectation carrying the detail can never match.
+    expect: ['the identity SURVIVES the occlusion'],
     file: 'ai/inference/tracker.py',
     /*
      * ⚠️ Prediction AND distance re-acquisition are both disabled, because either alone recovers the
@@ -192,7 +199,7 @@ const MUTATIONS = [
      * With `max_age` effectively infinite the departed track never terminates, so the returning
      * person is re-associated onto the SAME id — which the re-entry check catches as "no new id".
      */
-    expect: ['a return after termination gets a NEW track id — ids are never reused'],
+    expect: ['a return after termination gets a NEW track id'],
     file: 'ai/inference/track_manager.py',
     apply: () =>
       rewrite('ai/inference/track_manager.py', (s) =>
