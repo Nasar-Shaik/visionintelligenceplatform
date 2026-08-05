@@ -246,8 +246,15 @@ export function registerEventPublisherMetrics(
          * ⚠️ A `null` reading is OMITTED, not written as 0 (ADR-0039). "No publish has been timed
          * yet" and "publishes take no time" are opposite statements that render identically as a
          * zero on a graph, and only one of them is good news.
+         *
+         * ⚠️ **`remove()`, not "skip the set()".** The first version simply did not call `set()` —
+         * and prom-client initialises an unlabelled gauge to 0 at construction, so the series was
+         * published as `0` regardless. It was caught by scraping the deployment and seeing
+         * `media_event_publisher_publish_ms_avg 0` on a publisher that had never published. Removing
+         * the entry is what actually omits the sample; not setting it only omits the update.
          */
-        if (value !== null) this.set(value);
+        if (value === null) this.remove();
+        else this.set(value);
       },
     });
   }

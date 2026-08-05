@@ -185,6 +185,14 @@ services:
       INFERENCE_URL: ${INFERENCE_URL:-http://inference:8085}
       MEDIA_FRAME_QUEUE_PER_CAMERA: ${MEDIA_FRAME_QUEUE_PER_CAMERA:-2}
       MEDIA_FRAME_MAX_INFLIGHT: ${MEDIA_FRAME_MAX_INFLIGHT:-4}
+      # ⚠️ The Event Bridge (P-8 Phase 5) — the one variable that turns publishing on. Off keeps the
+      # pre-Phase-5 behaviour exactly: frames are analysed and nothing is published. Publishing is
+      # non-blocking, bounded per camera and drops under pressure, so a slow or absent broker costs
+      # events and never segments — the same hard requirement as the perception seam above.
+      MEDIA_EVENT_BRIDGE_ENABLED: ${MEDIA_EVENT_BRIDGE_ENABLED:-1}
+      MEDIA_EVENT_QUEUE_PER_CAMERA: ${MEDIA_EVENT_QUEUE_PER_CAMERA:-16}
+      MEDIA_EVENT_MAX_INFLIGHT: ${MEDIA_EVENT_MAX_INFLIGHT:-4}
+      MEDIA_EVENT_MAX_ATTEMPTS: ${MEDIA_EVENT_MAX_ATTEMPTS:-2}
     depends_on:
       <<: *infra-deps
       minio: { condition: service_healthy }

@@ -1,0 +1,108 @@
+{
+  "at": "2026-08-05T19:51:31.766Z",
+  "observeSeconds": 24,
+  "samples": {
+    "before": {
+      "enabled": true,
+      "offered": 52,
+      "published": 45,
+      "rejected": 0,
+      "suppressed": 6,
+      "droppedQueueFull": 0,
+      "droppedOutOfOrder": 1,
+      "delayed": 0,
+      "retries": 0,
+      "failed": 0,
+      "queueDepth": 0,
+      "activeCameras": 0,
+      "inflight": 0,
+      "publishMsAvg": 0.9555555555555556,
+      "throughputPerSecond": null,
+      "detectionsPublished": 45,
+      "brokerStatus": "up",
+      "publisherVersion": "1.0.0",
+      "lastPublishedAt": "2026-08-05T19:49:31.709Z",
+      "payloadSchemaVersion": "1.1"
+    },
+    "after": {
+      "enabled": true,
+      "offered": 98,
+      "published": 85,
+      "rejected": 0,
+      "suppressed": 12,
+      "droppedQueueFull": 0,
+      "droppedOutOfOrder": 1,
+      "delayed": 0,
+      "retries": 0,
+      "failed": 0,
+      "queueDepth": 0,
+      "activeCameras": 0,
+      "inflight": 0,
+      "publishMsAvg": 0.765625,
+      "throughputPerSecond": 2,
+      "detectionsPublished": 85,
+      "brokerStatus": "up",
+      "publisherVersion": "1.0.0",
+      "lastPublishedAt": "2026-08-05T19:51:29.112Z",
+      "payloadSchemaVersion": "1.1"
+    },
+    "envelopes": 3,
+    "sample": {
+      "id": "8959a38f-0ca6-42e8-8fa8-64750e8977ff",
+      "type": "perception.person.detected",
+      "envelopeVersion": "1.0.0",
+      "category": "perception",
+      "schemaVersion": "1.0.0",
+      "tenantId": "tnt_demo_retail",
+      "cameraId": "cam_a0af185a2e254d1cb3e26615cb20d84b",
+      "occurredAt": "2026-08-05T19:51:20.046Z",
+      "ingestedAt": "2026-08-05T19:51:20.110Z",
+      "producer": {
+        "capability": "perception.person-detection",
+        "capabilityVersion": "0.1.0",
+        "modelVersion": "1.0.0"
+      },
+      "confidence": 0.916447,
+      "subjects": [
+        {
+          "class": "person",
+          "bbox": [0.111058, 0.417881, 0.138998, 0.53213],
+          "trackId": "trk_cam_a0af185a2e254d1cb3e26615cb20d84b_live-tnt_demo_retail-cam_a0af185a2e254d1cb3e26615cb20d84b_1",
+          "identityId": "trk_cam_a0af185a2e254d1cb3e26615cb20d84b_live-tnt_demo_retail-cam_a0af185a2e254d1cb3e26615cb20d84b_1"
+        }
+      ],
+      "payload": {
+        "label": "person",
+        "executionProvider": "CPUExecutionProvider",
+        "runtimeVersion": "0.1.0",
+        "frameId": "tnt_demo_retail:cam_a0af185a2e254d1cb3e26615cb20d84b:27",
+        "frameSeq": 27
+      },
+      "evidenceRefs": [],
+      "priority": "info",
+      "correlationId": "tnt_demo_retail:cam_a0af185a2e254d1cb3e26615cb20d84b:27"
+    },
+    "dedup": {
+      "countBefore": 3,
+      "countAfter": 4
+    },
+    "rule": {
+      "ruleId": "3d90db25-5732-4b1d-923c-8b30d5d3cb48",
+      "ruleName": "p8-bridge any person detection",
+      "ruleVersion": 2,
+      "evaluations": 4,
+      "matches": 4,
+      "failures": 0,
+      "avgEvaluationMicros": 2.7915000027860515,
+      "maxEvaluationMicros": 3.208000009180978,
+      "lastEvaluatedAt": "2026-08-05T19:51:30.109Z",
+      "lastMatchedAt": "2026-08-05T19:51:30.109Z"
+    }
+  },
+  "findings": [
+    {
+      "label": "delivery is AT-LEAST-ONCE, not exactly-once",
+      "detail": "JetStream collapses a repeated msgId inside the stream dedup window and the events service collapses a repeated dedupKey inside a time bucket — both are WINDOWS, so a replay after them produces a second event. Consumers must be idempotent."
+    }
+  ]
+}

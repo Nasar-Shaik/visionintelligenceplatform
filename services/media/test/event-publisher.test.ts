@@ -383,6 +383,50 @@ describe('metrics', () => {
   });
 });
 
+describe('the metrics endpoint', () => {
+  it('⚠️ OMITS an unmeasured average rather than publishing it as 0', async () => {
+    /*
+     * The defect this covers, found by scraping the deployment: prom-client initialises an
+     * unlabelled gauge to 0 at construction, so a collector that simply declines to call `set()`
+     * still publishes `metric 0`. A dashboard then shows "publishes take no time" on a publisher
+     * that has never reached the broker. `remove()` is what actually omits the sample.
+     */
+    const { Registry } = await import('prom-client');
+    const { registerEventPublisherMetrics } =
+      await import('../src/transport/plugins/observability.js');
+    const registry = new Registry();
+    const { publisher } = make();
+    registerEventPublisherMetrics(registry, publisher);
+
+    const before = await registry.metrics();
+    expect(before).not.toMatch(/^media_event_publisher_publish_ms_avg /m);
+    expect(before).not.toMatch(/^media_event_publisher_throughput_per_second /m);
+    /* The counters ARE present at zero — a zero count is a measurement. */
+    expect(before).toMatch(/^media_event_publisher_published_total 0/m);
+
+    publisher.publish(result());
+    await settle();
+
+    const after = await registry.metrics();
+    expect(after).toMatch(/^media_event_publisher_publish_ms_avg /m);
+  });
+
+  it('⚠️ distinguishes a broker never tried (0) from one that failed (-1)', async () => {
+    const { Registry } = await import('prom-client');
+    const { registerEventPublisherMetrics } =
+      await import('../src/transport/plugins/observability.js');
+    const registry = new Registry();
+    const { publisher } = make({ behaviour: { fail: 99 }, maxAttempts: 1 });
+    registerEventPublisherMetrics(registry, publisher);
+
+    expect(await registry.metrics()).toMatch(/^media_event_publisher_broker_status 0/m);
+    publisher.publish(result());
+    await settle();
+    /* An alert must be able to tell "not yet tried" from "tried and failed". */
+    expect(await registry.metrics()).toMatch(/^media_event_publisher_broker_status -1/m);
+  });
+});
+
 describe('camera assignment compatibility', () => {
   it('tracks which cameras it holds state for', async () => {
     const { publisher } = make();
