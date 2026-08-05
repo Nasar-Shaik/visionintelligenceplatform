@@ -254,7 +254,14 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.inference
-      args: { INFERENCE_BACKEND: stub }
+      # ⚠️ **onnx, not stub** (P-8 Phase 3). The stub backend returns a fabricated detection for any
+      # bytes at all — useful for exercising the pipeline, and indistinguishable from a working
+      # product to anyone reading a dashboard. The deployed runtime now runs real models.
+      # ⚠️ Block style, not `{ ... }`. A `${VAR:-default}` inside a YAML flow mapping is a parse
+      # error — the `}` closes the mapping early — and compose reports it as a syntax error 200
+      # lines from anything you edited.
+      args:
+        INFERENCE_BACKEND: ${INFERENCE_BACKEND:-onnx}
     image: vip/inference:local
     # ⚠️ PID 1 reaping. `Dockerfile.service` uses tini; this image installs no apt packages, so the
     # equivalent comes from compose. The process installs its own SIGTERM handler either way.
@@ -269,11 +276,20 @@ services:
       # ⚠️ Both of these are QUOTED because YAML reads a bare `null` as the null value, which compose
       # then treats as "inherit from the host environment" — a silent misconfiguration that would
       # look identical to a correct one until something tried to publish.
-      INFERENCE_BACKEND: 'stub'
+      INFERENCE_BACKEND: ${INFERENCE_BACKEND:-onnx}
       INFERENCE_EVENT_SINK: 'null'
       NATS_URL: nats://nats:4222
       INFERENCE_MAX_SESSIONS: ${INFERENCE_MAX_SESSIONS:-8}
       INFERENCE_DEPLOYMENT_PROFILE: ${INFERENCE_DEPLOYMENT_PROFILE:-}
+      # ⚠️ `local`: models come from the checksummed catalogue inside the image, not from MLflow. A
+      # production container whose model set is decided by a dev-stack tracking server it must reach
+      # at boot has that server on its critical path, and the model it runs stops being a property
+      # of the image. MLflow remains the authoring path (INFERENCE_MODEL_SOURCE=mlflow).
+      INFERENCE_MODEL_SOURCE: 'local'
+      # Empty = run the catalogue's default. An unknown id is REFUSED at start, never ignored.
+      INFERENCE_ACTIVE_MODEL: ${INFERENCE_ACTIVE_MODEL:-}
+      # 0 = derive the intra-op pool from the cgroup CPU quota (TD-61), not the host's core count.
+      INFERENCE_ONNX_INTRA_THREADS: ${INFERENCE_ONNX_INTRA_THREADS:-0}
 
   gateway:
     <<: *service-common

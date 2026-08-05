@@ -183,6 +183,10 @@ function startFixture() {
     NETWORK,
     '-v',
     `${ROOT}/infra/docker/fixtures/rtsp-fixture.yml:/mediamtx.yml:ro`,
+    // P-8 Phase 3: the fixture's default path now loops a real photograph, so the frames that
+    // travel the pipeline contain something a detector can be right or wrong about.
+    '-v',
+    `${ROOT}/infra/docker/fixtures/media:/fixtures/media:ro`,
     'bluenviron/mediamtx:latest-ffmpeg',
   ]);
 }

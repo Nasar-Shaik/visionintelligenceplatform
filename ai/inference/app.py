@@ -34,19 +34,54 @@ def _build_event_sink(config: InferenceConfig) -> EventSink:
 
 
 def _factories(config: InferenceConfig):
-    """Return (resolver_factory, adapter_factory) for the configured backend."""
+    """Return (resolver_factory, adapter_factory, model_store) for the configured backend.
+
+    ⚠️ The store is returned rather than re-loaded by the caller: two `ModelStore` instances built
+    from the same file are two answers to "what is registered", and they diverge the moment one is
+    reloaded. One catalogue, one object, passed to whoever needs it.
+    """
     if config.backend == "onnx":
-        # Lazy import — only the real backend needs onnxruntime/mlflow/numpy/pillow.
-        from adapters.mlflow_resolver import MlflowModelResolver  # noqa: WPS433
+        # Lazy import — only the real backend needs onnxruntime/numpy/pillow.
         from adapters.onnx_adapter import OnnxModelAdapter  # noqa: WPS433
 
-        def resolver_factory(_m: CapabilityManifest) -> ModelResolver:
-            return MlflowModelResolver(config.mlflow_tracking_uri, config.s3_endpoint_url)
+        # ⚠️ Threads are derived from the **cgroup quota**, not `os.cpu_count()` (TD-61). Left to
+        # itself onnxruntime sizes its pool from the host's core count, so a runtime limited to two
+        # cores would spawn ten threads and spend its budget on contention.
+        intra = config.onnx_intra_threads
+        if intra == 0:
+            from compute import available_cores  # noqa: WPS433
+
+            intra = max(1, int(available_cores()))
+        providers = [p.strip() for p in config.onnx_providers.split(",") if p.strip()]
 
         def adapter_factory(_m: CapabilityManifest) -> ModelAdapter:
-            return OnnxModelAdapter()
+            return OnnxModelAdapter(
+                providers,
+                intra_op_threads=intra,
+                inter_op_threads=config.onnx_inter_threads,
+            )
 
-        return resolver_factory, adapter_factory
+        if config.model_source == "mlflow":
+            from adapters.mlflow_resolver import MlflowModelResolver  # noqa: WPS433
+
+            def resolver_factory(_m: CapabilityManifest) -> ModelResolver:
+                return MlflowModelResolver(config.mlflow_tracking_uri, config.s3_endpoint_url)
+
+            return resolver_factory, adapter_factory, None
+
+        # The production path: one checksummed catalogue inside the image, loaded once and shared.
+        from model_store import LocalModelResolver, ModelStore  # noqa: WPS433
+
+        store = ModelStore.load(config.model_catalogue, artifact_dir=config.model_dir)
+
+        def resolver_factory(manifest: CapabilityManifest) -> ModelResolver:
+            return LocalModelResolver(
+                store,
+                capability_id=manifest.capability_id,
+                preferred_id=config.active_model or None,
+            )
+
+        return resolver_factory, adapter_factory, store
 
     from adapters.fake_adapter import FakeModelAdapter  # noqa: WPS433
 
@@ -56,20 +91,25 @@ def _factories(config: InferenceConfig):
     def adapter_factory(_m: CapabilityManifest) -> ModelAdapter:
         return FakeModelAdapter()
 
-    return resolver_factory, adapter_factory
+    return resolver_factory, adapter_factory, None
 
 
-def build_registry(config: InferenceConfig) -> CapabilityRegistry:
+def build_registry(config: InferenceConfig):
+    """Build the capability registry, and the model catalogue it resolved against (or `None` when
+    the backend does not use one). The catalogue is returned so `/runtime` can report **what is
+    registered** beside what is loaded — an operator needs both to explain a selection."""
     registry = CapabilityRegistry(_RUNTIME_VERSION, event_sink=_build_event_sink(config))
-    resolver_factory, adapter_factory = _factories(config)
+    resolver_factory, adapter_factory, store = _factories(config)
     registry.load_from_dir(config.manifests_dir, resolver_factory, adapter_factory)
-    return registry
+    return registry, store
 
 
 def main() -> None:
     config = load_config()
     obslog.configure(config.log_level, service="inference")
-    registry = build_registry(config)  # initializes enabled capabilities (binds models by selector)
+    # Initializes enabled capabilities: resolves each selector to a registered model, verifies the
+    # artifact's checksum, loads the session and warms it up. A failure here is a failed start.
+    registry, model_store = build_registry(config)
 
     # Control plane (P2-2 G-3): the managed model registry + inference-session manager. In-memory for
     # now (deterministic + persistence is a later concern); wired into the same HTTP surface.
@@ -123,6 +163,7 @@ def main() -> None:
         "inference",
         _RUNTIME_VERSION,
         model_registry=model_registry,
+        model_store=model_store,
         sessions=sessions,
         supervisor=supervisor,
         live_defaults={
@@ -164,6 +205,18 @@ def main() -> None:
         address=f"{config.host}:{config.port}",
         capabilities=[d["id"] for d in registry.descriptors()],
         eventSink=config.event_sink,
+        modelSource=config.model_source if config.backend == "onnx" else None,
+        modelsRegistered=None if model_store is None else [m.id for m in model_store.all()],
+        modelsLoaded=[
+            entry.get("model", {}).get("name")
+            for entry in registry.health()
+            if entry.get("model")
+        ]
+        or None,
+        executionProviders=sorted(
+            {entry.get("executionProvider") for entry in registry.health() if entry.get("executionProvider")}
+        )
+        or None,
         maxSessions=config.max_sessions,
         deploymentProfile=config.deployment_profile or None,
         computeUnits=[f"{r.id}:{r.capacity_units}" for r in compute.resources()]

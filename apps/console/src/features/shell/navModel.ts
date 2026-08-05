@@ -3,6 +3,7 @@ import {
   Bell,
   Camera,
   Building2,
+  Cpu,
   HeartPulse,
   LayoutDashboard,
   MonitorPlay,
@@ -98,6 +99,15 @@ export const NAV_GROUPS: NavGroup[] = [
      */
     items: [
       { to: '/system', label: 'System Health', icon: HeartPulse, permission: 'system:inspect' },
+      /*
+       * P-8 Phase 3 — the inference runtime's engineering view. Same gate as System Health, for the
+       * same reason: deployment state, no tenant data, and `admin` holds no `*:read` (TD-26).
+       *
+       * ⚠️ Named "AI Runtime", not "AI" or "Analytics". The page reports what the runtime is doing;
+       * it does not configure per-camera AI, which is designed and not built. A menu entry that
+       * sounds like a feature is a promise the product has not made.
+       */
+      { to: '/system/ai-runtime', label: 'AI Runtime', icon: Cpu, permission: 'system:inspect' },
     ],
   },
 ];

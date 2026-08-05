@@ -108,9 +108,12 @@ for the right reason.
 
 | `../p8/frame-path.mjs` | **P-8 Phase 2** — real frames from a synthetic RTSP source through media to the runtime at 1/2/4/8/16 cameras; frame accounting; the recording-survives-perception guarantee; idle baseline | ✅ yes | ✅ yes | backend + docker | ~7 min | Non-zero exit; prints the measured table either way | **Four.** ① media pointed at a runtime that does not exist → **7 red**. ② `cpus: 2` on the runtime → the capacity label changes (the only proof TD-61 is fixed). ③ RTSP source starved mid-run → the segment-progress check goes red (1/4 advanced, needs 4). ④ the accounting invariant itself went red at `806 vs 770` — and **the check was short, not the product**: it knew four of the six states a frame can be in | ✅ yes |
 
-⚠️ **What these mutations could not reach.** Nothing proves the runtime _infers_ anything — Phase 1
-connects no camera and the `stub` backend fabricates its model identity. The script asserts the
-absence deliberately; the presence is Phase 5's to prove.
+| `../p8/inference.mjs` | **P-8 Phase 3** — real inference: image + artifact integrity, the loaded model's self-report, a photograph of two people, **a test pattern that must detect nothing**, the decoder's own tests run inside the image, the whole path camera→RTSP→media→runtime→detections, the operator route and its permission, and the 1/2/4/8/16 ladder | ✅ yes | ✅ yes | backend + docker | ~9 min | Non-zero exit; prints the measured table either way | **Three.** ① a byte flipped in the model artifact → the runtime **refuses to start** naming both digests, **20 red** — and this mutation found six checks that passed **vacuously** (`[].every(...)` is `true`), now fixed. ② the `stub` backend restored → **11 red**, including a colour-bar test pattern reporting `person 0.660` in 0.05 ms. ③ suppression disabled in the decoder → **17 detections instead of 2**, which `> 0` would have passed | ✅ yes |
+| `../p8/runtime-ui.mjs` | **P-8 Phase 3** — the AI Runtime page in a real browser: what it renders while inference runs, the polling budget over a real minute, **the runtime stopped underneath the open page**, and a viewer refused | ✅ yes | ✅ yes | browser + docker | ~2 min | Non-zero exit; screenshots written to `p8/screens/` | Covered by `inference.mjs`'s mutations — with the runtime stopped the page must say so **without being refreshed**, which is itself section 3 rather than a separate mutation | ✅ yes |
+
+⚠️ **What these mutations could not reach.** Model _accuracy_. Two photographs prove the deployed
+path, not quality: no labelled corpus, no mAP, no FP/FN promotion gates (TD-64). The platform can
+say inference **runs** and must not say **how well it works**.
 
 ---
 

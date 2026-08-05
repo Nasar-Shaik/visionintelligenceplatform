@@ -21,6 +21,7 @@ import { registerRootRoute } from './routes/root.js';
 import { registerStreamRoutes } from './routes/streams.js';
 import { registerRecordingRoutes } from './routes/recordings.js';
 import { registerClipRoutes } from './routes/clips.js';
+import { registerPerceptionRoutes } from './routes/perception.js';
 
 export interface BuildServerOptions {
   config: ServiceConfig;
@@ -74,6 +75,13 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
   registerStreamRoutes(app, { supervisor: opts.supervisor, auth });
   registerRecordingRoutes(app, { catalog: opts.catalog, auth });
   registerClipRoutes(app, { catalog: opts.catalog, auth });
+  registerPerceptionRoutes(app, {
+    auth,
+    ...(opts.perception === undefined ? {} : { perception: opts.perception }),
+    runtimeUrl: config.perception.url,
+    internalKey: config.internal.apiKey,
+    capabilityId: config.perception.capabilityId,
+  });
 
   return { app, readiness };
 }

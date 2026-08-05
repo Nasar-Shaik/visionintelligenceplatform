@@ -89,6 +89,27 @@ export function registerPerceptionMetrics(
       'Mean age of a frame when the runtime accepted it (ms)',
       (s) => s.frameAgeMsAvg,
     ],
+    // --- what the runtime answered (P-8 Phase 3) --------------------------------------------
+    [
+      'media_perception_detections_total',
+      'Detections across every analysed frame',
+      (s) => s.detections,
+    ],
+    [
+      'media_perception_frames_with_detections_total',
+      'Analysed frames that produced at least one detection',
+      (s) => s.framesWithDetections,
+    ],
+    [
+      'media_perception_inference_ms_avg',
+      'Mean inference time reported by the runtime (ms)',
+      (s) => s.inferenceMsAvg,
+    ],
+    [
+      'media_perception_frame_latency_ms_avg',
+      'Mean capture-to-detection latency reported by the runtime (ms)',
+      (s) => s.frameLatencyMsAvg,
+    ],
   ];
   for (const [name, help, read] of series) {
     new Gauge({
@@ -100,4 +121,22 @@ export function registerPerceptionMetrics(
       },
     });
   }
+
+  /*
+   * ⚠️ A labelled series, and the only one in this file. `person` and `car` are the two words that
+   * distinguish "the runtime answered" from "the runtime SAW something", and no unlabelled counter
+   * can carry that. Cardinality is bounded by the model's label space (≤ 90) and by the sink's own
+   * 128-entry cap, so this cannot become the metric that fills a time-series database.
+   */
+  new Gauge({
+    name: 'media_perception_detections_by_label_total',
+    help: 'Detections by label, as reported by the runtime',
+    labelNames: ['label'],
+    registers: [registry],
+    collect() {
+      for (const [label, count] of Object.entries(provider.stats().detectionsByLabel)) {
+        this.set({ label }, count);
+      }
+    },
+  });
 }

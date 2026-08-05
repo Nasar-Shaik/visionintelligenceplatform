@@ -15,7 +15,20 @@ from video_analyzer import AnalyzeOptions, VideoAnalyzer  # noqa: E402
 from video_decoder import StubFrameDecoder  # noqa: E402
 from video_sampler import FrameSampler  # noqa: E402
 
-_DET_KEYS = {"label", "confidence", "bbox", "attributes", "metadata", "classId", "embedding", "trackingId"}
+# The allow-list of fields a detection may carry. ⚠️ Every entry is generic; the test exists to make
+# a vendor field ("yoloClass", "onnxOutputIndex") a build failure rather than a review comment.
+# `detectionId` joined it in P-8 Phase 3 — model-independent identity, derived from the frame.
+_DET_KEYS = {
+    "detectionId",
+    "label",
+    "confidence",
+    "bbox",
+    "attributes",
+    "metadata",
+    "classId",
+    "embedding",
+    "trackingId",
+}
 
 
 def _analyzer(**opts):

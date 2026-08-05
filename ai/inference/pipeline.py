@@ -13,9 +13,11 @@ Prefer interfaces over inheritance: stages are duck-typed Protocols, injected in
 
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import datetime
 from typing import Any, List, Optional, Protocol, Sequence, Tuple
 
-from contracts import Detection, DetectionResult, FrameContext, ModelBinding
+from contracts import Detection, DetectionResult, FrameContext, ModelBinding, detection_id
 
 
 class RawDetection:
@@ -78,6 +80,8 @@ class ResultTranslator(Protocol):
         execution_provider: str,
         inference_ms: float,
         at: str,
+        preprocessing_version: Optional[str] = None,
+        confidence_threshold: Optional[float] = None,
     ) -> DetectionResult: ...
 
 
@@ -115,7 +119,12 @@ class NoopTracker:
 
 
 class DefaultResultTranslator:
-    """Assemble the tenant-tagged, fully version-stamped DetectionResult."""
+    """Assemble the tenant-tagged, fully version-stamped DetectionResult.
+
+    Also the one place a detection acquires its **identity** and the result acquires its **frame
+    latency** (P-8 Phase 3) — both derived from the frame that is already in hand, so no stage below
+    has to carry a clock or an id generator.
+    """
 
     def run(
         self,
@@ -129,7 +138,15 @@ class DefaultResultTranslator:
         execution_provider: str,
         inference_ms: float,
         at: str,
+        preprocessing_version: Optional[str] = None,
+        confidence_threshold: Optional[float] = None,
     ) -> DetectionResult:
+        captured_at = ctx.timestamp or at
+        model_key = model.id or model.name
+        identified = [
+            _with_id(detection, ctx, captured_at, model_key, index)
+            for index, detection in enumerate(detections)
+        ]
         return DetectionResult(
             tenant_id=ctx.tenant_id,
             camera_id=ctx.camera_id,
@@ -139,12 +156,53 @@ class DefaultResultTranslator:
             execution_provider=execution_provider,
             model=model,
             frame_seq=ctx.frame_number,
-            frame_captured_at=ctx.timestamp or at,
+            frame_captured_at=captured_at,
             inference_ms=inference_ms,
             at=at,
-            detections=detections,
+            detections=identified,
             correlation_id=ctx.correlation_id,
+            frame_latency_ms=frame_latency_ms(captured_at, at),
+            preprocessing_version=preprocessing_version,
+            confidence_threshold=confidence_threshold,
         )
+
+
+def _with_id(
+    detection: Detection, ctx: FrameContext, captured_at: str, model: str, index: int
+) -> Detection:
+    if detection.detection_id is not None:
+        return detection
+    return replace(
+        detection,
+        detection_id=detection_id(
+            ctx.tenant_id, ctx.camera_id, captured_at, ctx.frame_number, model, index
+        ),
+    )
+
+
+def frame_latency_ms(captured_at: str, at: str) -> Optional[float]:
+    """Capture → result, in milliseconds, or `None` when it cannot be measured.
+
+    ⚠️ Returns `None` — never `0` — for an unparseable timestamp or a **negative** interval. A
+    negative one means the two clocks disagree, and reporting that as "0 ms, instant" would turn a
+    clock-skew problem into a performance claim.
+    """
+    start = _epoch_ms(captured_at)
+    end = _epoch_ms(at)
+    if start is None or end is None:
+        return None
+    delta = end - start
+    return None if delta < 0 else round(delta, 3)
+
+
+def _epoch_ms(value: str) -> Optional[float]:
+    try:
+        text = value.strip()
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        return datetime.fromisoformat(text).timestamp() * 1000.0
+    except (AttributeError, TypeError, ValueError):
+        return None
 
 
 class EventSink(Protocol):

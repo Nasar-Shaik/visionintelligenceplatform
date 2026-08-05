@@ -9,7 +9,7 @@ from __future__ import annotations
 import resource
 import time
 from collections import deque
-from typing import Deque, List, Optional
+from typing import Deque, Dict, List, Optional
 
 _CONF_BUCKETS = 10  # [0,0.1) … [0.9,1.0]
 
@@ -29,7 +29,8 @@ OPERATIONAL_METRICS = frozenset(
 
 AI_METRICS = frozenset(
     {
-        "detectionFps", "detectionsTotal", "avgConfidence", "confidenceDistribution",
+        "detectionFps", "detectionsTotal", "detectionsByLabel", "avgConfidence",
+        "confidenceDistribution",
         "activeTracks", "confirmedTracks", "tentativeTracks", "lostTracks", "removedTracks",
         "averageTrackAgeFrames", "averageTrackLifetime", "averageTrackLength",
         "averageTrackVelocity", "zoneCrossings", "countingRate",
@@ -70,9 +71,15 @@ class Metrics:
         self.detections_total = 0
         self.queue_depth = 0
         self.model_load_ms: Optional[float] = None
+        #: label → count. ⚠️ Bounded by the model's label space (≤ 90), so it cannot grow without
+        #: limit — and it is what distinguishes "the runtime answered" from "the runtime SAW a
+        #: person", which is the only claim this phase is allowed to make.
+        self.detections_by_label: Dict[str, int] = {}
         self._confidence_sum = 0.0
         self._inference_ms_sum = 0.0
         self._decode_ms_sum = 0.0
+        self._frame_latency_ms_sum = 0.0
+        self._frame_latency_count = 0
         self._recent_ts: Deque[float] = deque(maxlen=fps_window)
         self._latencies: Deque[float] = deque(maxlen=latency_window)
         self._conf_hist: List[int] = [0] * _CONF_BUCKETS
@@ -80,7 +87,14 @@ class Metrics:
         self._gpu_probe = gpu_probe
         self._started = self._monotonic()
 
-    def record_processed(self, decode_ms: float, inference_ms: float, confidences: List[float]) -> None:
+    def record_processed(
+        self,
+        decode_ms: float,
+        inference_ms: float,
+        confidences: List[float],
+        labels: Optional[List[str]] = None,
+        frame_latency_ms: Optional[float] = None,
+    ) -> None:
         self.frames_processed += 1
         self._decode_ms_sum += decode_ms
         self._inference_ms_sum += inference_ms
@@ -90,6 +104,11 @@ class Metrics:
         for c in confidences:
             idx = min(_CONF_BUCKETS - 1, max(0, int(c * _CONF_BUCKETS)))
             self._conf_hist[idx] += 1
+        for label in labels or []:
+            self.detections_by_label[label] = self.detections_by_label.get(label, 0) + 1
+        if frame_latency_ms is not None:
+            self._frame_latency_ms_sum += frame_latency_ms
+            self._frame_latency_count += 1
         self._recent_ts.append(self._monotonic())
 
     def record_dropped(self) -> None:
@@ -115,6 +134,15 @@ class Metrics:
     @property
     def avg_decode_ms(self) -> float:
         return self._decode_ms_sum / self.frames_processed if self.frames_processed else 0.0
+
+    @property
+    def avg_frame_latency_ms(self) -> Optional[float]:
+        """Capture → result. ⚠️ `None`, not 0, when nothing measurable has arrived — averaged over
+        the frames that carried a usable capture time rather than over all frames, so a stream with
+        no timestamps cannot drag the number down towards a flattering zero."""
+        if self._frame_latency_count == 0:
+            return None
+        return self._frame_latency_ms_sum / self._frame_latency_count
 
     @property
     def latency_p50_ms(self) -> float:
@@ -161,6 +189,9 @@ class Metrics:
         }
         if self.model_load_ms is not None:
             out["modelLoadMs"] = round(self.model_load_ms, 3)
+        frame_latency = self.avg_frame_latency_ms
+        if frame_latency is not None:
+            out["avgFrameLatencyMs"] = round(frame_latency, 3)
         gpu = self._gpu_percent()
         if gpu is not None:
             out["gpuPercent"] = round(gpu, 2)
@@ -173,6 +204,7 @@ class Metrics:
         out.update(
             {
                 "detectionsTotal": self.detections_total,
+                "detectionsByLabel": dict(self.detections_by_label),
                 "avgConfidence": round(self.avg_confidence, 4),
                 "avgInferenceMs": round(self.avg_inference_ms, 3),
                 "avgDecodeMs": round(self.avg_decode_ms, 3),
@@ -211,6 +243,10 @@ class Metrics:
             ("inference_latency_ms_p50", "gauge", s["latencyP50Ms"]),
             ("inference_latency_ms_p95", "gauge", s["latencyP95Ms"]),
             ("inference_decode_ms_avg", "gauge", s["avgDecodeMs"]),
+            # ⚠️ Capture → result, a different question from inference time: inference can be fast
+            # while the answer is old because the frame queued. Absent when nothing measurable has
+            # arrived, rather than reported as a flattering zero.
+            ("inference_frame_latency_ms_avg", "gauge", s.get("avgFrameLatencyMs")),
             ("inference_queue_depth", "gauge", s["queueDepth"]),
             ("inference_fps", "gauge", s["fps"]),
             ("inference_uptime_seconds", "gauge", s["uptimeSeconds"]),
@@ -218,8 +254,18 @@ class Metrics:
             ("inference_process_cpu_user_seconds", "counter", s["cpuUserSeconds"]),
             ("inference_process_cpu_system_seconds", "counter", s["cpuSystemSeconds"]),
         ]
-        lines: list[str] = []
+        lines: List[str] = []
         for name, kind, value in rows:
+            if value is None:
+                continue  # not measured yet — a missing series, never a fabricated zero
             lines.append(f"# TYPE {name} {kind}")
             lines.append(f"{name} {value}")
+        if self.detections_by_label:
+            lines.append("# TYPE inference_detections_by_label_total counter")
+            for label, count in sorted(self.detections_by_label.items()):
+                lines.append(f'inference_detections_by_label_total{{label="{_escape(label)}"}} {count}')
         return "\n".join(lines) + "\n"
+
+
+def _escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")

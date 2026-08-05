@@ -1,0 +1,15 @@
+# What the DEPLOYED `onnx` runtime needs, and nothing else (P-8 Phase 3).
+#
+# ⚠️ A deliberate subset of requirements.txt. That file is the authoring/integration set and also
+# pins MLflow + boto3 (model registry client) and nats-py (the `nats` event sink) — roughly 700 MB
+# of code a serving container never imports. Production resolves models from the checksummed
+# catalogue baked into the image (models/registry.json), so the tracking server is not on the
+# critical path of a container start, and the event sink stays `null` until P-8 Phase 5 wires it.
+#
+# Versions are the SAME pins as requirements.txt. Two files, one set of versions — if they ever
+# disagree, the deployed runtime is not the one that was tested.
+#
+#   pip install -r ai/inference/requirements-runtime.txt
+onnxruntime==1.19.2
+numpy==2.0.2
+pillow==11.3.0

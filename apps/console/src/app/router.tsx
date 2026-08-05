@@ -63,6 +63,9 @@ const UsersPage = lazy(() =>
 const SystemHealthPage = lazy(() =>
   import('@/features/system/SystemHealthPage').then((m) => ({ default: m.SystemHealthPage })),
 );
+const AiRuntimePage = lazy(() =>
+  import('@/features/system/AiRuntimePage').then((m) => ({ default: m.AiRuntimePage })),
+);
 const PlaceholderPage = lazy(() =>
   import('@/routes/PlaceholderPage').then((m) => ({ default: m.PlaceholderPage })),
 );
@@ -130,6 +133,10 @@ export const router = createBrowserRouter([
            * errors and shows no crash boundary.
            */
           { path: 'system', element: route(<SystemHealthPage />) },
+          // P-8 Phase 3 — engineering + deployment visibility for the inference runtime. Same
+          // permission as System Health (`system:inspect`); the runtime itself stays off the
+          // gateway, so this page is served through media.
+          { path: 'system/ai-runtime', element: route(<AiRuntimePage />) },
           // P-6.3 — tenant settings. Was a placeholder; the route is unchanged so every existing
           // link, bookmark and runbook reference still lands somewhere real.
           { path: 'settings', element: route(<SettingsPage />) },

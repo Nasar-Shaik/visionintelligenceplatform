@@ -149,9 +149,84 @@ node docs/review/p8/frame-path.mjs clean   # if a run was interrupted
 
 ---
 
-## Phases 3–7 · not started
+## Phase 3 · real inference
 
-The order is ratified and not negotiable inside the milestone:
-frame path → intent record → scheduler → inference → measurement → deployed verification. One
-recommendation is already on the table for Phase 3 (the operator control belongs with Phase 4, or it
-is a toggle that does not yet change what runs).
+**The objective:** frame → model → real inference → detection → detection metadata. Nothing more —
+no tracking, no rules, no incidents, no alerts.
+
+### The one check that makes the others mean anything
+
+A **colour-bar test pattern produces zero detections.** The `stub` backend returned a detection for
+any bytes at all: it would satisfy "frames arrive", "detections are produced", "latency is measured"
+and "the dashboard is populated" while seeing precisely nothing. Every other assertion below is
+evidence only because that one holds — and mutation 2 proves it does, by putting the stub back and
+watching the check go red with `person 0.660` on a test pattern.
+
+And the count must be _right_, not merely non-zero. The fixture photograph contains **two** people;
+the assertion is `=== 2`. Mutation 3 disabled suppression and the runtime returned **17** boxes of
+the same two people — a failure `> 0` would have passed.
+
+### Measured against the deployment
+
+Twenty-second windows, a CC0 photograph looped over RTSP, `yolox-nano` on `CPUExecutionProvider`:
+
+| cams | analysed | detections | dropped |  fps | inference | capture→detection | media cpu/mem | runtime cpu/mem |
+| ---: | -------: | ---------: | ------: | ---: | --------: | ----------------: | ------------- | --------------- |
+|    1 |       42 |         84 |       0 |  2.1 |   86.3 ms |            153 ms | 3 % / 181 MB  | 96 % / 106 MB   |
+|    2 |       82 |        164 |       0 |  4.1 |   61.6 ms |             70 ms | 6 % / 214 MB  | 175 % / 106 MB  |
+|    4 |      162 |        324 |       0 |  8.1 |   63.2 ms |             76 ms | 10 % / 278 MB | 358 % / 106 MB  |
+|    8 |      282 |        564 |      47 | 14.1 |   97.0 ms |            126 ms | 16 % / 415 MB | 630 % / 112 MB  |
+|   16 |      477 |        954 |     177 | 23.9 |  124.0 ms |            323 ms | 39 % / 689 MB | 520 % / 117 MB  |
+
+Two detections per analysed frame at every rung — both people, every frame. **Frame accounting closes
+at every rung.** Zero failures. Runtime memory flat at ~110 MB from 1 camera to 16.
+
+⚠️ **CPU inference saturates between 4 and 8 cameras** on this host. Beyond that the queue drops
+frames by policy and counts every one — 177 of 654 at 16 cameras. That is the design working, and it
+is the number that sizes a deployment: **~8 cameras per host at 2 fps on CPU**, not 16.
+
+⚠️ The source is a looped photograph, not a camera. Every number measures the platform; none is a
+claim about vendor compatibility (L-1) or about model accuracy (TD-64).
+
+### Mutation-tested
+
+| Mutation                             | Result                                                                    |
+| ------------------------------------ | ------------------------------------------------------------------------- |
+| a byte flipped in the model artifact | the runtime **refuses to start**, naming both digests; 20 checks red      |
+| the `stub` backend restored          | **11 red** — including a test pattern reporting `person 0.660` in 0.05 ms |
+| suppression disabled in the decoder  | **17 detections instead of 2**; the in-image decoder tests fail too       |
+
+The artifact mutation found a defect **in the verification**: six checks passed vacuously against a
+dead runtime, because `[].every(...)` is `true`. A check that cannot fail when the product is dead is
+decoration; all six now require a non-empty result first.
+
+### Discovered defects
+
+- **The RTSP fixture's loop flag was wrong.** `-stream_loop -1` restarts the demuxer, so timestamps
+  restart with it and the stream ends in under a second — media reported `ffmpeg exited (code 0)` and
+  every camera reconnected forever. `-loop 1` is the image demuxer's own loop.
+- **The ONNX adapter hard-coded a 640×640 stretch, `/255` normalisation and one assumed row layout** —
+  wrong for the model this platform actually registers. It is now driven entirely by the catalogue.
+- **`scrape()` in this suite rejected labelled metrics**, so a working pipeline printed five rungs of
+  zeros. Mine, not the product's.
+- **The detection id ignored which model produced it** — the same frame under two models gave the
+  same ids for entirely different detections. Found by running two models over one probe frame.
+
+### Debt
+
+- **TD-5 resolved** — the deployed runtime runs the real backend with a registered, checksum-verified
+  model, resolved from the image rather than from MLflow.
+- **TD-63 escalated to high** — the speculative case is now measured: the runtime takes **6–8 cores**
+  at 16 cameras where the stub took 3 %. Nothing in the deployment stops it starving recording.
+- **TD-64 opened** — no accuracy gates. The platform can say inference _runs_ and must not say how
+  well it works.
+
+### Running it
+
+```sh
+node docs/review/p8/inference.mjs          # integrity → real inference → end-to-end → ladder
+node docs/review/p8/inference.mjs clean    # if a run was interrupted
+
+cp docs/review/p8/runtime-ui.mjs /private/tmp/pwrun/ && cd /private/tmp/pwrun \
+  && OUT=<repo>/docs/review/p8/screens node runtime-ui.mjs
+```

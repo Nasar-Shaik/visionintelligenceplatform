@@ -49,14 +49,73 @@ export function assertSystemPrefixFree(upstreams: Record<string, string>): void 
 export interface SystemRoutesDeps {
   jwt: JwtOptions;
   health: SystemHealthService;
+  /** Media's base URL — the only service permitted to talk to the AI runtime. */
+  mediaUrl: string;
+  fetch?: typeof fetch;
 }
 
+/** Wall-clock ceiling on the media hop. A slow answer is a degraded page, not a hung one. */
+const AI_RUNTIME_TIMEOUT_MS = 4_000;
+
 export function registerSystemRoutes(app: FastifyInstance, deps: SystemRoutesDeps): void {
+  const doFetch = deps.fetch ?? fetch;
+
   app.get('/api/system/health', async (request, reply) => {
     const claims = await authenticateRequest(request, deps.jwt);
     if (!principalCan(claims, 'system:inspect')) {
       throw forbidden('not permitted to view system health');
     }
     return reply.send({ success: true, data: await deps.health.report() });
+  });
+
+  /**
+   * The AI runtime's engineering view (P-8 Phase 3).
+   *
+   * ⚠️ **Proxied through media on purpose.** The runtime is not an upstream and P-8 Phase 1 asserts
+   * that as a deployment property — no `/api/inference/*`, nothing routed, no browser-reachable
+   * path to it. Media is the one service that talks to it (ADR-A), so the console's question goes
+   * gateway → media → runtime and the boundary stays exactly where it was verified.
+   *
+   * ⚠️ Same permission as System Health, for the same reason: this is deployment state, identical
+   * for every tenant, carrying no tenant data. `inspect`, not `read` (TD-26).
+   */
+  app.get('/api/system/ai-runtime', async (request, reply) => {
+    const claims = await authenticateRequest(request, deps.jwt);
+    if (!principalCan(claims, 'system:inspect')) {
+      throw forbidden('not permitted to view the AI runtime');
+    }
+    /*
+     * ⚠️ The caller's own token is forwarded. Media authorises the request independently — the
+     * gateway does not vouch for a principal it already checked, because a service-to-service key
+     * here would be a hidden privilege escalation: every console user would reach media's
+     * perception view with the gateway's authority instead of their own.
+     */
+    const authorization = request.headers.authorization;
+    try {
+      const response = await doFetch(`${deps.mediaUrl.replace(/\/$/, '')}/perception/runtime`, {
+        signal: AbortSignal.timeout(AI_RUNTIME_TIMEOUT_MS),
+        headers: {
+          accept: 'application/json',
+          ...(typeof authorization === 'string' ? { authorization } : {}),
+        },
+      });
+      const body = await response.text();
+      return reply.status(response.status).header('content-type', 'application/json').send(body);
+    } catch (err) {
+      /*
+       * ⚠️ 503 with a reason, not 500. Media being unreachable is a deployment fact the page is
+       * built to display; "internal server error" would send the operator looking at the gateway.
+       */
+      const timedOut = err instanceof Error && err.name === 'TimeoutError';
+      return reply.status(503).send({
+        success: false,
+        error: {
+          code: 'upstream_unavailable',
+          message: timedOut
+            ? `media did not answer within ${AI_RUNTIME_TIMEOUT_MS} ms`
+            : 'media is not reachable, so the AI runtime cannot be inspected',
+        },
+      });
+    }
   });
 }

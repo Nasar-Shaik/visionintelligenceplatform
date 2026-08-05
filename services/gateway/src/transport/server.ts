@@ -104,6 +104,8 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
       },
       streamEnabled: config.stream.enabled,
     }),
+    // The runtime is not an upstream and must not become one; media is the only route to it.
+    mediaUrl: config.upstreams.media ?? '',
   });
 
   // Proxy routes register the catch-all `/api/:service/*`; keep them AFTER the specific

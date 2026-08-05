@@ -94,5 +94,8 @@ export const queryKeys = {
   health: {
     all: () => ['health'] as const,
     system: () => ['health', 'system'] as const,
+    // P-8 Phase 3. Separate from `system()`: a different upstream, a different refresh budget, and
+    // an operator watching a deploy should not invalidate one by refreshing the other.
+    aiRuntime: () => ['health', 'ai-runtime'] as const,
   },
 } as const;

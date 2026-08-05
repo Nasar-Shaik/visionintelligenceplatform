@@ -135,6 +135,99 @@ describe('HttpFrameSink — what reaches the runtime', () => {
   });
 });
 
+describe('HttpFrameSink — what came back (P-8 Phase 3)', () => {
+  const answer = (body: unknown) =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))),
+    );
+
+  const result = (detections: Array<{ label: string }>, over: Record<string, unknown> = {}) => ({
+    success: true,
+    data: {
+      detections,
+      inferenceMs: 34.5,
+      frameLatencyMs: 120,
+      executionProvider: 'CPUExecutionProvider',
+      model: { id: 'yolox-nano', name: 'yolox-nano', version: '1.0.0' },
+      ...over,
+    },
+  });
+
+  it('counts detections by label, and what the runtime said it ran', async () => {
+    answer(result([{ label: 'person' }, { label: 'person' }, { label: 'car' }]));
+    const s = sink();
+    s.push('t1', 'cam1', frame(1));
+    await settle(s);
+
+    const st = s.stats();
+    expect(st.detections).toBe(3);
+    expect(st.detectionsByLabel).toEqual({ person: 2, car: 1 });
+    expect(st.framesWithDetections).toBe(1);
+    expect(st.inferenceMsAvg).toBeCloseTo(34.5);
+    expect(st.frameLatencyMsAvg).toBeCloseTo(120);
+    expect(st.modelId).toBe('yolox-nano');
+    expect(st.executionProvider).toBe('CPUExecutionProvider');
+    expect(st.lastDetectionAt).toBeDefined();
+  });
+
+  it('⚠️ an empty result is a delivered frame, not a missing one', async () => {
+    // A frame with nothing in it is the runtime working correctly. Counting it as "no answer"
+    // would make an empty car park look like an outage.
+    answer(result([]));
+    const s = sink();
+    s.push('t1', 'cam1', frame(1));
+    await settle(s);
+
+    const st = s.stats();
+    expect(st.delivered).toBe(1);
+    expect(st.failed).toBe(0);
+    expect(st.detections).toBe(0);
+    expect(st.framesWithDetections).toBe(0);
+    expect(st.lastDetectionAt).toBeUndefined();
+    expect(st.inferenceMsAvg).toBeCloseTo(34.5);
+  });
+
+  it('⚠️ a body it cannot read is not counted as a delivery failure', async () => {
+    // The frame WAS delivered; only our reading of the answer failed. Counting it as `failed`
+    // would report a transport problem that did not happen.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response('<html>not json</html>', { status: 200 }))),
+    );
+    const s = sink();
+    expect(() => s.push('t1', 'cam1', frame(1))).not.toThrow();
+    await settle(s);
+
+    expect(s.stats().delivered).toBe(1);
+    expect(s.stats().failed).toBe(0);
+    expect(s.stats().detections).toBe(0);
+  });
+
+  it('⚠️ caps the label map so an unbounded label space cannot leak memory', async () => {
+    // The catalogue caps a model at 90 labels. The guard is here anyway: this process must never
+    // be the one that runs out of memory, because it is the one writing evidence.
+    const many = Array.from({ length: 200 }, (_, i) => ({ label: `label-${i}` }));
+    answer(result(many));
+    const s = sink({ queuePerCamera: 8, maxInflight: 1 });
+    s.push('t1', 'cam1', frame(1));
+    await settle(s);
+
+    expect(Object.keys(s.stats().detectionsByLabel).length).toBeLessThanOrEqual(128);
+    expect(s.stats().detections).toBe(200);
+  });
+
+  it('ignores a detection with no usable label rather than inventing one', async () => {
+    answer(result([{ label: 'person' }, {} as { label: string }, { label: '' }]));
+    const s = sink();
+    s.push('t1', 'cam1', frame(1));
+    await settle(s);
+
+    expect(s.stats().detectionsByLabel).toEqual({ person: 1 });
+    expect(s.stats().detections).toBe(3);
+  });
+});
+
 describe('HttpFrameSink — fairness and bounds', () => {
   it('⚠️ bounds each camera separately, so a busy camera cannot spend another camera’s slots', async () => {
     let release: (() => void) | undefined;

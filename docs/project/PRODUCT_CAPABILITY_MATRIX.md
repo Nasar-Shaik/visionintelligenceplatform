@@ -41,18 +41,20 @@ references them rather than restating what a capability is.
 
 ## Estate
 
-| id        | Capability                                   | Contract |           Backend            |          Frontend           | Demo |           Pilot            | Prod | Milestone         | Dependencies | Owner  |
-| --------- | -------------------------------------------- | :------: | :--------------------------: | :-------------------------: | :--: | :------------------------: | :--: | ----------------- | ------------ | ------ |
-| **C-07**  | Location hierarchy (8 levels, skippable)     |    ✅    |              ✅              |             ✅              |  ✅  |             ✅             |  ✅  | done              | —            | tenant |
-| **C-08**  | Camera registry & onboarding                 |    ✅    |              ✅              |             ✅              |  ✅  |             ✅             |  ✅  | done              | —            | camera |
-| **C-09**  | Camera discovery (ONVIF)                     |    ✅    |              ✅              |             ✅              |  ✅  | ⬜ never met a real device |  ✅  | **P-9**           | hardware     | camera |
-| **C-10**  | Camera capabilities & stream probes          |    ✅    |              ✅              | ⚠️ client calls it; UI thin |  ⚠️  |       ⬜ unvalidated       |  ✅  | **P-6** → **P-9** | hardware     | camera |
-| **C-11**  | Camera health, measured                      |    ✅    |              ✅              |             ✅              |  ✅  |       ⬜ unvalidated       |  ✅  | **P-9**           | hardware     | camera |
-| **C-12**  | Camera lifecycle — retire · reinstate · bulk |    ✅    |              ✅              |             ✅              |  ✅  |             ✅             |  ✅  | **P-6**           | —            | camera |
-| **C-13**  | NVR / DVR channel onboarding                 |    ✅    |      ✅ templates exist      |             ✅              |  ⚠️  |  ⬜ **never met an NVR**   |  ⚠️  | **P-9**           | hardware     | camera |
-| **C-14**  | Media catalogue — clips & recordings         |    ✅    |              ✅              |  ⛔ **no console client**   |  ⛔  |             ⛔             |  ✅  | **P-6**           | —            | media  |
-| **C-14a** | ⚠️ **Recording — corrected 2026-08-05**      |    ✅    |              ✅              |             n/a             |  ✅  |       ⬜ unvalidated       |  ✅  | **P-8 Phase 2**   | —            | media  |
-| **C-15**  | Camera zone referential integrity            |    ✅    | ⚠️ shape-checked only (TD-3) |             n/a             |  ✅  |             ⚠️             |  ⚠️  | **P-6**           | —            | camera |
+| id        | Capability                                   | Contract |           Backend            |          Frontend           | Demo |           Pilot            | Prod | Milestone         | Dependencies | Owner     |
+| --------- | -------------------------------------------- | :------: | :--------------------------: | :-------------------------: | :--: | :------------------------: | :--: | ----------------- | ------------ | --------- |
+| **C-07**  | Location hierarchy (8 levels, skippable)     |    ✅    |              ✅              |             ✅              |  ✅  |             ✅             |  ✅  | done              | —            | tenant    |
+| **C-08**  | Camera registry & onboarding                 |    ✅    |              ✅              |             ✅              |  ✅  |             ✅             |  ✅  | done              | —            | camera    |
+| **C-09**  | Camera discovery (ONVIF)                     |    ✅    |              ✅              |             ✅              |  ✅  | ⬜ never met a real device |  ✅  | **P-9**           | hardware     | camera    |
+| **C-10**  | Camera capabilities & stream probes          |    ✅    |              ✅              | ⚠️ client calls it; UI thin |  ⚠️  |       ⬜ unvalidated       |  ✅  | **P-6** → **P-9** | hardware     | camera    |
+| **C-11**  | Camera health, measured                      |    ✅    |              ✅              |             ✅              |  ✅  |       ⬜ unvalidated       |  ✅  | **P-9**           | hardware     | camera    |
+| **C-12**  | Camera lifecycle — retire · reinstate · bulk |    ✅    |              ✅              |             ✅              |  ✅  |             ✅             |  ✅  | **P-6**           | —            | camera    |
+| **C-13**  | NVR / DVR channel onboarding                 |    ✅    |      ✅ templates exist      |             ✅              |  ⚠️  |  ⬜ **never met an NVR**   |  ⚠️  | **P-9**           | hardware     | camera    |
+| **C-14**  | Media catalogue — clips & recordings         |    ✅    |              ✅              |  ⛔ **no console client**   |  ⛔  |             ⛔             |  ✅  | **P-6**           | —            | media     |
+| **C-14a** | ⚠️ **Recording — corrected 2026-08-05**      |    ✅    |              ✅              |             n/a             |  ✅  |       ⬜ unvalidated       |  ✅  | **P-8 Phase 2**   | —            | media     |
+| **C-14b** | ⚠️ **AI inference — real detections**        |    ✅    |              ✅              |  ✅ reporting only (C-14c)  |  ✅  |       ⬜ unvalidated       |  ✅  | **P-8 Phase 3**   | —            | inference |
+| **C-14c** | Selective AI processing (per-camera enable)  |    ⛔    |              ⛔              |             ⛔              |  ⛔  |             ⛔             |  ⛔  | **P-8 Phase 4**   | C-14b        | media     |
+| **C-15**  | Camera zone referential integrity            |    ✅    | ⚠️ shape-checked only (TD-3) |             n/a             |  ✅  |             ⚠️             |  ⚠️  | **P-6**           | —            | camera    |
 
 > ⚠️ **C-14a is a correction, and it is the reason the row exists.** Until 2026-08-05 the media image
 > **contained no `ffmpeg`**, so every stream start in a deployment failed with `spawn ffmpeg ENOENT`
@@ -62,6 +64,19 @@ references them rather than restating what a capability is.
 > Fixed in P-8 Phase 2 and **measured**: 16 cameras recording concurrently, segments written and
 > indexed, and segments continuing to be written while the perception tier was paused. ⬜ Pilot stays
 > unvalidated — the source was synthetic (L-1 stands until P-9).
+>
+> ⚠️ **C-14b is inference, and only inference.** The deployed runtime runs YOLOX-nano (Apache-2.0) on
+> ONNX Runtime and produces real `Detection` objects — verified against the deployment by streaming a
+> CC0 photograph of **two** people over RTSP and asserting **exactly two** person detections, and by
+> streaming a colour-bar test pattern and asserting **zero**. Nothing consumes those detections: no
+> tracking, no rules, no incidents, no alerts, no storage. Frontend is ✅ for **reporting** — the
+> AI Runtime page shows what the runtime is doing and configures nothing.
+>
+> ⛔ **C-14c is not built, and the row exists so nobody assumes otherwise.** A customer cannot choose
+> which cameras are analysed. Today every recording camera's frames are offered and the runtime drops
+> what it cannot keep up with. ⬜ Pilot for C-14b stays unvalidated: two photographs are a smoke test
+> of the deployed path, **not an accuracy evaluation** — no mAP, no labelled corpus, no claim about
+> how this model behaves on a customer's cameras (L-1).
 
 ## Perception
 

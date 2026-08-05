@@ -9,6 +9,13 @@
 # is a camera without anything being configured per camera. `runOnDemandCloseAfter` stops the encoder
 # when the last reader leaves, so an idle fixture costs nothing and cameras that media stopped do not
 # quietly keep burning CPU into the measurement.
+#
+# ⚠️ **The default source is a PHOTOGRAPH, not a test pattern** (P-8 Phase 3). A real detector
+# correctly finds nothing in colour bars, so a run against `testsrc` cannot tell "the model works"
+# from "the model is broken" — every frame produces zero detections either way. `scene-people.jpg`
+# is a CC0 photograph of two people (see fixtures/media/README.md), looped at 15 fps and encoded the
+# same way, so the frames that travel the pipeline contain something a detector can be right or
+# wrong about. `testsrc` remains available as the `blank` path for the control case.
 logLevel: error
 rtspAddress: :8554
 rtmp: no
@@ -16,12 +23,28 @@ hls: no
 webrtc: no
 srt: no
 pathDefaults:
+  # ⚠️ `-loop 1`, NOT `-stream_loop -1`. Both look like "repeat forever" and only one works for a
+  # still image: `-stream_loop` restarts the demuxer, so timestamps restart with it and the stream
+  # ends within a second. Measured against the deployment — media's ffmpeg reported
+  # `ffmpeg exited (code 0)` after one segment and every camera reconnected forever. `-loop 1` is
+  # the image demuxer's own loop and produces monotonically increasing PTS.
   runOnDemand: >-
-    ffmpeg -re -f lavfi -i testsrc=size=640x360:rate=15
-    -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p
+    ffmpeg -re -loop 1 -framerate 15 -i /fixtures/media/scene-people.jpg
+    -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p -r 15
     -f rtsp rtsp://localhost:8554/$MTX_PATH
   runOnDemandRestart: yes
   runOnDemandStartTimeout: 15s
   runOnDemandCloseAfter: 5s
 paths:
+  # ⚠️ The control case, deliberately kept. A frame with nothing in it MUST produce zero detections;
+  # the stub backend returns one for any bytes at all, so this path is what separates a real model
+  # from a fabricating one when the verification runs.
+  blank:
+    runOnDemand: >-
+      ffmpeg -re -f lavfi -i testsrc=size=640x360:rate=15
+      -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p
+      -f rtsp rtsp://localhost:8554/blank
+    runOnDemandRestart: yes
+    runOnDemandStartTimeout: 15s
+    runOnDemandCloseAfter: 5s
   all_others:

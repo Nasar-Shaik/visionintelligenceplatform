@@ -25,7 +25,26 @@ class InferenceConfig:
     backend: str
     # Directory of capability manifests to load (zero-code registration).
     manifests_dir: str
-    # Model Registry (MLflow) — only used by the "onnx" backend.
+    # --- model resolution (P-8 Phase 3) --------------------------------------------
+    # Where the `onnx` backend finds its models: "local" (the checksummed catalogue baked into the
+    # image — the production default) or "mlflow" (the authoring registry; a dev-stack dependency).
+    #
+    # ⚠️ The default is deliberately NOT mlflow. A production container whose model set is decided by
+    # a tracking server it must reach at boot has a dev service on its critical path, and the model it
+    # runs stops being a property of the image.
+    model_source: str
+    # Catalogue document + the artifact directory it describes.
+    model_catalogue: str
+    model_dir: str
+    # Optional operator override: run this registered model id instead of the catalogue's default.
+    # Unknown ids are REFUSED, never silently ignored.
+    active_model: str
+    # Execution providers offered to onnxruntime, best first. The session reports what it got.
+    onnx_providers: str
+    # onnxruntime thread pools. 0 = derive intra-op from the cgroup CPU quota (see compute.py).
+    onnx_intra_threads: int
+    onnx_inter_threads: int
+    # Model Registry (MLflow) — only used when model_source is "mlflow".
     mlflow_tracking_uri: str
     s3_endpoint_url: str
     # Event sink: "null" (default, dependency-free) or "nats" (publish detections to the backbone).
@@ -64,6 +83,13 @@ _DEFAULTS: Mapping[str, str] = {
     "INTERNAL_API_KEY": "change_me_dev_only_min_16_chars",
     "INFERENCE_BACKEND": "stub",
     "INFERENCE_MANIFESTS_DIR": os.path.join(_HERE, "manifests"),
+    "INFERENCE_MODEL_SOURCE": "local",
+    "INFERENCE_MODEL_CATALOGUE": os.path.join(_HERE, "models", "registry.json"),
+    "INFERENCE_MODEL_DIR": "/opt/vip/models",
+    "INFERENCE_ACTIVE_MODEL": "",
+    "INFERENCE_ONNX_PROVIDERS": "CPUExecutionProvider",
+    "INFERENCE_ONNX_INTRA_THREADS": "0",
+    "INFERENCE_ONNX_INTER_THREADS": "1",
     "MLFLOW_TRACKING_URI": "http://localhost:45000",
     "MLFLOW_S3_ENDPOINT_URL": "http://localhost:49000",
     "INFERENCE_EVENT_SINK": "null",
@@ -105,6 +131,10 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> InferenceConfig:
     if backend not in ("stub", "onnx"):
         raise ValueError(f"INFERENCE_BACKEND must be 'stub' or 'onnx', got '{backend}'")
 
+    model_source = value("INFERENCE_MODEL_SOURCE")
+    if model_source not in ("local", "mlflow"):
+        raise ValueError(f"INFERENCE_MODEL_SOURCE must be 'local' or 'mlflow', got '{model_source}'")
+
     event_sink = value("INFERENCE_EVENT_SINK")
     if event_sink not in ("null", "nats"):
         raise ValueError(f"INFERENCE_EVENT_SINK must be 'null' or 'nats', got '{event_sink}'")
@@ -135,6 +165,17 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> InferenceConfig:
         internal_api_key=internal_api_key,
         backend=backend,
         manifests_dir=value("INFERENCE_MANIFESTS_DIR"),
+        model_source=model_source,
+        model_catalogue=value("INFERENCE_MODEL_CATALOGUE"),
+        model_dir=value("INFERENCE_MODEL_DIR"),
+        active_model=value("INFERENCE_ACTIVE_MODEL").strip(),
+        onnx_providers=value("INFERENCE_ONNX_PROVIDERS"),
+        onnx_intra_threads=_nonnegative_int(
+            value("INFERENCE_ONNX_INTRA_THREADS"), "INFERENCE_ONNX_INTRA_THREADS"
+        ),
+        onnx_inter_threads=_nonnegative_int(
+            value("INFERENCE_ONNX_INTER_THREADS"), "INFERENCE_ONNX_INTER_THREADS"
+        ),
         mlflow_tracking_uri=value("MLFLOW_TRACKING_URI"),
         s3_endpoint_url=value("MLFLOW_S3_ENDPOINT_URL"),
         event_sink=event_sink,

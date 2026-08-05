@@ -12,11 +12,13 @@
 # `curl` by the interpreter that is already here. Every package not installed is a package that
 # cannot be the subject of a CVE report on a customer's scanner.
 #
-#   docker build -f infra/docker/Dockerfile.inference .                              # stub (default)
-#   docker build -f infra/docker/Dockerfile.inference --build-arg INFERENCE_BACKEND=onnx .
+#   docker build -f infra/docker/Dockerfile.inference .                              # stub
+#   docker build -f infra/docker/Dockerfile.inference --build-arg INFERENCE_BACKEND=onnx .   # real
 #
-# The `onnx` build adds onnxruntime + MLflow + boto3 + nats-py (~1 GB) and is **P-8 Phase 5**, where
-# a real model is registered. Building it now would ship a gigabyte of code that nothing executes.
+# ⚠️ **The `onnx` build is now the deployed one** (P-8 Phase 3). It adds onnxruntime + numpy + pillow
+# and the registered model artifacts. MLflow and boto3 are deliberately NOT installed: the runtime
+# resolves models from the checksummed catalogue baked into this image, so a production container
+# does not need a tracking server to be reachable in order to start.
 
 FROM python:3.12-slim
 
@@ -34,15 +36,40 @@ ENV PYTHONUNBUFFERED=1 \
 # line above — writes nothing to disk.
 RUN useradd --system --create-home --shell /usr/sbin/nologin vip
 
+ARG INFERENCE_BACKEND=stub
+
+# ⚠️ Dependencies BEFORE source, so editing a Python file does not reinstall onnxruntime. Found the
+# slow way: with the source copied first, every one-line change to a decoder rebuilt a 200 MB layer.
+#
+# ⚠️ `requirements-runtime.txt`, not `requirements.txt`. The full file also pins MLflow, boto3 and
+# nats-py — an authoring/integration dependency set, ~700 MB of it, that a serving container never
+# imports. Every package not installed is a package that cannot appear on a customer's CVE scan.
+COPY ai/inference/requirements-runtime.txt /app/requirements-runtime.txt
+RUN if [ "$INFERENCE_BACKEND" = "onnx" ]; then \
+      pip install --no-cache-dir -r requirements-runtime.txt; \
+    else \
+      echo "stub backend: stdlib only, no dependencies installed"; \
+    fi
+
 # The whole runtime directory, tests included — the same decision `Dockerfile.service` makes for the
 # TypeScript workspace. A pruned image is smaller and a pruned image is a second thing to verify.
 COPY ai/inference /app
 
-ARG INFERENCE_BACKEND=stub
+# The registered model artifacts.
+#
+# ⚠️ **Outside `/app`, deliberately.** Gate 0 (deployment-integrity §6) compares the container's
+# `/app` byte-for-byte against `ai/inference`; 33 MB of build-time downloads living there would make
+# every deployment look tampered with.
+#
+# ⚠️ Every artifact is verified against the sha256 in `models/registry.json` and the build FAILS on a
+# mismatch. A build that pulls "whatever is at that URL today" produces an image whose behaviour
+# depends on a third party's release process, which is not a property a CCTV product may have.
+ENV INFERENCE_MODEL_DIR=/opt/vip/models
 RUN if [ "$INFERENCE_BACKEND" = "onnx" ]; then \
-      pip install --no-cache-dir -r requirements.txt; \
+      python fetch_models.py --dest "$INFERENCE_MODEL_DIR" \
+      && chown -R vip:vip "$INFERENCE_MODEL_DIR"; \
     else \
-      echo "stub backend: stdlib only, no dependencies installed"; \
+      echo "stub backend: no model artifacts"; \
     fi
 
 # ⚠️ Recorded on the image, because "which backend is this?" must be answerable from the deployment

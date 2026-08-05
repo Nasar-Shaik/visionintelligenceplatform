@@ -44,7 +44,7 @@ _SESSION_ACTIONS = ("stop", "pause", "resume", "restart")
 
 # ⚠️ Polled or per-frame paths. Logging each one is thousands of lines an hour of no information, and
 # it buries the line that matters — so they are logged only when they FAIL (TD-60).
-_QUIET_PATHS = ("/health", "/ready", "/metrics", "/infer")
+_QUIET_PATHS = ("/health", "/ready", "/metrics", "/infer", "/runtime")
 
 # Cameras that have delivered a frame recently: cameraKey -> monotonic seconds. Bounded by the number
 # of cameras a deployment actually has, and pruned on read.
@@ -144,6 +144,102 @@ def _runtime_metrics(registry, supervisor, service_name: str, version: str) -> s
     return "\n".join(lines) + "\n"
 
 
+def runtime_view(registry, supervisor, service_name: str, version: str, model_store=None) -> dict:
+    """Everything the runtime dashboard shows, in one call (P-8 Phase 3).
+
+    ⚠️ **Every field is measured or absent.** There is no placeholder: `gpu` is `None` on a machine
+    with no GPU rather than "0%", and a model that failed to load reports FAILED rather than being
+    omitted from the list. A dashboard whose empty state is indistinguishable from its healthy state
+    is the thing this page exists to prevent.
+
+    ⚠️ **No tenant data.** Counts, states, versions and label totals — nothing that identifies a
+    camera, a person or a customer. The runtime persists nothing and this endpoint publishes nothing
+    it would have had to persist.
+    """
+    capabilities = []
+    provider = "unknown"
+    for entry in registry.health():
+        capabilities.append(entry)
+        if entry.get("executionProvider"):
+            provider = entry["executionProvider"]
+
+    resources: dict = {}
+    sessions_active = None
+    if supervisor is not None:
+        try:
+            resources = supervisor.scheduler_stats().get("resources") or {}
+        except Exception:  # noqa: BLE001 - a status page must never be the thing that breaks
+            resources = {}
+        try:
+            sessions_active = supervisor.stats().get("activeSessions")
+        except Exception:  # noqa: BLE001
+            sessions_active = None
+
+    registered = None
+    if model_store is not None:
+        try:
+            registered = [m.descriptor(artifact_dir=model_store.artifact_dir) for m in model_store.all()]
+        except Exception as exc:  # noqa: BLE001
+            registered = [{"error": str(exc)[:200]}]
+
+    loaded = [
+        {
+            "capabilityId": entry.get("capabilityId"),
+            "state": entry.get("state"),
+            "executionProvider": entry.get("executionProvider"),
+            "model": entry.get("model"),
+            "adapter": entry.get("adapter"),
+        }
+        for entry in capabilities
+    ]
+
+    return {
+        "service": service_name,
+        "runtimeVersion": version,
+        "uptimeSeconds": round(_time.monotonic() - _STARTED_AT, 1),
+        "executionProvider": provider,
+        # ⚠️ Health is derived from the capabilities, not asserted: "ok" only when every enabled
+        # capability is READY. A runtime that answers /health while its model failed to load is
+        # exactly the lie P-8 Phase 1 was built to catch.
+        "health": _derive_health(capabilities),
+        "capabilities": capabilities,
+        "loadedModels": loaded,
+        "registeredModels": registered,
+        "cameras": _current_cameras(),
+        "sessionsActive": sessions_active,
+        "resources": {
+            "memoryMb": resources.get("memoryMb"),
+            "cpuPercent": resources.get("cpuPercent"),
+            # ⚠️ The cgroup quota, not the host's core count (TD-61). On a container limited to two
+            # cores of a ten-core host, `os.cpu_count()` says ten and every capacity number derived
+            # from it is wrong by a factor of five.
+            "cpuCores": _available_cores(),
+            # None, not 0 — there is no GPU in this deployment and saying "0%" implies there is.
+            "gpuPercent": resources.get("gpuPercent"),
+        },
+    }
+
+
+def _available_cores():
+    try:
+        from compute import available_cores  # noqa: WPS433 - keeps the server import light
+
+        return round(available_cores(), 2)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _derive_health(capabilities) -> str:
+    states = [entry.get("state") for entry in capabilities]
+    if not states:
+        return "unknown"
+    if all(state == "READY" for state in states):
+        return "ok"
+    if any(state == "FAILED" for state in states):
+        return "failed"
+    return "degraded"
+
+
 def runtime_snapshot(registry, supervisor) -> dict:
     """The heartbeat's payload — the same readings the metrics expose, as one log line."""
     processed = 0.0
@@ -182,6 +278,7 @@ def make_handler(
     model_registry=None,
     sessions=None,
     supervisor=None,
+    model_store=None,
 ):
     class Handler(BaseHTTPRequestHandler):
         server_version = f"{service_name}/{version}"
@@ -249,6 +346,12 @@ def make_handler(
                 self._ok(registry.health())
             elif path == "/metrics":
                 self._metrics()
+            elif path == "/runtime":
+                # Engineering + deployment visibility (P-8 Phase 3). Deliberately NOT tenant-scoped:
+                # runtime state is a property of the deployment, identical for every tenant, and
+                # carries no tenant data. Reached only through media, which is the one service
+                # allowed to talk to the runtime — the runtime stays off the gateway.
+                self._ok(runtime_view(registry, supervisor, service_name, version, model_store))
             elif segs[:1] == ["models"]:
                 self._get_models(segs)
             elif segs[:1] == ["sessions"]:
@@ -967,12 +1070,20 @@ def build_server(
     sessions=None,
     supervisor=None,
     live_defaults=None,
+    model_store=None,
 ) -> ThreadingHTTPServer:
     if live_defaults:
         _LIVE_DEFAULTS.update(live_defaults)
     return ThreadingHTTPServer(
         (host, port),
         make_handler(
-            registry, internal_key, service_name, version, model_registry, sessions, supervisor
+            registry,
+            internal_key,
+            service_name,
+            version,
+            model_registry,
+            sessions,
+            supervisor,
+            model_store,
         ),
     )

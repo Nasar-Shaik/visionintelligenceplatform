@@ -60,6 +60,9 @@ class Capability:
         self._translator = translator or DefaultResultTranslator()
         self._event_sink = event_sink or NullEventSink()
         self._binding: Optional[ModelBinding] = None
+        #: How the frame was turned into a tensor, from the resolved model. Stamped on every result
+        #: so an archived detection can be reproduced — see `InputSpec.fingerprint`.
+        self._preprocessing: Optional[str] = None
         self._state = CapabilityState.LOADING if manifest.enabled else CapabilityState.DISABLED
 
     # --- lifecycle -----------------------------------------------------------------
@@ -75,6 +78,8 @@ class Capability:
             self._adapter.load(ref)
             if self._postprocessor is None:
                 self._postprocessor = ConfidencePostprocessor(labels=ref.get("labels"))
+            preprocessing = ref.get("preprocessing")
+            self._preprocessing = preprocessing if isinstance(preprocessing, str) else None
             self._binding = binding
             self._state = CapabilityState.READY
         except Exception as exc:  # noqa: BLE001 - any load failure → FAILED (no partial output)
@@ -102,13 +107,24 @@ class Capability:
         return self.manifest.descriptor()
 
     def health(self) -> dict:
-        return {
+        out = {
             "capabilityId": self.manifest.capability_id,
             "state": self._state.value,
             "executionProvider": getattr(self._adapter, "execution_provider", "unknown"),
             "model": self._binding.to_dict() if self._binding else None,
             "metrics": self.metrics.snapshot(),
         }
+        # ⚠️ Optional by design: `describe()` is not part of the `ModelAdapter` Protocol, so a backend
+        # that does not implement it stays a valid backend and simply reports nothing extra. Adding
+        # it to the Protocol would make self-description mandatory for a seam whose whole purpose is
+        # to stay small.
+        describe = getattr(self._adapter, "describe", None)
+        if callable(describe):
+            try:
+                out["adapter"] = describe()
+            except Exception as exc:  # noqa: BLE001 - a status call must never break the runtime
+                out["adapter"] = {"error": str(exc)[:200]}
+        return out
 
     # --- pipeline ------------------------------------------------------------------
 
@@ -140,11 +156,18 @@ class Capability:
             execution_provider=getattr(self._adapter, "execution_provider", "unknown"),
             inference_ms=(t2 - t1) * 1000.0,
             at=_iso(self._clock()),
+            # Reproducibility metadata: the pixel path and the floor that shaped this result.
+            preprocessing_version=self._preprocessing,
+            confidence_threshold=self.manifest.min_confidence,
         )
         self._event_sink.publish(result)
         self.metrics.record_processed(
             decode_ms=(t1 - t0) * 1000.0,
             inference_ms=(t2 - t1) * 1000.0,
             confidences=[d.confidence for d in detections],
+            # ⚠️ What was seen, not just how many: "42 detections" and "42 people" are different
+            # claims, and only the second one is evidence that the model is doing its job.
+            labels=[d.label for d in detections],
+            frame_latency_ms=result.frame_latency_ms,
         )
         return result.to_dict()

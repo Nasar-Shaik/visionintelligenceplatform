@@ -28,6 +28,15 @@ import { ModelSelector } from '../capability/descriptor.js';
  * optional (re-ID + tracking). Extend additively (Constitution §7).
  */
 export const Detection = z.object({
+  /**
+   * Stable identity for one detection (P-8 Phase 3, additive).
+   *
+   * ⚠️ **Derived, not random.** It is a digest of tenant + camera + capture time + frame sequence +
+   * index, so re-running the same frame through the same model yields the same id. On a platform
+   * whose output becomes evidence, "we reprocessed and got different identifiers" is a question
+   * nobody should have to answer.
+   */
+  detectionId: z.string().min(1).optional(),
   label: z.string().min(1),
   /** Optional numeric class id from the model's label space (informational). */
   classId: z.number().int().nonnegative().optional(),
@@ -90,6 +99,8 @@ export type InferenceRequest = z.infer<typeof InferenceRequest>;
 
 /** The concrete model the capability resolved by selector (returned for provenance/observability). */
 export const ModelBinding = z.object({
+  /** Registered model id in the runtime's catalogue, e.g. "yolox-nano" (P-8 Phase 3, additive). */
+  id: z.string().min(1).optional(),
   name: z.string().min(1),
   version: z.string().min(1),
   task: z.string().min(1),
@@ -104,7 +115,26 @@ export type ModelBinding = z.infer<typeof ModelBinding>;
  * carries full **version metadata** (runtime + capability + model + execution provider + timestamp)
  * so every result is auditable, reproducible, and rollback-diagnosable.
  */
+/**
+ * The version of the `DetectionResult` shape itself (P-8 Phase 3).
+ *
+ * ⚠️ Distinct from `runtimeVersion` (which process produced it), `capabilityVersion` (which
+ * capability) and the model's version (which weights). This one answers **"how do I read this
+ * document?"** — the question a consumer three years from now, holding an archived result, cannot
+ * answer from any of the others.
+ *
+ * `1.1` because the frozen v1.0 contract gained optional fields in P-8 Phase 3 (`detectionId`,
+ * `frameLatencyMs`, `model.id`, `schemaVersion`). Additive only; a breaking change needs an ADR and
+ * a major bump (ED-0039).
+ */
+export const DETECTION_RESULT_SCHEMA_VERSION = '1.1';
+
 export const DetectionResult = z.object({
+  /**
+   * How to read this document. Optional so archived v1.0 results stay valid; the runtime always
+   * stamps it. See {@link DETECTION_RESULT_SCHEMA_VERSION}.
+   */
+  schemaVersion: z.string().min(1).optional(),
   tenantId: TenantId,
   cameraId: z.string().min(1),
   capabilityId: CapabilityId,
@@ -115,8 +145,26 @@ export const DetectionResult = z.object({
   model: ModelBinding,
   frame: z.object({ seq: z.number().int().nonnegative(), capturedAt: IsoDateTime }),
   detections: z.array(Detection).default([]),
+  /**
+   * How the frame was turned into a tensor, as a reproducible fingerprint — implementation version
+   * plus the resolved input spec, e.g. `1.0/letterbox-416x416-NCHW-float32-BGR-pad114`.
+   *
+   * ⚠️ Without this a result is **not** reproducible: identical model, identical provider and
+   * identical frame give different detections if the resize policy, colour order or pad value
+   * changed, and none of the other version fields would show it.
+   */
+  preprocessingVersion: z.string().min(1).optional(),
+  /** The confidence floor applied when this result was produced (the capability's setting). */
+  confidenceThreshold: Confidence.optional(),
   /** Wall-clock inference time for the frame (ms). */
   inferenceMs: z.number().nonnegative(),
+  /**
+   * Age of the frame when the result was produced — capture → detection, in ms (P-8 Phase 3,
+   * additive). ⚠️ A different question from `inferenceMs`, and the one an operator actually asks:
+   * inference can be fast while the answer is old because the frame queued. Absent when the frame
+   * carried no usable `capturedAt`, because a fabricated zero would read as "instant".
+   */
+  frameLatencyMs: z.number().nonnegative().optional(),
   /** Correlation id propagated from the frame (threads detections → events). */
   correlationId: z.string().min(1).optional(),
   at: IsoDateTime,
