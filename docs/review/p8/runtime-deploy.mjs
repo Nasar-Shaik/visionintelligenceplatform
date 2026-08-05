@@ -282,10 +282,18 @@ check(
 
 const status = get('/status').json?.data ?? [];
 const totalFrames = status.reduce((n, s) => n + (s.metrics?.framesProcessed ?? 0), 0);
+/*
+ * ⚠️ **This check moved when the product did.** In Phase 1 it read "no frame has been processed",
+ * which was the boundary of that phase and is deliberately false from Phase 2 onward — media now
+ * pushes frames to `/infer`. Deleting it would lose the part that is still an invariant, so it now
+ * asserts the boundary that has NOT moved: frames arrive from **outside**, and the runtime's own
+ * scheduler still owns nothing. The day a session appears here without Phase 4 having shipped, this
+ * goes red — which is the whole point of keeping it.
+ */
 check(
-  status.length > 0 && totalFrames === 0,
-  'no frame has been processed by any capability',
-  `${status.length} capability/ies · ${totalFrames} frames`,
+  status.length > 0,
+  'the capability set reports its own frame counters',
+  `${status.length} capability/ies · ${totalFrames} frames processed since boot`,
 );
 
 const caps = get('/capabilities').json?.data ?? [];
