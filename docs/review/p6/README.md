@@ -972,10 +972,10 @@ exclusivity needs a claim on the incident and is **L-36 → P-7**, deliberately 
 freeze. ⚠️ It was found by a screenshot assertion added an hour earlier — a check on a _file_
 catching a defect in the _product_.
 
-## Seven verification defects, in four shapes
+## Nine verification defects, in four shapes
 
-Three **could not fail**. Two **could pass for the wrong reason**. One **could fail for the wrong
-reason**. One could do neither — it crashed where a verdict belonged and took five later checks with
+Four **could not fail**. Two **could pass for the wrong reason**. Two **could fail for the wrong
+reason**. One could do neither — it crashed where a verdict belonged and took six later checks with
 it.
 
 | Where                    | What it was doing                                                                                                                 |
@@ -1018,3 +1018,38 @@ deleted two milestones earlier.
 ⚠️ It also exposed that `.d.ts` output is **not** byte-reproducible (TypeScript does not fix union
 order across compilations), so runtime bytes are compared strictly and declarations are reported
 rather than judged. A check that goes red on a correct deployment is a check that gets explained away.
+
+## The freeze
+
+**P-6.5 is frozen at commit `150d536`, 2026-08-05.** `deployment-integrity.mjs` reports _every
+running byte is commit 150d5364_ — ten services, eight shared packages, the console bundle the edge
+serves, the image every container is running, and the seed inside the tool image.
+
+No further change to the Inbox or System Health without one of:
+
+- a **production defect**,
+- an **approved ADR**, or
+- a **new implementation issue** opened against a later milestone.
+
+### The gate, honestly
+
+| Gate                                                        | Result                                                                                                                                                                                                                                              |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 · deployment integrity                                    | ✅ every running byte is `150d536`                                                                                                                                                                                                                  |
+| 1 · typecheck · lint · tests · imports · contracts · format | ✅ 28 · 20 · 28 task(s) · 0 violations · 70 schemas · clean                                                                                                                                                                                         |
+| 1b · integration suite (`VIP_REQUIRE_MONGO=1`)              | ✅ 18 tasks — including the acknowledgement-race regression, which now **refuses** to skip                                                                                                                                                          |
+| 2 · build + bundle budget + no chunk cycles                 | ✅ 19 tasks, 42 assets within budget                                                                                                                                                                                                                |
+| 3 · production deployment verified                          | ✅ built images, deployed, exercised through the edge                                                                                                                                                                                               |
+| 4 · every route renders                                     | ✅ `verify.mjs` 12/12, zero page errors                                                                                                                                                                                                             |
+| 5 · responsive                                              | ⛔ **red at 768 px and 390 px — TD-45**, three and five clipped elements, identical on every page, every one of them in the shell's top bar. Pre-existing, owed by P-6, outside this milestone. The Inbox's own content is clean at all four widths |
+| 6 · accessibility                                           | ✅ 0 unnamed · 0 under 24 px · 0 heading skips · every tab stop focus-visible                                                                                                                                                                       |
+| 7 · keyboard-only                                           | ✅ acknowledging and opening an incident, no mouse                                                                                                                                                                                                  |
+| 8 · recovery                                                | ✅ seven dependencies taken away and restored under a live screen; 9–11 s to notice, 14–15 s to clear                                                                                                                                               |
+| 10 · review package                                         | ✅ this document, [VERIFICATION_MATRIX](VERIFICATION_MATRIX.md), [P6-5-LESSONS](P6-5-LESSONS.md)                                                                                                                                                    |
+| 11 · limitations recorded                                   | ✅ L-36 added; L-32…L-35 carried forward                                                                                                                                                                                                            |
+| 12 · governance current                                     | ✅ capability matrix · TECH-DEBT (TD-55, TD-56) · roadmap · release plan · MASTER_PROGRESS                                                                                                                                                          |
+| 13 · the verification is itself verified                    | ✅ ten scripts, each failed once for the correct reason and restored                                                                                                                                                                                |
+
+⚠️ **Gate 5 is reported red rather than rounded up.** It has been red on every page since P-6.2 for
+one defect in one component, and the honest thing at a freeze is to say so — the milestone did not
+cause it and cannot close it.

@@ -83,15 +83,20 @@ _Last updated: 2026-08-05 · Claude_
   acknowledged — day.operator@northgate.demo is on this incident too"_; incident-level exclusivity is
   a claim on the incident and is **L-36 → P-7**, deliberately not built inside a freeze. ⚠️ It was
   found by a **screenshot assertion** added an hour earlier — a check on a file catching a defect in
-  the product. ⚠️ **Seven verification defects in four shapes — three that could not fail, two that could pass for the wrong reason, one that could fail for the wrong reason, and one that crashed where a verdict belonged.**
+  the product. ⚠️ **Nine verification defects in four shapes — four that could not fail, two that could pass for the wrong reason, two that could fail for the wrong reason, and one that crashed where a verdict belonged.**
   `inbox-ux.mjs` 1e was `… || true`, a tautology reporting success on every run since it was written;
   `inbox-scale.mjs` §2 `explain()`ed a query **the script wrote**, so a build doing a 5,000-row
   in-memory sort passed both checks; `p65-freeze-screens.mjs` wrote eight PNGs and asserted nothing
   about any of them; `inbox-ux.mjs` 2d matched a probe title that **persists across runs**, so an
   earlier run's alert satisfied "a new alert arrived"; and its targeting matched entries **by title**
-  where the load harness gives 2,500 incidents six titles. `soak.mjs` had two of its own — a fixture a
-  container rebuild had deleted (nine alerts silently never raised, reported as a footnote under
-  checks that all passed) and a crash after 5d that skipped five later checks. All fixed; `inbox.mjs`
+  where the load harness gives 2,500 incidents six titles. `inbox-ui.mjs` C2 still demanded the _fabricated_ `ETIMEDOUT` wording the milestone had
+  removed. `soak.mjs` had three of its own — a fixture a container rebuild had deleted (nine alerts
+  silently never raised, reported as a footnote under checks that all passed), a crash after 5d that
+  skipped six later checks, and a waiting-count check that became **unfalsifiable the moment the bell
+  capped**: it reported "the count still agrees with the server — 25 vs 54" and passed, and would
+  have passed on 1 vs 54. It now compares the badge against **its own query** and asserts the "or
+  more" appears exactly when a further page exists; mutation-tested by shrinking the bell's page to
+  ten (red at _5 vs 21 · capped true/false_), restored green at _13 vs 13_. All fixed; `inbox.mjs`
   gained **1g**, the server's own ordering, because the console sorts client-side and `soak.mjs` 5d
   rendered newest-first through a build that served the queue **oldest-first**. **Mutation testing:
   ten scripts, the product broken each time rather than the assertion** — the atomic filter removed

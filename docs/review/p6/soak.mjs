@@ -332,8 +332,15 @@ check(ordered, '5d · ⚠️ still newest-first on screen after every disruption
 /*
  * ⚠️ Asked with a token of its own, and never allowed to take the run down with it. Asking from
  * inside the page returned 401, `body.data` was undefined, and the uncaught TypeError ended the
- * process **after** 5d and before 5e, 5f, 5g, 8h and 8i — a crash where a verdict should be, and
- * five checks that silently did not run.
+ * process **after** 5d and before 5e, 5f, 5g, 5h, 8h and 8i — a crash where a verdict should be, and
+ * six checks that silently did not run.
+ *
+ * ⚠️ **And it asks for the page the bell actually reads.** The bell fetches one page of fifty
+ * deliveries and reports the distinct incidents in it, saying "or more" when a further page exists —
+ * a floor, deliberately. Comparing that floor against the *whole* queue made the check unfalsifiable
+ * the moment it capped: it reported "the count still agrees with the server — 25 vs 54" and passed,
+ * and it would have passed on 1 vs 54. What is owed is that the badge equals what its own query
+ * returns; the total is printed beside it as context.
  */
 const serverSays = await (async () => {
   try {
@@ -342,21 +349,31 @@ const serverSays = await (async () => {
       headers: { 'content-type': 'application/json', 'x-tenant-id': TENANT },
       body: JSON.stringify(ADMIN),
     }).then((r) => r.json());
-    const body = await fetch(`${B}/api/notify/notifications?acknowledged=false&limit=200`, {
-      headers: { accept: 'application/json', authorization: `Bearer ${auth.data.accessToken}` },
-    }).then((r) => r.json());
-    return new Set(body.data.items.map((n) => n.incidentId)).size;
+    const ask = async (limit) => {
+      const body = await fetch(`${B}/api/notify/notifications?acknowledged=false&limit=${limit}`, {
+        headers: { accept: 'application/json', authorization: `Bearer ${auth.data.accessToken}` },
+      }).then((r) => r.json());
+      return {
+        incidents: new Set(body.data.items.map((n) => n.incidentId)).size,
+        capped: body.data.nextCursor !== undefined,
+      };
+    };
+    const bellPage = await ask(50);
+    const whole = await ask(200);
+    return { page: bellPage.incidents, capped: bellPage.capped, whole: whole.incidents };
   } catch (err) {
     console.log(`  · ⚠️ could not ask the server for the count: ${err.message}`);
-    return -1;
+    return null;
   }
 })();
 const badge = Number((last.bell.match(/(\d+)/) ?? [])[1] ?? -1);
-console.log(`  · the bell says ${badge}, the server says ${serverSays} incidents waiting`);
+console.log(
+  `  · the bell says ${last.bell.includes('or more') ? `${badge}+` : badge}, its own query returns ${serverSays?.page ?? '—'} incident(s)${serverSays ? ` (the whole queue holds ${serverSays.whole})` : ''}`,
+);
 check(
-  badge === serverSays || (last.bell.includes('or more') && badge <= serverSays),
-  '5e · ⚠️ the waiting count still agrees with the server after forty minutes',
-  `${badge} vs ${serverSays}`,
+  serverSays !== null && badge === serverSays.page && last.bell.includes('or more') === serverSays.capped,
+  '5e · ⚠️ the waiting count still equals what its own query returns, forty minutes in — and still says "or more" exactly when there is more',
+  serverSays === null ? 'no answer from the server' : `${badge} vs ${serverSays.page} · capped ${last.bell.includes('or more')}/${serverSays.capped}`,
 );
 
 const grew = (last.heap - first.heap) / 1048576;

@@ -55,6 +55,11 @@ own system was ever told.
 - **There is no per-operator read state.** The only state is "somebody acknowledged this". An
   operator who looked but did not act leaves the entry bold — deliberate for a shared operations
   queue, and worth saying out loud.
+- ⚠️ **Two operators can both come away owning one incident** (L-36). Acknowledging is per delivery
+  and the button is per incident: two people pressing together on an incident that reached two
+  channels take one delivery each, and both acknowledgements are genuine. The console tells each of
+  them the other is there — _"Alert acknowledged — day.operator@northgate.demo is on this incident
+  too"_ — but nothing **stops** the second person. A claim on the incident arrives in **P-7**.
 - **No snooze, no assignment from the inbox, no bulk clear.** Acknowledging acts on one incident.
   ⚠️ "Acknowledge all" is refused on purpose: clearing twenty alerts nobody read is the fastest way
   to make a queue worthless.
