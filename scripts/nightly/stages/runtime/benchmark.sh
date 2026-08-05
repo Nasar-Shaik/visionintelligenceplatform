@@ -11,7 +11,7 @@
 # an explicit act — `scripts/benchmark.sh --promote`. A permanent reference that a machine can
 # silently rewrite at 03:00 is not a reference; the whole value of that page is that a human stood
 # behind the numbers on it.
-. "$(dirname -- "$0")/_preamble.sh"
+. "${STAGES_DIR:?stage must be run by the engine}/_preamble.sh"
 
 HARDENING="docs/review/p8/hardening.mjs"
 [ -f "$HARDENING" ] || {

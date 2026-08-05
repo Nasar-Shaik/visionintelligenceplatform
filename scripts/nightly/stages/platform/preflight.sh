@@ -5,7 +5,7 @@
 # healthy runtime and enough disk to rebuild an image. Benchmarking a stack that is not up does not
 # produce a bad number; it produces a *confident* bad number, which is worse — you would read it in
 # the morning and believe it.
-. "$(dirname -- "$0")/_preamble.sh"
+. "${STAGES_DIR:?stage must be run by the engine}/_preamble.sh"
 
 say_kv() { printf '  %-28s %s\n' "$1" "$2"; }
 

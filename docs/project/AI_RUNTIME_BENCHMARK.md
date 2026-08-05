@@ -19,6 +19,13 @@ decoded by `ffmpeg`, re-encoded as JPEG, and posted to the runtime — the full 
 the pixels come from one CC0 still image. Nothing here is a claim about vendor compatibility
 ([L-1](KNOWN_LIMITATIONS.md)) or about model accuracy ([TD-64](../../tracking/TECH-DEBT.md)).
 
+**No sizing number is published until three clean runs agree on it** (standing policy, 2026-08-05).
+A single ladder is a measurement; a recommendation is a claim that the measurement repeats, and those
+are different assertions. The first version of this page conflated them and published a
+four-camera recommendation that two later runs contradicted — see the sizing section. Every rung is
+now re-measured on every nightly run, so a number that stops reproducing is caught here rather than
+in a customer's deployment.
+
 **Some windows were shared with local builds, and those are labelled.** The sizing ladder, warm-up
 and reproducibility figures were taken on a **quiet host** — only the platform's own containers. Part
 of the stability run overlapped image builds and test runs, and those figures are reported as a
@@ -113,11 +120,34 @@ one. That question is deferred to P-9 real-hardware validation, not answered her
 runtime under pressure drops whole frames; it does not quietly return worse answers on the frames it
 keeps. That distinction is the difference between a capacity limit and a correctness bug.
 
-### 🎯 Recommendation: 4 cameras per host at 2 fps, CPU-only
+### 🎯 Recommendation: **2 cameras** per host at 2 fps, CPU-only
 
-**Computed, not chosen** — the largest rung inside a 2 % drop budget with no earlier rung breaching
-it. At four cameras: p95 122 ms, 298 % CPU, 112 MB.
+**⚠️ This number was lowered from 4 after the fourth rung failed to reproduce.** The ladder above is
+a single run. Three runs of the **same commit** on the **same host** disagree at four cameras and
+agree everywhere below it:
 
+| Run                            | Host condition    | 1 cam | 2 cams |   **4 cams** | 8 cams | 16 cams |
+| ------------------------------ | ----------------- | ----: | -----: | -----------: | -----: | ------: |
+| Morning (the table above)      | quiet             | 0.0 % |  0.0 % | **0.4 %** ✅ |  8.0 % |  18.9 % |
+| Evening, same day, same commit | quiet             | 0.0 % |  0.0 % | **4.4 %** ❌ |  9.0 % |  20.7 % |
+| Nightly framework, 2026-08-05  | quiet, unattended | 0.0 % |  0.0 % | **4.7 %** ❌ | 14.2 % |  24.4 % |
+
+Two independent later measurements agree with each other to within 0.3 points and disagree with the
+morning by a **factor of ten**. That makes the morning figure the outlier, not the baseline — and 4
+cameras sits directly on the 2 % budget line, where a factor of ten decides the answer. One and two
+cameras are 0.0 % in **every** run, so two is the number this page publishes.
+
+⚠️ **The four-camera rung is now `provisional` and must not be quoted to a customer** until three
+clean runs agree, per the standing benchmark policy. What differs between morning and evening has not
+been isolated; the most likely cause is host thermal state — the evening ladders reached the same
+throughput at **lower** CPU with ~20 % higher latency, which is what throttling looks like — but that
+is a hypothesis, not a measurement, and it is recorded as one.
+
+- **This is why the number moved, and the mechanism matters more than the number.** Nothing regressed
+  and no code changed. A single benchmark run was published as a permanent reference, and repeating
+  it is what showed that it could not carry that weight. Every rung on this page is now re-measured on
+  every nightly run ([`scripts/nightly.sh`](../../scripts/README.md)), so a sizing claim that stops
+  reproducing is caught by the framework rather than by a customer.
 - **Frames first exceed the budget at 8 cameras** (8.0 %). Eight to sixteen cameras still _work_ and
   still detect correctly — they analyse a **sample** of the stream rather than all of it. Whether
   that is acceptable is a product decision, not an engineering limit; at 16 cameras the platform
@@ -139,8 +169,8 @@ it. At four cameras: p95 122 ms, 298 % CPU, 112 MB.
   loss.
 
 ⚠️ **Inference is far below the frame path.** Phase 2 measured the transport carrying **16 cameras
-with zero loss**. Perception sustains **4**. The camera count a deployment advertises is set by the
-AI tier, not by the video tier.
+with zero loss**. Perception sustains **2** repeatably (4 provisionally). The camera count a
+deployment advertises is set by the AI tier, not by the video tier.
 
 ---
 

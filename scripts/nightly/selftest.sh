@@ -64,7 +64,7 @@ EOF
 # The report stage under test is the REAL one. Checking that a synthetic stub "generated a summary"
 # would prove nothing about the file you actually read in the morning.
 cp "$REPO/scripts/nightly/stages/_preamble.sh" "$TMP/stages/_preamble.sh"
-cp "$REPO/scripts/nightly/stages/report.sh" "$TMP/stages/realreport.sh"
+cp "$REPO/scripts/nightly/stages/platform/report.sh" "$TMP/stages/realreport.sh"
 
 chmod +x "$TMP"/stages/*.sh
 

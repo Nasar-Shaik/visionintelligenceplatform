@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Integration — the cross-service tests, which need the stack up and are therefore not part of the
 # unit gate.
-. "$(dirname -- "$0")/_preamble.sh"
+. "${STAGES_DIR:?stage must be run by the engine}/_preamble.sh"
 
 pnpm test:integration
 RC=$?

@@ -74,9 +74,11 @@ references them rather than restating what a capability is.
 >
 > ⚠️ **Hardened and sized, P-8 Phase 3H (2026-08-05).** Results are **reproducible** — twenty runs of
 > one frame gave one distinct result, the same two confidences to the last bit, across a container
-> recreation. The sizing answer is **4 cameras per host at 2 fps on a 10-core CPU-only box**, computed
-> from a 2 % frame-loss budget; 8 cameras loses 8.0 %, 16 loses 18.9 % ([L-41](KNOWN_LIMITATIONS.md),
-> [AI_RUNTIME_BENCHMARK](AI_RUNTIME_BENCHMARK.md)). ⚠️ **Detection consistency held at exactly 2.00
+> recreation. The sizing answer is **2 cameras per host at 2 fps on a 10-core CPU-only box**, computed
+> from a 2 % frame-loss budget and reproduced at 0.0 % in three runs; 8 cameras loses 8.0–14.2 %, 16
+> loses 18.9–24.4 % ([L-41](KNOWN_LIMITATIONS.md), [AI_RUNTIME_BENCHMARK](AI_RUNTIME_BENCHMARK.md)).
+> ⚠️ **4 cameras was published first and withdrawn**: it reproduced at 0.4 %, 4.4 % and 4.7 % on the
+> same commit, so it straddles the budget line and is marked provisional rather than quoted. ⚠️ **Detection consistency held at exactly 2.00
 > per frame at every rung including saturation** — under pressure the runtime drops whole frames
 > rather than returning worse answers, which is a capacity limit and not a correctness bug.
 >

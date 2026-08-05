@@ -3,7 +3,7 @@
 #
 # ⚠️ Each sub-check runs even if an earlier one failed. The morning wants "lint and python are
 # broken", not "lint is broken, and who knows about the rest" — one command, one complete answer.
-. "$(dirname -- "$0")/_preamble.sh"
+. "${STAGES_DIR:?stage must be run by the engine}/_preamble.sh"
 
 run_check() {
   local label="$1"

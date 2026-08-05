@@ -4,7 +4,7 @@
 # Wraps `docs/review/p8/inference-soak.mjs`, which is the thing that actually measures. This stage
 # exists to give it a duration, a timeout it cannot outlive, a home for its samples, and a guard that
 # removes the cameras it created if the night is cut short.
-. "$(dirname -- "$0")/_preamble.sh"
+. "${STAGES_DIR:?stage must be run by the engine}/_preamble.sh"
 
 SOAK="docs/review/p8/inference-soak.mjs"
 [ -f "$SOAK" ] || {

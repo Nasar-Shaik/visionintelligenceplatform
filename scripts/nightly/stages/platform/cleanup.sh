@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Housekeeping — delegate to the standalone cleanup script so there is one implementation.
-. "$(dirname -- "$0")/_preamble.sh"
+. "${STAGES_DIR:?stage must be run by the engine}/_preamble.sh"
 
 bash "$REPO/scripts/cleanup.sh" --prune --docker
 RC=$?

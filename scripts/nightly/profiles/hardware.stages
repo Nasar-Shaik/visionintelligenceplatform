@@ -6,11 +6,11 @@
 # `requires` accepts stage ids, or the token `always` — which means "run even if the run
 # aborted". Only the report uses it: an aborted night is the one that most needs a written summary.
 
-preflight | Pre-flight checks               | preflight.sh      | RUN_PREFLIGHT |           | abort    | TIMEOUT_PREFLIGHT
-onvif     | ONVIF discovery against devices | onvif.sh          | RUN_ONVIF     | preflight | continue | TIMEOUT_RUNTIME
-vendors   | One camera per vendor family    | hardware-cameras.sh | RUN_VENDORS | preflight | continue | TIMEOUT_RUNTIME
-nvr       | Four-channel NVR ingest         | hardware-nvr.sh   | RUN_NVR       | preflight | continue | TIMEOUT_RUNTIME
-h265      | H.265 decode path               | hardware-h265.sh  | RUN_H265      | preflight | continue | TIMEOUT_RUNTIME
-stability | Stability run on real streams   | stability.sh      | RUN_SOAK      | preflight | continue | TIMEOUT_SOAK
-benchmark | Capacity ladder on real streams | benchmark.sh      | RUN_BENCHMARK | preflight | continue | TIMEOUT_BENCHMARK
-report    | Morning summary                 | report.sh         | RUN_REPORT    | always   | continue | TIMEOUT_REPORT
+preflight | Pre-flight checks               | platform/preflight.sh   | RUN_PREFLIGHT |           | abort    | TIMEOUT_PREFLIGHT
+onvif     | ONVIF discovery against devices | hardware/onvif.sh          | RUN_ONVIF     | preflight | continue | TIMEOUT_RUNTIME
+vendors   | One camera per vendor family    | hardware/cameras.sh | RUN_VENDORS | preflight | continue | TIMEOUT_RUNTIME
+nvr       | Four-channel NVR ingest         | hardware/nvr.sh   | RUN_NVR       | preflight | continue | TIMEOUT_RUNTIME
+h265      | H.265 decode path               | hardware/h265.sh  | RUN_H265      | preflight | continue | TIMEOUT_RUNTIME
+stability | Stability run on real streams   | runtime/stability.sh    | RUN_SOAK      | preflight | continue | TIMEOUT_SOAK
+benchmark | Capacity ladder on real streams | runtime/benchmark.sh    | RUN_BENCHMARK | preflight | continue | TIMEOUT_BENCHMARK
+report    | Morning summary                 | platform/report.sh      | RUN_REPORT    | always   | continue | TIMEOUT_REPORT

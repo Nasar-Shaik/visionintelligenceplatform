@@ -5,7 +5,7 @@
 # file may call the runtime, only media may know where it lives, no source outside `ai/` may name a
 # model-implementation concept, and no consumer may read a detection field the frozen schema does not
 # declare.
-. "$(dirname -- "$0")/_preamble.sh"
+. "${STAGES_DIR:?stage must be run by the engine}/_preamble.sh"
 
 pnpm verify:contracts
 RC=$?

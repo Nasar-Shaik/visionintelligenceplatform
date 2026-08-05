@@ -5,7 +5,7 @@
 # `requires` accepts stage ids, or the token `always` — which means "run even if the run
 # aborted". Only the report uses it: an aborted night is the one that most needs a written summary.
 
-preflight | Pre-flight checks             | preflight.sh  | RUN_PREFLIGHT  |           | abort    | TIMEOUT_PREFLIGHT
-benchmark | Capacity ladder and benchmark | benchmark.sh  | RUN_BENCHMARK  | preflight | continue | TIMEOUT_BENCHMARK
-stability | Stability run                 | stability.sh  | RUN_SOAK       | preflight | continue | TIMEOUT_SOAK
-report    | Morning summary               | report.sh     | RUN_REPORT     | always   | continue | TIMEOUT_REPORT
+preflight | Pre-flight checks             | platform/preflight.sh   | RUN_PREFLIGHT  |           | abort    | TIMEOUT_PREFLIGHT
+benchmark | Capacity ladder and benchmark | runtime/benchmark.sh    | RUN_BENCHMARK  | preflight | continue | TIMEOUT_BENCHMARK
+stability | Stability run                 | runtime/stability.sh    | RUN_SOAK       | preflight | continue | TIMEOUT_SOAK
+report    | Morning summary               | platform/report.sh      | RUN_REPORT     | always   | continue | TIMEOUT_REPORT

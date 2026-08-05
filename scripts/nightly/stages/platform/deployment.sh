@@ -4,7 +4,7 @@
 # ⚠️ Sequenced BEFORE the stages that rebuild images, because it compares the deployment against the
 # tree. Run it after the mutation suite and a rebuild that happened for the right reasons would still
 # read as drift.
-. "$(dirname -- "$0")/_preamble.sh"
+. "${STAGES_DIR:?stage must be run by the engine}/_preamble.sh"
 
 node docs/review/p6/deployment-integrity.mjs
 RC=$?

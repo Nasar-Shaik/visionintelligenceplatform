@@ -5,15 +5,20 @@
 # `requires` accepts stage ids, or the token `always` — which means "run even if the run
 # aborted". Only the report uses it: an aborted night is the one that most needs a written summary.
 
-preflight   | Pre-flight checks                 | preflight.sh   | RUN_PREFLIGHT   |           | abort    | TIMEOUT_PREFLIGHT
-gate        | Production gate                   | gate.sh        | RUN_GATE        | preflight | continue | TIMEOUT_GATE
-deployment  | Deployment integrity              | deployment.sh  | RUN_DEPLOYMENT  | preflight | continue | TIMEOUT_DEPLOYMENT
-boundary    | Contracts and perception boundary | boundary.sh    | RUN_BOUNDARY    | preflight | continue | TIMEOUT_BOUNDARY
-runtime     | Real inference, end to end        | runtime.sh     | RUN_RUNTIME     | preflight | continue | TIMEOUT_RUNTIME
-dashboard   | Operator page in a browser        | dashboard.sh   | RUN_DASHBOARD   | preflight | continue | TIMEOUT_DASHBOARD
-integration | Cross-service integration tests   | integration.sh | RUN_INTEGRATION | preflight | continue | TIMEOUT_INTEGRATION
-stability   | Long stability run                | stability.sh   | RUN_SOAK        | preflight | continue | TIMEOUT_SOAK
-benchmark   | Capacity ladder and benchmark     | benchmark.sh   | RUN_BENCHMARK   | preflight | continue | TIMEOUT_BENCHMARK
-mutation    | Mutation verification             | mutation.sh    | RUN_MUTATION    | preflight | continue | TIMEOUT_MUTATION
-cleanup     | Prune old runs and build cache    | cleanup.sh     | RUN_CLEANUP     |           | continue | TIMEOUT_PREFLIGHT
-report      | Morning summary                   | report.sh      | RUN_REPORT      | always   | continue | TIMEOUT_REPORT
+preflight            | Pre-flight checks                 | platform/preflight.sh   | RUN_PREFLIGHT            |           | abort    | TIMEOUT_PREFLIGHT
+gate                 | Production gate                   | platform/gate.sh        | RUN_GATE                 | preflight | continue | TIMEOUT_GATE
+deployment           | Deployment integrity              | platform/deployment.sh  | RUN_DEPLOYMENT           | preflight | continue | TIMEOUT_DEPLOYMENT
+boundary             | Contracts and perception boundary | platform/boundary.sh    | RUN_BOUNDARY             | preflight | continue | TIMEOUT_BOUNDARY
+runtime              | Real inference, end to end        | runtime/inference.sh    | RUN_RUNTIME              | preflight | continue | TIMEOUT_RUNTIME
+dashboard            | Operator page in a browser        | runtime/dashboard.sh    | RUN_DASHBOARD            | preflight | continue | TIMEOUT_DASHBOARD
+integration          | Cross-service integration tests   | platform/integration.sh | RUN_INTEGRATION          | preflight | continue | TIMEOUT_INTEGRATION
+tracking             | Object tracking, end to end       | tracking/tracking.sh    | RUN_TRACKING             | preflight | continue | TIMEOUT_TRACKING
+tracking-deployment  | Tracking as deployed              | tracking/deployment.sh  | RUN_TRACKING_DEPLOYMENT  | preflight | continue | TIMEOUT_TRACKING
+tracking-browser     | Track pages in a browser          | tracking/browser.sh     | RUN_TRACKING_BROWSER     | preflight | continue | TIMEOUT_TRACKING_BROWSER
+stability            | Long stability run                | runtime/stability.sh    | RUN_SOAK                 | preflight | continue | TIMEOUT_SOAK
+benchmark            | Capacity ladder and benchmark     | runtime/benchmark.sh    | RUN_BENCHMARK            | preflight | continue | TIMEOUT_BENCHMARK
+tracking-benchmark   | Tracking capacity ladder          | tracking/benchmark.sh   | RUN_TRACKING_BENCHMARK   | preflight | continue | TIMEOUT_TRACKING_BENCHMARK
+mutation             | Mutation verification             | runtime/mutation.sh     | RUN_MUTATION             | preflight | continue | TIMEOUT_MUTATION
+tracking-mutations   | Tracking mutation verification    | tracking/mutations.sh   | RUN_TRACKING_MUTATION    | preflight | continue | TIMEOUT_TRACKING_MUTATION
+cleanup              | Prune old runs and build cache    | platform/cleanup.sh     | RUN_CLEANUP              |           | continue | TIMEOUT_PREFLIGHT
+report               | Morning summary                   | platform/report.sh      | RUN_REPORT               | always    | continue | TIMEOUT_REPORT

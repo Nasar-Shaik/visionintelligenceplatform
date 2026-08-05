@@ -10,7 +10,7 @@
 # looks like something you might have written".
 #
 # Pre-flight refuses to reach this stage with a dirty tree unless you explicitly allowed it.
-. "$(dirname -- "$0")/_preamble.sh"
+. "${STAGES_DIR:?stage must be run by the engine}/_preamble.sh"
 
 MUTATE="docs/review/p8/mutations.mjs"
 [ -f "$MUTATE" ] || {

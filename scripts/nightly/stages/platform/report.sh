@@ -3,7 +3,7 @@
 #
 # ⚠️ This stage `requires` nothing and never aborts. A night where six stages failed is precisely the
 # night you most need a summary, so the report must be the one thing that always runs.
-. "$(dirname -- "$0")/_preamble.sh"
+. "${STAGES_DIR:?stage must be run by the engine}/_preamble.sh"
 
 node "$REPO/scripts/nightly/report.mjs" --run "$RUN_DIR"
 RC=$?

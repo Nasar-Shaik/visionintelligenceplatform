@@ -4,7 +4,7 @@
 # The full `inference.mjs`: image and artifact integrity, the loaded model's self-report, a
 # photograph of two people that must yield exactly two, a test pattern that must yield ZERO, the
 # decoder's own tests run inside the deployed image, the operator route, and the camera ladder.
-. "$(dirname -- "$0")/_preamble.sh"
+. "${STAGES_DIR:?stage must be run by the engine}/_preamble.sh"
 
 # It creates fixture cameras and an RTSP source through the real API.
 guard "cd '$REPO' && node docs/review/p8/inference.mjs clean"

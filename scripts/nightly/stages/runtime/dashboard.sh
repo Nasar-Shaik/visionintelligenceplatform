@@ -3,7 +3,7 @@
 #
 # ⚠️ Playwright lives in /private/tmp/pwrun, not in this repo, so the script is copied there and run
 # from there. That is a deployment constraint of this machine, not a preference.
-. "$(dirname -- "$0")/_preamble.sh"
+. "${STAGES_DIR:?stage must be run by the engine}/_preamble.sh"
 
 PWRUN=/private/tmp/pwrun
 if [ ! -d "$PWRUN/node_modules/playwright" ]; then
