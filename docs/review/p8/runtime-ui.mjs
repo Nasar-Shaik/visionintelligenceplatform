@@ -120,7 +120,17 @@ page.on('request', (r) => r.url().includes('/api/system/ai-runtime') && polls.pu
  * Capturing the response the page itself consumed makes the comparison exact rather than tolerant,
  * and a tolerance wide enough to absorb the drift would be wide enough to absorb an invented number.
  */
-const seen = { data: null, at: 0 };
+/*
+ * ⚠️ The last FEW payloads, not the last one.
+ *
+ * The DOM is rendered from whichever response the page most recently processed; by the time this
+ * script reads it, another poll may already have landed and replaced `seen.data`. Comparing the
+ * screen against a payload that arrived after it was painted fails on anything that moves — it was
+ * caught by `Uptime="51s"` against a payload reporting 56, which is not a fabricated number, it is
+ * a number one poll old. Keeping a short ring makes the claim exactly what it should be: every value
+ * on screen came from a response the deployment actually sent to this page.
+ */
+const seen = { data: null, at: 0, recent: [] };
 page.on('response', async (r) => {
   if (!r.url().includes('/api/system/ai-runtime') || !r.ok()) return;
   try {
@@ -128,6 +138,8 @@ page.on('response', async (r) => {
     if (body?.data) {
       seen.data = body.data;
       seen.at = Date.now();
+      seen.recent.push(body.data);
+      if (seen.recent.length > 4) seen.recent.shift();
     }
   } catch {
     /* a body that is not JSON is not this check's business */
@@ -195,7 +207,8 @@ console.log('\n2 · every number on the page came from the runtime');
     else if (Array.isArray(node)) node.forEach(walk);
     else if (node && typeof node === 'object') Object.values(node).forEach(walk);
   };
-  walk(seen.data ?? {});
+  // Every payload the page received in the last few polls — see the note on `seen.recent`.
+  for (const payload of seen.recent.length ? seen.recent : [seen.data ?? {}]) walk(payload);
   const timestamps = strings
     .map((s) => Date.parse(s))
     .filter((t) => !Number.isNaN(t));
