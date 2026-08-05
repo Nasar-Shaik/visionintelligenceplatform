@@ -138,10 +138,17 @@ page.on('response', async (res) => {
 
 async function signIn(who) {
   await page.goto(`${B}/login`, { waitUntil: 'domcontentloaded' });
-  await page.fill('input[type="email"]', who.email);
-  await page.fill('input[type="password"]', who.password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL((u) => !u.pathname.endsWith('/login'), { timeout: 20000 });
+  /*
+   * ⚠️ The TENANT field is not optional. Sign-in has three inputs, not two — the tenant slug is typed
+   * by hand (D-1, TD-40). A version of this that filled only email and password timed out at
+   * `waitForURL` with an empty log, which reads as "the app never navigated" rather than "the form
+   * refused to submit". Matched to `runtime-ui.mjs`, which had already solved this.
+   */
+  await page.getByLabel(/tenant/i).fill(TENANT);
+  await page.getByLabel(/email/i).fill(who.email);
+  await page.getByLabel(/password/i).fill(who.password);
+  await page.getByRole('button', { name: /sign in/i }).click();
+  await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 20_000 });
 }
 
 try {
@@ -150,7 +157,16 @@ try {
   /* ── 1 · Live Tracks ────────────────────────────────────────────────────────────────────────── */
   console.log('1 · Live Tracks');
   await page.goto(`${B}/tracking`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('table tbody tr, text=Nothing is being tracked', { timeout: 25000 });
+  /*
+   * ⚠️ `.or()`, not a comma-joined selector. Playwright's CSS engine cannot parse `text=` in the same
+   * string, and the error it raises ("Unexpected token = while parsing css selector") names the
+   * punctuation rather than the mistake.
+   */
+  await page
+    .locator('table tbody tr')
+    .or(page.getByText('Nothing is being tracked'))
+    .first()
+    .waitFor({ timeout: 25_000 });
   await sleep(2500);
   await page.screenshot({ path: `${OUT}/tracking-live.png`, fullPage: true });
 
@@ -184,13 +200,20 @@ try {
   /* ── 2 · Track Detail ───────────────────────────────────────────────────────────────────────── */
   console.log('\n2 · Track Detail');
   await page.locator('table tbody tr a').first().click();
-  await page.waitForSelector('text=Duration', { timeout: 20000 });
+  await page.getByText(/duration/i).first().waitFor({ timeout: 20_000 });
   await sleep(2000);
   await page.screenshot({ path: `${OUT}/tracking-detail.png`, fullPage: true });
 
   const detail = await page.locator('body').innerText();
-  check(/Duration/.test(detail) && /Travelled/.test(detail), 'duration and travelled distance are shown');
-  check(/Dwell/.test(detail), 'dwell is shown');
+  /*
+   * ⚠️ Case-insensitive, because `innerText` returns RENDERED text and these labels carry Tailwind's
+   * `uppercase`. The page says "Duration" in the DOM and "DURATION" on screen; a case-sensitive
+   * assertion fails against a page that is entirely correct, and the failure reads as "the field is
+   * missing". `textContent` would return the source text — but the point of a browser check is what
+   * an operator actually sees.
+   */
+  check(/duration/i.test(detail) && /travelled/i.test(detail), 'duration and travelled distance are shown');
+  check(/dwell/i.test(detail), 'dwell is shown');
   check(/Geometry only/.test(detail), '⚠️ dwell is labelled geometry, not loitering');
   const loiterMentions = (detail.match(/loiter\w*/gi) ?? []).length;
   check(loiterMentions <= 1 && /not loitering/i.test(detail),
@@ -202,7 +225,7 @@ try {
   /* ── 3 · Track Timeline ─────────────────────────────────────────────────────────────────────── */
   console.log('\n3 · Track Timeline');
   await page.locator('a:has-text("Lifecycle timeline")').click();
-  await page.waitForSelector('text=Track timeline', { timeout: 20000 });
+  await page.getByText(/track timeline/i).first().waitFor({ timeout: 20_000 });
   await sleep(1500);
   await page.screenshot({ path: `${OUT}/tracking-timeline.png`, fullPage: true });
   const timeline = await page.locator('body').innerText();
@@ -211,7 +234,7 @@ try {
   /* ── 4 · Runtime Track Statistics ───────────────────────────────────────────────────────────── */
   console.log('\n4 · Runtime Track Statistics');
   await page.goto(`${B}/tracking/statistics`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('text=predictive-iou', { timeout: 25000 });
+  await page.getByText('predictive-iou').first().waitFor({ timeout: 25_000 });
   await sleep(2000);
   await page.screenshot({ path: `${OUT}/tracking-statistics.png`, fullPage: true });
 
