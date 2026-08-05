@@ -1,0 +1,293 @@
+{
+  "at": "2026-08-05T22:39:35.221Z",
+  "dedupWindowMs": 10000,
+  "streamDedupWindowMs": 120000,
+  "samples": {
+    "run": "b96541ee",
+    "camera": "cam_p8replay_b96541ee",
+    "duplicates": {
+      "acceptedA": 1,
+      "acceptedB": 5,
+      "persisted": 2
+    },
+    "traced": {
+      "id": "a1de90e0-4649-4898-88e6-3627b6addf5c",
+      "type": "perception.person.detected",
+      "envelopeVersion": "1.0.0",
+      "category": "perception",
+      "schemaVersion": "1.0.0",
+      "tenantId": "tnt_demo_retail",
+      "cameraId": "cam_p8replay_b96541ee",
+      "occurredAt": "2026-08-05T22:39:17.303Z",
+      "ingestedAt": "2026-08-05T22:39:17.444Z",
+      "producer": {
+        "capability": "perception.person-detection",
+        "capabilityVersion": "0.1.0",
+        "modelVersion": "1.0.0"
+      },
+      "confidence": 0.9164,
+      "subjects": [
+        {
+          "class": "person",
+          "bbox": [
+            0.111058,
+            0.417881,
+            0.138998,
+            0.53213
+          ],
+          "trackId": "trk_b96541ee_walk_2",
+          "identityId": "trk_b96541ee_walk_1",
+          "precededBy": "trk_b96541ee_walk_1"
+        }
+      ],
+      "payload": {
+        "label": "person",
+        "executionProvider": "CPUExecutionProvider",
+        "runtimeVersion": "0.1.0",
+        "frameId": "tnt_demo_retail:cam_p8replay_b96541ee:42",
+        "frameSeq": 42
+      },
+      "evidenceRefs": [],
+      "priority": "info",
+      "correlationId": "tnt_demo_retail:cam_p8replay_b96541ee:42"
+    },
+    "incident": {
+      "id": "779a4ca3-e70d-4d0b-a925-fe0567b7cdb1",
+      "tenantId": "tnt_demo_retail",
+      "status": "raised",
+      "severity": "low",
+      "title": "p8-replay raises: perception.person.detected",
+      "category": "perception",
+      "source": {
+        "ruleId": "921816b2-cf31-4c52-a98e-cc3fc8081746",
+        "ruleVersion": 2,
+        "ruleName": "p8-replay raises",
+        "candidateId": "6ab2b58f-9d33-4d7c-9210-a9693a35fe0b",
+        "dedupKey": "tnt_demo_retail|921816b2-cf31-4c52-a98e-cc3fc8081746|-|29766159"
+      },
+      "triggeredBy": {
+        "eventId": "a1de90e0-4649-4898-88e6-3627b6addf5c",
+        "eventType": "perception.person.detected",
+        "occurredAt": "2026-08-05T22:39:17.303Z",
+        "cameraId": "cam_p8replay_b96541ee"
+      },
+      "matchedCount": 1,
+      "version": 1,
+      "correlationId": "tnt_demo_retail:cam_p8replay_b96541ee:42",
+      "causationId": "6ab2b58f-9d33-4d7c-9210-a9693a35fe0b",
+      "history": [
+        {
+          "from": null,
+          "to": "raised",
+          "at": "2026-08-05T22:39:17.447Z",
+          "by": "system",
+          "actor": {
+            "kind": "system",
+            "id": "system"
+          }
+        }
+      ],
+      "assignments": [],
+      "notes": [],
+      "raisedAt": "2026-08-05T22:39:17.447Z",
+      "updatedAt": "2026-08-05T22:39:17.447Z"
+    },
+    "replay": {
+      "replayed": 3,
+      "reEvaluated": 0,
+      "incidentsBefore": 3,
+      "incidentsAfter": 3
+    },
+    "simulation": {
+      "ruleId": "921816b2-cf31-4c52-a98e-cc3fc8081746",
+      "ruleVersion": 2,
+      "evaluated": 3,
+      "matched": 3,
+      "outcomes": [
+        {
+          "eventId": "a1de90e0-4649-4898-88e6-3627b6addf5c",
+          "matched": true,
+          "explanation": {
+            "ruleId": "921816b2-cf31-4c52-a98e-cc3fc8081746",
+            "ruleVersion": 2,
+            "ruleName": "p8-replay raises",
+            "matched": true,
+            "decidedBy": "matched",
+            "summary": "every stage matched — the rule fired",
+            "stages": {
+              "lifecyclePassed": true,
+              "scopePassed": true,
+              "prefilterPassed": true,
+              "conditionPassed": true,
+              "windowPassed": true
+            },
+            "tree": [
+              {
+                "stage": "lifecycle",
+                "passed": true,
+                "decisive": false,
+                "reason": "the rule is enabled"
+              },
+              {
+                "stage": "scope",
+                "passed": true,
+                "decisive": false,
+                "reason": "the rule applies tenant-wide"
+              },
+              {
+                "stage": "prefilter",
+                "passed": true,
+                "decisive": false,
+                "reason": "the event type and category match the rule"
+              },
+              {
+                "stage": "condition",
+                "passed": true,
+                "decisive": false,
+                "reason": "the rule has no condition beyond its pre-filter"
+              },
+              {
+                "stage": "window",
+                "passed": true,
+                "decisive": false,
+                "reason": "the rule has no windowed threshold"
+              }
+            ]
+          }
+        },
+        {
+          "eventId": "c9addffa-2b0d-4d0a-9e9c-f3ecb0ea4774",
+          "matched": true,
+          "explanation": {
+            "ruleId": "921816b2-cf31-4c52-a98e-cc3fc8081746",
+            "ruleVersion": 2,
+            "ruleName": "p8-replay raises",
+            "matched": true,
+            "decidedBy": "matched",
+            "summary": "every stage matched — the rule fired",
+            "stages": {
+              "lifecyclePassed": true,
+              "scopePassed": true,
+              "prefilterPassed": true,
+              "conditionPassed": true,
+              "windowPassed": true
+            },
+            "tree": [
+              {
+                "stage": "lifecycle",
+                "passed": true,
+                "decisive": false,
+                "reason": "the rule is enabled"
+              },
+              {
+                "stage": "scope",
+                "passed": true,
+                "decisive": false,
+                "reason": "the rule applies tenant-wide"
+              },
+              {
+                "stage": "prefilter",
+                "passed": true,
+                "decisive": false,
+                "reason": "the event type and category match the rule"
+              },
+              {
+                "stage": "condition",
+                "passed": true,
+                "decisive": false,
+                "reason": "the rule has no condition beyond its pre-filter"
+              },
+              {
+                "stage": "window",
+                "passed": true,
+                "decisive": false,
+                "reason": "the rule has no windowed threshold"
+              }
+            ]
+          }
+        },
+        {
+          "eventId": "5a84270b-6bfc-4de9-a352-f581a5dd45ea",
+          "matched": true,
+          "explanation": {
+            "ruleId": "921816b2-cf31-4c52-a98e-cc3fc8081746",
+            "ruleVersion": 2,
+            "ruleName": "p8-replay raises",
+            "matched": true,
+            "decidedBy": "matched",
+            "summary": "every stage matched — the rule fired",
+            "stages": {
+              "lifecyclePassed": true,
+              "scopePassed": true,
+              "prefilterPassed": true,
+              "conditionPassed": true,
+              "windowPassed": true
+            },
+            "tree": [
+              {
+                "stage": "lifecycle",
+                "passed": true,
+                "decisive": false,
+                "reason": "the rule is enabled"
+              },
+              {
+                "stage": "scope",
+                "passed": true,
+                "decisive": false,
+                "reason": "the rule applies tenant-wide"
+              },
+              {
+                "stage": "prefilter",
+                "passed": true,
+                "decisive": false,
+                "reason": "the event type and category match the rule"
+              },
+              {
+                "stage": "condition",
+                "passed": true,
+                "decisive": false,
+                "reason": "the rule has no condition beyond its pre-filter"
+              },
+              {
+                "stage": "window",
+                "passed": true,
+                "decisive": false,
+                "reason": "the rule has no windowed threshold"
+              }
+            ]
+          }
+        }
+      ],
+      "decidedBy": {
+        "matched": 3
+      }
+    },
+    "payloadVersions": {
+      "matched": 3,
+      "failed": 0
+    },
+    "futureEnvelopeAccepted": true
+  },
+  "findings": [
+    {
+      "label": "delivery is AT-LEAST-ONCE. Exactly-once is achieved only WITHIN two windows",
+      "detail": "JetStream collapses a repeated Nats-Msg-Id for 120000 ms; the events service collapses a repeated dedupKey inside a 10000 ms bucket. Measured here: 6 deliveries of one result → 1 event inside the window, 2 across it. Consumers must be idempotent."
+    },
+    {
+      "label": "an incident carries the correlation id of the FIRST event in its 60000 ms candidate bucket",
+      "detail": "identical candidates collapse on `tenant|rule|group|bucket`, so a burst of matching frames raises one incident — correctly. ⚠️ But the incident then names one frame out of many, and an operator asking \"which frame?\" gets the first, not the one they are looking at. A future Rule Engine milestone that needs every contributing frame must query the events by window, not follow triggeredBy.eventId."
+    },
+    {
+      "label": "trackId and identityId reach the incident by LINK, not by copy",
+      "detail": "the incident carries correlationId + triggeredBy.eventId; the subject ids are read back from the event. ⚠️ An event that has aged out of retention while its incident has not breaks that link — the incident remains valid, the subject detail does not."
+    },
+    {
+      "label": "a payload version bump requires NO transport change (ADR-0040)",
+      "detail": "payload 1.0.0, 2.0.0 and 3.0.0 — including an unknown scalar and an unknown nested object — all travelled inside envelopeVersion 1.0.0 and were evaluated identically."
+    },
+    {
+      "label": "an envelopeVersion of 2.0.0 is ACCEPTED, not rejected",
+      "detail": "correct for an additive minor, and a real gap for a breaking major: a consumer pinned to v1 would process a v2 envelope as though it understood it. No consumer checks the field today. Recorded as a limitation rather than fixed here — the fix is a contract change, and this milestone ships no contract changes beyond ADR-0041."
+    }
+  ]
+}
