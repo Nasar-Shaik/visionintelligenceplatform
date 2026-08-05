@@ -159,18 +159,28 @@ them would mean building the frame bus twice.
 **Dependencies:** **an ADR for the live transport** (HLS · LL-HLS · WebRTC · fMP4-over-WebSocket) —
 a service-sized decision, not a milestone task. **D-4** decides the behaviour set.
 
-| Work                                                                | Debt     |
-| ------------------------------------------------------------------- | -------- |
-| Live view transport + the player                                    | TD-28    |
-| Media → inference frame bus (replace `NullFrameSink`)               | TD-4     |
-| Real ONNX backend as the default, not `stub`                        | TD-5     |
-| Upload a recording and analyse it                                   | TD-9 G-2 |
-| Manifest-driven label → event-type mapping                          | TD-13    |
-| **Behaviour analyzer** — loitering · intrusion · crowding (**D-4**) | TD-14    |
-| Auto-captured evidence from a live incident                         | TD-15    |
+**Design: 🔒 [SELECTIVE_AI_PROCESSING](../architecture/future/SELECTIVE_AI_PROCESSING.md) — frozen
+2026-08-05**, and it is the authority on the order of this milestone (§14, seven phases). ⚠️ One
+correction to the rows below, measured rather than assumed: **packaging and deploying the AI runtime
+was missing from this table and is the critical path** — it has no container image and is absent from
+the production compose. It is now the first row and the first phase. **ADR-A is decided:** media
+pushes frames to the runtime.
+
+| Work                                                                           | Debt     |
+| ------------------------------------------------------------------------------ | -------- |
+| **Package and deploy the runtime** — nothing else in P-8 runs first            | ⛔ new   |
+| Live view transport + the player                                               | TD-28    |
+| Frame path — **ADR-A decided: media pushes frames** (replaces `NullFrameSink`) | TD-4     |
+| Real ONNX backend as the default, not `stub`                                   | TD-5     |
+| **Per-camera processing intent** — record, gate, audit (**ADR-B**)             | ⛔ new   |
+| Upload a recording and analyse it                                              | TD-9 G-2 |
+| Manifest-driven label → event-type mapping                                     | TD-13    |
+| **Behaviour analyzer** — loitering · intrusion · crowding (**D-4**)            | TD-14    |
+| Auto-captured evidence from a live incident                                    | TD-15    |
 
 ⚠️ **Until TD-14 ships, "suspicious activity" is a demo caption, not a product capability.** This is
-the largest gap between what the platform is sold as and what it does.
+the largest gap between what the platform is sold as and what it does. The analyzers themselves are
+**built** — they have never been fed a frame, which is a connection problem, not a modelling one.
 
 **Exit criteria**
 

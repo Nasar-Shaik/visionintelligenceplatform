@@ -97,6 +97,69 @@ _Last updated: 2026-08-05 · Claude_
   Verified: `cameras.mjs` all green · `cameras-ui.mjs` all green (⚠️ red twice first, for a 20 px
   target and for its own naive overflow measure) · `camera-scale.mjs` all green · console **389**
   tests · camera **193 + 5** integration. New: **L-37…L-40 · TD-57…TD-59**.
+- **P-8 architecture planning ✅ APPROVED · architecture 🔒 FROZEN (2026-08-05)** — commissioned at the P-6.6 approval:
+  design the AI Processing subsystem before any of it is built.
+  [SELECTIVE_AI_PROCESSING](../architecture/future/SELECTIVE_AI_PROCESSING.md), **design only — no
+  contract changed, no code written**. ⚠️ **Reading the tree before designing changed what P-8 is.**
+  The brief asked for six subsystems; **five are already built and frozen**: the scheduler
+  (`SessionPriority` · `SchedulingStrategy` · `SchedulerPolicy` · `AdmissionVerdict` ·
+  `DEGRADATION_LADDER`), the cost model (`ResourceEstimate` · `AnalyzerCostModel` · `sizing.py`, which
+  already marks an unbenchmarked recommendation `estimated=True`), and the profiles **twice** —
+  `BehaviorProfile` (what to detect) and `DeploymentProfile` (what the box may spend), with retail ·
+  warehouse · office · school · hospital · factory · parking **already shipped as JSON**. The D-4
+  behaviour analyzers are **built and unit-tested** and have never been fed a real frame, so `C-20`'s
+  "no analyzer wired" under-reports what exists: a connection problem, not a modelling one. ⚠️ **Two
+  findings that change the plan.** (1) **The AI runtime has never been deployed** — 121 Python
+  modules, no container image, absent from the production compose, which runs ten TypeScript services
+  and nothing else. It is the critical path and **the roadmap does not name it**; it is now the first
+  row of P-8. (2) **The frame path is
+  complete up to one line** — ffmpeg already decodes JPEG frames at the configured rate and the
+  supervisor already pushes every one to a sink that discards them, so frames are being produced in
+  production right now and thrown away. That makes the roadmap's _"media → inference frame bus"_ a
+  **presumed answer to an open question** (ADR-A): the runtime has its own certified live-ingestion
+  path, and having it pull the assigned camera's sub-stream means an unassigned camera is **never
+  connected**, which is the only version where selective processing genuinely costs zero — against
+  ⚠️ two RTSP sessions per analysed camera, which cheap devices may refuse and P-9 must measure.
+  **One new record in the whole design**: per-camera processing intent (recording + analysis on one
+  record, which also closes L-38), owned by **media** — not by the `Camera` record, because
+  PLATFORM_BOUNDARIES forbids perception configuration in the device context, and not by the runtime,
+  which may never persist tenant data. ⚠️ **No seventh "profile"**: the word already means six things
+  here, so a Processing Profile is defined as a **pairing** of an existing `BehaviorProfile` with an
+  existing `DeploymentProfile`, and **one** profile ships — a catalogue of six whose capabilities
+  resolve to nothing is the placeholder this platform does not build. The capability vocabulary is
+  P-6.6's `CapabilityEvidence`, reused rather than replaced; the design work is the **promotion
+  rules**, of which the sharpest is that the `ai` row may never be promoted by the intent flag —
+  intent is a wish, `measured` is an inference that actually happened. Selective processing is
+  recorded as a **data-protection control as well as a cost control** (a customer may be obliged not
+  to analyse a staff room while still recording it). Named and deliberately unwritten: **ADR-A** frame
+  path · **ADR-B** intent ownership · **D-7/D-8**. Roadmap, README index and L-37 repointed.
+  **Approved and frozen the same day**, with the freeze pass adding the ten commissioned sections: the
+  ten-stage **AI processing lifecycle** (⚠️ the finding that shapes the estimate — stages 1, 4 and 5
+  run in production and 8, 9, 10 have been production-verified since P-5; only 2, 3, 6, 7 are the
+  milestone, so **the two ends are built and the middle is disconnected**), assignment **reasons**
+  (⚠️ documentation attached to configuration — the moment a reason changes what runs it has become a
+  second, undeclared rule engine), **zones** (⚠️ recording is never cropped, coordinates are
+  normalized, and **zones are a precision feature, not a cost feature** — excluding 80% of a frame
+  does not save 80% of the inference, it saves false positives), **priority** (⚠️ the frozen enum is
+  `low · normal · high · critical` — there is **no `medium`**, and renaming a published value is
+  forbidden, so **D-9** asks for "Normal" on screen rather than a label that disagrees with every log
+  line), **modes** (continuous is the only one P-8 builds — ⚠️ motion-triggered has **no motion
+  source**, event-triggered is **circular** because the only events come from the analysis that is not
+  running, and manual **must expire** or it is continuous that somebody forgot), **capacity**
+  (degradation must be _explainable_, not merely graceful) and **privacy** (⚠️ the requirement is
+  **historical** answerability — "was this camera analysed last March" is answered by the audit trail,
+  never by a record that only knows today). **ADR-A is decided in favour of media pushing frames** by
+  the Phase 2 instruction — my recommendation was the alternative, and the ratified option buys **one
+  RTSP session per camera** and ⚠️ **an analysed frame provably identical to the recorded frame**, a
+  custody argument that matters in an evidence product; SP-2 retires and **SP-8 replaces it** (analysis
+  and recording now share one media process, so back-pressure must shed frames to the runtime and
+  never segments). ⚠️ **One measurement sharpened the gate**: one ffmpeg process already emits two
+  outputs per recorded camera — segments **stream-copied** and JPEG frames **re-encoded
+  unconditionally**, then discarded — so every recorded camera pays an MJPEG encode for nothing today,
+  and "unassigned cameras consume zero AI resources" is only literally true once the gate reaches the
+  **ffmpeg arguments**, not merely the sink. One recommendation raised rather than actioned: the
+  operator control belongs with **Phase 4**, not Phase 3, or it is a toggle that does not yet change
+  what runs. 🔒 **Architecture frozen; implementation begins at §14 Phase 1.**
 - **P-6.5 close-out ✅ FROZEN (2026-08-05)** — an audit of the verification itself, not an
   implementation pass. The question was whether the green results from the freeze could be believed.
   ⚠️ **Two customer-facing defects, neither visible to any check that existed.** (1) **The
