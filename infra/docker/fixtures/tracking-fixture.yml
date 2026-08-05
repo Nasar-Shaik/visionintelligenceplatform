@@ -1,0 +1,64 @@
+# RTSP source fixture for P-8 Phase 4 tracking verification — NOT part of any deployment.
+#
+# ⚠️ These clips **move**, and that is the entire point. The Phase 3 fixture loops a still
+# photograph, which is exactly right for measuring throughput and useless for tracking: every
+# identity question is about change over time, and a still image has none. See
+# `docs/review/p8/tracking-fixtures.mjs` for how the clips are built and what they are honestly
+# claimed to be.
+#
+# ⚠️ **Still synthetic.** Real person pixels on authored trajectories over a plain background — no
+# motion blur, no lighting change, no perspective, no gait. L-1 stands: no camera has ever been
+# connected to this platform. These prove the tracking LOGIC on known input; they say nothing about
+# tracker performance on real footage, which is P-9's job.
+#
+# ⚠️ `runOnDemandRestart: no`. Every clip is a **scripted scenario with one correct answer**, and it
+# is only correct on a single pass. A restart would teleport the subject back to the start, which
+# reads to a tracker as a person vanishing and a stranger appearing — the verification would then be
+# measuring the loop point rather than the platform. The clips are 70 s and the observation windows
+# are shorter, so the end is never reached inside a run.
+logLevel: error
+rtspAddress: :8554
+rtmp: no
+hls: no
+webrtc: no
+srt: no
+pathDefaults:
+  runOnDemandRestart: no
+  runOnDemandStartTimeout: 15s
+  runOnDemandCloseAfter: 5s
+paths:
+  # ⚠️ `-re` is load-bearing: it paces the file at wall-clock speed. Without it ffmpeg pushes the
+  # whole 70 s clip down the socket as fast as it can, the "walk" takes under a second of real time,
+  # and every timing-dependent assertion below becomes meaningless.
+  walk:
+    runOnDemand: >-
+      ffmpeg -re -i /fixtures/media/tracking/walk.mp4
+      -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p
+      -f rtsp rtsp://localhost:8554/walk
+    runOnDemandRestart: no
+    runOnDemandStartTimeout: 15s
+    runOnDemandCloseAfter: 5s
+  occlusion:
+    runOnDemand: >-
+      ffmpeg -re -i /fixtures/media/tracking/occlusion.mp4
+      -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p
+      -f rtsp rtsp://localhost:8554/occlusion
+    runOnDemandRestart: no
+    runOnDemandStartTimeout: 15s
+    runOnDemandCloseAfter: 5s
+  reentry:
+    runOnDemand: >-
+      ffmpeg -re -i /fixtures/media/tracking/exit-reentry.mp4
+      -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p
+      -f rtsp rtsp://localhost:8554/reentry
+    runOnDemandRestart: no
+    runOnDemandStartTimeout: 15s
+    runOnDemandCloseAfter: 5s
+  crossing:
+    runOnDemand: >-
+      ffmpeg -re -i /fixtures/media/tracking/crossing.mp4
+      -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p
+      -f rtsp rtsp://localhost:8554/crossing
+    runOnDemandRestart: no
+    runOnDemandStartTimeout: 15s
+    runOnDemandCloseAfter: 5s

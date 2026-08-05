@@ -1,0 +1,132 @@
+{
+  "at": "2026-08-05T16:49:28.376Z",
+  "observeSeconds": 26,
+  "groundTruth": [
+    {
+      "id": "walk",
+      "title": "One person crosses, continuously visible",
+      "expect": {
+        "identities": 1,
+        "survivesOcclusion": false,
+        "ends": false,
+        "note": "A single object visible in every frame must hold exactly one track id."
+      }
+    },
+    {
+      "id": "occlusion",
+      "title": "One person walks behind a pillar and out the other side",
+      "expect": {
+        "identities": 1,
+        "survivesOcclusion": true,
+        "ends": false,
+        "note": "The identity must survive the gap. A new id here is the defect predictive association exists to prevent."
+      }
+    },
+    {
+      "id": "exit-reentry",
+      "title": "One person leaves the frame and comes back",
+      "expect": {
+        "identities": 2,
+        "survivesOcclusion": false,
+        "ends": true,
+        "linked": true,
+        "note": "The identity must END and a NEW track id must appear — ids are never reused. The two must be linked by identityId, because the same person came back."
+      }
+    },
+    {
+      "id": "crossing",
+      "title": "Two people walk toward each other and cross",
+      "expect": {
+        "identities": 2,
+        "survivesOcclusion": false,
+        "ends": false,
+        "noSwap": true,
+        "note": "Each identity must keep its own height throughout. A swap shows as a track that changes rows.",
+        "highY": 0.2222222222222222,
+        "lowY": 0.4444444444444444
+      }
+    }
+  ],
+  "results": {
+    "walk": {
+      "ids": [
+        "trk_cam_a5bb32a607aa4b55b27a63162dcef6e4_live-tnt_demo_retail-cam_a5bb32a607aa4b55b27a63162dcef6e4_1"
+      ],
+      "observations": 24,
+      "tracked": 20
+    },
+    "occlusion": {
+      "ids": [
+        "trk_cam_5ced0507a3674b818e34f30e4f63b41c_live-tnt_demo_retail-cam_5ced0507a3674b818e34f30e4f63b41c_1"
+      ],
+      "everLost": true,
+      "observations": 24,
+      "tracked": 20
+    },
+    "reentry": {
+      "ids": [
+        "trk_cam_bca92f9739c7404b8aee188eb21f7ac6_live-tnt_demo_retail-cam_bca92f9739c7404b8aee188eb21f7ac6_1",
+        "trk_cam_bca92f9739c7404b8aee188eb21f7ac6_live-tnt_demo_retail-cam_bca92f9739c7404b8aee188eb21f7ac6_2"
+      ],
+      "firstGone": true,
+      "linked": true,
+      "precededBy": "trk_cam_bca92f9739c7404b8aee188eb21f7ac6_live-tnt_demo_retail-cam_bca92f9739c7404b8aee188eb21f7ac6_1",
+      "observations": 43,
+      "gapSeconds": 6.5
+    },
+    "crossing": {
+      "ids": [
+        "trk_cam_8b83a6acd12c4cd8bd909a762db293a4_live-tnt_demo_retail-cam_8b83a6acd12c4cd8bd909a762db293a4_1",
+        "trk_cam_8b83a6acd12c4cd8bd909a762db293a4_live-tnt_demo_retail-cam_8b83a6acd12c4cd8bd909a762db293a4_2"
+      ],
+      "observations": 25,
+      "tracked": 24,
+      "lanes": [
+        {
+          "id": "trk_cam_8b83a6acd12c4cd8bd909a762db293a4_live-tnt_demo_retail-cam_8b83a6acd12c4cd8bd909a762db293a4_1",
+          "span": 0.004,
+          "samples": 24
+        },
+        {
+          "id": "trk_cam_8b83a6acd12c4cd8bd909a762db293a4_live-tnt_demo_retail-cam_8b83a6acd12c4cd8bd909a762db293a4_2",
+          "span": 0.006,
+          "samples": 24
+        }
+      ]
+    },
+    "stats": {
+      "camerasTracked": 8,
+      "activeTracks": 10,
+      "confirmedTracks": 8,
+      "tentativeTracks": 2,
+      "lostTracks": 0,
+      "removedTracks": 4,
+      "createdTracks": 14,
+      "recoveredTracks": 2,
+      "framesTracked": 489,
+      "outOfOrderFrames": 3,
+      "averageTrackingMs": 0.1128,
+      "averageTrackLifetimeSeconds": 17.0085,
+      "averageTrackHits": 36.2,
+      "fragmentation": 1.75,
+      "camerasEvicted": 0
+    },
+    "engine": {
+      "enabled": true,
+      "associator": "predictive-iou",
+      "minIou": 0.3,
+      "minIouLost": 0.45,
+      "minHits": 2,
+      "maxAgeFrames": 8,
+      "historyMax": 50,
+      "reentryGapSeconds": 12,
+      "reentryDistance": 0.35
+    }
+  },
+  "findings": [
+    {
+      "label": "frames arrived out of order",
+      "detail": "3 skipped rather than tracked backwards"
+    }
+  ]
+}

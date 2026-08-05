@@ -1,0 +1,57 @@
+{
+  "generatedAt": "2026-08-05T16:46:18.297Z",
+  "source": "infra/docker/fixtures/media/scene-people.jpg (CC0)",
+  "frame": {
+    "width": 640,
+    "height": 360,
+    "fps": 15,
+    "durationSeconds": 70
+  },
+  "warning": "Composited sprites on a plain background. Real person pixels on authored trajectories — NOT real CCTV footage. L-1 stands: no camera has ever been connected. These prove tracking logic against known input, never tracker performance on real video.",
+  "scenarios": [
+    {
+      "id": "walk",
+      "title": "One person crosses, continuously visible",
+      "expect": {
+        "identities": 1,
+        "survivesOcclusion": false,
+        "ends": false,
+        "note": "A single object visible in every frame must hold exactly one track id."
+      }
+    },
+    {
+      "id": "occlusion",
+      "title": "One person walks behind a pillar and out the other side",
+      "expect": {
+        "identities": 1,
+        "survivesOcclusion": true,
+        "ends": false,
+        "note": "The identity must survive the gap. A new id here is the defect predictive association exists to prevent."
+      }
+    },
+    {
+      "id": "exit-reentry",
+      "title": "One person leaves the frame and comes back",
+      "expect": {
+        "identities": 2,
+        "survivesOcclusion": false,
+        "ends": true,
+        "linked": true,
+        "note": "The identity must END and a NEW track id must appear — ids are never reused. The two must be linked by identityId, because the same person came back."
+      }
+    },
+    {
+      "id": "crossing",
+      "title": "Two people walk toward each other and cross",
+      "expect": {
+        "identities": 2,
+        "survivesOcclusion": false,
+        "ends": false,
+        "noSwap": true,
+        "note": "Each identity must keep its own height throughout. A swap shows as a track that changes rows.",
+        "highY": 0.2222222222222222,
+        "lowY": 0.4444444444444444
+      }
+    }
+  ]
+}
