@@ -58,6 +58,30 @@ matter now were not in it. Both halves of that are recorded rather than quietly 
   is now the gating question: no customer has ever used this, and no camera has ever been connected.
 - **R-013**, **R-014** remain open and unchanged; both are dev-scoped MLOps concerns.
 
+---
+
+## Re-scored 2026-08-06 — P-8 Phase 5 (the live event bridge)
+
+⚠️ **R-017 was carrying two claims that had been false for a day and a half.** It cited TD-4 (the
+media frame sink is null) and TD-5 (inference defaults to the `stub` backend); both were closed and
+marked resolved in P-8 Phases 2 and 3, and the register was not revisited. Same failure as the
+capability matrix rows C-17/C-18/C-19, in the same week, for the same reason — the work was recorded
+where it was done and not where it was previously described.
+
+### Re-scored by evidence
+
+| ID    | Was                                                                                                              | Now                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R-017 | "No behaviour analyzer exists (TD-14); the media frame sink is null (TD-4); inference defaults to `stub` (TD-5)" | **Med.** Frames reach a real model (P-8 Phase 2/3), detections become identities (Phase 4), and identities now reach the rule engine (Phase 5). ⚠️ **The residual risk is real and unchanged in kind**: the platform detects `person`/`vehicle`/`fire`/`smoke` and **no behaviour** — no loitering, no intrusion, no theft (TD-14, [L-2](KNOWN_LIMITATIONS.md)). "Intelligence" still describes the roadmap. Severity falls because the pipeline it depends on now exists and is measured |
+
+### Raised by this milestone
+
+| ID        | Description                                                                                                                                                                                                                | Category | Impact | Prob | Severity | Mitigation                                                                                                                                                                                                                                | Status     |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ | ---- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| **R-025** | **Events published during a broker outage are lost.** Measured: 4 lost after exhausting a bounded retry across a 20-second outage. An incident that would have been raised during it is not raised late — it is not raised | Customer | Med    | Med  | **Med**  | Deliberate: the bridge trades events for recordings and **segments kept being written throughout**. Stated in [L-47](KNOWN_LIMITATIONS.md) before a pilot. A spill queue is a real feature, deferred                                      | Accepted   |
+| **R-026** | **An integration built assuming exactly-once will double-count.** Suppression holds inside two windows (2 min transport, 10 s logical) and a replay outside them produces a second event                                   | Customer | Med    | Med  | **Med**  | [ADR-0042](../adr/ADR-0042-at-least-once-delivery-with-bounded-suppression.md) states the semantics and [L-46](KNOWN_LIMITATIONS.md) puts them where an integrator reads them. Consumers must key on `EventEnvelope.id`                   | Mitigating |
+| **R-027** | **A governance document can describe a world that no longer exists and still be trusted.** Three capability rows, one risk row and the ADR index were each stale while the work they described had shipped                 | Process  | Med    | High | **Med**  | DEFINITION_OF_DONE **item 8 of the eight subsystem deliverables**: the row belongs in the commit that adds the file. ⚠️ The lesson had already been written down once and did not hold — the mechanism is the review, not the instruction | Mitigating |
+
 ## New this sprint (Slice 3 + governance)
 
 - **R-010** raised — tenant seam is non-enforcing in Phase 0.

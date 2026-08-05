@@ -1430,3 +1430,94 @@ what the platform does — ask what it is evidence of. ED-0068: a green suite sa
 whether anyone can reach the feature. ED-0069: all of those describe the environment they ran in.
 ED-0071: a UI review describes the data it was run against. **ED-0072: a check that cannot fail is
 not a check — and the way to tell is to ask what result would have made it red.**
+
+---
+
+## ED-0073 — P-8 Phase 5: the edge that nobody had, between two components with full coverage
+
+**Date:** 2026-08-06 · **Context:** the Live Event Bridge, approved as "freeze the TrackingEvent
+schema, then build an Event Publisher".
+
+**What was found before anything was written.** The architecture review traced the pipeline rather
+than accepting its description, and the description was wrong in a way nobody had noticed. Every
+stage downstream of a published `DetectionResult` existed and was **frozen**: `services/events`
+normalizes, deduplicates, persists and republishes; `services/rules` evaluates and raises candidates;
+`services/workflow` promotes them into incidents. And **nobody published**. Media received the result
+from `/infer`, counted labels for its own metrics, and dropped it.
+
+⚠️ **No test failed, because every component in isolation was correct.** The events service has forty
+tests and passes them; the rules engine is mutation-tested; the media service has ninety-six. The
+missing thing was not a bug inside a component — it was the **absence of an edge between two
+components that each had full coverage**, and no unit suite can see that by construction.
+
+**What that changed about the milestone.** Two of the three things it was commissioned to build were
+refused after reading the tree:
+
+- **A `TrackingEvent` schema was not created.** `EventEnvelope` already carries everything a tracking
+  event needs; a second envelope would duplicate the transport for a capability the first already
+  serves, and every consumer would have to handle both
+  ([ADR-0040](../adr/ADR-0040-one-event-envelope-many-payload-schemas.md)).
+- **A second rule engine was not built.** The brief said "Phase 5: Rule Engine"; the rule engine has
+  existed since P1-7. The gap was that nothing fed it.
+
+Exactly one contract change was made, and it was the one that mattered: `EventSubject.identityId` and
+`precededBy`, additive to a frozen contract, because a dwell rule keyed on `trackId` under-fires
+**silently and load-dependently** when a person is briefly occluded
+([ADR-0041](../adr/ADR-0041-identity-travels-with-the-subject.md)).
+
+**A blocker found for a milestone that does not exist yet.** The resilience verification stopped a
+camera and started it again — which is what Camera Processing Assignment (**C-14c**) will do on every
+enable. A restarted stream begins its frame sequence at 1, and the publisher's ordering gate held
+`lastSeq=100`, so **every event from the re-enabled camera read as stale: 0 published, 32 dropped,
+indefinitely, with nothing in the logs.** It would have shipped as "assignment is broken" in a
+milestone not yet written. Capture time separates the two cases exactly — a genuinely late response is
+older in wall-clock time _and_ sequence; a restarted stream's frames are newer despite a lower one.
+⚠️ **Verifying the milestone after next is cheap when the seam already exists**, and this is the
+second time it has paid (the first was `release()`, written for C-14c and never called).
+
+**Two checks that could not fail.** Mutation testing found them, and both had been green for the
+whole phase:
+
+- the **ordering** check read frame sequences from a query sorted by `occurredAt`, which for one
+  stream rises with the sequence — so the sequence came back sorted no matter what order the
+  publisher sent it in. It was measuring the store's `ORDER BY`;
+- **nothing verified that the bridge sheds.** Its policy is that events are dropped and recording is
+  not, and only the second half was asserted. A publisher that quietly accumulated every result of an
+  outage would have satisfied every other check on the page.
+
+⚠️ This is [ED-0072](#ed-0072--the-roadmap-review-a-check-that-cannot-fail-is-not-a-check) recurring
+in a new subsystem, and the recurrence is the finding. The lesson was recorded, the standard was
+written into DEFINITION_OF_DONE item 32, and two vacuous checks shipped anyway — because a check's
+vacuity is not visible from reading it. **Only mutation makes it visible**, which is why item 32 says
+"in the milestone that introduces it" rather than "eventually".
+
+**A mutation retargeted after measurement.** The obvious ordering mutation — delete the stale-result
+rejection — is **not reliably observable**: the runtime answers four frames concurrently so
+out-of-order responses happen, but a 24-second clip can produce none, and the events service collapses
+that clip's 39 results into 3 envelopes, so a stale one landing in an already-persisted bucket is
+deduped away before anything downstream could see it. ⚠️ **A mutation that passes or fails on
+scheduling luck is not a test.** The stale path is covered by three unit tests, where it is
+deterministic; the mutation was moved to the restart discriminator, which is deterministic end to end.
+
+**Delivery semantics stated because they were measured, not because they were designed.** Six
+deliveries of one result produce one event inside two windows and two across them
+([ADR-0042](../adr/ADR-0042-at-least-once-delivery-with-bounded-suppression.md)). ⚠️ The platform does
+**not** have exactly-once, and the temptation to claim it was real — in normal operation it behaves
+that way, and the claim is false only at the boundary where a customer is already investigating
+something else.
+
+**A capability matrix that had been wrong since Phase 2.** `C-17`, `C-18` and `C-19` said
+`⛔ NullFrameSink`, `⚠️ stub backend is the default` and `⚠️ runtime only, no frame source` — while
+TD-4 and TD-5 were both closed and marked resolved in their own register. The P-8 work had been
+recorded against `C-14a/b/d` and these rows were never revisited. ⚠️ **A matrix saying a shipped
+capability is ⛔ is exactly as wrong as one saying an unshipped capability is ✅, and more dangerous,
+because it is the document that schedules the next milestone** — someone reading it would have
+scheduled a frame bus that has carried production traffic since Phase 2. The rule that a cell goes ✅
+only with deployment evidence has a mirror: a cell must come **off** ⛔ in the slice that earns it.
+
+**And the ADR index went stale again.** It was thirteen ADRs behind in August, backfilled with a note
+explaining why an untrustworthy index is worse than none, and was four ADRs behind within a day.
+⚠️ **Writing down the lesson did not change the outcome**, which says the instruction is not the
+mechanism. Recorded as DEFINITION_OF_DONE item 8 of the eight subsystem deliverables, with the
+operational form: the row belongs in the commit that adds the file, and a reviewer should look for it
+before reading the diff.

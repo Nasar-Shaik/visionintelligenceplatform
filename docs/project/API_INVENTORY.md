@@ -77,13 +77,20 @@
 
 > Phase 1 P1-4. Per-camera ingestion workers: connect RTSP/RTMP (creds from camera), decode (ffmpeg), extract frames, record segments to tenant-scoped MinIO (`{tenantId}/{cameraId}/recordings/…`, @vip/storage). Auto-reconnect with backoff; emits `media.stream.*` + `media.recording.segment`. Verifies the identity token itself (`iss=identity`); tenant from the token — another tenant's stream is a **404**.
 
-| Method | Endpoint                          | Purpose                               | Auth             | Output                                            | Dependencies                 | Status   | Version |
-| ------ | --------------------------------- | ------------------------------------- | ---------------- | ------------------------------------------------- | ---------------------------- | -------- | ------- |
-| POST   | `/streams/:cameraId/start`        | Start a camera's ingestion worker     | `stream:control` | `202 {success,data:StreamStatus}` · `401/403`     | @vip/storage, camera, ffmpeg | beta     | 0.1.0   |
-| POST   | `/streams/:cameraId/stop`         | Stop the worker (no reconnect)        | `stream:control` | `200 {success,data:StreamStatus}` · `401/403/404` | —                            | beta     | 0.1.0   |
-| GET    | `/streams/:cameraId/status`       | Worker status                         | `stream:read`    | `200 {success,data:StreamStatus}` · `401/403/404` | —                            | beta     | 0.1.0   |
-| GET    | `/streams`                        | List the tenant's workers             | `stream:read`    | `200 {success,data:StreamStatus[]}` · `401/403`   | —                            | beta     | 0.1.0   |
-| GET    | `/health` `/ready` `/metrics` `/` | Liveness / readiness / metrics / info | None             | as template (`/ready` includes a `storage` check) | prom-client, @vip/storage    | scaffold | 0.1.0   |
+| Method | Endpoint                          | Purpose                               | Auth             | Output                                               | Dependencies                 | Status   | Version |
+| ------ | --------------------------------- | ------------------------------------- | ---------------- | ---------------------------------------------------- | ---------------------------- | -------- | ------- |
+| POST   | `/streams/:cameraId/start`        | Start a camera's ingestion worker     | `stream:control` | `202 {success,data:StreamStatus}` · `401/403`        | @vip/storage, camera, ffmpeg | beta     | 0.1.0   |
+| POST   | `/streams/:cameraId/stop`         | Stop the worker (no reconnect)        | `stream:control` | `200 {success,data:StreamStatus}` · `401/403/404`    | —                            | beta     | 0.1.0   |
+| GET    | `/streams/:cameraId/status`       | Worker status                         | `stream:read`    | `200 {success,data:StreamStatus}` · `401/403/404`    | —                            | beta     | 0.1.0   |
+| GET    | `/streams`                        | List the tenant's workers             | `stream:read`    | `200 {success,data:StreamStatus[]}` · `401/403`      | —                            | beta     | 0.1.0   |
+| GET    | `/perception/event-bridge`        | Event Publisher state (P-8 Phase 5)   | `system:inspect` | `200 {success,data:EventPublisherStats}` · `401/403` | @vip/messaging               | beta     | 0.1.0   |
+| GET    | `/health` `/ready` `/metrics` `/` | Liveness / readiness / metrics / info | None             | as template (`/ready` includes a `storage` check)    | prom-client, @vip/storage    | scaffold | 0.1.0   |
+
+> ⚠️ **`/perception/event-bridge` is deployment state, not tenant data**, which is why it is behind
+> `system:inspect` rather than a media permission and why it carries **no camera id** — the last
+> camera published for would name a customer's premises on an operations page. Reached by the console
+> as `/api/system/event-bridge`. **Publishes** (NATS, not HTTP):
+> `t.{tenantId}.capability.output.{capabilityId}` — the edge that did not exist before P-8 Phase 5.
 
 ## @vip/service-events (v0.1.0)
 

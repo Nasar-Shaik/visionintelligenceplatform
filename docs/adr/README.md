@@ -59,10 +59,22 @@ Any decision that changes: a **contract**, a **boundary/dependency rule**, a **t
 | [0035](ADR-0035-evidence-playback.md) | P-5.5 evidence playback: the first implementation milestone after the freeze | Accepted |
 | [0036](ADR-0036-browser-facing-object-storage-endpoint.md) | A browser-facing endpoint for signed object-storage URLs | Accepted |
 | [0037](ADR-0037-model-agnostic-runtime-and-registry-driven-loading.md) | A model-agnostic runtime with registry-driven model loading | Accepted |
+| [0038](ADR-0038-track-identity-across-gaps.md) | Re-entry is a link, not a reused id: track identity across gaps | Accepted |
+| [0039](ADR-0039-absent-metrics-are-unavailable-never-zero.md) | Absent metrics are reported as unavailable, never as zero — **platform-wide** | Accepted |
+| [0040](ADR-0040-one-event-envelope-many-payload-schemas.md) | One `EventEnvelope`. Many payload schemas. No second transport | Accepted |
+| [0041](ADR-0041-identity-travels-with-the-subject.md) | Identity travels with the subject, or rules under-fire silently | Accepted |
+| [0042](ADR-0042-at-least-once-delivery-with-bounded-suppression.md) | Delivery is at-least-once, suppression is bounded, and recording outranks both | Accepted |
+
 _Add new rows as ADRs are created. Never renumber; never delete._
 
 > ⚠️ **This index was thirteen ADRs out of date** until 2026-08-05 — 0024–0036 existed as files and
 > not as rows. An index nobody can trust is worse than no index, because the absence of a row reads
 > as the absence of a decision. Backfilled while adding 0037.
+>
+> ⚠️ **And four out of date again by 2026-08-06** — 0038–0041 were written, referenced from the
+> capability matrix and the limitation register, and never added here. Backfilled while adding 0042.
+> The lesson from the first backfill was recorded and did not change the outcome, which says the
+> instruction is not the mechanism: **the row belongs in the same commit as the file**, and a
+> reviewer of a commit adding `docs/adr/ADR-nnnn-*.md` should look for the row before anything else.
 
 > ADRs 0006–0010 were produced by the **Enterprise Architecture Review** (2026-07-26). ADRs 0011–0015 were produced by the **Final Architecture Enhancement** (2026-07-27) that froze the architecture as **v1.0**. All are strengthenings that preserve the existing philosophy. **After v1.0 freeze, every architectural change requires a new ADR.**

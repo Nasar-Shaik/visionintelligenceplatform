@@ -70,6 +70,28 @@ proof works** — each was added because a green check hid a real defect. Full a
 | 36  | ✅ **Silence reported as a finding**                   | Skipped, excluded, crashed, unreachable and "0 of 9 were published" are results, not gaps in the output. ⚠️ And a run installs every fixture it depends on rather than assuming a previous run's survived a rebuild                                                                      |
 | 37  | ✅ **A shared-pattern defect is fixed at the pattern** | When a defect is found in a shared component or shape, the unit of repair is the pattern and the verification enumerates every place it is used. "Fixed on the page it was reported on" is a status, not a fix                                                                           |
 
+## The eight deliverables of a subsystem (permanent, from the P-8 Phase 4 freeze · 2026-08-05)
+
+⚠️ **These are delivered TOGETHER or the subsystem is not delivered.** Not a checklist to work
+through afterwards — a subsystem that ships seven of them has shipped something nobody can operate,
+and the eighth is always the one that would have caught the defect.
+
+| #   | Deliverable                 | ⚠️ What its absence costs                                                                                                                                                                                                          |
+| --- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Runtime implementation**  | —                                                                                                                                                                                                                                  |
+| 2   | **Runtime metrics**         | A subsystem nobody can see the state of. Every metric separates **measurable** from **unavailable**; an absent value is `null` with a reason, never `0` ([ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md)) |
+| 3   | **Browser visibility**      | Rules that are only observable on a page go unverified. A hard-coded "Not measurable" once made a contract violation invisible while the check stayed green                                                                        |
+| 4   | **Deployment verification** | A subsystem proven under `pnpm dev` and broken in the deployment. P-5.8 found playback had never worked outside it                                                                                                                 |
+| 5   | **Mutation testing**        | A verification that cannot fail. Two of this milestone's checks were **vacuous** and only mutation found them                                                                                                                      |
+| 6   | **Nightly automation**      | A verification that ran once. Registered in **every** profile, never left to manual invocation                                                                                                                                     |
+| 7   | **Benchmark evidence**      | A capacity claim from nothing. Numbers carry their conditions, and no sizing recommendation publishes until **three independent runs agree**                                                                                       |
+| 8   | **Governance updates**      | Work nobody after you can find. Capability matrix, limitation register, ADR index, and the tracker — in the **same commit**                                                                                                        |
+
+⚠️ **Item 8 has failed twice in this repository, the same way both times.** The ADR index went
+thirteen ADRs stale, was backfilled with a note explaining why that mattered, and went four ADRs
+stale again within a day. Writing down the lesson did not change the outcome: the row belongs in the
+commit that adds the file, and a reviewer should look for it before reading the diff.
+
 ## Governance trackers (must all be updated as part of Done)
 
 - [ ] [ENGINEERING_DECISION_LOG](ENGINEERING_DECISION_LOG.md) — new decisions appended
