@@ -531,6 +531,40 @@ class RuntimeTrackerTests(unittest.TestCase):
         frames = self.walk(rt, [0.30, 0.33])
         self.assertEqual(rt.detail("tnt_a", self.ids(frames)[0])["track"]["schemaVersion"], "1.1")
 
+    def test_lifetime_totals_never_go_backwards_when_a_camera_is_released(self):
+        """⚠️ The defect the capacity benchmark found. `createdTracks` was summed across LIVE camera
+        states, so releasing an idle camera made a lifetime total fall — and differencing it produced
+        a negative identity count. A total assembled from deliberately transient state is not a
+        total."""
+        import runtime_tracking as rt_mod
+
+        rt = self.tracker()
+        self.walk(rt, [0.30, 0.33], camera="cam_gone")
+        before = rt.stats("tnt_a")["createdTracks"]
+        self.assertGreaterEqual(before, 1)
+
+        # Force the idle sweep to release that camera, then track on a different one.
+        original = rt_mod.CAMERA_IDLE_SECONDS
+        rt_mod.CAMERA_IDLE_SECONDS = -1
+        try:
+            self.walk(rt, [0.30, 0.33], camera="cam_new")
+        finally:
+            rt_mod.CAMERA_IDLE_SECONDS = original
+
+        after = rt.stats("tnt_a")
+        self.assertGreaterEqual(
+            after["createdTracks"], before, "a lifetime counter went backwards when a camera was released"
+        )
+        self.assertLess(after["camerasTracked"], 2, "the idle camera was not actually released")
+
+    def test_totals_stay_tenant_scoped(self):
+        rt = self.tracker()
+        self.walk(rt, [0.30, 0.33], tenant="tnt_a")
+        self.walk(rt, [0.30, 0.33], tenant="tnt_b")
+        self.assertEqual(rt.stats("tnt_a")["createdTracks"], 1)
+        self.assertEqual(rt.stats("tnt_b")["createdTracks"], 1)
+        self.assertEqual(rt.stats()["createdTracks"], 2)
+
     def test_describe_reports_the_engine_without_tenant_data(self):
         described = self.tracker().describe()
         self.assertEqual(described["associator"], "predictive-iou")

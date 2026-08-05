@@ -65,6 +65,10 @@ CAMERA_IDLE_SECONDS = 300.0
 #: Lifecycle entries retained per track. Bounded for the same reason history is.
 MAX_TIMELINE = 64
 
+#: Tenants whose lifetime totals are retained. Bounded like everything else here; a runtime serving
+#: more tenants than this has bigger questions than its statistics page.
+MAX_TENANT_TOTALS = 256
+
 
 class _CameraState:
     """Everything tracked for one (tenant, camera). One manager, one re-entry pool, one frame clock."""
@@ -170,6 +174,14 @@ class RuntimeTracker:
         self._tracking_ms_total = 0.0
         self._tracking_frames = 0
         self._evictions = 0
+        #: Lifetime totals per tenant.
+        #:
+        #: ⚠️ These live on the TRACKER, not on the per-camera state, and that is a correctness fix
+        #: rather than a tidy-up. Summing `created` across live cameras produces a number that FALLS
+        #: when an idle camera is released — so a "total identities created" counter went backwards,
+        #: and the capacity benchmark differenced it into a negative identity count. A monotonic
+        #: total must not be assembled from state that is deliberately transient.
+        self._totals: Dict[str, Dict[str, int]] = {}
 
     # --- the pipeline stage ------------------------------------------------------
 
@@ -197,12 +209,14 @@ class RuntimeTracker:
                 and captured < state.last_capture_seconds
             ):
                 state.out_of_order += 1
+                self._bump(ctx.tenant_id, "outOfOrder")
                 return detections
 
             if captured is not None:
                 state.last_capture_seconds = captured
             state.frame_index += 1
             state.frames += 1
+            self._bump(ctx.tenant_id, "frames")
             state.last_touched = time.monotonic()
 
             at = ctx.timestamp or _iso(time.time())
@@ -216,13 +230,15 @@ class RuntimeTracker:
             )
 
             for removed in state.manager.drain_removed():
+                self._bump(ctx.tenant_id, "removed")
                 state.reentry.retire(removed)
                 self._record_transition(state, removed.track_id, state.frame_index, at, "removed", "max-age exceeded")
 
             for track in tracks:
                 if track.track_id not in before:
                     state.created += 1
-                    self._adopt_identity(state, track)
+                    self._bump(ctx.tenant_id, "created")
+                    self._adopt_identity(state, track, ctx.tenant_id)
                 self._sync_timeline(state, track)
 
             stamped = self._stamp(detections, state.manager.assignment())
@@ -233,7 +249,16 @@ class RuntimeTracker:
 
     # --- identity ----------------------------------------------------------------
 
-    def _adopt_identity(self, state: _CameraState, track: Track) -> None:
+    def _bump(self, tenant_id: str, key: str, by: int = 1) -> None:
+        totals = self._totals.get(tenant_id)
+        if totals is None:
+            if len(self._totals) >= MAX_TENANT_TOTALS:
+                return
+            totals = {"created": 0, "removed": 0, "recovered": 0, "frames": 0, "outOfOrder": 0}
+            self._totals[tenant_id] = totals
+        totals[key] = totals.get(key, 0) + by
+
+    def _adopt_identity(self, state: _CameraState, track: Track, tenant_id: str) -> None:
         """Give a newly created track its own identity, or the one it is returning to."""
         link = state.reentry.resolve(track)
         if link is None:
@@ -246,6 +271,7 @@ class RuntimeTracker:
         track.preceded_by = link.preceded_by
         track.recoveries = link.recoveries
         state.recovered += 1
+        self._bump(tenant_id, "recovered")
 
     def _sync_timeline(self, state: _CameraState, track: Track) -> None:
         """Mirror the manager's transitions into the contract shape, append-only and bounded."""
@@ -369,15 +395,24 @@ class RuntimeTracker:
                 s for (tid, _cam), s in self._cameras.items() if tenant_id is None or tid == tenant_id
             ]
             active = confirmed = tentative = lost = 0
-            removed = created = recovered = frames = out_of_order = 0
             lifetimes: List[float] = []
             hits: List[int] = []
+            # ⚠️ Lifetime totals come from `_totals`, which survives a camera being released. The
+            # live counts below are gauges and are correctly derived from what is live right now.
+            if tenant_id is None:
+                created = sum(t["created"] for t in self._totals.values())
+                removed = sum(t["removed"] for t in self._totals.values())
+                recovered = sum(t["recovered"] for t in self._totals.values())
+                frames = sum(t["frames"] for t in self._totals.values())
+                out_of_order = sum(t["outOfOrder"] for t in self._totals.values())
+            else:
+                totals = self._totals.get(tenant_id, {})
+                created = totals.get("created", 0)
+                removed = totals.get("removed", 0)
+                recovered = totals.get("recovered", 0)
+                frames = totals.get("frames", 0)
+                out_of_order = totals.get("outOfOrder", 0)
             for state in states:
-                created += state.created
-                recovered += state.recovered
-                frames += state.frames
-                out_of_order += state.out_of_order
-                removed += state.manager.stats().get("removedTracks", 0)
                 for track in state.manager.active():
                     active += 1
                     hits.append(track.hits)
