@@ -1,0 +1,25 @@
+# Nightly — the standard unattended run.
+#
+# id | title | script | enable-var | requires | on-fail | timeout-var
+#
+# ⚠️ ORDER IS DELIBERATE, in three bands:
+#   1. cheap and static first, so a broken tree is known within minutes rather than at dawn;
+#   2. deployment integrity BEFORE anything rebuilds an image, or a legitimate rebuild reads as drift;
+#   3. the long measurements last, so waking early still finds the quick answers already written.
+#
+# Only `preflight` aborts. Everything else records its failure and lets the night continue, because
+# one broken thing should not cost you the other six answers.
+# `requires` accepts stage ids, or the token `always` — which means "run even if the run
+# aborted". Only the report uses it: an aborted night is the one that most needs a written summary.
+
+preflight   | Pre-flight checks                 | preflight.sh   | RUN_PREFLIGHT   |           | abort    | TIMEOUT_PREFLIGHT
+gate        | Production gate                   | gate.sh        | RUN_GATE        | preflight | continue | TIMEOUT_GATE
+deployment  | Deployment integrity              | deployment.sh  | RUN_DEPLOYMENT  | preflight | continue | TIMEOUT_DEPLOYMENT
+boundary    | Contracts and perception boundary | boundary.sh    | RUN_BOUNDARY    | preflight | continue | TIMEOUT_BOUNDARY
+runtime     | Real inference, end to end        | runtime.sh     | RUN_RUNTIME     | preflight | continue | TIMEOUT_RUNTIME
+dashboard   | Operator page in a browser        | dashboard.sh   | RUN_DASHBOARD   | preflight | continue | TIMEOUT_DASHBOARD
+integration | Cross-service integration tests   | integration.sh | RUN_INTEGRATION | preflight | continue | TIMEOUT_INTEGRATION
+stability   | Stability run                     | stability.sh   | RUN_SOAK        | preflight | continue | TIMEOUT_SOAK
+benchmark   | Capacity ladder and benchmark     | benchmark.sh   | RUN_BENCHMARK   | preflight | continue | TIMEOUT_BENCHMARK
+mutation    | Mutation verification             | mutation.sh    | RUN_MUTATION    | preflight | continue | TIMEOUT_MUTATION
+report      | Morning summary                   | report.sh      | RUN_REPORT      | always   | continue | TIMEOUT_REPORT

@@ -257,35 +257,60 @@ const drift = (key) => {
   return { a, b, delta: b - a, percent: a === 0 ? 0 : ((b - a) / a) * 100 };
 };
 
+/**
+ * ⚠️ **Below this many samples, drift is reported but NOT asserted.**
+ *
+ * The comparison is the mean of the first half against the mean of the second. With three samples
+ * that is one minute against two, and a single-sample baseline is noise rather than a trend — a
+ * three-minute run failed here at "p95 +28.3 %" while memory was flat to the megabyte, detection
+ * consistency was exactly 2.00 and nothing was wrong. A check that goes red on a healthy platform
+ * is worse than no check: it is the one people learn to ignore.
+ *
+ * Ten samples gives five against five, which is the least that can carry the claim. At the default
+ * cadence that is ten minutes, and the standard 15–30 minute run clears it comfortably.
+ */
+const DRIFT_MIN_SAMPLES = 10;
+const canAssertDrift = samples.length >= DRIFT_MIN_SAMPLES;
+
 console.log(`\nafter ${MINUTES} minutes (${samples.length} samples, first half vs second half)\n`);
+if (!canAssertDrift) {
+  console.log(
+    `  ⓘ fewer than ${DRIFT_MIN_SAMPLES} samples — drift is reported below but not asserted, because\n` +
+      `    ${first.length} sample(s) against ${second.length} cannot tell a trend from noise.\n`,
+  );
+}
 
 {
+  // A drift assertion, or a reported observation when the run is too short to support one.
+  const driftCheck = (ok, label, detail) =>
+    canAssertDrift ? check(ok, label, detail) : finding(`${label} (not asserted)`, detail);
+
   const memory = drift('runtimeMem');
   // ⚠️ A leak is a SLOPE, not a number, so this compares halves rather than endpoints. At ~490
   // frames/minute even a short run covers thousands of frames; anything that grows per-frame is
   // visible as a trend here long before it is visible as an outage.
-  check(
+  driftCheck(
     Math.abs(memory.percent) < 5,
     'runtime memory is flat across the run',
     `${memory.a.toFixed(0)}MB → ${memory.b.toFixed(0)}MB (${memory.percent >= 0 ? '+' : ''}${memory.percent.toFixed(1)}%)`,
   );
 
   const rss = drift('runtimeRssMb');
-  check(
+  driftCheck(
     Math.abs(rss.percent) < 5,
     'and the process agrees with the container about it',
     `RSS ${rss.a.toFixed(0)}MB → ${rss.b.toFixed(0)}MB`,
   );
 
   const latency = drift('runtimeP95');
-  check(
+  driftCheck(
     Math.abs(latency.percent) < 20,
     'p95 inference latency does not drift',
     `${latency.a.toFixed(0)}ms → ${latency.b.toFixed(0)}ms (${latency.percent >= 0 ? '+' : ''}${latency.percent.toFixed(1)}%)`,
   );
 
   const cpu = drift('runtimeCpu');
-  check(
+  driftCheck(
     Math.abs(cpu.percent) < 25,
     'CPU is stable, not climbing',
     `${cpu.a.toFixed(0)}% → ${cpu.b.toFixed(0)}%`,

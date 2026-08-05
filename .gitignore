@@ -67,3 +67,6 @@ playground-output/
 # machine, third-party content with its own licences. Delete this line if the
 # team decides to share a skill set through the repo.
 .claude/
+
+# unattended verification: generated evidence and the live-log pointer
+scripts/logs/
