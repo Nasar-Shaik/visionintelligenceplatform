@@ -205,7 +205,19 @@ function previousRun(metricFile) {
   const root = join(RUN, '..');
   const mine = basename(RUN);
   const candidates = readdirSync(root)
-    .filter((d) => d !== mine && existsSync(join(root, d, 'metrics', metricFile)))
+    .filter((d) => {
+      if (d === mine) return false;
+      // ⚠️ Real directories only. `latest` is a symlink to a run — usually THIS one — and excluding
+      // it by name is not enough because it has a different name. Without this the trend compared
+      // the run against itself and reported a confident "+0.0 %" on every line, which looks exactly
+      // like a stable platform and is in fact no comparison at all.
+      try {
+        if (!lstatSync(join(root, d)).isDirectory()) return false;
+      } catch {
+        return false;
+      }
+      return existsSync(join(root, d, 'metrics', metricFile));
+    })
     .sort();
   const prev = candidates[candidates.length - 1];
   return prev ? { id: prev, data: readJson(join(root, prev, 'metrics', metricFile)) } : null;
