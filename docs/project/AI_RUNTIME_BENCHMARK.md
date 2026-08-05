@@ -204,26 +204,45 @@ warm-up. Raw samples: [`docs/review/p8/tracking-capacity.json`](../review/p8/tra
 subject produces one track that never has to be re-associated, so identity stability against it is
 100 % by construction and measures nothing.
 
-| Cameras | Analysed fps | Dropped | Identities (truth = cameras) | Extra | Tracking cost/frame | Runtime CPU / RAM |
-| ------: | -----------: | ------: | ---------------------------: | ----: | ------------------: | ----------------: |
-|   **1** |          2.0 |   0.0 % |                        **1** | **0** |            0.118 ms |    109 % / 101 MB |
-|   **2** |          4.0 |   0.0 % |                        **3** | **1** |            0.106 ms |    197 % / 133 MB |
-|   **4** |          8.1 |   0.0 % |                        **4** | **0** |            0.133 ms |    397 % / 133 MB |
-|   **8** |         16.0 |   0.2 % |                       **11** | **3** |            0.131 ms |    538 % / 139 MB |
-|  **16** |         31.9 |   0.9 % |                       **21** | **5** |            0.157 ms |    928 % / 120 MB |
+| Cameras | Analysed fps |   Dropped | Identities (truth = cameras) | Extra: run 1 / run 2 | Tracking cost/frame | Runtime CPU / RAM |
+| ------: | -----------: | --------: | ---------------------------: | -------------------: | ------------------: | ----------------: |
+|   **1** |    2.0 · 2.0 |     0.0 % |                        1 · 1 |            **0 / 0** |    0.118 · 0.144 ms |    109 % / 101 MB |
+|   **2** |    4.0 · 3.9 |     0.0 % |                        3 · 2 |            **1 / 0** |    0.106 · 0.128 ms |    197 % / 133 MB |
+|   **4** |    8.1 · 8.1 |     0.0 % |                        4 · 4 |            **0 / 0** |    0.133 · 0.123 ms |    397 % / 133 MB |
+|   **8** |  16.0 · 15.9 | 0.2–0.3 % |                       11 · 9 |            **3 / 1** |    0.131 · 0.148 ms |    538 % / 113 MB |
+|  **16** |  31.9 · 32.0 | 0.8–0.9 % |                      21 · 17 |            **5 / 1** |    0.157 · 0.179 ms |    928 % / 116 MB |
 
-⚠️ **Tracking is a rounding error beside inference.** 0.11–0.16 ms per frame against ~50 ms of
+⚠️ **Tracking is a rounding error beside inference.** 0.11–0.18 ms per frame against ~50 ms of
 inference — about **0.3 %**, and it grows only slightly with load. Identity is not what limits camera
-count.
+count. ✅ This is the one figure on the table that reproduces: both runs agree to within 0.03 ms at
+every rung.
 
-⚠️ **Identity fragments under load, and the number is the honest one.** One walking person per camera
-means the right answer is exactly `cameras`. Up to four cameras the engine returns it (one rung
-produced one extra). At eight it produced 11 for 8, and at sixteen **21 for 16** — a ~31 % overhead.
-This is the expected consequence of frames being analysed less often per camera as the host
-saturates: a bigger gap between observations is a harder association, and past the engine's tolerance
-it is correctly a new identity rather than a wrong one. **It is fragmentation, not swapping** — no
-scenario in this ladder can distinguish those, which is why identity _swaps_ are proved separately
-against authored crossings rather than inferred from this table.
+### ⚠️ Identity fragmentation under load is PROVISIONAL — two runs disagree by a factor of five
+
+One walking person per camera means the right answer is exactly `cameras`, so anything above it is
+overhead. Two runs of the same commit on the same host:
+
+| Rung   | Run 1 (2026-08-05) | Run 2 (2026-08-06) | Overhead        |
+| ------ | -----------------: | -----------------: | --------------- |
+| 8 cam  |           11 for 8 |        **9 for 8** | 38 % → **13 %** |
+| 16 cam |          21 for 16 |      **17 for 16** | 31 % → **6 %**  |
+
+**Neither number is published as the answer.** The mechanism is not in doubt — fewer analysed frames
+per camera means a bigger gap between observations, and past the engine's tolerance a new identity is
+the correct response rather than a wrong one. The _magnitude_ is, and by enough that a customer-facing
+statement built on either figure would be wrong.
+
+⚠️ **This is the second time this ladder has produced a number that did not reproduce**, after the
+four-camera sizing rung. The pattern is the same and so is the response: state the range, name it
+provisional, and let the nightly framework accumulate runs until three agree
+([the sizing policy above](#-frozen-sizing-policy-p-8-phase-4-freeze-2026-08-05) enforces exactly this
+for the camera count, and `scripts/reports/history/tracking.jsonl` accumulates the same evidence for
+this one). What differs between the runs has not been isolated; host thermal state is the same
+hypothesis as before and is recorded as a hypothesis.
+
+**It is fragmentation, not swapping** — no scenario in this ladder can distinguish those, which is
+why identity _swaps_ are proved separately against authored crossings rather than inferred from this
+table. Both runs measured **0 identity switches** against the crossing clip.
 
 ⚠️ **Do NOT compare this table's drop rate with the sizing ladder above.** The source differs: this
 one plays a synthetic 640×360 clip with a plain background, which is markedly cheaper to encode and
