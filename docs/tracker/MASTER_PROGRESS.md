@@ -131,6 +131,30 @@ _Last updated: 2026-08-05 · Claude_
   all green and mutation-tested four ways. New: **TD-63** — the perception tier has no CPU limit and
   shares a host with recording; raised as a recommendation rather than decided, because the number
   should come from Phase 6 benchmarks. [review package](../review/p8/README.md).
+- **P-8 Phase 3 · real inference ✅ complete, ⏳ awaiting review (2026-08-05)** — the runtime now runs a
+  real model. **YOLOX-nano (Apache-2.0)** on ONNX Runtime, registered in a **checksummed catalogue baked
+  into the image** and resolved without MLflow, so a production container's model set is a property of its
+  build rather than of a dev-stack service it must reach at boot. ⚠️ **The check that makes the others mean
+  anything is the one that must find nothing**: the `stub` backend returned a detection for any bytes at
+  all, so the verification streams a **colour-bar test pattern and asserts ZERO** detections and a **CC0
+  photograph of two people and asserts EXACTLY two**. Restoring the stub turns the first red with
+  `person 0.660` in 0.05 ms; disabling suppression turns the second red with **17 boxes of the same two
+  people** — which `> 0` would have passed. **Measured (20 s windows, photograph looped over RTSP):**
+  1 camera 86 ms inference · 4 cameras 63 ms · 16 cameras 124 ms and 177 of 654 frames dropped by policy;
+  two detections per frame at every rung, accounting closes at every rung, zero failures, runtime memory
+  flat at ~110 MB. ⚠️ **CPU inference saturates between 4 and 8 cameras — ~8 per host at 2 fps, not 16.**
+  **Licensing was a selection criterion:** Ultralytics YOLOv8/v11 is **AGPL-3.0** and unusable in a
+  commercial product; raised as a finding before any code depended on it, and accepted. Every
+  `DetectionResult` now carries schema version, model id + version, execution provider, **preprocessing
+  fingerprint**, confidence floor and both latencies; detection ids are **derived**, so the same frame under
+  the same model always yields the same ids. **AI Runtime page** added — it reports and **configures
+  nothing**, renders "not measured" rather than 0, and says "none in this deployment" rather than "GPU 0 %".
+  Four defects surfaced: the ONNX adapter hard-coded a 640×640 stretch wrong for the registered model; the
+  RTSP fixture's `-stream_loop` ended the stream in under a second; **six checks in my own verification
+  passed vacuously** against a dead runtime (`[].every(...)` is `true`); the metric scrape rejected
+  labelled series. Verified: `inference.mjs` all green · `runtime-ui.mjs` all green in a browser ·
+  python **928** · media **51**. **TD-5 resolved · TD-63 escalated to high (6–8 cores at 16 cameras) ·
+  TD-64 opened (no accuracy gates).** `15ab3a1`
 - **P-8 Phase 1 · the AI runtime is deployed ✅ complete, ⏳ awaiting review (2026-08-05)** — the
   critical path, and the claim was false until today: 121 Python modules with a green unit-test suite
   had **never run in production**. It now does, and is **connected to nothing** — no camera, no frame,
