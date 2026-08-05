@@ -10,12 +10,14 @@ import {
   loadDatabaseConfig,
   loadInternalConfig,
   loadJwtConfig,
+  loadNatsConfig,
   loadStorageConfig,
   parseEnv,
   type AppConfig,
   type DatabaseConfig,
   type InternalConfig,
   type JwtConfig,
+  type NatsConfig,
   type StorageConfig,
 } from '@vip/config';
 import { z } from 'zod';
@@ -44,6 +46,24 @@ export interface PerceptionConfig {
   timeoutMs: number;
 }
 
+/**
+ * The Event Publisher bridge (P-8 Phase 5).
+ *
+ * ⚠️ **Off unless explicitly enabled**, exactly like perception before it. A deployment that does
+ * not turn this on behaves as it did — frames are analysed, nothing is published — so enabling the
+ * bridge is a decision somebody makes rather than one they discover after upgrading.
+ */
+export interface EventBridgeConfig {
+  enabled: boolean;
+  /** Results queued per camera before the oldest is dropped. */
+  queuePerCamera: number;
+  /** Concurrent publishes across all cameras. */
+  maxInflight: number;
+  /** Attempts per result, including the first. ⚠️ Bounded — an unbounded retry against a down
+   *  broker is a memory leak on the process that writes recordings. */
+  maxAttempts: number;
+}
+
 export interface ServiceConfig extends AppConfig {
   serviceVersion: string;
   jwt: JwtConfig;
@@ -52,6 +72,9 @@ export interface ServiceConfig extends AppConfig {
   internal: InternalConfig;
   ingestion: IngestionConfig;
   perception: PerceptionConfig;
+  eventBridge: EventBridgeConfig;
+  /** The backbone. ⚠️ Only read when the bridge is enabled — see `loadConfig`. */
+  nats?: NatsConfig;
   /** Signed playback-URL lifetime (seconds). */
   playbackTtlSeconds: number;
 }
@@ -75,6 +98,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       MEDIA_FRAME_QUEUE_PER_CAMERA: z.coerce.number().int().min(1).max(64).default(2),
       MEDIA_FRAME_MAX_INFLIGHT: z.coerce.number().int().min(1).max(64).default(4),
       MEDIA_FRAME_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000).default(2000),
+      // ⚠️ Off by default. See EventBridgeConfig.
+      MEDIA_EVENT_BRIDGE_ENABLED: z
+        .enum(['0', '1', 'true', 'false'])
+        .default('0')
+        .transform((v) => v === '1' || v === 'true'),
+      MEDIA_EVENT_QUEUE_PER_CAMERA: z.coerce.number().int().min(1).max(256).default(16),
+      MEDIA_EVENT_MAX_INFLIGHT: z.coerce.number().int().min(1).max(64).default(4),
+      MEDIA_EVENT_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(2),
     }),
     env,
     'ingestion',
@@ -100,6 +131,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       maxInflight: ing.MEDIA_FRAME_MAX_INFLIGHT,
       timeoutMs: ing.MEDIA_FRAME_TIMEOUT_MS,
     },
+    eventBridge: {
+      enabled: ing.MEDIA_EVENT_BRIDGE_ENABLED,
+      queuePerCamera: ing.MEDIA_EVENT_QUEUE_PER_CAMERA,
+      maxInflight: ing.MEDIA_EVENT_MAX_INFLIGHT,
+      maxAttempts: ing.MEDIA_EVENT_MAX_ATTEMPTS,
+    },
+    /*
+     * ⚠️ NATS is required ONLY when the bridge is on, and reading it conditionally is deliberate:
+     * `loadNatsConfig` fails fast on a missing NATS_URL, so reading it unconditionally would make
+     * every media deployment that does not publish refuse to start.
+     */
+    ...(ing.MEDIA_EVENT_BRIDGE_ENABLED ? { nats: loadNatsConfig(env) } : {}),
     playbackTtlSeconds: ing.MEDIA_PLAYBACK_TTL_SECONDS,
   };
 }

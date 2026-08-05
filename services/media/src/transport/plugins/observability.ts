@@ -7,6 +7,7 @@
 import type { FastifyInstance } from 'fastify';
 import { collectDefaultMetrics, Gauge, Histogram, Registry } from 'prom-client';
 import type { FrameSinkStats } from '../../adapters/http-frame-sink.js';
+import type { EventPublisherStats } from '../../adapters/event-publisher.js';
 
 const METRICS_ROUTE = '/metrics';
 
@@ -137,6 +138,141 @@ export function registerPerceptionMetrics(
       for (const [label, count] of Object.entries(provider.stats().detectionsByLabel)) {
         this.set({ label }, count);
       }
+    },
+  });
+}
+
+/**
+ * The Event Publisher bridge, made measurable (P-8 Phase 5).
+ *
+ * Same discipline as the perception series above: read from the publisher at scrape time, never
+ * incremented at the call site, so the publish path pays nothing for observability.
+ *
+ * ### ⚠️ Four different reasons a result does not become an event, kept as four series
+ *
+ * `rejected` (failed contract validation), `suppressed` (no detections, so no events exist to
+ * produce), `dropped` (queue full — policy) and `out_of_order` (a newer frame was already
+ * published) are **not the same event** and collapsing them would make a healthy busy system
+ * indistinguishable from a broken one. Only `failed` is a fault.
+ *
+ * ### ⚠️ What is deliberately NOT here
+ *
+ * There is no `deduplicated` series. Content deduplication happens downstream in `services/events`,
+ * which owns that number; publishing a similarly-named series here would be two series with one
+ * meaning, read off one dashboard, disagreeing. The publisher's `suppressed` is a different thing
+ * and is named for what it actually is.
+ */
+export function registerEventPublisherMetrics(
+  registry: Registry,
+  provider: { stats(): EventPublisherStats },
+): void {
+  const series: Array<[string, string, (s: EventPublisherStats) => number | null]> = [
+    ['media_event_publisher_enabled', 'Whether the bridge is on', (s) => (s.enabled ? 1 : 0)],
+    ['media_event_publisher_offered_total', 'Inference results offered', (s) => s.offered],
+    ['media_event_publisher_published_total', 'Results published to the bus', (s) => s.published],
+    [
+      'media_event_publisher_detections_published_total',
+      'Detections published — the events the normalizer will produce',
+      (s) => s.detectionsPublished,
+    ],
+    [
+      'media_event_publisher_rejected_total',
+      'Results that failed contract validation and were never published (fail-closed)',
+      (s) => s.rejected,
+    ],
+    [
+      'media_event_publisher_suppressed_total',
+      'Results with no detections, which would produce no events',
+      (s) => s.suppressed,
+    ],
+    [
+      'media_event_publisher_dropped_total',
+      'Results dropped because a camera queue was full (policy)',
+      (s) => s.droppedQueueFull,
+    ],
+    [
+      'media_event_publisher_out_of_order_total',
+      'Results dropped because a newer frame was already published for that camera',
+      (s) => s.droppedOutOfOrder,
+    ],
+    [
+      'media_event_publisher_delayed_total',
+      'Publishes that waited beyond the delay budget',
+      (s) => s.delayed,
+    ],
+    ['media_event_publisher_retries_total', 'Retry attempts made', (s) => s.retries],
+    [
+      'media_event_publisher_failed_total',
+      'Results that exhausted every attempt and were lost',
+      (s) => s.failed,
+    ],
+    ['media_event_publisher_queue_depth', 'Results waiting, across cameras', (s) => s.queueDepth],
+    ['media_event_publisher_inflight', 'Publishes in flight', (s) => s.inflight],
+    [
+      'media_event_publisher_active_cameras',
+      'Cameras with at least one result queued',
+      (s) => s.activeCameras,
+    ],
+    [
+      'media_event_publisher_publish_ms_avg',
+      'Mean broker publish time (ms)',
+      (s) => s.publishMsAvg,
+    ],
+    [
+      'media_event_publisher_throughput_per_second',
+      'Events published per second over the recent window',
+      (s) => s.throughputPerSecond,
+    ],
+    [
+      /*
+       * ⚠️ `unknown` is 0 and is NOT the same as `down` (-1). A publisher that has published nothing
+       * has not demonstrated a working broker, and reporting that as healthy is exactly the failure
+       * ADR-0039 forbids. An alert must be able to distinguish "not yet tried" from "tried and
+       * failed", so the two states are different values rather than one falsy one.
+       */
+      'media_event_publisher_broker_status',
+      'Broker reachability: 1 up, -1 down, 0 not yet attempted',
+      (s) => (s.brokerStatus === 'up' ? 1 : s.brokerStatus === 'down' ? -1 : 0),
+    ],
+  ];
+  for (const [name, help, read] of series) {
+    new Gauge({
+      name,
+      help,
+      registers: [registry],
+      collect() {
+        const value = read(provider.stats());
+        /*
+         * ⚠️ A `null` reading is OMITTED, not written as 0 (ADR-0039). "No publish has been timed
+         * yet" and "publishes take no time" are opposite statements that render identically as a
+         * zero on a graph, and only one of them is good news.
+         */
+        if (value !== null) this.set(value);
+      },
+    });
+  }
+
+  /*
+   * ⚠️ Versions as a labelled info series, which is the Prometheus idiom for "what is running".
+   * Three DIFFERENT version numbers answer three different questions, and an operator asking "why
+   * did events change shape?" needs to tell them apart: the publisher's own logic, the payload
+   * contract it saw on the wire, and (elsewhere) the service build.
+   */
+  new Gauge({
+    name: 'media_event_publisher_build_info',
+    help: 'Publisher version and the payload schema version last seen on the wire',
+    labelNames: ['publisher_version', 'payload_schema_version'],
+    registers: [registry],
+    collect() {
+      const s = provider.stats();
+      this.set(
+        {
+          publisher_version: s.publisherVersion,
+          // ⚠️ "unknown", not a guessed default — nothing has been observed yet.
+          payload_schema_version: s.payloadSchemaVersion ?? 'unknown',
+        },
+        1,
+      );
     },
   });
 }

@@ -52,6 +52,14 @@ export interface NormalizeDeps {
 function subjectOf(detection: Detection): EventSubject {
   const subject: EventSubject = { class: detection.label, bbox: detection.bbox };
   if (detection.trackingId) subject.trackId = detection.trackingId;
+  /*
+   * ⚠️ Identity is carried through, and it is the field a rule must aggregate on (ADR-0041). A
+   * dwell rule keyed on `trackId` sees a briefly occluded person as two short visits and never
+   * crosses its threshold — silently, and more often as the host saturates. Dropping it here would
+   * put that failure back with nothing to see.
+   */
+  if (detection.identityId) subject.identityId = detection.identityId;
+  if (detection.precededBy) subject.precededBy = detection.precededBy;
   if (Object.keys(detection.attributes).length > 0) subject.attributes = detection.attributes;
   return subject;
 }
@@ -87,6 +95,18 @@ function toEnvelope(
       label: detection.label,
       executionProvider: result.executionProvider,
       runtimeVersion: result.runtimeVersion,
+      /*
+       * ⚠️ The FRAME this event came from (P-8 Phase 5). Every envelope from one frame shares a
+       * `correlationId`; these say which frame that was, so a trace can be followed in both
+       * directions — from an incident back to the frame, and from a frame forward to everything it
+       * produced.
+       *
+       * ⚠️ In the PAYLOAD, not the envelope. A frame sequence is meaningless for `tenant.created`,
+       * and an envelope field carried by every event on the platform forever needs a higher bar
+       * than one carried by perception events (ADR-0040).
+       */
+      frameId: `${result.tenantId}:${result.cameraId}:${result.frame.seq}`,
+      frameSeq: result.frame.seq,
     },
     evidenceRefs: [],
     priority,

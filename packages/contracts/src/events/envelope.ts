@@ -32,6 +32,22 @@ export type EventProducer = z.infer<typeof EventProducer>;
 /** A subject the event is about (a tracked entity), if any. */
 export const EventSubject = z.object({
   trackId: z.string().optional(),
+  /**
+   * Identity across gaps the tracker bridged (P-8 Phase 5, additive — ADR-0041).
+   *
+   * ⚠️ **A rule that accumulates over time must group by THIS, not by `trackId`.** A person briefly
+   * occluded gets a new `trackId` (ADR-0038 forbids reuse), so a dwell rule keyed on `trackId` sees
+   * two short visits instead of one long one and never crosses its threshold. The failure is silent
+   * — no error, no dropped message — and it worsens with host load, because identity fragments as a
+   * host saturates ([L-42]). That makes the same rule fire on a quiet host and not on a busy one.
+   *
+   * ⚠️ Advisory. The link is geometric, not appearance-based, so it can join the wrong person. An
+   * incident whose duration spans a link is asserting something the platform believes rather than
+   * something it observed, and the operator surface shows both ids for that reason.
+   */
+  identityId: z.string().optional(),
+  /** The immediate predecessor in the identity chain, when the subject's track re-entered. */
+  precededBy: z.string().optional(),
   class: z.string().optional(),
   bbox: BBox.optional(),
   /** Free-form, additive attributes (color, ppe flags, etc.). */

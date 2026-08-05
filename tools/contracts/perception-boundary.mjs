@@ -61,12 +61,27 @@ function sources() {
  * it fire wrongly. A gate that occasionally under-reports is survivable; one that cries wolf is not.
  */
 function stripLiterals(source) {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')
+  return stripComments(source)
     .replace(/`(?:\\.|\$\{[^}]*\}|[^`\\])*`/g, '``')
     .replace(/'(?:\\.|[^'\\])*'/g, "''")
     .replace(/"(?:\\.|[^"\\])*"/g, '""');
+}
+
+/**
+ * Comments only, keeping string literals.
+ *
+ * ⚠️ §A needs this and §C does not, because they forbid different things. §C forbids model
+ * *vocabulary*, which only matters as an identifier — so it strips literals too. §A forbids *calling
+ * the runtime*, and the call itself lives in a template literal (`${url}/infer`), so stripping
+ * literals would blind the check to the one thing it exists to find.
+ *
+ * ⚠️ Found by the Event Publisher: its header explains that media receives the result from `/infer`,
+ * and §A read that sentence as a second caller. That is the same false positive this file's header
+ * describes for §C — a comment is prose — and the fix is the same. A gate that fires on correct
+ * prose is one people learn to skip.
+ */
+function stripComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
 }
 
 const files = sources();
@@ -74,7 +89,9 @@ console.log(`\nperception boundary · ${files.length} TypeScript source(s) outsi
 
 /* ── §A one seam ─────────────────────────────────────────────────────────────────────────────── */
 {
-  const callers = files.filter((f) => /['"`]\/infer['"`]|\/infer`/.test(readFileSync(f, 'utf8')));
+  const callers = files.filter((f) =>
+    /['"`]\/infer['"`]|\/infer`/.test(stripComments(readFileSync(f, 'utf8'))),
+  );
   const relative_ = callers.map((f) => relative(ROOT, f));
   check(
     callers.length === 1 && relative_[0] === 'services/media/src/adapters/http-frame-sink.ts',

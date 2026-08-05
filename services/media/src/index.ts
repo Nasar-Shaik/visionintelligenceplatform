@@ -18,6 +18,8 @@ import { HttpCameraSource } from './adapters/http-camera-source.js';
 import { FfmpegDecoder } from './adapters/ffmpeg-decoder.js';
 import { NullFrameSink } from './adapters/null-frame-sink.js';
 import { HttpFrameSink } from './adapters/http-frame-sink.js';
+import { BufferedEventPublisher } from './adapters/event-publisher.js';
+import { NatsEventBus } from '@vip/messaging';
 import { buildServer } from './transport/server.js';
 
 async function main(): Promise<void> {
@@ -75,6 +77,25 @@ async function main(): Promise<void> {
    * choice is one environment variable and it is logged at boot, because "are frames going anywhere"
    * must be answerable from the log rather than inferred from a counter that reads zero.
    */
+  /*
+   * ⚠️ The Event Publisher bridge (P-8 Phase 5). Off unless enabled, and it needs a broker — so the
+   * connection is made only when the bridge is on. A media deployment that does not publish must not
+   * fail to start because NATS is unreachable; recording does not depend on the backbone.
+   */
+  let eventBus: NatsEventBus | undefined;
+  let eventPublisher: BufferedEventPublisher | undefined;
+  if (config.eventBridge.enabled && config.nats !== undefined) {
+    eventBus = await NatsEventBus.connect({ servers: config.nats.url, name: 'media-publisher' });
+    eventPublisher = new BufferedEventPublisher({
+      bus: eventBus,
+      enabled: true,
+      perCamera: config.eventBridge.queuePerCamera,
+      maxInflight: config.eventBridge.maxInflight,
+      maxAttempts: config.eventBridge.maxAttempts,
+      onLog: (level, msg, fields) => loggerRef.current?.[level]({ ...fields }, msg),
+    });
+  }
+
   const frameSink =
     config.perception.url === ''
       ? new NullFrameSink()
@@ -86,6 +107,7 @@ async function main(): Promise<void> {
           maxInflight: config.perception.maxInflight,
           timeoutMs: config.perception.timeoutMs,
           onLog: (level, msg, fields) => loggerRef.current?.[level]({ ...fields }, msg),
+          ...(eventPublisher === undefined ? {} : { publisher: eventPublisher }),
         });
 
   const supervisor = new StreamSupervisor({
@@ -113,6 +135,7 @@ async function main(): Promise<void> {
     catalog,
     readiness,
     ...(frameSink instanceof HttpFrameSink ? { perception: frameSink } : {}),
+    ...(eventPublisher === undefined ? {} : { eventPublisher }),
   });
   loggerRef.current = app.log;
   app.log.info(

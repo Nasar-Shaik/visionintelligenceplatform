@@ -50,6 +50,23 @@ export const Detection = z.object({
   metadata: z.record(z.string(), z.unknown()).default({}),
   /** Optional stable track id across frames (assigned by the tracking stage). */
   trackingId: z.string().min(1).optional(),
+  /**
+   * Identity across gaps the tracker bridged (P-8 Phase 5, additive — ADR-0041).
+   *
+   * ⚠️ **`trackingId` and `identityId` answer different questions, and a consumer that picks the
+   * wrong one fails SILENTLY.** `trackingId` is one uninterrupted observation; a person briefly
+   * occluded comes back with a NEW one, because ADR-0038 forbids reusing an id. `identityId` is the
+   * first track in that chain — so anything ACCUMULATING over time (dwell, loitering, occupancy)
+   * must group by `identityId`, or a person hidden for two seconds becomes two short visits and a
+   * sixty-second threshold is never crossed. No error, no alert, and it depends on host load.
+   *
+   * ⚠️ Advisory, not proof. Re-entry linking is geometric — position, size, elapsed time, class —
+   * with no appearance model, so it can link the wrong person ([L-42]). Equal to `trackingId` for a
+   * first appearance, so a consumer never has to special-case its absence.
+   */
+  identityId: z.string().min(1).optional(),
+  /** The immediate predecessor in the identity chain, when this detection's track re-entered. */
+  precededBy: z.string().min(1).optional(),
 });
 export type Detection = z.infer<typeof Detection>;
 

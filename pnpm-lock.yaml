@@ -567,6 +567,9 @@ importers:
       '@vip/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@vip/messaging':
+        specifier: workspace:*
+        version: link:../../packages/messaging
       '@vip/permissions':
         specifier: workspace:*
         version: link:../../packages/permissions

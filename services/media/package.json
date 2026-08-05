@@ -21,6 +21,7 @@
     "@vip/auth": "workspace:*",
     "@vip/config": "workspace:*",
     "@vip/contracts": "workspace:*",
+    "@vip/messaging": "workspace:*",
     "@vip/permissions": "workspace:*",
     "@vip/storage": "workspace:*",
     "@vip/tenancy": "workspace:*",

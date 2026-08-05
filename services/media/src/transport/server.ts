@@ -11,8 +11,13 @@ import { ReadinessRegistry } from '../application/readiness.js';
 import type { StreamSupervisor } from '../application/stream-supervisor.js';
 import type { MediaCatalogService } from '../application/media-catalog-service.js';
 import type { FrameSinkStats } from '../adapters/http-frame-sink.js';
+import type { EventPublisherStats } from '../adapters/event-publisher.js';
 import { registerSecurity } from './plugins/security.js';
-import { registerMetrics, registerPerceptionMetrics } from './plugins/observability.js';
+import {
+  registerMetrics,
+  registerPerceptionMetrics,
+  registerEventPublisherMetrics,
+} from './plugins/observability.js';
 import { createAuth, registerPrincipal } from './plugins/auth.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
 import { registerHealthRoutes } from './routes/health.js';
@@ -23,6 +28,7 @@ import { registerRecordingRoutes } from './routes/recordings.js';
 import { registerClipRoutes } from './routes/clips.js';
 import { registerPerceptionRoutes } from './routes/perception.js';
 import { registerTrackingRoutes } from './routes/tracking.js';
+import { registerEventBridgeRoutes } from './routes/event-bridge.js';
 
 export interface BuildServerOptions {
   config: ServiceConfig;
@@ -32,6 +38,8 @@ export interface BuildServerOptions {
   readiness?: ReadinessRegistry;
   /** The perception sink, when one is configured — its counters become `/metrics` series. */
   perception?: { stats(): FrameSinkStats };
+  /** The event bridge, when enabled — its counters become `/metrics` series too (P-8 Phase 5). */
+  eventPublisher?: { stats(): EventPublisherStats };
   /** Injected so the tracking proxy can be driven without a runtime (tests only). */
   trackingFetch?: typeof fetch;
 }
@@ -68,6 +76,8 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
   await registerSecurity(app);
   const registry = registerMetrics(app, { serviceName: config.serviceName });
   if (opts.perception !== undefined) registerPerceptionMetrics(registry, opts.perception);
+  if (opts.eventPublisher !== undefined)
+    registerEventPublisherMetrics(registry, opts.eventPublisher);
   registerPrincipal(app);
   const auth = createAuth({ secret: config.jwt.secret, issuer: 'identity', audience: 'vip' });
   registerErrorHandler(app);
@@ -90,6 +100,10 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
     runtimeUrl: config.perception.url,
     internalKey: config.internal.apiKey,
     ...(opts.trackingFetch === undefined ? {} : { fetch: opts.trackingFetch }),
+  });
+  registerEventBridgeRoutes(app, {
+    auth,
+    ...(opts.eventPublisher === undefined ? {} : { publisher: opts.eventPublisher }),
   });
 
   return { app, readiness };

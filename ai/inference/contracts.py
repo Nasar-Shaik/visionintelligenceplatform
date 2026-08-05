@@ -87,6 +87,14 @@ class Detection:
     metadata: Dict[str, object] = field(default_factory=dict)
     tracking_id: Optional[str] = None
     detection_id: Optional[str] = None
+    #: Identity across gaps the tracker bridged (P-8 Phase 5, additive — ADR-0041).
+    #:
+    #: ⚠️ NOT the same question as `tracking_id`, and picking the wrong one fails silently. A person
+    #: briefly occluded returns with a NEW tracking_id (ADR-0038 forbids reuse), so anything that
+    #: ACCUMULATES over time must group by identity_id or it sees two short visits instead of one
+    #: long one. Equal to tracking_id on a first appearance.
+    identity_id: Optional[str] = None
+    preceded_by: Optional[str] = None
 
     def to_dict(self) -> dict:
         out: dict = {
@@ -104,6 +112,10 @@ class Detection:
             out["embedding"] = [float(v) for v in self.embedding]
         if self.tracking_id is not None:
             out["trackingId"] = self.tracking_id
+        if self.identity_id is not None:
+            out["identityId"] = self.identity_id
+        if self.preceded_by is not None:
+            out["precededBy"] = self.preceded_by
         return out
 
 

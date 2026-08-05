@@ -651,6 +651,48 @@ class RuntimeTrackerTests(unittest.TestCase):
             stats["recoveredTracks"], stats["reentryOpportunities"], "more links than opportunities"
         )
 
+    # -- identity travels on the detection (ADR-0041) ----------------------------
+
+    def test_a_stamped_detection_carries_its_identity_not_just_its_track_id(self):
+        """⚠️ The detection is the only thing that LEAVES this runtime. A Track is a read model that
+        dies with the process, so identity that is not stamped here never reaches a rule."""
+        rt = self.tracker()
+        frames = self.walk(rt, [0.10, 0.14, 0.18, 0.22])
+        last = frames[-1][0]
+        self.assertIsNotNone(last.tracking_id)
+        self.assertEqual(last.identity_id, last.tracking_id, "a first appearance is its own identity")
+        self.assertIsNone(last.preceded_by)
+
+    def test_a_re_entered_detection_carries_the_ORIGINAL_identity(self):
+        """⚠️ The case the whole ADR exists for: a new trackId, the OLD identity. A dwell rule
+        grouping by trackingId here sees two short visits; grouping by identityId sees one."""
+        rt = self.tracker(max_age=2)
+        # ⚠️ Timings matched to the re-entry test above. An earlier draft returned at t=16s against a
+        # 12s window, and the engine CORRECTLY refused to link — the test was wrong, not the code.
+        first = self.walk(rt, [0.45, 0.48, 0.51])
+        original = first[-1][0].tracking_id
+        self.walk(rt, [None] * 5, start=2.0)
+        again = self.walk(rt, [0.55, 0.58], start=6.0)
+        returned = again[-1][0]
+        self.assertNotEqual(returned.tracking_id, original, "the track id was reused")
+        self.assertEqual(returned.identity_id, original, "the identity was NOT carried across the gap")
+        self.assertEqual(returned.preceded_by, original)
+
+    def test_identity_reaches_the_wire(self):
+        """It must survive `to_dict`, or the contract carries it and the payload does not."""
+        rt = self.tracker()
+        stamped = self.walk(rt, [0.10, 0.14, 0.18])[-1][0]
+        wire = stamped.to_dict()
+        self.assertEqual(wire["identityId"], wire["trackingId"])
+        self.assertNotIn("precededBy", wire, "an absent link must be absent, not null")
+
+    def test_an_untracked_detection_carries_no_identity(self):
+        """Tracking off ⇒ no track id and no identity. ⚠️ Never an invented one."""
+        rt = self.tracker(enabled=False)
+        stamped = self.walk(rt, [0.10, 0.14])[-1][0]
+        self.assertIsNone(stamped.tracking_id)
+        self.assertIsNone(stamped.identity_id)
+
     # -- per-camera metrics ------------------------------------------------------
 
     def test_per_camera_metrics_are_reported_per_camera(self):

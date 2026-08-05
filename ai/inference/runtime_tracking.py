@@ -311,7 +311,7 @@ class RuntimeTracker:
             self._count_occlusions(state, tracks, ctx.tenant_id, ctx.camera_id)
             self._count_crossings(state, tracks, ctx.tenant_id, ctx.camera_id)
 
-            stamped = self._stamp(detections, state.manager.assignment())
+            stamped = self._stamp(detections, state.manager.assignment(), state)
             self._sweep(now=state.last_touched)
             elapsed_ms = (time.perf_counter() - started) * 1000.0
             self._tracking_ms_total += elapsed_ms
@@ -452,17 +452,39 @@ class RuntimeTracker:
         if len(entries) > MAX_TIMELINE:
             del entries[: len(entries) - MAX_TIMELINE]
 
-    def _stamp(self, detections: Sequence[Detection], assignment: Dict[int, str]) -> List[Detection]:
-        """Return the detections carrying their track ids.
+    def _stamp(
+        self, detections: Sequence[Detection], assignment: Dict[int, str], state: "_CameraState"
+    ) -> List[Detection]:
+        """Return the detections carrying their track id AND their identity.
 
         ⚠️ `Detection` is a **frozen** dataclass, so this rebuilds rather than mutates — which is the
         right shape anyway: the detection that came out of post-processing is a record of what the
         model saw, and tracking is a later opinion about it rather than a correction to it.
+
+        ⚠️ **Identity is stamped here or it never reaches a rule** (P-8 Phase 5, ADR-0041). The
+        detection is the only thing that leaves this runtime; a `Track` is a read model that lives
+        and dies in memory. A dwell rule downstream grouping by `trackingId` would see a briefly
+        occluded person as two short visits — silently, and worse under load — so the identity chain
+        travels on the detection itself.
         """
         out: List[Detection] = []
         for index, det in enumerate(detections):
             track_id = assignment.get(index)
-            out.append(replace(det, tracking_id=track_id) if track_id is not None else det)
+            if track_id is None:
+                out.append(det)
+                continue
+            track = state.manager.get(track_id)
+            out.append(
+                replace(
+                    det,
+                    tracking_id=track_id,
+                    # `identity_id` is set on every track at creation (its own id for a first
+                    # appearance), so this is only ever None if the track vanished between the
+                    # assignment and this read — which the lock makes impossible.
+                    identity_id=None if track is None else track.identity_id,
+                    preceded_by=None if track is None else track.preceded_by,
+                )
+            )
         return out
 
     # --- camera state ------------------------------------------------------------
