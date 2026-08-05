@@ -13,7 +13,10 @@ if [ ! -d "$PWRUN/node_modules/playwright" ]; then
 fi
 
 cp docs/review/p8/runtime-ui.mjs "$PWRUN/p8-runtime-ui.mjs"
-( cd "$PWRUN" && OUT="$REPO/docs/review/p8/screens" REPO="$REPO" node p8-runtime-ui.mjs )
+# ⚠️ Screenshots land in the run, not over the committed P-8 review screens — otherwise every night
+# rewrites tracked binaries and the tree-drift check goes red for no reason.
+mkdir -p "$RUN_DIR/screens"
+( cd "$PWRUN" && OUT="$RUN_DIR/screens" REPO="$REPO" node p8-runtime-ui.mjs )
 RC=$?
 
 if [ "$RC" -eq 0 ]; then

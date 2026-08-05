@@ -23,19 +23,19 @@ HARDENING="docs/review/p8/hardening.mjs"
 # Same reason as the soak: it creates cameras and a fixture through the real API.
 guard "cd '$REPO' && node $HARDENING clean"
 
-SAMPLES="$REPO/docs/review/p8/capacity-samples.json"
+# ⚠️ Into the run, not the tracked tree — see the note in stability.sh.
+SAMPLES="$(metrics_path benchmark)"
 rm -f "$SAMPLES"
 
 note "capacity ladder, warm-up and reproducibility"
 echo ""
 
-node "$HARDENING"
+OUT="$SAMPLES" node "$HARDENING"
 RC=$?
 
 unguard
 
 if [ -f "$SAMPLES" ]; then
-  cp "$SAMPLES" "$(metrics_path benchmark)"
   ok "capacity samples captured"
 else
   bad "no capacity samples were written — the ladder did not complete"

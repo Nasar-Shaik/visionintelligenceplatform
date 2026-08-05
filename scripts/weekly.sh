@@ -10,5 +10,6 @@
 set -u
 export SOAK_MINUTES="${SOAK_MINUTES:-240}"
 export SOAK_REASON="${SOAK_REASON:-weekly long-soak: the run entitled to look for a slow arena leak, which a 15-30 minute run cannot see}"
+export SOAK_CAMERAS="${SOAK_CAMERAS:-4}"
 export RUN_CLEANUP="${RUN_CLEANUP:-true}"
 exec bash "$(dirname -- "$0")/nightly/launch.sh" weekly "$@"

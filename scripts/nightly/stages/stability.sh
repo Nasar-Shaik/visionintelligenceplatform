@@ -17,14 +17,18 @@ SOAK="docs/review/p8/inference-soak.mjs"
 # leave them streaming — loading the host all night and poisoning every measurement after it.
 guard "cd '$REPO' && node $SOAK clean"
 
-SAMPLES="$REPO/docs/review/p8/soak-samples.json"
+# ⚠️ OUT points into the run, so the soak never writes to the tracked working tree. Without this the
+# framework dirties `docs/review/p8/soak-samples.json` on every run — which then fails
+# deployment-integrity's "the working tree is clean" check and the engine's own tree-drift check. A
+# verification tool must not fail a verification by producing output.
+SAMPLES="$(metrics_path stability)"
 rm -f "$SAMPLES"
 
 note "running ${SOAK_MINUTES} minutes across ${SOAK_CAMERAS} cameras"
 [ -n "$SOAK_REASON" ] && note "reason: $SOAK_REASON"
 echo ""
 
-MINUTES="$SOAK_MINUTES" CAMERAS="$SOAK_CAMERAS" node "$SOAK"
+MINUTES="$SOAK_MINUTES" CAMERAS="$SOAK_CAMERAS" OUT="$SAMPLES" node "$SOAK"
 RC=$?
 
 unguard
@@ -32,7 +36,6 @@ unguard
 # The samples file is written only on completion, so its absence is itself information: the run did
 # not finish. Say that rather than reporting an empty stability result.
 if [ -f "$SAMPLES" ]; then
-  cp "$SAMPLES" "$(metrics_path stability)"
   ok "per-minute samples captured"
 else
   bad "the soak produced no samples file — it did not run to completion"

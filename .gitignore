@@ -68,5 +68,11 @@ playground-output/
 # team decides to share a skill set through the repo.
 .claude/
 
-# unattended verification: generated evidence and the live-log pointer
+# Unattended verification: generated evidence and the live-log pointer.
+#
+# ⚠️ scripts/reports/ is ignored for a load-bearing reason, not tidiness: `deployment-integrity.mjs`
+# asserts "the working tree is clean — what is deployed can be named by a commit hash". Untracked
+# report output makes that check red on every run, so the framework would fail a real verification by
+# producing its own output. The runs are still on disk to read; they are simply not repository state.
 scripts/logs/
+scripts/reports/
