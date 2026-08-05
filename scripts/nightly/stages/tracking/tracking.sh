@@ -24,8 +24,12 @@ node "$FIXTURES" --verify || {
 guard "cd '$REPO' && node $TRACKING clean"
 
 SAMPLES="$(metrics_path tracking)"
-rm -f "$SAMPLES"
-OUT="$SAMPLES" node "$TRACKING"
+# ⚠️ The SECOND output. `tracking.mjs` writes both a samples file and the ground-truth metrics, and
+# both must land in the run directory — a stage may not write to a tracked file (see README). The
+# report reads this one to fill the three cells the live runtime reports as `null` (ADR-0039).
+TRUTH="$(metrics_path tracking-truth)"
+rm -f "$SAMPLES" "$TRUTH"
+OUT="$SAMPLES" TRUTH_OUT="$TRUTH" node "$TRACKING"
 RC=$?
 unguard
 

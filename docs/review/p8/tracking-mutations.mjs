@@ -60,8 +60,20 @@ const check = (ok, label, detail = '') => {
 
 /** Run the tracking verification for one scenario and report which checks went red. */
 function verify(scenario) {
+  /*
+   * ⚠️ BOTH outputs are redirected, and forgetting the second one caused real damage.
+   *
+   * `tracking.mjs` writes two files. `OUT` was redirected from the start; `TRUTH_OUT` was added in
+   * the Phase 4 freeze and was not — so every mutation ran a SUBSET of the scenarios and overwrote
+   * the committed `tracking-truth.json` with it. The file then claimed to be a full evidence run
+   * while holding one scenario's results, and the nulls in it looked exactly like the honest
+   * "scenario did not run" reporting that is supposed to be a feature.
+   *
+   * This is the "a stage may not write to a tracked file" rule (docs/nightly/README.md) reappearing
+   * the moment a script grew a second output. Any future output must be redirected here too.
+   */
   const out = shq('node', ['docs/review/p8/tracking.mjs'], {
-    env: { ...process.env, SCENARIOS: scenario, OUT: '/dev/null' },
+    env: { ...process.env, SCENARIOS: scenario, OUT: '/dev/null', TRUTH_OUT: '/dev/null' },
   });
   const red = [...out.matchAll(/^ {2}✗ (.+)$/gm)].map((m) => m[1].split(' — ')[0].trim());
   return { out, red, green: !/✗/.test(out) };

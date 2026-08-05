@@ -1,9 +1,9 @@
 # ADR-0039 — A metric that was not measured is reported unavailable, never zero
 
-- **Status:** Accepted
-- **Date:** 2026-08-05
+- **Status:** Accepted · **ratified platform-wide by the Architect, 2026-08-06**
+- **Date:** 2026-08-05 (amended 2026-08-06)
 - **Milestone:** P-8 Phase 4 freeze (object tracking)
-- **Scope:** platform-wide — applies to every subsystem from here on, not only to tracking
+- **Scope:** **platform-wide and permanent** — every subsystem, every metric, from here on
 - **Related:** [ADR-0038](ADR-0038-track-identity-across-gaps.md) (track identity across gaps),
   [ADR-0002](ADR-0002-model-agnostic-capability-runtime.md) (model-agnostic runtime)
 
@@ -107,6 +107,53 @@ appearing to honour it.
 when the quantity is genuinely unmeasurable in that context. A metric that is merely inconvenient to
 compute must be computed. The test is whether a correct value _could_ be derived from information the
 system holds — not whether deriving it is work.
+
+## Amendment — 2026-08-06, ratified platform-wide
+
+The Architect ratified this as permanent engineering policy across the platform. Restated as the rule
+every subsystem is held to, so no future phase has to re-derive it:
+
+> **Any metric requiring ground truth reports either a measured value, or `unavailable` with a
+> reason. It never substitutes zero, an estimate, or inferred correctness — unless the metric's own
+> definition explicitly permits estimation, and says so at the point of use.**
+
+Three clarifications the amendment adds:
+
+### The estimation exemption is narrow, and must be visible where the number is read
+
+A metric may be estimated only when **estimation is part of what the metric means**, and the name or
+the adjacent text says so. `p95LatencyMs` is computed from a sample and is honest, because a
+percentile over observed requests is what the name claims. A field called `accuracy` computed from a
+proxy is not — the name claims a measurement it did not make.
+
+⚠️ **The test is not "is the estimate reasonable?" but "would a reader know it was an estimate from
+what they can see?"** A caveat in a README does not travel with a value into a dashboard, an export
+or a screenshot.
+
+### It binds the Rule Engine before that work starts
+
+The quantities Phase 5 will be asked for are the same shape as tracking's:
+
+| Metric                      | Live?                                           |
+| --------------------------- | ----------------------------------------------- |
+| `rules.evaluated/matched`   | ✅ counts                                       |
+| `rules.evaluation_ms`       | ✅ timings                                      |
+| `rules.suppressed`          | ✅ counts                                       |
+| `rules.precision/recall`    | ❌ needs ground truth — **unavailable**         |
+| `rules.false_positive_rate` | ❌ needs ground truth — **unavailable**         |
+| `rules.missed_incidents`    | ❌ **unmeasurable by construction** — see below |
+
+⚠️ **`missed_incidents` is a stronger case than the rest and deserves naming.** A false negative is
+an event that was never generated. No instrumentation inside the platform can observe it, because
+there is nothing to instrument — only an external observer reviewing footage can. Any surface
+implying the platform knows its own miss rate would be a fabrication, not an approximation.
+
+### An operator acknowledgement loop would change this — and only for what it actually covers
+
+If operators confirm or dismiss incidents, those judgements are ground truth for the incidents that
+were _raised_, and precision becomes measurable. **Recall does not**, for the reason above. A future
+"accuracy" figure built on acknowledgements must therefore say which of the two it is, or it will be
+read as both.
 
 ## Alternatives considered
 
