@@ -18,6 +18,12 @@
 **/*.tsbuildinfo
 **/.vite
 
+# ⚠️ Python bytecode is a deployment-integrity hazard, not clutter: a `__pycache__` swept in from a
+# developer's machine puts bytes in the image that are in no commit, and gate 0 compares bytes.
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+
 # Review artefacts, screenshots and harnesses — large, and none of it runs in production.
 docs/review/**/screenshots
 .data

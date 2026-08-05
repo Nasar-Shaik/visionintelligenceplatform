@@ -233,6 +233,41 @@ services:
       minio: { condition: service_healthy }
       createbuckets: { condition: service_completed_successfully }
 
+  # ══ perception ═════════════════════════════════════════════════════════════════════════════════
+  # The AI inference runtime (P-8 Phase 1). ⚠️ Deployed **beside** the platform and wired to nothing:
+  # no camera reaches it, no frame is sent to it, and no route on the gateway points at it. That is
+  # the whole of Phase 1 — a runtime that has never run in production now runs in production, and
+  # every later phase connects to something that is known to start rather than to something hoped for.
+  #
+  # ⚠️ **It depends on no infrastructure at all**, and that is a property worth keeping: the `stub`
+  # backend needs no model registry, the `null` event sink needs no NATS, and nothing here persists.
+  # The runtime comes up when Mongo is down, which is what a perception tier should do.
+  inference:
+    <<: *service-common
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.inference
+      args: { INFERENCE_BACKEND: stub }
+    image: vip/inference:local
+    # ⚠️ PID 1 reaping. `Dockerfile.service` uses tini; this image installs no apt packages, so the
+    # equivalent comes from compose. The process installs its own SIGTERM handler either way.
+    init: true
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      HOST: 0.0.0.0
+      PORT: '8085'
+      SERVICE_NAME: inference
+      # The shared internal key, as every other service. No new secret is introduced by this phase.
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY}
+      # ⚠️ Both of these are QUOTED because YAML reads a bare `null` as the null value, which compose
+      # then treats as "inherit from the host environment" — a silent misconfiguration that would
+      # look identical to a correct one until something tried to publish.
+      INFERENCE_BACKEND: 'stub'
+      INFERENCE_EVENT_SINK: 'null'
+      NATS_URL: nats://nats:4222
+      INFERENCE_MAX_SESSIONS: ${INFERENCE_MAX_SESSIONS:-8}
+      INFERENCE_DEPLOYMENT_PROFILE: ${INFERENCE_DEPLOYMENT_PROFILE:-}
+
   gateway:
     <<: *service-common
     build: { <<: *service-build, args: { SERVICE: gateway } }

@@ -96,6 +96,22 @@ Recorded because a check whose limits are unknown is a check that will one day b
 
 ---
 
+## The P-8 set
+
+Added after the P-6.5 freeze. Same rule, no exception: a script is not trusted until it has been red
+for the right reason.
+
+| Script                            | Capability verified                                                                                                                                                          | Deployment | Production stack | Kind    | Runtime | Failure mode                                                               | Failed once (mutation → red)                                                                                                                                                                                                                                                                                                                                                                                                                                            | Restored green |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ---------------- | ------- | ------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| `../p8/runtime-deploy.mjs`        | **P-8 Phase 1** — the AI runtime runs in the production stack: health, readiness, startup, metrics, no published port, no gateway route, no session, no frame, no leaked key | ✅ yes     | ✅ yes           | backend | ~70 s   | Non-zero exit per failed check; findings printed and not counted as passes | **Four, each attributed to one section.** ① `docker stop` → **13 red**, and the script reports them instead of crashing (the P-6.5 soak lesson applied). ② `INFERENCE_MANIFESTS_DIR=/tmp` → `/ready` reads `fail · capability=fail`, capabilities empty, metrics empty — **5 red**, ⚠️ while the container stayed `healthy`. ③ `ports: ['8085:8085']` → **1 red**, precisely the port check. ④ `INFERENCE_URL` on the gateway → **1 red**, precisely the upstream check | ✅ yes         |
+| `deployment-integrity.mjs` **§6** | The runtime's Python bytes in the image are the tree's — no build step, so the comparison is exact                                                                           | ✅ yes     | ✅ yes           | backend | +5 s    | Names the differing files                                                  | Appended a comment to `ai/inference/health.py` → `✗ 6a·inference — 1 differ: health.py`                                                                                                                                                                                                                                                                                                                                                                                 | ✅ yes         |
+
+⚠️ **What these mutations could not reach.** Nothing proves the runtime _infers_ anything — Phase 1
+connects no camera and the `stub` backend fabricates its model identity. The script asserts the
+absence deliberately; the presence is Phase 5's to prove.
+
+---
+
 ## Inventory — scripts from earlier P-6 milestones
 
 Kept, still run, and **not** mutation-tested in this pass: they belong to milestones already frozen,

@@ -97,6 +97,45 @@ _Last updated: 2026-08-05 · Claude_
   Verified: `cameras.mjs` all green · `cameras-ui.mjs` all green (⚠️ red twice first, for a 20 px
   target and for its own naive overflow measure) · `camera-scale.mjs` all green · console **389**
   tests · camera **193 + 5** integration. New: **L-37…L-40 · TD-57…TD-59**.
+- **P-8 Phase 1 · the AI runtime is deployed ✅ complete, ⏳ awaiting review (2026-08-05)** — the
+  critical path, and the claim was false until today: 121 Python modules with a green unit-test suite
+  had **never run in production**. It now does, and is **connected to nothing** — no camera, no frame,
+  no gateway route, no published port. ⚠️ **Half the verification asserts an absence**, so each one is
+  paired with a positive reading from the same source: "no host port" beside "the edge is still the
+  only thing that has one", "zero sessions" beside a ceiling that reads, "the key is not in the log"
+  beside proof the log was actually read. An absence is the easiest thing in the world to assert
+  accidentally-truthfully. **No `apt` layer and no `pip` layer**: the `stub` backend is stdlib-only, so
+  the image installs nothing — `tini` becomes compose's `init: true` and `curl` becomes the
+  interpreter that is already there; `onnx` is a build arg belonging to Phase 5, and building it now
+  would ship a gigabyte of code nothing executes. ⚠️ `PYTHONDONTWRITEBYTECODE` is set as a
+  **deployment-integrity control**, not a size tweak — without it the first request writes
+  `__pycache__` and the running container stops byte-matching its image, which is precisely what gate
+  0 checks. **Measured:** 27.9 MB resident · 0.003 % CPU · 15 Prometheus series · 1 capability · 0
+  sessions · 0 frames · healthy again 26 s after a restart · **149 runtime files identical** to the
+  commit. ⚠️ It **declares no infrastructure dependency and keeps answering while MongoDB is paused**,
+  proven by pausing it. **Three findings, none of them a failure.** (1) **The runtime logs one sentence
+  and then goes silent** — `log_message` returns `None` ("aggregated elsewhere", which was never
+  built), measured as five requests producing zero log lines; an operator cannot distinguish a serving
+  runtime from a wedged one without polling it. ⚠️ **Recommended, not taken** — the fix touches the
+  frozen AI Runtime and a deployment phase is the wrong place to change a foundation (TD-60). (2)
+  **Admission control sizes itself from `os.cpu_count()`**, which ignores the cgroup quota: correct
+  today only because no CPU limit is set, and under `cpus: 2` it would admit sessions for capacity it
+  may not use. Found by deploying, invisible to every unit test — **must be fixed before Phase 4**
+  (TD-61). (3) **The stub backend reports a model identity it invented** (`person-detection v1, family
+yolo`, from `FakeModelResolver`, nothing registered) — the verification pins `executionProvider ===
+'stub'` so the fabrication can never be read as a registered model, and it is why no console surface
+  may exist before Phase 5. Also recorded: `/ready` is outside the `{success,data}` envelope the ten TS
+  services use, and the runtime is absent from System Health, so a dead perception tier would render a
+  wholly green system — both correct for a phase that connects nothing, both due when it becomes
+  load-bearing (TD-62). **`runtime-deploy.mjs` 30/30**, mutation-tested four ways: `docker stop` →
+  **13 red** and the script reports rather than crashes (the P-6.5 soak lesson applied to a script
+  written the same day); an empty manifests dir → `/ready` reads `fail · capability=fail` with
+  capabilities and metrics empty — ⚠️ **while the container stayed `healthy`**, P-6.4's lesson
+  repeating exactly; a published port → 1 red; a gateway upstream → 1 red. **Gate 0 extended**: the
+  runtime's Python bytes are compared against the tree — no build step, so the comparison is exact —
+  and mutation-tested by appending a comment to `health.py` (`1 differ: health.py`). ⚠️ One check
+  failed red for the wrong reason first and **the check was fixed, not the product**: the metric-name
+  regex stopped at the digit in `p50`/`p95`. TD-60 · TD-61 · TD-62 · [review package](../review/p8/README.md).
 - **P-8 architecture planning ✅ APPROVED · architecture 🔒 FROZEN (2026-08-05)** — commissioned at the P-6.6 approval:
   design the AI Processing subsystem before any of it is built.
   [SELECTIVE_AI_PROCESSING](../architecture/future/SELECTIVE_AI_PROCESSING.md), **design only — no

@@ -1,0 +1,61 @@
+# Production image for the **AI inference runtime** (P-8 Phase 1).
+#
+# ⚠️ Not built by `Dockerfile.service`, and the reason is not language. Every VIP service is the same
+# shape — a Fastify app compiled to `dist/index.js` — which is what makes one Dockerfile for ten of
+# them correct. The runtime is a different shape: a Python process, no build step, no workspace, and
+# a different dependency posture. Folding it into the service Dockerfile would put an `if` in the one
+# file whose value is that it has none.
+#
+# ⚠️ **No `apt` layer at all.** The `stub` backend is **stdlib-only** — the entire default runtime
+# needs nothing from PyPI and nothing from Debian. `tini` is replaced by compose's `init: true`
+# (the process installs its own SIGTERM/SIGINT handlers, so signal delivery is already correct) and
+# `curl` by the interpreter that is already here. Every package not installed is a package that
+# cannot be the subject of a CVE report on a customer's scanner.
+#
+#   docker build -f infra/docker/Dockerfile.inference .                              # stub (default)
+#   docker build -f infra/docker/Dockerfile.inference --build-arg INFERENCE_BACKEND=onnx .
+#
+# The `onnx` build adds onnxruntime + MLflow + boto3 + nats-py (~1 GB) and is **P-8 Phase 5**, where
+# a real model is registered. Building it now would ship a gigabyte of code that nothing executes.
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# ⚠️ `PYTHONDONTWRITEBYTECODE` is a deployment-integrity control, not a size tweak: without it the
+# first request writes `__pycache__` into the image's filesystem and the running container no longer
+# byte-matches the image it was built from — which is precisely the property gate 0 exists to check.
+# ⚠️ `PYTHONUNBUFFERED` because a block-buffered stdout in a container means the operator sees the
+# startup line minutes after startup, or never if the process is killed first.
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# ⚠️ Non-root. Nothing here needs privileges: the process binds an unprivileged port and — by the
+# line above — writes nothing to disk.
+RUN useradd --system --create-home --shell /usr/sbin/nologin vip
+
+# The whole runtime directory, tests included — the same decision `Dockerfile.service` makes for the
+# TypeScript workspace. A pruned image is smaller and a pruned image is a second thing to verify.
+COPY ai/inference /app
+
+ARG INFERENCE_BACKEND=stub
+RUN if [ "$INFERENCE_BACKEND" = "onnx" ]; then \
+      pip install --no-cache-dir -r requirements.txt; \
+    else \
+      echo "stub backend: stdlib only, no dependencies installed"; \
+    fi
+
+# ⚠️ Recorded on the image, because "which backend is this?" must be answerable from the deployment
+# rather than from whoever ran the build. Gate 0 reads it.
+LABEL vip.inference.backend="${INFERENCE_BACKEND}"
+
+USER vip
+EXPOSE 8085
+
+# ⚠️ The container's own liveness check — and it proves only that the process can answer, which is
+# exactly what an orchestrator should restart on. Readiness is `/ready` and is a different question
+# (P-6.4: `/health` cannot fail while the process can answer).
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
+  CMD ["python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8085')+'/health', timeout=2).read()"]
+
+CMD ["python", "-m", "app"]

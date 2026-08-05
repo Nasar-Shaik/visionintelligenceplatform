@@ -39,7 +39,8 @@ const check = (ok, label, detail = '') => {
   if (!ok) failures += 1;
 };
 
-const sh = (cmd, args) => execFileSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+const sh = (cmd, args) =>
+  execFileSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 
 /** Every service in the production compose file, with the container that runs it. */
 const SERVICES = [
@@ -121,7 +122,8 @@ function compare(label, local, deployed, where = '') {
     (isRuntime(path) ? differing : declarations).push(note);
   }
   for (const path of deployed.keys())
-    if (!local.has(path)) (isRuntime(path) ? differing : declarations).push(`${path} (only in the image)`);
+    if (!local.has(path))
+      (isRuntime(path) ? differing : declarations).push(`${path} (only in the image)`);
   const runtime = [...local.keys()].filter(isRuntime).length;
   check(
     differing.length === 0,
@@ -210,12 +212,14 @@ console.log(`  · the edge serves: ${served.join(', ')}`);
 check(
   served.length > 0 && strays.length === 0,
   '3b · ⚠️ the bundle the browser is handed is the one this tree builds',
-  strays.length === 0 ? `${served.length} content-hashed chunks match` : `stray: ${strays.join(', ')}`,
+  strays.length === 0
+    ? `${served.length} content-hashed chunks match`
+    : `stray: ${strays.join(', ')}`,
 );
 
 // ── 4 · no container is running a superseded image ──────────────────────────────────────────────
 console.log('\n4 · containers');
-for (const svc of [...SERVICES, 'console']) {
+for (const svc of [...SERVICES, 'console', 'inference']) {
   const container = `vip-prod-${svc}-1`;
   let running;
   let tag;
@@ -230,7 +234,9 @@ for (const svc of [...SERVICES, 'console']) {
   check(
     running === tag,
     `4·${svc} — the container runs the current image, not one it was started with`,
-    running === tag ? running.slice(7, 19) : `container ${running.slice(7, 19)} ≠ tag ${tag.slice(7, 19)}`,
+    running === tag
+      ? running.slice(7, 19)
+      : `container ${running.slice(7, 19)} ≠ tag ${tag.slice(7, 19)}`,
   );
 }
 
@@ -254,7 +260,32 @@ const seedLocal = md5(readFileSync(join(ROOT, 'tools', 'seed', 'demo.ts')));
 check(
   seedInImage === seedLocal,
   '5a · ⚠️ the image that reseeds a demonstration carries the committed seed',
-  seedInImage === seedLocal ? seedLocal.slice(0, 12) : `image ${seedInImage.slice(0, 12)} ≠ tree ${seedLocal.slice(0, 12)}`,
+  seedInImage === seedLocal
+    ? seedLocal.slice(0, 12)
+    : `image ${seedInImage.slice(0, 12)} ≠ tree ${seedLocal.slice(0, 12)}`,
+);
+
+/*
+ * ── 6 · the AI inference runtime (P-8 Phase 1) ──────────────────────────────────────────────────
+ *
+ * ⚠️ The strictest comparison in this file, and the easiest: Python has **no build step**, so the
+ * bytes in the image are the bytes in the tree — not a compilation of them. There is no `.d.ts`
+ * caveat to make here and no reproducibility question to answer.
+ *
+ * `__pycache__` is excluded on both sides on purpose: `.dockerignore` keeps a developer's bytecode
+ * out of the build context and `PYTHONDONTWRITEBYTECODE=1` keeps the running container from writing
+ * any, so a `.pyc` appearing on either side is itself the finding — reported as a difference rather
+ * than quietly normalised away.
+ */
+console.log('\n6 · the AI inference runtime');
+const noBytecode = (m) =>
+  m === null
+    ? null
+    : new Map([...m].filter(([p]) => !p.includes('__pycache__') && !p.endsWith('.pyc')));
+compare(
+  '6a·inference',
+  noBytecode(localFiles(join(ROOT, 'ai', 'inference'))),
+  noBytecode(containerFiles('vip-prod-inference-1', '/app')),
 );
 
 console.log(
