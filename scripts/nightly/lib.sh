@@ -111,10 +111,21 @@ die() {
 # ── repo helpers ─────────────────────────────────────────────────────────────────────────────────
 git_commit() { git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo unknown; }
 
-# Files changed in tracked source, ignoring anything this framework itself writes. Used to prove a
-# run put the tree back exactly as it found it.
+# Files changed in tracked source, ignoring anything this framework itself writes. Used both to
+# refuse an unattended run on a dirty tree and to prove a run put the tree back as it found it.
+#
+# ⚠️ The exclusions are DERIVED from the configured roots, not hard-coded. An earlier version matched
+# the literal paths `reports/nightly/` and `logs/nightly/`; moving output under `scripts/` left the
+# pattern behind, so the framework's own report directory counted as uncommitted work and pre-flight
+# refused to start — a tool that fails because it produced output.
 tree_fingerprint() {
+  local report_root="${REPORT_ROOT:-scripts/reports/nightly}"
+  local log_root="${LOG_ROOT:-scripts/logs/nightly}"
+  # Compare against the top-level directory of each root, since git reports untracked trees collapsed
+  # to their shallowest new directory (`?? scripts/reports/`, not every file beneath it).
+  local report_top="${report_root%%/*}/$(printf '%s' "${report_root#*/}" | cut -d/ -f1)"
   git -C "$REPO" status --porcelain 2>/dev/null |
-    grep -v -E ' (reports|logs)/nightly/' |
+    grep -v -E "[ ?]($report_root|$log_root|$report_top)/?$" |
+    grep -v -E "[ ?]($report_root|$log_root)/" |
     sort
 }
