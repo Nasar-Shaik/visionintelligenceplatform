@@ -254,6 +254,23 @@ _Last updated: 2026-08-05 · Claude_
   **1032** · contracts · import graph 0 violations.
   [ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md).
 
+- **P-8 Phase 5 FREEZE · the live event bridge 🔒 frozen (2026-08-06)** — every gate green against
+  the committed deployment, and the evidence below re-run on the frozen commit rather than carried
+  over from development. **Gate:** format · typecheck 28 · lint 20 · test 28 · build 19 · python
+  **1036** · contracts · perception boundary · import graph 0 violations · **deployment integrity —
+  every running byte is the committed byte**. **Verification, all green on the freeze commit:** the
+  chain (a frame becomes an incident candidate) · determinism (duplicates bounded, correlation
+  unbroken, replay deterministic, payloads versionable) · resilience (a broker outage and a camera
+  switched off, recording never stopped) · six mutations, each red at the check that names it ·
+  the page in a browser · the 1→16 ladder. **Nightly proven through the engine, not just as
+  scripts:** six stages across `events/` `publisher/` `broker/`, green, with the report rendering
+  both bridge sections and the `publisher` family written to the history ledger. ⚠️ **What is frozen
+  is the transport and its semantics, not any meaning built on them** — no rules ship, and the next
+  milestone is **Camera Processing Assignment (C-14c)**, whose blocker this phase already found and
+  fixed. New: [ADR-0042](../adr/ADR-0042-at-least-once-delivery-with-bounded-suppression.md) states
+  the delivery guarantee the platform actually has, and the eight subsystem deliverables became
+  [DEFINITION_OF_DONE](../project/DEFINITION_OF_DONE.md) policy.
+
 - **P-8 Phase 5 · the live event bridge ✅ complete, ⏳ awaiting review (2026-08-06)** — perception
   reached the event platform. ⚠️ **The claim this closes is that the platform could not raise an
   incident from a camera.** Everything downstream of a published `DetectionResult` had existed and
