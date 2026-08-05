@@ -7,6 +7,7 @@ import {
   HeartPulse,
   LayoutDashboard,
   MonitorPlay,
+  Radar,
   Settings,
   ShieldAlert,
   Telescope,
@@ -49,6 +50,18 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Investigate',
     items: [
       { to: '/events', label: 'Events', icon: Activity, permission: 'event:read' },
+      /*
+       * P-8 Phase 4 — object tracking. Gated on `track:read`, the permission the route requires.
+       *
+       * ⚠️ Filed under Investigate rather than System. The AI Runtime page next door is engineering
+       * visibility into a process; this is a record of people moving through a customer's premises,
+       * which is investigative work and belongs where an operator already looks for it.
+       *
+       * ⚠️ "Live Tracks", not "Tracking" or "Analytics". The page shows what is being followed right
+       * now and configures nothing — a menu entry that sounds like a feature is a promise the
+       * product has not made yet.
+       */
+      { to: '/tracking', label: 'Live Tracks', icon: Radar, permission: 'track:read' },
       { to: '/incidents', label: 'Incidents', icon: ShieldAlert, permission: 'incident:read' },
       /*
        * ⚠️ The workspace had a route and no way in. It sat unreachable from P-5.2 to P-5.7 —

@@ -66,6 +66,20 @@ const SystemHealthPage = lazy(() =>
 const AiRuntimePage = lazy(() =>
   import('@/features/system/AiRuntimePage').then((m) => ({ default: m.AiRuntimePage })),
 );
+const LiveTracksPage = lazy(() =>
+  import('@/features/tracking/LiveTracksPage').then((m) => ({ default: m.LiveTracksPage })),
+);
+const TrackDetailPage = lazy(() =>
+  import('@/features/tracking/TrackDetailPage').then((m) => ({ default: m.TrackDetailPage })),
+);
+const TrackTimelinePage = lazy(() =>
+  import('@/features/tracking/TrackTimelinePage').then((m) => ({ default: m.TrackTimelinePage })),
+);
+const TrackStatisticsPage = lazy(() =>
+  import('@/features/tracking/TrackStatisticsPage').then((m) => ({
+    default: m.TrackStatisticsPage,
+  })),
+);
 const PlaceholderPage = lazy(() =>
   import('@/routes/PlaceholderPage').then((m) => ({ default: m.PlaceholderPage })),
 );
@@ -104,6 +118,18 @@ export const router = createBrowserRouter([
           { path: 'cameras/:id', element: route(<CameraDetailPage />) },
           { path: 'locations', element: route(<LocationsPage />) },
           { path: 'events', element: route(<EventsPage />) },
+          /*
+           * P-8 Phase 4 — object tracking, read-only.
+           *
+           * ⚠️ `/tracking/statistics` is declared BEFORE `/tracking/:trackId`. React Router matches
+           * static segments ahead of dynamic ones so the order is not load-bearing here — but the
+           * ordering is kept explicit because the failure it prevents is silent: a statistics page
+           * that renders "no such track" and nothing else.
+           */
+          { path: 'tracking', element: route(<LiveTracksPage />) },
+          { path: 'tracking/statistics', element: route(<TrackStatisticsPage />) },
+          { path: 'tracking/:trackId', element: route(<TrackDetailPage />) },
+          { path: 'tracking/:trackId/timeline', element: route(<TrackTimelinePage />) },
           { path: 'incidents', element: route(<IncidentsPage />) },
           // P-5.2 — the Investigation Workspace. `/workspace/:incidentId` is the deep link an
           // alert, a report or a colleague's message points at.

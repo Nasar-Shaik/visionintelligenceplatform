@@ -98,4 +98,16 @@ export const queryKeys = {
     // an operator watching a deploy should not invalidate one by refreshing the other.
     aiRuntime: () => ['health', 'ai-runtime'] as const,
   },
+  /*
+   * P-8 Phase 4 — object tracking. ⚠️ Three keys rather than one, because the pages have three
+   * different refresh budgets and three different failure modes: the live list moves at the frame
+   * rate, the statistics do not, and a single track's detail must be able to 404 on its own without
+   * emptying the list behind it.
+   */
+  tracking: {
+    all: () => ['tracking'] as const,
+    overview: () => ['tracking', 'overview'] as const,
+    list: (params?: Record<string, unknown>) => ['tracking', 'list', params ?? {}] as const,
+    detail: (trackId: string) => ['tracking', 'detail', trackId] as const,
+  },
 } as const;
