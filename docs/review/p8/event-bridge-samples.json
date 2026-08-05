@@ -68,12 +68,7 @@
       "subjects": [
         {
           "class": "person",
-          "bbox": [
-            0.238545,
-            0.415439,
-            0.140578,
-            0.536645
-          ],
+          "bbox": [0.238545, 0.415439, 0.140578, 0.536645],
           "trackId": "trk_cam_8c4b82e6ed784a50a0aa8fa3e72fbb80_live-tnt_demo_retail-cam_8c4b82e6ed784a50a0aa8fa3e72fbb80_1",
           "identityId": "trk_cam_8c4b82e6ed784a50a0aa8fa3e72fbb80_live-tnt_demo_retail-cam_8c4b82e6ed784a50a0aa8fa3e72fbb80_1"
         }

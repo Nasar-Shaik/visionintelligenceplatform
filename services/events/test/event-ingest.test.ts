@@ -118,8 +118,7 @@ describe('EventIngestService — ingest metrics', () => {
       .split('\n')
       .find(
         (l) =>
-          l.startsWith(name) &&
-          Object.entries(labels).every(([k, v]) => l.includes(`${k}="${v}"`)),
+          l.startsWith(name) && Object.entries(labels).every(([k, v]) => l.includes(`${k}="${v}"`)),
       );
     return line === undefined ? 0 : Number(line.split(' ').pop());
   };

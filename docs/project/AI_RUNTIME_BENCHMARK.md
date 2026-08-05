@@ -296,6 +296,58 @@ against.
 
 ---
 
+## 📡 Event bridge — what publishing costs (P-8 Phase 5)
+
+**Clean host.** One walking person per camera, each on its own RTSP path, 20 s window after 8 s
+warm-up. Raw samples:
+[`docs/review/p8/event-bridge-capacity.json`](../review/p8/event-bridge-capacity.json).
+
+⚠️ **Both ends are measured, and they are not the same number.** "Published" is what a broker
+accepted. "Persisted" is how many events exist. The events service collapses repeats inside its
+dedup window, so the gap below is **normal and large** — not loss.
+
+| Cameras | Offered/s | Published/s | Persisted/s | Deduped/s | Publish time | Queue peak / bound | Dropped | Retries | Failed | media CPU / RAM | events CPU / RAM |
+| ------: | --------: | ----------: | ----------: | --------: | -----------: | -----------------: | ------: | ------: | -----: | --------------: | ---------------: |
+|   **1** |      1.99 |        1.99 |        0.12 |      1.87 |      0.69 ms |             0 / 16 |       0 |       0 |      0 |  2.7 % / 154 MB |    0.6 % / 90 MB |
+|   **2** |      4.01 |        3.08 |        0.19 |      2.89 |      0.73 ms |             0 / 16 |       0 |       0 |      0 |  7.4 % / 189 MB |    0.5 % / 90 MB |
+|   **4** |      8.07 |        7.03 |        0.44 |      6.63 |      0.83 ms |             0 / 16 |       0 |       0 |      0 | 10.6 % / 260 MB |    1.4 % / 90 MB |
+|   **8** |     16.03 |       13.15 |        0.84 |     11.46 |      0.86 ms |             0 / 16 |       0 |       0 |      0 | 24.3 % / 397 MB |    2.2 % / 93 MB |
+|  **16** |     31.09 |       27.55 |        1.59 |     25.81 |      1.78 ms |             0 / 16 |       0 |       0 |      0 | 35.7 % / 667 MB |    3.9 % / 92 MB |
+
+⚠️ **Publishing is not what limits camera count, and it is not close.** 0.69–1.78 ms per publish
+against ~50 ms of inference — roughly **2–3 %** at the top rung, and the whole bridge costs the media
+service a few percent of a core. The bridge shed **nothing** at any rung, retried nothing, and failed
+nothing. Throughput scaled to **87 %** of linear from 1 to 16 cameras, and the shortfall is upstream:
+`offered` itself only reaches 31/s against a nominal 32.
+
+⚠️ **The queue peak of 0 is real but weakly measured.** It is sampled every five seconds, so a
+transient depth between samples is invisible. What it does establish is that the publisher drains
+faster than results arrive at every rung tested — 27.55 publishes/s × 1.78 ms is about 49 ms of work
+per second. The bound is exercised properly by the resilience run, where a 20-second broker outage
+fills it to exactly 16 and sheds 16 more.
+
+### ⚠️ Published is ~17× persisted, and that is the dedup window working
+
+At 16 cameras: **27.55 published/s → 1.59 persisted/s**, with 25.81/s collapsing as duplicates. One
+walking person per camera produces one continuous track, and the events service's dedup key is
+`type + camera + zone + track + 10-second bucket` — so one camera's continuous presence is **one
+event per bucket**, not one per frame.
+
+That is the intended behaviour and it is the reason a rule fires once for a loitering person rather
+than a hundred times. ⚠️ **It also means "events per second" is a meaningless capacity metric for this
+platform.** What scales with cameras is publishes; what scales with _distinct situations_ is events.
+Quoting the first as the second would describe a firehose that mostly evaporates.
+
+### ⚠️ Sizing is unchanged: 2 supported, 4 provisional
+
+The ladder shows the bridge comfortable at sixteen cameras. **That is not a capacity revision**, for
+the same two reasons the tracking ladder is not one: the source is a synthetic clip far cheaper to
+decode than a real scene, and the constraint is inference, not publishing. The standing policy holds
+— **2 supported, 4 provisional, no recommendation published until three independent runs agree** —
+and this is run one.
+
+---
+
 ## Model warm-up — measured, and it earns less than expected
 
 |                          | Unwarmed (`INFERENCE_ONNX_WARMUP=0`) | Warmed (committed default) |

@@ -10,9 +10,7 @@
         "and they carried detections, which become events — 0 detection(s)",
         "the broker acknowledged them"
       ],
-      "named": [
-        "the event bridge is enabled in this deployment"
-      ],
+      "named": ["the event bridge is enabled in this deployment"],
       "stray": [
         "the publisher reports its own version",
         "results were published to the bus — 0 result(s)",
@@ -22,12 +20,8 @@
     },
     {
       "mutation": "retry",
-      "red": [
-        "and were retried within the bound before giving up — 0 retry attempt(s)"
-      ],
-      "named": [
-        "and were retried within the bound before giving up"
-      ],
+      "red": ["and were retried within the bound before giving up — 0 retry attempt(s)"],
+      "named": ["and were retried within the bound before giving up"],
       "stray": []
     },
     {
@@ -46,9 +40,7 @@
         "⚠️ the rule engine EVALUATED the events the bridge produced — 0 evaluation(s)",
         "⚠️ and matched them — a frame became an incident candidate — 0 match(es), 0 failure(s)"
       ],
-      "named": [
-        "the broker acknowledged them"
-      ],
+      "named": ["the broker acknowledged them"],
       "stray": [
         "results were published to the bus — 0 result(s)",
         "and they carried detections, which become events — 0 detection(s)",
@@ -69,9 +61,7 @@
         "⚠️ the camera was re-enabled and events RESUMED — the ordering gate did not strand it — 88 → 88 result(s)",
         "and most results got through rather than being dropped as stale — 32 dropped vs 0 published"
       ],
-      "named": [
-        "⚠️ the camera was re-enabled and events RESUMED"
-      ],
+      "named": ["⚠️ the camera was re-enabled and events RESUMED"],
       "stray": [
         "and most results got through rather than being dropped as stale — 32 dropped vs 0 published"
       ]
@@ -93,9 +83,7 @@
         "⚠️ the rule engine EVALUATED the events the bridge produced — 0 evaluation(s)",
         "⚠️ and matched them — a frame became an incident candidate — 0 match(es), 0 failure(s)"
       ],
-      "named": [
-        "nothing was rejected"
-      ],
+      "named": ["nothing was rejected"],
       "stray": [
         "results were published to the bus — 0 result(s)",
         "and they carried detections, which become events — 0 detection(s)",
@@ -117,9 +105,7 @@
         "the queue stayed bounded rather than growing with the outage — depth 32 against a bound of 16 per camera",
         "⚠️ and SHED load rather than accumulating it — results were dropped, by policy — 0 → 0 dropped"
       ],
-      "named": [
-        "⚠️ and SHED load rather than accumulating it"
-      ],
+      "named": ["⚠️ and SHED load rather than accumulating it"],
       "stray": [
         "the queue stayed bounded rather than growing with the outage — depth 32 against a bound of 16 per camera"
       ]

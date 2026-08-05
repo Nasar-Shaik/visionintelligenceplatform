@@ -254,6 +254,62 @@ _Last updated: 2026-08-05 · Claude_
   **1032** · contracts · import graph 0 violations.
   [ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md).
 
+- **P-8 Phase 5 · the live event bridge ✅ complete, ⏳ awaiting review (2026-08-06)** — perception
+  reached the event platform. ⚠️ **The claim this closes is that the platform could not raise an
+  incident from a camera.** Everything downstream of a published `DetectionResult` had existed and
+  been frozen since P1-5 — normalize, dedup, persist, republish, evaluate, raise a candidate, promote
+  to an incident — and **nobody published**: media took the result from `/infer`, counted labels for
+  its own metrics, and dropped it. **No test failed, because every part in isolation was correct.**
+  That is the shape of the defect class, and the reason the phase was built as a subsystem rather
+  than a line of code. ⚠️ **The architecture review changed what the phase was.** It was commissioned
+  as "freeze the TrackingEvent schema"; reading the tree found `EventEnvelope` already carries
+  everything a tracking event needs, so a second envelope was **refused**
+  ([ADR-0040](../adr/ADR-0040-one-event-envelope-many-payload-schemas.md)) and exactly one contract
+  change was made: `EventSubject.identityId` / `precededBy`, additive to a frozen contract, because a
+  dwell rule keyed on `trackId` under-fires **silently and load-dependently** when a person is briefly
+  occluded ([ADR-0041](../adr/ADR-0041-identity-travels-with-the-subject.md)). Built: the
+  `BufferedEventPublisher` (bounded per camera, non-blocking, fail-closed, ordering-gated, bounded
+  retry — ⚠️ **it enqueues and returns**, because it is reached from the process writing MP4
+  segments), 18 Prometheus series plus a JSON endpoint, a **read-only** console page with no control
+  at all, and ingest counters on the events service (`persisted` and `deduped` **separately**,
+  dead-letters by reason with cross-tenant its own reason — they deliberately did not exist before,
+  because nothing published and every one would have read zero for the life of the platform).
+  **Verified on the deployment as one chain**, every hop asserted separately so a break is
+  attributable: 39 published → 3 persisted → 3 rule matches → an `Incident` carrying the frame's
+  correlation id, from which the frame, track and identity are recoverable. ⚠️ **Delivery is
+  at-least-once and this is measured, not inherited from a config flag**: six deliveries of one
+  result produce **one** event inside the two windows and **two** across them ([L-46]). Replay is
+  deterministic — two reads byte-identical, replayed twice for the same count, store unchanged, zero
+  extra incidents, identical simulate outcomes. Payload `1.0.0`/`2.0.0`/`3.0.0` all travel inside
+  envelope `1.0.0`. **Three defects found in the product**, one of them a milestone ahead: a
+  **re-enabled camera published nothing** — a restarted stream begins at sequence 1 against a
+  `lastSeq` of 100, so the ordering gate read every event as stale and measured **0 published, 32
+  dropped, indefinitely, silently**, which is exactly what Camera Processing Assignment (**C-14c**)
+  will do on every enable; `prom-client` published an unmeasured gauge as `0` (the ADR-0039 failure,
+  on the deployment); and the candidate assertion queried persisted `Incident`s while the engine was
+  raising candidates for every event. **Four defects found in the verification itself**: the ordering
+  check was **vacuous** (it read a query sorted by `occurredAt`, so the sequence came back sorted
+  whatever order the publisher used — it was measuring the store's `ORDER BY`), nothing verified that
+  the bridge **sheds** under pressure, the payload-version instrument silently stayed a **draft**
+  because it emitted an uncatalogued type, and "publishing kept going" failed on a working bridge
+  because `published` counts only results carrying detections. Six mutations, each red at the check
+  that names it; ⚠️ the ordering mutation was **retargeted after measurement** — deleting the stale
+  rejection is not reliably observable, since a 24 s clip may produce no out-of-order responses and
+  the dedup window eats the ones it does. Benchmark 1→16: publish **0.69–1.78 ms**, **nothing shed,
+  retried or failed at any rung**, 87 % of linear; ⚠️ **27.55 published/s → 1.59 persisted/s** at the
+  top rung, which is the dedup window working, and the reason "events per second" is a meaningless
+  capacity metric here. **Sizing unchanged: 2 supported, 4 provisional.** Nightly gained three
+  domains (`events/` `publisher/` `broker/`) and six stages in every profile, with
+  `broker/resilience.sh` ordered **last** because it stops the broker every service shares. Also
+  corrected: **C-17, C-18 and C-19 had said ⛔ since before Phase 2** while their debt was closed and
+  their capability shipped — a matrix saying a shipped capability is ⛔ is as wrong as one saying an
+  unshipped capability is ✅, and more dangerous, because it is what schedules the next milestone.
+  Limits disclosed: **L-46** (at-least-once), **L-47** (events dropped under pressure, deliberately),
+  **L-48** (an incident names one frame, not all of them), **L-49** (a future envelope version is
+  accepted, not refused). [C-14e](../project/PRODUCT_CAPABILITY_MATRIX.md) ·
+  [ADR-0040](../adr/ADR-0040-one-event-envelope-many-payload-schemas.md) ·
+  [ADR-0041](../adr/ADR-0041-identity-travels-with-the-subject.md).
+
 - **P-8 Phase 3H · production hardening ✅ complete, ⏳ awaiting review (2026-08-05)** — no new
   capability: the question was whether the inference platform is **sellable**, not whether it works.
   **Sizing is now measured and computed rather than estimated: 4 cameras per host at 2 fps on a

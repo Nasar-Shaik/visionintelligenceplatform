@@ -55,6 +55,7 @@ references them rather than restating what a capability is.
 | **C-14b** | ⚠️ **AI inference — real detections**          |    ✅    |              ✅              |  ✅ reporting only (C-14c)  |  ✅  |       ⬜ unvalidated       |  ✅  | **P-8 Phase 3**   | —            | inference |
 | **C-14c** | Selective AI processing (per-camera enable)    |    ⛔    |              ⛔              |             ⛔              |  ⛔  |             ⛔             |  ⛔  | **P-9+**          | C-14b        | media     |
 | **C-14d** | ⚠️ **Object tracking — persistent identities** |    ✅    |              ✅              |    ✅ read-only, 4 pages    |  ✅  |       ⬜ unvalidated       |  ✅  | **P-8 Phase 4**   | C-14b        | inference |
+| **C-14e** | ⚠️ **Event bridge — perception → events**      |    ✅    |              ✅              |    ✅ read-only, 1 page     |  ✅  |       ⬜ unvalidated       |  ✅  | **P-8 Phase 5**   | C-14d        | media     |
 | **C-15**  | Camera zone referential integrity              |    ✅    | ⚠️ shape-checked only (TD-3) |             n/a             |  ✅  |             ⚠️             |  ⚠️  | **P-6**           | —            | camera    |
 
 > ⚠️ **C-14a is a correction, and it is the reason the row exists.** Until 2026-08-05 the media image
@@ -120,19 +121,64 @@ references them rather than restating what a capability is.
 > what it cannot keep up with. ⬜ Pilot for C-14b stays unvalidated: two photographs are a smoke test
 > of the deployed path, **not an accuracy evaluation** — no mAP, no labelled corpus, no claim about
 > how this model behaves on a customer's cameras (L-1).
+>
+> ⚠️ **C-14e — the event bridge, P-8 Phase 5 (2026-08-06).** What perception observes now reaches the
+> event platform. Everything downstream of a published `DetectionResult` had existed and been frozen
+> since P1-5 — normalize, dedup, persist, republish, evaluate, raise a candidate — and **nothing
+> published**, so a platform with a working rule engine could not raise an incident from a camera and
+> no test failed, because every part in isolation was correct. Verified on the deployment as one
+> chain: frame → inference → tracking → publisher → `capability.output` → events → `event.*` → rules
+> → `IncidentCandidate` → workflow → a persisted `Incident` carrying the frame's correlation id.
+> ⚠️ **What this does NOT add is business meaning.** No rules ship, no loitering, no intrusion, no
+> theft detection; the verification creates one trivial rule as an instrument and deletes it.
+>
+> ⚠️ **Three limits bound what may be claimed for C-14e.** Delivery is **at-least-once**, not
+> exactly-once — suppression holds inside two windows and a replay outside them produces a second
+> event ([L-46](KNOWN_LIMITATIONS.md#l-46--event-delivery-is-at-least-once-and-duplicate-suppression-is-a-window)).
+> Events are **dropped under pressure by design**, and the ones lost during a broker outage are gone —
+> the bridge trades events for recordings, always
+> ([L-47](KNOWN_LIMITATIONS.md#l-47--events-are-dropped-under-pressure-deliberately-and-recording-is-not)).
+> An incident names the **first** frame in its dedup bucket, not every frame that contributed
+> ([L-48](KNOWN_LIMITATIONS.md#l-48--an-incident-names-one-frame-not-every-frame-that-contributed)).
+> The page is read-only: publishing is a consequence of frames arriving, and per-camera enable is
+> **C-14c**, which is still not built.
+>
+> ⚠️ **C-14e found a C-14c blocker before C-14c exists.** A stream that stops and starts begins its
+> frame sequence at 1 again, and the publisher's ordering gate read every event from the restarted
+> camera as stale — measured: 0 published, 32 dropped, indefinitely, silently. That is what Camera
+> Processing Assignment does on every enable. Fixed with a capture-time discriminator and guarded by
+> a mutation.
 
 ## Perception
 
-| id       | Capability                                                 |         Contract         |                   Backend                   |      Frontend       | Demo | Pilot | Prod | Milestone | Dependencies       | Owner        |
-| -------- | ---------------------------------------------------------- | :----------------------: | :-----------------------------------------: | :-----------------: | :--: | :---: | :--: | --------- | ------------------ | ------------ |
-| **C-16** | Event pipeline — ingest · dedup · persist · replay         |            ✅            |                     ✅                      |         ✅          |  ✅  |  ✅   |  ✅  | done      | —                  | events       |
-| **C-17** | Object detection — person · vehicle · fire · smoke         |            ✅            | ⚠️ **`stub` backend is the default** (TD-5) |         ✅          |  ✅  |  ⛔   |  ⚠️  | **P-8**   | ONNX default       | ai/inference |
-| **C-18** | Object tracking · zones · counting                         |            ✅            |      ⚠️ runtime only, no frame source       |         ⛔          |  ⛔  |  ⛔   |  ⚠️  | **P-8**   | C-19               | ai/inference |
-| **C-19** | **Media → inference frame bus**                            |            ✅            |        ⛔ **`NullFrameSink`** (TD-4)        |         n/a         |  ⛔  |  ⛔   |  ⛔  | **P-8**   | —                  | media        |
-| **C-20** | **Behaviour analytics** — loitering · intrusion · crowding |            ✅            |        ⛔ no analyzer wired (TD-14)         |         ⛔          |  ⛔  |  ⛔   |  ⛔  | **P-8**   | C-19 · **D-4**     | ai/inference |
-| **C-21** | Upload a recording and analyse it                          |            ⚠️            |                ⛔ (TD-9 G-2)                |         ⛔          |  ⛔  |  ⛔   |  ⛔  | **P-8**   | C-19               | media        |
-| **C-22** | **Live video view**                                        | ⛔ no transport contract |                 ⛔ (TD-28)                  | ⛔ placeholder page |  ⛔  |  ⛔   |  ⛔  | **P-8**   | **ADR: transport** | media        |
-| **C-23** | Auto-captured evidence from a live incident                |            ✅            |         ⛔ no-op extractor (TD-15)          |         n/a         |  ⛔  |  ⛔   |  ⛔  | **P-8**   | C-19               | evidence     |
+| id       | Capability                                                 |         Contract         |           Backend            |      Frontend       | Demo | Pilot | Prod | Milestone       | Dependencies       | Owner        |
+| -------- | ---------------------------------------------------------- | :----------------------: | :--------------------------: | :-----------------: | :--: | :---: | :--: | --------------- | ------------------ | ------------ |
+| **C-16** | Event pipeline — ingest · dedup · persist · replay         |            ✅            |              ✅              |         ✅          |  ✅  |  ✅   |  ✅  | done            | —                  | events       |
+| **C-17** | Object detection — person · vehicle · fire · smoke         |            ✅            | ✅ ONNX + YOLOX-nano (C-14b) |         ✅          |  ✅  |  ⬜   |  ✅  | **P-8 Phase 3** | —                  | ai/inference |
+| **C-18** | Object tracking (⚠️ zones · counting NOT built)            |            ✅            |   ✅ tracking only (C-14d)   |         ✅          |  ✅  |  ⬜   |  ✅  | **P-8 Phase 4** | C-19               | ai/inference |
+| **C-19** | **Media → inference frame bus**                            |            ✅            |  ✅ `HttpFrameSink` (C-14b)  |         n/a         |  ✅  |  ⬜   |  ✅  | **P-8 Phase 2** | —                  | media        |
+| **C-20** | **Behaviour analytics** — loitering · intrusion · crowding |            ✅            | ⛔ no analyzer wired (TD-14) |         ⛔          |  ⛔  |  ⛔   |  ⛔  | **P-8**         | C-19 · **D-4**     | ai/inference |
+| **C-21** | Upload a recording and analyse it                          |            ⚠️            |        ⛔ (TD-9 G-2)         |         ⛔          |  ⛔  |  ⛔   |  ⛔  | **P-8**         | C-19               | media        |
+| **C-22** | **Live video view**                                        | ⛔ no transport contract |          ⛔ (TD-28)          | ⛔ placeholder page |  ⛔  |  ⛔   |  ⛔  | **P-8**         | **ADR: transport** | media        |
+| **C-23** | Auto-captured evidence from a live incident                |            ✅            |  ⛔ no-op extractor (TD-15)  |         n/a         |  ⛔  |  ⛔   |  ⛔  | **P-8**         | C-19               | evidence     |
+
+> ⚠️ **C-17, C-18 and C-19 are a CORRECTION, made 2026-08-06, and the drift is the point.** They read
+> `⛔ NullFrameSink (TD-4)`, `⚠️ stub backend is the default (TD-5)` and `⚠️ runtime only, no frame
+source` — describing the platform as it was before P-8 Phase 2. TD-4 and TD-5 were both closed and
+> marked resolved in their own register; the P-8 work was recorded against **C-14a/b/d** in the
+> Cameras section and these rows were never revisited.
+>
+> ⚠️ **A matrix that says a shipped capability is ⛔ is exactly as wrong as one saying an unshipped
+> capability is ✅**, and it is more dangerous, because it is the document used to decide what to
+> build next — someone reading this table would have scheduled a frame bus that has been carrying
+> production traffic since Phase 2. The rule that a cell goes ✅ only with deployment evidence has a
+> mirror: a cell must come **off** ⛔ when the evidence arrives, in the same slice.
+>
+> ⚠️ **C-18 was renamed rather than promoted wholesale.** It bundled three capabilities and only one
+> of them was built. Tracking is real (C-14d); **zones and counting are not built at all**, and the
+> row now says so in its title rather than hiding a ⛔ inside a ✅. ⬜ Pilot stays unvalidated across
+> all three — no camera has ever been connected ([L-1](KNOWN_LIMITATIONS.md#l-1--no-camera-has-ever-been-connected)),
+> and there are no accuracy gates on the registered model (TD-64).
 
 ## Detection → response
 

@@ -448,3 +448,140 @@ counts still add up, the dashboard is still green. It is only wrong at "who was 
 people cross, left and right have exchanged places — so position alone cannot distinguish a correct
 tracker from one that swapped them. Height does not swap. Without that, the scenario would look
 rigorous and assert nothing.
+
+---
+
+## Phase 5 · the live event bridge — ✅ complete, ⏳ awaiting review
+
+**The claim, and it was false until today:** the platform could not raise an incident from a camera.
+
+Everything downstream of a published `DetectionResult` has existed and been frozen since P1-5 —
+`services/events` normalizes one into `EventEnvelope`s, deduplicates, persists and republishes;
+`services/rules` evaluates those and emits `IncidentCandidate`s; `services/workflow` promotes those
+into `Incident`s. **Nobody published.** Media received the result from `/infer`, counted labels for
+its own metrics, and dropped it.
+
+⚠️ **No test failed, because every part in isolation was correct.** That is the shape of this defect
+class and the reason the phase is built as a subsystem rather than a line of code: the missing thing
+was not a bug inside a component, it was the absence of an edge between two components that each had
+full coverage.
+
+### What was built
+
+| Artefact                                                                                                    | Note                                                                                                                                                                                                                |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`services/media/src/adapters/event-publisher.ts`](../../../services/media/src/adapters/event-publisher.ts) | The bridge. Bounded per camera, non-blocking, fail-closed, ordering-gated, bounded retry. ⚠️ **Enqueues and returns** — it is reached from the process writing MP4 segments and may never apply back-pressure to it |
+| `GET /system/event-bridge` + Prometheus series                                                              | 18 series, `null` where nothing was measured. ⚠️ `broker_status` is **1 up / −1 down / 0 not yet attempted** — three states, because a publisher that has published nothing has not demonstrated a working broker   |
+| [`EventBridgePage`](../../../apps/console/src/features/system/EventBridgePage.tsx)                          | Read-only. Four separate "not published" figures, three broker states, and **no control at all**                                                                                                                    |
+| `EventSubject.identityId` / `precededBy`                                                                    | Additive to a frozen contract, and the one change the phase genuinely needed ([ADR-0041](../../adr/ADR-0041-identity-travels-with-the-subject.md))                                                                  |
+| Events service ingest counters                                                                              | `persisted` and `deduped` **separately**; dead-letters by reason, with cross-tenant its own reason                                                                                                                  |
+
+### What was deliberately NOT built
+
+No rules. No zones. No incidents workflow. No theft detection. No camera assignment. The end-to-end
+verification **creates one trivial rule as a measuring instrument and deletes it in a `finally`** —
+the first version of that cleanup read `data.rules` where the API returns a bare array, deleted
+nothing, and left two enabled rules raising candidates for the whole tenant. A cleanup that silently
+no-ops is worse than none, because the run still reports success.
+
+### Measured against the deployment
+
+```
+frame → /infer → DetectionResult → RuntimeTracker → EventPublisher
+      → t.{tenant}.capability.output.* → events (normalize · dedup · persist)
+      → t.{tenant}.event.* → rules → IncidentCandidate → workflow → Incident
+```
+
+Every hop asserted separately, so a break is attributable rather than "no incident appeared"
+([`event-bridge.mjs`](event-bridge.mjs), [`event-bridge-replay.mjs`](event-bridge-replay.mjs),
+[`event-bridge-resilience.mjs`](event-bridge-resilience.mjs)).
+
+| Question                                   | Answer, measured                                                                                                                                                     |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Does a frame become an incident candidate? | ✅ 39 published → 3 persisted → 3 rule matches, one camera, 24 s                                                                                                     |
+| Does identity survive to the event?        | ✅ 3/3 tracked subjects carry `trackId` **and** `identityId`                                                                                                         |
+| Can one frame be traced end to end?        | ✅ `correlationId`, `frameId`, `frameSeq`, `cameraId`, `tenantId`, `trackId`, `identityId` — and from the incident **alone**, the frame and identity are recoverable |
+| Is delivery exactly-once?                  | ❌ **at-least-once.** 6 deliveries of one result → 1 event inside the window, **2** across it                                                                        |
+| Is replay deterministic?                   | ✅ two reads byte-identical, replayed twice for the same count, store unchanged, 0 extra incidents, identical simulate outcomes                                      |
+| Can a payload version move?                | ✅ payload 1.0.0 / 2.0.0 / 3.0.0 all consumed inside envelope 1.0.0                                                                                                  |
+| Does recording survive a broker outage?    | ✅ **2 → 6 segments written while the broker was down**                                                                                                              |
+| Does the bridge recover unaided?           | ✅ no restart, no intervention, ordering intact, failures stopped                                                                                                    |
+
+### ⚠️ Three defects the verification found in the product
+
+**A re-enabled camera published nothing — and Camera Processing Assignment does not exist yet.** A
+stream that stops and starts begins its frame sequence at 1 again. The ordering gate held
+`lastSeq=100`, so every event from the restarted camera read as stale: **0 published, 32 dropped,
+indefinitely, with nothing in the logs.** That is precisely what C-14c will do on every enable, so it
+would have shipped as "assignment is broken" in a milestone not yet written. Capture time separates
+the two cases exactly — a genuinely late response is older in wall-clock time _and_ sequence; a
+restarted stream's frames are newer despite a lower sequence. After the fix: **32 published, 0
+dropped.** `sessionResets` is counted rather than silently recovered, because the other reading of
+the same input is "drop this camera for ever".
+
+**`prom-client` publishes an unlabelled gauge as `0` even when `set()` is never called.**
+`publish_ms_avg 0` appeared on a publisher that had never published — the exact ADR-0039 failure, on
+the deployment. `remove()` is what omits a sample.
+
+**The candidate assertion tested the wrong thing.** It queried the incidents API and reported "0
+raised" while the rules log showed candidates raised for every event. An `IncidentCandidate` is not a
+persisted `Incident`; promotion is another context's job. It asserts on the engine's own counters now.
+
+### ⚠️ Four defects the verification found in ITSELF
+
+**The ordering check was vacuous.** It read frame sequences from a query sorted by `occurredAt`,
+which for one stream rises with the sequence — so the sequence came back sorted no matter what order
+the publisher sent it in. It was measuring the store's `ORDER BY`. Replaced with an arrival-order
+assertion built on `ingestedAt`, which the events service stamps on receipt.
+
+**Nothing verified that the bridge SHEDS.** Its stated policy is that events are dropped and
+recording is not, and only the second half was asserted. A publisher that quietly accumulated every
+result of an outage would have satisfied every other check on the page.
+
+**The instrument failed to arm, silently.** The observing rule emitted an uncatalogued event type,
+validation refused to enable it, and the harness ignored the response. Only enabled rules are
+evaluated, so the payload-version section measured zero matches and read as a consumer that could not
+parse v2.
+
+**"Publishing kept going" failed on a working bridge.** `published` counts results that carried
+detections, and the fixture clip has stretches with nobody in frame — so an eight-second window can
+legitimately publish nothing. It asserts on `offered` now, which is what the claim actually means.
+
+### Mutation-tested — six ways, each red at the check that names it
+
+| Mutation           | Kind   | Red at                                               |
+| ------------------ | ------ | ---------------------------------------------------- |
+| publisher disabled | config | _the event bridge is enabled in this deployment_     |
+| retry disabled     | config | _and were retried within the bound before giving up_ |
+| broker unavailable | infra  | _the broker acknowledged them_                       |
+| ordering violation | code   | _⚠️ the camera was re-enabled and events RESUMED_    |
+| schema corruption  | code   | _nothing was rejected_                               |
+| queue overflow     | code   | _⚠️ and SHED load rather than accumulating it_       |
+
+⚠️ **The ordering mutation was retargeted after measurement.** Deleting the stale-result rejection is
+the obvious break and is **not reliably observable**: out-of-order responses happen but a 24 s clip
+can produce none, and the events service collapses that clip's 39 results into 3 envelopes, so a
+stale one landing in an already-persisted bucket is deduped away before anything downstream sees it.
+A mutation that passes or fails on scheduling luck is not a test. The stale path is covered by three
+unit tests, where it is deterministic; the mutation targets the restart discriminator, which is
+deterministic end to end.
+
+### Nightly
+
+Three new domains — `events/`, `publisher/`, `broker/` — and six stages, registered in **every**
+profile. ⚠️ `broker/resilience.sh` runs **last** before the report: it is the only stage that stops
+the broker every service on the platform shares, so nothing that assumes a healthy stack may follow
+it.
+
+### Running it
+
+```sh
+node docs/review/p8/event-bridge.mjs              # the chain, frame → incident candidate
+node docs/review/p8/event-bridge-replay.mjs       # duplicates · correlation · replay · payload versions
+node docs/review/p8/event-bridge-resilience.mjs   # ⚠️ STOPS THE BROKER
+node docs/review/p8/event-bridge-benchmark.mjs    # 1 → 16 cameras
+node docs/review/p8/event-bridge-mutations.mjs    # ⚠️ edits source, rebuilds media, stops the broker
+cd /private/tmp/pwrun && node <repo>/docs/review/p8/event-bridge-ui.mjs
+```
+
+Each takes `clean` (or `restore`) if a run was interrupted.

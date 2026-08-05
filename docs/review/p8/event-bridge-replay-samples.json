@@ -29,12 +29,7 @@
       "subjects": [
         {
           "class": "person",
-          "bbox": [
-            0.111058,
-            0.417881,
-            0.138998,
-            0.53213
-          ],
+          "bbox": [0.111058, 0.417881, 0.138998, 0.53213],
           "trackId": "trk_b96541ee_walk_2",
           "identityId": "trk_b96541ee_walk_1",
           "precededBy": "trk_b96541ee_walk_1"

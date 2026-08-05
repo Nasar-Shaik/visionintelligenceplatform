@@ -170,7 +170,14 @@ try {
    * page polls every five seconds and the bridge publishes continuously, so pinning to one payload
    * is a race that fails at random — and a check that fails at random is a check nobody reads.
    */
-  const publishedOnScreen = (body.match(/Published\n([\d,]+)/) ?? [])[1]?.replace(/,/g, '');
+  /*
+   * ⚠️ Case-INSENSITIVE, because `innerText` returns RENDERED text and every label on this page
+   * carries Tailwind's `uppercase`. The DOM says "Published" and the screen says "PUBLISHED"; a
+   * case-sensitive match fails against a page that is entirely correct, and reads as "the figure is
+   * missing". `textContent` would return the source text — but the point of a browser check is what
+   * an operator actually sees.
+   */
+  const publishedOnScreen = (body.match(/published\s*\n\s*([\d,]+)/i) ?? [])[1]?.replace(/,/g, '');
   const publishedInPayloads = new Set(seen.map((p) => String(p?.published)));
   check(
     publishedOnScreen !== undefined && publishedInPayloads.has(publishedOnScreen),
@@ -209,8 +216,15 @@ try {
 
   /* ── 3 · the four reasons stay four ────────────────────────────────────────────────────────── */
   console.log('\n3 · four reasons a frame did not publish, kept apart');
+  /*
+   * ⚠️ Each label must be followed by ITS OWN NUMBER, not merely appear somewhere on the page. The
+   * first version tested for the word alone — and "Suppressed" passed on the explanatory paragraph
+   * beneath the card ("Suppressed and out-of-order are normal") while the figure above it was not
+   * being read at all. A check that a page mentions a word is not a check that it reports a value.
+   */
   for (const label of ['Rejected', 'Suppressed', 'Dropped', 'Out of order']) {
-    check(new RegExp(label).test(body), `"${label}" is its own figure`);
+    const figure = body.match(new RegExp(`${label}\\s*\\n\\s*([\\d,]+)`, 'i'));
+    check(figure !== null, `"${label}" is its own figure`, figure?.[1] ?? 'no value beneath the label');
   }
   check(
     /Only .*failed.* is a fault/i.test(body.replace(/[“”"']/g, '')),

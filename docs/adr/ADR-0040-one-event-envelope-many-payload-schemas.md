@@ -73,6 +73,29 @@ which belong to the Rule Engine. ⚠️ A `retail.theft.suspected` event type wo
 semantics in a contract every vertical shares, and is forbidden by this ADR as much as a second
 envelope is.
 
+## Verified, not asserted (2026-08-06)
+
+This ADR claims a payload version can move without a transport change. That is a claim about a
+running consumer, so it was measured against the deployment
+(`docs/review/p8/event-bridge-replay.mjs` §4):
+
+| Published onto `t.{tenant}.event.perception.person.detected`                | Result                       |
+| --------------------------------------------------------------------------- | ---------------------------- |
+| `envelopeVersion 1.0.0` + `schemaVersion 1.0.0`                             | consumed, evaluated, matched |
+| `envelopeVersion 1.0.0` + `schemaVersion 2.0.0` + unknown scalar            | consumed, evaluated, matched |
+| `envelopeVersion 1.0.0` + `schemaVersion 3.0.0` + unknown **nested object** | consumed, evaluated, matched |
+
+3/3 matched, 0 rule failures, no transport change and no consumer change. A future payload version is
+free to move.
+
+⚠️ **The same run recorded the other half honestly.** An envelope declaring `envelopeVersion 2.0.0`
+was also **accepted** — `envelopeVersion` is carried, reported, and checked by nobody. That is right
+for an additive minor and a real gap for a breaking major: a third-party producer publishing a
+breaking envelope would have it consumed as though understood rather than dead-lettered. Recorded as
+[L-49](../project/KNOWN_LIMITATIONS.md#l-49--a-future-envelope-version-is-accepted-rather-than-refused)
+and deliberately **not fixed here** — a rejection path that nothing exercises is how a fail-closed
+gate quietly becomes wrong. It lands with the first breaking envelope change.
+
 ## Consequences
 
 **Good.** One transport to learn, one subject taxonomy, one dedup strategy, one audit story. A new

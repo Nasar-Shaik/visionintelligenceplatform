@@ -92,9 +92,9 @@ async function login() {
 /**
  * Scrape a service's Prometheus endpoint from inside its own container.
  *
- * ⚠️ Labelled series are keyed `name{labels}` so `events_normalized_total{outcome="deduped"}` and
- * `…{outcome="persisted"}` do not overwrite each other — the earlier version kept only the name and
- * silently reported whichever line came last.
+ * ⚠️ Keys keep their FULL label set, so `events_normalized_total{outcome="deduped"}` and
+ * `…{outcome="persisted"}` do not overwrite each other — a map keyed on the name alone silently
+ * keeps whichever line came last.
  */
 function scrape(container, port) {
   const text = shq('docker', ['exec', container, 'sh', '-c', `curl -s localhost:${port}/metrics`]);
@@ -107,18 +107,36 @@ function scrape(container, port) {
 }
 
 /**
+ * One series' value, matched by name plus the labels that matter.
+ *
+ * ⚠️ **Every series on this platform carries a `service="…"` default label**, so an exact-key lookup
+ * for `events_normalized_total{outcome="persisted"}` matches nothing and every downstream number
+ * reads as absent. Absent is a legitimate answer here (ADR-0039), which is exactly why the mistake
+ * would not have looked like one — the benchmark would have reported "the events service exports no
+ * counters" about an events service exporting them correctly.
+ */
+function series(metrics, name, labels = {}) {
+  const wanted = Object.entries(labels).map(([k, v]) => `${k}="${v}"`);
+  for (const [key, value] of Object.entries(metrics)) {
+    if (key !== name && !key.startsWith(`${name}{`)) continue;
+    if (wanted.every((w) => key.includes(w))) return value;
+  }
+  return undefined;
+}
+
+/**
  * A counter delta. ⚠️ Absent on BOTH reads means the series was never exported — `null`, not 0.
  * Absent on only the first read means it started at zero, which is a real zero.
  */
-function delta(before, after, key) {
-  const a = after[key];
-  const b = before[key];
+function delta(before, after, name, labels = {}) {
+  const a = series(after, name, labels);
+  const b = series(before, name, labels);
   if (a === undefined && b === undefined) return null;
   return (a ?? 0) - (b ?? 0);
 }
 
 /** A gauge's current value, or `null` when the sample is omitted (ADR-0039). */
-const gauge = (m, key) => (m[key] === undefined ? null : m[key]);
+const gauge = (m, name) => series(m, name) ?? null;
 
 /** Container CPU % and RSS in MB, from docker's own accounting. */
 function usage(container) {
@@ -211,8 +229,8 @@ try {
       const live = scrape(MEDIA, 8083);
       cpuPeak = Math.max(cpuPeak, u.cpu);
       memPeak = Math.max(memPeak, Number(u.memMb));
-      queuePeak = Math.max(queuePeak, live['media_event_publisher_queue_depth'] ?? 0);
-      inflightPeak = Math.max(inflightPeak, live['media_event_publisher_inflight'] ?? 0);
+      queuePeak = Math.max(queuePeak, series(live, 'media_event_publisher_queue_depth') ?? 0);
+      inflightPeak = Math.max(inflightPeak, series(live, 'media_event_publisher_inflight') ?? 0);
     }
 
     const elapsed = (Date.now() - started) / 1000;
@@ -223,8 +241,8 @@ try {
     const offered = delta(m0, m1, 'media_event_publisher_offered_total') ?? 0;
     const published = delta(m0, m1, 'media_event_publisher_published_total') ?? 0;
     const detections = delta(m0, m1, 'media_event_publisher_detections_published_total') ?? 0;
-    const persisted = delta(e0, e1, 'events_normalized_total{outcome="persisted"}');
-    const deduped = delta(e0, e1, 'events_normalized_total{outcome="deduped"}');
+    const persisted = delta(e0, e1, 'events_normalized_total', { outcome: 'persisted' });
+    const deduped = delta(e0, e1, 'events_normalized_total', { outcome: 'deduped' });
 
     const row = {
       cameras,
@@ -255,10 +273,12 @@ try {
       /* ── retry and loss ────────────────────────────────────────────────────────────────────── */
       retries: delta(m0, m1, 'media_event_publisher_retries_total'),
       failed: delta(m0, m1, 'media_event_publisher_failed_total'),
+      /* ⚠️ Kept as three reasons summed, not one counter — a cross-tenant message is a security
+         event and a malformed one is a bug, and the JSON keeps them separable for the report. */
       deadLettered:
-        (delta(e0, e1, 'events_dead_lettered_total{reason="contract"}') ?? 0) +
-        (delta(e0, e1, 'events_dead_lettered_total{reason="tenant_mismatch"}') ?? 0) +
-        (delta(e0, e1, 'events_dead_lettered_total{reason="not_json"}') ?? 0),
+        (delta(e0, e1, 'events_dead_lettered_total', { reason: 'contract' }) ?? 0) +
+        (delta(e0, e1, 'events_dead_lettered_total', { reason: 'tenant_mismatch' }) ?? 0) +
+        (delta(e0, e1, 'events_dead_lettered_total', { reason: 'not_json' }) ?? 0),
 
       /* ── resources ─────────────────────────────────────────────────────────────────────────── */
       mediaCpuPeak: cpuPeak,
