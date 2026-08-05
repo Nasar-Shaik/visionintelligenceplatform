@@ -12,7 +12,17 @@ stages/
   platform/             the deployment as a whole, independent of any one capability
   runtime/              the perception runtime: inference, its dashboard, its capacity
   tracking/             object tracking: identities, their pages, their capacity
+  events/               the event platform: the chain end to end, determinism, its page
+  publisher/            the producer seam: what publishing costs, and whether its checks bite
+  broker/               the transport: what happens when it goes away and comes back
 ```
+
+⚠️ **The Event Bridge is three folders, not one, and that is the same rule applied.** It spans a
+producer in `services/media`, a consumer in `services/events`, and a broker neither of them owns —
+and they fail independently. A broker outage is not an events-service bug, and a publisher that
+sheds load under pressure is behaving correctly while the broker is fine. One `bridge/` folder would
+put a stage that stops NATS for the whole platform next to a stage that reads a page, and the night
+would have no way to say which of the two an operator needs to care about.
 
 ⚠️ **The domain is not the same thing as the check type.** `runtime/benchmark.sh` and
 `tracking/benchmark.sh` are both benchmarks and they are deliberately separate files, because what
@@ -26,11 +36,17 @@ creating one is the whole cost of adding its verification:
 
 | Folder                             | Arrives with                 | Verifies                                                    |
 | ---------------------------------- | ---------------------------- | ----------------------------------------------------------- |
-| `rules/`                           | rule evaluation over tracks  | a rule fires on the deployment, versions are immutable      |
 | `incidents/`                       | incident lifecycle           | acknowledgement, audit history, evidence linkage            |
 | `camera-assignment/`               | selective AI processing      | which cameras are analysed, and that the answer is enforced |
 | `analytics/`                       | counting and dwell reporting | aggregates match the tracks they were derived from          |
 | `retail/` `warehouse/` `hospital/` | vertical packs               | the journeys that vertical sells, end to end                |
+
+⚠️ **`rules/` is deliberately gone from this list, and not because it arrived.** The rule engine has
+existed and been frozen since P1-7; what was missing was anything publishing to it, which is what
+`events/bridge.sh` now covers end to end. A reserved folder for something already built is a row
+that reads as a gap, and someone would eventually build a second rule engine to fill it. When rules
+grow their own verification — authoring, versioning, simulation over stored history — they get the
+folder then.
 
 A vertical folder verifies **journeys**, not new primitives. If a vertical needs a new primitive, the
 primitive gets its own domain folder and the vertical consumes it — otherwise the same check ends up

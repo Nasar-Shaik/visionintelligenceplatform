@@ -22,6 +22,7 @@ import {
 import { TenantScope } from '@vip/tenancy';
 import { dedupKey, normalizeDetectionResult } from '../domain/event-normalizer.js';
 import type { EventStore } from './ports.js';
+import type { EventIngestMetrics } from './metrics.js';
 
 export type LogFn = (level: 'info' | 'warn' | 'error', msg: string, fields?: object) => void;
 
@@ -34,6 +35,8 @@ export interface EventIngestDeps {
   log?: LogFn;
   /** Durable consumer name (defaults to `events-normalizer`). */
   durable?: string;
+  /** Operational counters. Absent in tests — this service works without being observed. */
+  metrics?: EventIngestMetrics;
 }
 
 export interface IngestOutcome {
@@ -50,6 +53,7 @@ export class EventIngestService {
   private readonly newId: () => string;
   private readonly log: LogFn;
   private readonly durable: string;
+  private metrics: EventIngestMetrics | undefined;
   private sub?: Subscription;
 
   constructor(deps: EventIngestDeps) {
@@ -60,6 +64,15 @@ export class EventIngestService {
     this.newId = deps.newId ?? (() => crypto.randomUUID());
     this.log = deps.log ?? (() => {});
     this.durable = deps.durable ?? 'events-normalizer';
+    this.metrics = deps.metrics;
+  }
+
+  /**
+   * Attach the metrics collaborator after construction — the Prometheus registry only exists once
+   * the server is built, while this consumer is created by the composition root before it.
+   */
+  useMetrics(metrics: EventIngestMetrics): void {
+    this.metrics = metrics;
   }
 
   /** Ensure both streams exist and attach the durable consumer. */
@@ -88,6 +101,7 @@ export class EventIngestService {
     try {
       raw = msg.json();
     } catch {
+      this.metrics?.deadLettered.inc({ reason: 'not_json' });
       this.log('warn', 'dead-lettering: payload is not valid JSON', { subject: msg.subject });
       msg.term();
       return;
@@ -95,6 +109,7 @@ export class EventIngestService {
 
     const parsed = DetectionResult.safeParse(raw);
     if (!parsed.success) {
+      this.metrics?.deadLettered.inc({ reason: 'contract' });
       this.log('warn', 'dead-lettering: not a valid DetectionResult (fail-closed)', {
         subject: msg.subject,
         issue: parsed.error.issues[0]?.message,
@@ -107,6 +122,9 @@ export class EventIngestService {
     // Defence in depth: the subject's tenant token must match the body's tenantId.
     const subjectTenant = tenantIdFromSubject(msg.subject);
     if (subjectTenant && subjectTenant !== result.tenantId) {
+      /* ⚠️ Its own reason, never folded into `contract`. A cross-tenant message is a security event
+         and a malformed one is a bug; an alert must be able to fire on one and not the other. */
+      this.metrics?.deadLettered.inc({ reason: 'tenant_mismatch' });
       this.log('error', 'dead-lettering: subject/body tenant mismatch (cross-tenant)', {
         subject: msg.subject,
         bodyTenant: result.tenantId,
@@ -115,17 +133,21 @@ export class EventIngestService {
       return;
     }
 
+    const endTimer = this.metrics?.ingestDuration.startTimer();
     try {
       const outcome = await this.ingest(result);
       msg.ack();
       this.log('info', 'ingested capability output', { subject: msg.subject, ...outcome });
     } catch (err) {
+      this.metrics?.redelivered.inc();
       // Transient (store/broker) failure — let the bus redeliver (do NOT ack).
       this.log('error', 'ingest failed; will redeliver', {
         subject: msg.subject,
         err: err instanceof Error ? err.message : String(err),
       });
       msg.nak();
+    } finally {
+      endTimer?.();
     }
   }
 
@@ -140,9 +162,11 @@ export class EventIngestService {
       const isNew = await this.store.persist(scope, envelope, key);
       if (!isNew) {
         deduped++;
+        this.metrics?.normalized.inc({ outcome: 'deduped' });
         continue;
       }
       persisted++;
+      this.metrics?.normalized.inc({ outcome: 'persisted' });
       await this.bus.publish(eventSubject(envelope.tenantId, envelope.type), envelope, {
         msgId: envelope.id,
       });

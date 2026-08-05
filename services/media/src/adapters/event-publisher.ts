@@ -123,6 +123,15 @@ export interface EventPublisherStats {
   failed: number;
   /** Results waiting, summed across cameras. */
   queueDepth: number;
+  /**
+   * The configured per-camera queue bound.
+   *
+   * ⚠️ Reported so `queueDepth` can be judged against the bound this deployment actually runs with,
+   * rather than against a constant written into a verification script. A check asserting "depth
+   * stayed under 64" passes on a publisher whose bound is 256 and whose eviction has been removed —
+   * which is exactly the failure the bound exists to prevent.
+   */
+  queuePerCamera: number;
   /** Cameras with at least one result queued. */
   activeCameras: number;
   /** Publishes in flight right now. */
@@ -401,6 +410,7 @@ export class BufferedEventPublisher {
       retries: this.#retries,
       failed: this.#failed,
       queueDepth: depth,
+      queuePerCamera: this.#perCamera,
       activeCameras: active,
       inflight: this.#inflight,
       publishMsAvg: this.#publishMs.avg,

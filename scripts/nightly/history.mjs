@@ -170,6 +170,44 @@ export function summarise(runDir) {
     });
   }
 
+  const publisher = readJson(join(metrics, 'publisher-benchmark.json'));
+  if (publisher?.rows?.length) {
+    const top = publisher.rows[publisher.rows.length - 1];
+    const shed = publisher.rows.find((r) => (r.droppedQueueFull ?? 0) > 0);
+    const latencies = publisher.rows.map((r) => r.publishMsAvg).filter((n) => typeof n === 'number');
+    out.push({
+      family: 'publisher',
+      row: {
+        v: HISTORY_VERSION,
+        runId,
+        at,
+        /*
+         * ⚠️ The rung where the bridge FIRST sheds, not the top rung. Capacity is where a system
+         * begins to lose things, and the top rung of a ladder that shed at four cameras is a number
+         * about eight cameras of already-degraded behaviour.
+         */
+        sheddingFromCameras: shed?.cameras ?? null,
+        topCameras: top?.cameras ?? null,
+        topPublishedPerSecond: top?.publishedPerSecond ?? null,
+        /* ⚠️ `null` when the events service exported no counter — never 0 (ADR-0039). */
+        topPersistedPerSecond: top?.persistedPerSecond ?? null,
+        publishMsMax: latencies.length ? Math.max(...latencies) : null,
+        topQueueDepthPeak: top?.queueDepthPeak ?? null,
+        queuePerCamera: top?.queuePerCamera ?? null,
+        totalDropped: publisher.rows.reduce((a, r) => a + (r.droppedQueueFull ?? 0), 0),
+        totalRetries: publisher.rows.reduce((a, r) => a + (r.retries ?? 0), 0),
+        totalFailed: publisher.rows.reduce((a, r) => a + (r.failed ?? 0), 0),
+        /*
+         * ⚠️ Carried on every line, forever, exactly as `tracking` carries `groundTruth: false`.
+         * A reader years from now must not be able to lift a sixteen-camera throughput number out of
+         * this ledger and read it as a supported configuration.
+         */
+        publishedRecommendation: publisher.sizingPolicy?.publishedRecommendation ?? null,
+        sizingPolicy: '2 supported / 4 provisional; no recommendation until three runs agree',
+      },
+    });
+  }
+
   return out;
 }
 

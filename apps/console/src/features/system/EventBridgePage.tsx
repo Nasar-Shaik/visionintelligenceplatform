@@ -111,7 +111,12 @@ function Bridge({ stats }: { stats: EventBridgeStats }) {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <MetricCard label="Published" value={String(stats.published)} />
         <MetricCard label="Events produced" value={String(stats.detectionsPublished)} />
-        <MetricCard label="Queue depth" value={String(stats.queueDepth)} />
+        {/* ⚠️ Depth against its bound. "3" is unreadable on its own; "3 / 16" says how close the
+            bridge is to shedding load, which is the only reason to look at a queue depth at all. */}
+        <MetricCard
+          label="Queue depth / bound"
+          value={`${stats.queueDepth} / ${stats.queuePerCamera}`}
+        />
         <MetricCard label="Throughput" value={throughput.text} />
       </div>
 

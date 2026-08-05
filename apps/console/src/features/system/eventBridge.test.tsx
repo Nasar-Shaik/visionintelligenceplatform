@@ -42,6 +42,7 @@ const STATS: EventBridgeStats = {
   retries: 2,
   failed: 0,
   queueDepth: 0,
+  queuePerCamera: 16,
   activeCameras: 2,
   inflight: 0,
   publishMsAvg: 1.42,
@@ -67,6 +68,15 @@ describe('Event Bridge', () => {
     expect(await screen.findByText('Broker reachable')).toBeInTheDocument();
     expect(screen.getByText('1.42 ms')).toBeInTheDocument();
     expect(screen.getByText('4.20/s')).toBeInTheDocument();
+  });
+
+  it('⚠️ shows the queue depth against its bound, because a depth alone says nothing', async () => {
+    authAs(['admin']);
+    mockBridge({ ...STATS, queueDepth: 12, queuePerCamera: 16 });
+    renderWithProviders(<EventBridgePage />, { store });
+
+    /* "12" reads as fine. "12 / 16" reads as four results away from shedding load. */
+    expect(await screen.findByText('12 / 16')).toBeInTheDocument();
   });
 
   it('⚠️ keeps the four reasons a frame did not publish apart', async () => {

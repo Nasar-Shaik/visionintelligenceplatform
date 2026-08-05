@@ -212,6 +212,12 @@ export function registerEventPublisherMetrics(
       (s) => s.failed,
     ],
     ['media_event_publisher_queue_depth', 'Results waiting, across cameras', (s) => s.queueDepth],
+    [
+      /* ⚠️ The bound, beside the depth. A depth alert is meaningless without what it is bounded by. */
+      'media_event_publisher_queue_per_camera',
+      'Configured per-camera queue bound — the depth at which the oldest result is dropped',
+      (s) => s.queuePerCamera,
+    ],
     ['media_event_publisher_inflight', 'Publishes in flight', (s) => s.inflight],
     [
       'media_event_publisher_active_cameras',

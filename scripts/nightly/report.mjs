@@ -220,10 +220,43 @@ function summariseTracking(data) {
   };
 }
 
+/**
+ * The publisher ladder — a THIRD capacity number, and the report keeps all three apart.
+ *
+ * ⚠️ "Sustainable cameras" now means three different things: how many the platform can analyse
+ * (`benchmark`), how many it can analyse without fragmenting identity (`tracking`), and how many it
+ * can PUBLISH for (here). They diverge, and a summary that quoted one of them as "capacity" would be
+ * right about a third of the platform and wrong about the rest.
+ */
+function summarisePublisher(data) {
+  if (!data || !Array.isArray(data.rows) || data.rows.length === 0) return null;
+  const rows = data.rows;
+  const top = rows[rows.length - 1];
+  const shed = rows.find((r) => (r.droppedQueueFull ?? 0) > 0);
+  const latencies = rows.map((r) => r.publishMsAvg).filter((n) => typeof n === 'number');
+  return {
+    rows,
+    sheddingFrom: shed?.cameras ?? null,
+    topCameras: top?.cameras ?? null,
+    topPublished: top?.publishedPerSecond ?? null,
+    /* ⚠️ May legitimately be null — the events service may export no counter yet (ADR-0039). */
+    topPersisted: top?.persistedPerSecond ?? null,
+    publishMsMax: latencies.length ? Math.max(...latencies) : null,
+    queuePeak: top?.queueDepthPeak ?? null,
+    queueBound: top?.queuePerCamera ?? null,
+    failed: rows.reduce((a, r) => a + (r.failed ?? 0), 0),
+    rejected: rows.reduce((a, r) => a + (r.rejected ?? 0), 0),
+    sizingPolicy: data.sizingPolicy ?? null,
+  };
+}
+
 const stab = summariseStability(stability);
 const bench = summariseBenchmark(benchmark);
 const track = summariseTracking(readJson(join(metricsDir, 'tracking-benchmark.json')));
 const truth = readJson(join(metricsDir, 'tracking-truth.json'));
+const pub = summarisePublisher(readJson(join(metricsDir, 'publisher-benchmark.json')));
+const bridge = readJson(join(metricsDir, 'event-bridge.json'));
+const replay = readJson(join(metricsDir, 'event-replay.json'));
 
 /**
  * The previous run worth comparing against.
@@ -537,6 +570,68 @@ ${rows.join('\n')}
 > trajectories were written down before the run.
 >
 > ⚠️ **${truth.caveat ?? 'Measured against authored clips, not real CCTV.'}**
+`;
+}
+
+if (bridge || replay) {
+  const after = bridge?.samples?.after ?? {};
+  const before = bridge?.samples?.before ?? {};
+  const dup = replay?.samples?.duplicates ?? {};
+  const rep = replay?.samples?.replay ?? {};
+  const pay = replay?.samples?.payloadVersions ?? {};
+  summary += `
+## Event bridge — perception reaching the event platform
+
+${
+  bridge
+    ? `**${(after.published ?? 0) - (before.published ?? 0)} result(s) published** from one camera → ` +
+      `**${bridge.samples?.envelopes ?? 0} envelope(s) persisted** → ` +
+      `**${bridge.samples?.rule?.matches ?? 0} rule match(es)**. ` +
+      `Publish ${after.publishMsAvg == null ? '_not measured_' : `${after.publishMsAvg.toFixed(2)} ms`}, broker \`${after.brokerStatus ?? '?'}\`.`
+    : '_the end-to-end stage did not run_'
+}
+
+${
+  replay
+    ? `Determinism: **6 deliveries of one result → ${dup.persisted ?? '?'} event(s)** across the ` +
+      `${replay.dedupWindowMs} ms dedup window · replayed ${rep.replayed ?? '?'} envelope(s) twice with ` +
+      `${rep.reEvaluated ?? '?'} re-evaluation(s) and incidents ${rep.incidentsBefore ?? '?'} → ${rep.incidentsAfter ?? '?'} · ` +
+      `payload v1/v2/v3 **${pay.matched ?? 0}/3** consumed inside envelope v1.`
+    : '_the determinism stage did not run_'
+}
+
+> ⚠️ **Delivery is at-least-once, not exactly-once.** Duplicate suppression holds inside two
+> windows — JetStream collapses a repeated \`Nats-Msg-Id\` for ${replay?.streamDedupWindowMs ?? 120000} ms,
+> and the events service collapses a repeated dedup key inside a ${replay?.dedupWindowMs ?? 10000} ms
+> bucket. Outside them the same result produces a second event. Consumers must be idempotent.
+>
+> ⚠️ **"Published" is not "persisted", and the gap is normal.** Most published results collapse into
+> the dedup window; a rung publishing hundreds legitimately persists dozens.
+`;
+}
+
+if (pub) {
+  summary += `
+## Event bridge — publisher capacity
+
+**${pub.sheddingFrom === null ? `No shedding up to ${pub.topCameras} camera(s)` : `Sheds from ${pub.sheddingFrom} camera(s)`}** ·
+at ${pub.topCameras} cameras the bridge published ${num(pub.topPublished)}/s and the platform persisted ${
+    pub.topPersisted === null ? '_not measured_' : `${num(pub.topPersisted)}/s`
+  }.
+Publish time peaked at ${pub.publishMsMax === null ? '_not measured_' : `${pub.publishMsMax.toFixed(2)} ms`};
+queue peaked at ${pub.queuePeak} against a bound of ${pub.queueBound ?? '?'} per camera.
+${pub.rejected} result(s) failed the contract, ${pub.failed} exhausted their retries.
+
+> ⚠️ **A third capacity number, and it is not interchangeable with the other two.** How many cameras
+> the platform can *analyse*, how many it can analyse without *fragmenting identity*, and how many it
+> can *publish* for are three different answers${
+   pub.sizingPolicy
+     ? `. Supported remains **${pub.sizingPolicy.supported} camera(s)**, ${pub.sizingPolicy.provisional} provisional — ${pub.sizingPolicy.rule}`
+     : ''
+ }.
+>
+> ⚠️ **Shedding is not a fault.** Under pressure the bridge drops events and keeps recording, by
+> design. \`rejected\` and \`failed\` are the numbers that mean something is wrong.
 `;
 }
 

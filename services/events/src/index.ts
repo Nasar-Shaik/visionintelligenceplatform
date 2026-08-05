@@ -49,7 +49,7 @@ async function main(): Promise<void> {
     }
   });
 
-  const { app } = await buildServer({ config, queryService, readiness });
+  const { app } = await buildServer({ config, queryService, ingestService: ingest, readiness });
   loggerRef.current = app.log;
 
   await ingest.start();

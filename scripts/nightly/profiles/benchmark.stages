@@ -7,5 +7,6 @@
 
 preflight | Pre-flight checks             | platform/preflight.sh   | RUN_PREFLIGHT  |           | abort    | TIMEOUT_PREFLIGHT
 benchmark | Capacity ladder and benchmark | runtime/benchmark.sh    | RUN_BENCHMARK  | preflight | continue | TIMEOUT_BENCHMARK
+publisher | Publisher capacity ladder     | publisher/benchmark.sh  | RUN_PUBLISHER_BENCHMARK | preflight | continue | TIMEOUT_PUBLISHER_BENCHMARK
 stability | Stability run                 | runtime/stability.sh    | RUN_SOAK       | preflight | continue | TIMEOUT_SOAK
 report    | Morning summary               | platform/report.sh      | RUN_REPORT     | always   | continue | TIMEOUT_REPORT

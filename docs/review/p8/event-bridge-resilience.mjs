@@ -217,10 +217,28 @@ try {
     '⚠️ RECORDING CONTINUED THROUGH THE OUTAGE — segments kept being written',
     `${healthySegments} → ${outageSegments} segment(s)`,
   );
+  /*
+   * ⚠️ Against the deployment's OWN bound, not a constant. A check written as "depth stayed under
+   * 64" passes on a publisher configured at 256 whose eviction has been removed — it would be
+   * measuring the number in the script rather than the behaviour of the bridge.
+   */
+  const bound = outage.queuePerCamera ?? 16;
   check(
-    (outage.queueDepth ?? 0) <= 64,
+    (outage.queueDepth ?? 0) <= bound * Math.max(1, outage.activeCameras ?? 1),
     'the queue stayed bounded rather than growing with the outage',
-    `depth ${outage.queueDepth}`,
+    `depth ${outage.queueDepth} against a bound of ${bound} per camera`,
+  );
+  /*
+   * ⚠️ The bridge's stated policy under pressure is that events are DROPPED and recording is not
+   * touched. Nothing verified the dropping half. Without this, a publisher that quietly accumulated
+   * every result of an outage would satisfy every other check on this page — it publishes when the
+   * broker returns, recording never stopped — while holding an unbounded amount of memory in the
+   * one process that must not run out of it.
+   */
+  check(
+    (outage.droppedQueueFull ?? 0) > (healthy.droppedQueueFull ?? 0),
+    '⚠️ and SHED load rather than accumulating it — results were dropped, by policy',
+    `${healthy.droppedQueueFull} → ${outage.droppedQueueFull} dropped`,
   );
   console.log('');
 
@@ -256,10 +274,19 @@ try {
     'and failures stopped once the broker was actually accepting',
     `${settled.failed} → ${stable.failed} total`,
   );
+  /*
+   * ⚠️ `offered`, not `published` — and the difference is the whole point of the metric split.
+   *
+   * `published` counts results that CARRIED DETECTIONS. The fixture clip has stretches with nobody
+   * in frame, so an eight-second window can legitimately publish nothing while the bridge is
+   * working perfectly; this check failed exactly that way, measured, and the conclusion "the
+   * publisher stalled after recovery" would have been wrong. What must still be moving after the
+   * broker returns is the bridge being FED and accepting work, which is `offered`.
+   */
   check(
-    (stable.published ?? 0) > (settled.published ?? 0),
-    'while publishing kept going',
-    `${settled.published} → ${stable.published} result(s)`,
+    (stable.offered ?? 0) > (settled.offered ?? 0),
+    'while the bridge kept accepting work',
+    `${settled.offered} → ${stable.offered} result(s) offered, ${settled.published} → ${stable.published} published`,
   );
 
   const started = new Date(Date.now() - PHASE * 1000).toISOString();

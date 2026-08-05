@@ -236,6 +236,17 @@ try {
   check(published > 0, 'results were published to the bus', `${published} result(s)`);
   check(events > 0, 'and they carried detections, which become events', `${events} detection(s)`);
   check(after.brokerStatus === 'up', 'the broker acknowledged them', after.brokerStatus);
+  /*
+   * ⚠️ The fail-closed gate, asserted from the producer's side. A malformed result reaching the bus
+   * would be dead-lettered by `services/events` — after a broker round trip, in another service's
+   * log, where nobody looking at media would find it. This number staying flat is what says the
+   * refusal happened HERE.
+   */
+  check(
+    (after.rejected ?? 0) === (before.rejected ?? 0),
+    'nothing was rejected — every result satisfied the contract at the producer',
+    `${after.rejected} total rejection(s)`,
+  );
   check((after.failed ?? 0) === (before.failed ?? 0), 'nothing failed every attempt', `${after.failed} total`);
   check(
     typeof after.publishMsAvg === 'number',
@@ -332,15 +343,34 @@ try {
 
   /* ── 6 · ordering ──────────────────────────────────────────────────────────────────────────── */
   console.log('6 · ordering — per camera, deterministic');
-  const seqs = envelopes
-    .map((e) => e.payload?.frameSeq)
-    .filter((n) => typeof n === 'number')
-    .reverse(); // the query returns newest first
+  const inCaptureOrder = [...envelopes].reverse(); // the query returns newest-first by occurredAt
+  const seqs = inCaptureOrder.map((e) => e.payload?.frameSeq).filter((n) => typeof n === 'number');
   const monotonic = seqs.every((n, i) => i === 0 || n >= seqs[i - 1]);
   check(
     seqs.length > 1 && monotonic,
-    '⚠️ frame sequences never go backwards for this camera',
+    'frame sequences never go backwards for this camera',
     monotonic ? `${seqs.length} event(s), ${seqs[0]} → ${seqs[seqs.length - 1]}` : `out of order: ${seqs.join(',')}`,
+  );
+
+  /*
+   * ⚠️ **The check above cannot fail, and finding that out is why this one exists.**
+   *
+   * The query sorts by `occurredAt`, which for one stream rises with the frame sequence — so the
+   * sequence comes back sorted no matter what order the publisher sent it in. It was measuring the
+   * store's ORDER BY, not the bridge. A mutation that removed the ordering gate entirely left it
+   * green.
+   *
+   * `ingestedAt` is stamped by the events service on arrival, so it records DELIVERY order. If a
+   * stale result was published after a newer one, the older frame arrives later — an event with an
+   * earlier `occurredAt` carrying a later `ingestedAt`. Walking capture order and requiring arrival
+   * order to rise with it is the assertion the publisher's gate is actually responsible for.
+   */
+  const arrivals = inCaptureOrder.map((e) => Date.parse(e.ingestedAt)).filter(Number.isFinite);
+  const inversions = arrivals.filter((t, i) => i > 0 && t < arrivals[i - 1]).length;
+  check(
+    arrivals.length > 1 && inversions === 0,
+    '⚠️ and they were DELIVERED in that order — no stale result overtook a newer one',
+    inversions === 0 ? `${arrivals.length} arrival(s), none out of order` : `${inversions} inversion(s)`,
   );
   console.log('');
 

@@ -1,0 +1,129 @@
+{
+  "at": "2026-08-05T23:09:38.470Z",
+  "results": [
+    {
+      "mutation": "disabled",
+      "red": [
+        "the event bridge is enabled in this deployment",
+        "the publisher reports its own version",
+        "results were published to the bus — 0 result(s)",
+        "and they carried detections, which become events — 0 detection(s)",
+        "the broker acknowledged them"
+      ],
+      "named": [
+        "the event bridge is enabled in this deployment"
+      ],
+      "stray": [
+        "the publisher reports its own version",
+        "results were published to the bus — 0 result(s)",
+        "and they carried detections, which become events — 0 detection(s)",
+        "the broker acknowledged them"
+      ]
+    },
+    {
+      "mutation": "retry",
+      "red": [
+        "and were retried within the bound before giving up — 0 retry attempt(s)"
+      ],
+      "named": [
+        "and were retried within the bound before giving up"
+      ],
+      "stray": []
+    },
+    {
+      "mutation": "broker",
+      "red": [
+        "results were published to the bus — 0 result(s)",
+        "and they carried detections, which become events — 0 detection(s)",
+        "the broker acknowledged them — unknown",
+        "publish latency is now measured rather than absent — still null",
+        "envelopes were normalized and persisted — 0 event(s)",
+        "subjects carry a track id — 0/0",
+        "⚠️ and an IDENTITY id — every tracked subject, not some — 0/0 tracked subject(s)",
+        "⚠️ one correlation id per FRAME, not per detection — 0 frame(s) → 0 correlation id(s)",
+        "frame sequences never go backwards for this camera — 0 event(s), undefined → undefined",
+        "⚠️ and they were DELIVERED in that order — no stale result overtook a newer one — 0 arrival(s), none out of order",
+        "⚠️ the rule engine EVALUATED the events the bridge produced — 0 evaluation(s)",
+        "⚠️ and matched them — a frame became an incident candidate — 0 match(es), 0 failure(s)"
+      ],
+      "named": [
+        "the broker acknowledged them"
+      ],
+      "stray": [
+        "results were published to the bus — 0 result(s)",
+        "and they carried detections, which become events — 0 detection(s)",
+        "publish latency is now measured rather than absent — still null",
+        "envelopes were normalized and persisted — 0 event(s)",
+        "subjects carry a track id — 0/0",
+        "⚠️ and an IDENTITY id — every tracked subject, not some — 0/0 tracked subject(s)",
+        "⚠️ one correlation id per FRAME, not per detection — 0 frame(s) → 0 correlation id(s)",
+        "frame sequences never go backwards for this camera — 0 event(s), undefined → undefined",
+        "⚠️ and they were DELIVERED in that order — no stale result overtook a newer one — 0 arrival(s), none out of order",
+        "⚠️ the rule engine EVALUATED the events the bridge produced — 0 evaluation(s)",
+        "⚠️ and matched them — a frame became an incident candidate — 0 match(es), 0 failure(s)"
+      ]
+    },
+    {
+      "mutation": "ordering",
+      "red": [
+        "⚠️ the camera was re-enabled and events RESUMED — the ordering gate did not strand it — 88 → 88 result(s)",
+        "and most results got through rather than being dropped as stale — 32 dropped vs 0 published"
+      ],
+      "named": [
+        "⚠️ the camera was re-enabled and events RESUMED"
+      ],
+      "stray": [
+        "and most results got through rather than being dropped as stale — 32 dropped vs 0 published"
+      ]
+    },
+    {
+      "mutation": "schema",
+      "red": [
+        "results were published to the bus — 0 result(s)",
+        "and they carried detections, which become events — 0 detection(s)",
+        "the broker acknowledged them — unknown",
+        "nothing was rejected — every result satisfied the contract at the producer — 37 total rejection(s)",
+        "publish latency is now measured rather than absent — still null",
+        "envelopes were normalized and persisted — 0 event(s)",
+        "subjects carry a track id — 0/0",
+        "⚠️ and an IDENTITY id — every tracked subject, not some — 0/0 tracked subject(s)",
+        "⚠️ one correlation id per FRAME, not per detection — 0 frame(s) → 0 correlation id(s)",
+        "frame sequences never go backwards for this camera — 0 event(s), undefined → undefined",
+        "⚠️ and they were DELIVERED in that order — no stale result overtook a newer one — 0 arrival(s), none out of order",
+        "⚠️ the rule engine EVALUATED the events the bridge produced — 0 evaluation(s)",
+        "⚠️ and matched them — a frame became an incident candidate — 0 match(es), 0 failure(s)"
+      ],
+      "named": [
+        "nothing was rejected"
+      ],
+      "stray": [
+        "results were published to the bus — 0 result(s)",
+        "and they carried detections, which become events — 0 detection(s)",
+        "the broker acknowledged them — unknown",
+        "publish latency is now measured rather than absent — still null",
+        "envelopes were normalized and persisted — 0 event(s)",
+        "subjects carry a track id — 0/0",
+        "⚠️ and an IDENTITY id — every tracked subject, not some — 0/0 tracked subject(s)",
+        "⚠️ one correlation id per FRAME, not per detection — 0 frame(s) → 0 correlation id(s)",
+        "frame sequences never go backwards for this camera — 0 event(s), undefined → undefined",
+        "⚠️ and they were DELIVERED in that order — no stale result overtook a newer one — 0 arrival(s), none out of order",
+        "⚠️ the rule engine EVALUATED the events the bridge produced — 0 evaluation(s)",
+        "⚠️ and matched them — a frame became an incident candidate — 0 match(es), 0 failure(s)"
+      ]
+    },
+    {
+      "mutation": "queue",
+      "red": [
+        "the queue stayed bounded rather than growing with the outage — depth 32 against a bound of 16 per camera",
+        "⚠️ and SHED load rather than accumulating it — results were dropped, by policy — 0 → 0 dropped"
+      ],
+      "named": [
+        "⚠️ and SHED load rather than accumulating it"
+      ],
+      "stray": [
+        "the queue stayed bounded rather than growing with the outage — depth 32 against a bound of 16 per camera"
+      ]
+    }
+  ],
+  "restoredGreen": true
+}

@@ -30,6 +30,8 @@ export interface EventBridgeStats {
   /** Results that exhausted every attempt. ⚠️ The only one of these that is a fault. */
   failed: number;
   queueDepth: number;
+  /** The bound the depth is judged against — shown beside it, because a depth alone says nothing. */
+  queuePerCamera: number;
   activeCameras: number;
   inflight: number;
   publishMsAvg: number | null;

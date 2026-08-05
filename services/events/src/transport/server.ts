@@ -9,7 +9,8 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { ServiceConfig } from '../config/env.js';
 import { ReadinessRegistry } from '../application/readiness.js';
 import type { EventQueryService } from '../application/event-query-service.js';
-import { EventMetrics } from '../application/metrics.js';
+import type { EventIngestService } from '../application/event-ingest-service.js';
+import { EventIngestMetrics, EventMetrics } from '../application/metrics.js';
 import { registerSecurity } from './plugins/security.js';
 import { registerMetrics } from './plugins/observability.js';
 import { createAuth, registerPrincipal } from './plugins/auth.js';
@@ -22,6 +23,13 @@ import { registerEventRoutes } from './routes/events.js';
 export interface BuildServerOptions {
   config: ServiceConfig;
   queryService: EventQueryService;
+  /**
+   * The ingest consumer, so its counters can be registered here.
+   *
+   * ⚠️ Optional, because `app.inject()` tests build a server with no backbone attached. A required
+   * dependency would force every read-side test to construct a consumer it never drives.
+   */
+  ingestService?: EventIngestService;
   startedAt?: Date;
   readiness?: ReadinessRegistry;
 }
@@ -66,6 +74,8 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
   registerRootRoute(app, { name: config.serviceName, version: config.serviceVersion, startedAt });
   // Lookup metrics can only be created once the registry exists (rec 4) — operational only.
   opts.queryService.useMetrics(new EventMetrics(registry));
+  // Ingest counters, same reason and same timing (P-8 Phase 5).
+  opts.ingestService?.useMetrics(new EventIngestMetrics(registry));
   registerEventRoutes(app, { service: opts.queryService, auth });
 
   return { app, readiness };
