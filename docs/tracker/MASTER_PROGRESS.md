@@ -206,6 +206,54 @@ _Last updated: 2026-08-05 · Claude_
   configured, not calibrated), **TD-67** (tracking state does not survive a restart).
   [C-14d](../project/PRODUCT_CAPABILITY_MATRIX.md) · [ADR-0038](../adr/ADR-0038-track-identity-across-gaps.md).
 
+- **P-8 Phase 4 FREEZE · permanent tracking metrics 🔒 frozen (2026-08-05)** — the hardening pass
+  that closed Phase 4. Eleven permanent metrics were commissioned; the work was discovering that
+  **three of them cannot be measured on a live camera at all**. `identitySwitches`,
+  `reidentificationSuccessRate` and `falseRecoveries` each ask whether the tracker was _right_, and
+  being right is defined against which real object each identity belonged to — a record no camera
+  carries. On the frame a switch happens, two people are in the scene and two identities continue;
+  nothing observable separates the correct assignment from the exchanged one. ⚠️ **They are therefore
+  reported as `null` with the reason attached, never as `0`, never omitted, and never estimated from
+  fragmentation** ([ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md), scoped
+  **platform-wide** — the Rule Engine's precision and recall are the same kind of quantity). Each of
+  the three obvious implementations fails in the same direction: `0` shows a verified-looking clean
+  record that nothing verified; omitting the field makes an honest absence indistinguishable from a
+  broken exporter; and an estimate is a guess wearing the name of a measurement. Prometheus has no
+  null, so the three series are **absent** and `inference_tracking_ground_truth_available 0` is
+  emitted in their place — a dashboard can tell "not measurable here" from "the scrape failed", and
+  an alert on the missing series cannot be written by accident. The eight measurable metrics are
+  real: occlusions **absorbed** (the identity kept its `trackId`, so no consumer saw a gap) counted
+  **separately** from re-entries (a new id linked to a departed one), crossing **episodes** counted
+  once per meeting rather than once per frame, and re-entry **opportunities** as the denominator the
+  link count means anything against. **The numbers do exist** — the authored scenarios can answer
+  what a camera cannot, because the trajectories were written down first, so the crossing clip counts
+  identity switches by lane change and false recoveries by any link formed in a clip where nobody
+  left. Six accuracy metrics now land in `tracking-truth.json`, are rendered in their own report
+  section, and carry their caveat into the ledger: authored synthetic clips, never real CCTV (L-1).
+  **Per-camera metrics** at `/tracking/cameras`, tenant-scoped behind the same `track:read`, with
+  lifetime counters held on the tracker rather than on the per-camera state — ⚠️ under Camera
+  Processing Assignment going quiet becomes an operator action, and counters living with the state
+  would make switching AI off on a camera **erase everything it had ever reported**. **Deterministic
+  replay** (`track_replay.py`): the tracker's whole input is (frame context, detections), so
+  recording that pair reproduces a run bit-for-bit with no camera, no model and no RTSP — comparing
+  the _shape_ of identity rather than literal ids, because track ids embed a session id and a
+  raw-string comparison would fail every time and prove nothing. **Persistent history**
+  (`scripts/nightly/history.mjs`): run directories are pruned after `KEEP_RUNS` days, so a trend
+  walking them has a one-month memory however long the platform has run; an append-only ledger sits
+  **outside** the run root, beyond the pruner's reach by placement rather than by an exclusion
+  somebody has to remember. ⚠️ **The sizing policy is now enforced by the framework rather than by
+  memory** — the report counts the last three recorded runs and prints `Sizing: PROVISIONAL` unless
+  they agree, so one good night cannot promote a number and a disagreeing night demotes it. Frozen:
+  **2 cameras supported, 4 provisional, nothing published until three independent runs agree.**
+  **Defects found by running it:** a camera that had delivered one frame reported **42,328 fps** —
+  the window spans `frames - 1` intervals, not `frames`, and dividing by the microseconds that single
+  frame took produced the number; and the Track/TrackingStats schema versions were declared twice in
+  two languages with **nothing comparing them**, so `perception-boundary.mjs` gained a §E check
+  (a runtime stamping `1.0` on a `1.1` document produces a consumer reading the wrong fields and
+  reports no error at all). Gate green: typecheck 28 · lint 20 · test 28 · build 19 · python
+  **1032** · contracts · import graph 0 violations.
+  [ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md).
+
 - **P-8 Phase 3H · production hardening ✅ complete, ⏳ awaiting review (2026-08-05)** — no new
   capability: the question was whether the inference platform is **sellable**, not whether it works.
   **Sizing is now measured and computed rather than estimated: 4 cameras per host at 2 fps on a

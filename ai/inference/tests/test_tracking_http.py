@@ -40,6 +40,16 @@ def _get(url, headers=None):
         return exc.code, json.loads(exc.read())
 
 
+def _get_text(url, headers=None):
+    """`/metrics` is Prometheus text, not JSON."""
+    req = urllib.request.Request(url, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310 - localhost test
+            return resp.status, resp.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read().decode("utf-8")
+
+
 def _post(url, body, headers):
     req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
     try:
@@ -151,9 +161,26 @@ class TrackingHttpTests(unittest.TestCase):
 
     # --- fail-closed -----------------------------------------------------------
 
+    def test_per_camera_route_reports_each_camera(self):
+        self.feed(tenant="tnt_cams", camera="cam_one")
+        self.feed(tenant="tnt_cams", camera="cam_two")
+        status, body = _get(self.base("/tracking/cameras"), {"x-tenant-id": "tnt_cams"})
+        self.assertEqual(status, 200)
+        rows = {c["cameraId"]: c for c in body["data"]["cameras"]}
+        self.assertEqual(sorted(rows), ["cam_one", "cam_two"])
+        self.assertGreaterEqual(rows["cam_one"]["framesTracked"], 1)
+        self.assertIn("trackingFps", rows["cam_one"])
+        self.assertIn("averageTrackingMs", rows["cam_one"])
+
+    def test_per_camera_route_never_shows_another_tenants_cameras(self):
+        self.feed(tenant="tnt_theirs", camera="cam_private")
+        _, body = _get(self.base("/tracking/cameras"), {"x-tenant-id": "tnt_ours"})
+        self.assertEqual(body["data"]["cameras"], [])
+        self.assertNotIn("cam_private", json.dumps(body))
+
     def test_every_tracking_route_requires_a_tenant(self):
         """⚠️ A read path that works without a tenant is one API change away from leaking movements."""
-        for path in ("/tracking", "/tracking/tracks", "/tracking/tracks/anything"):
+        for path in ("/tracking", "/tracking/cameras", "/tracking/tracks", "/tracking/tracks/anything"):
             status, body = _get(self.base(path))
             self.assertEqual(status, 400, f"{path} answered without a tenant")
             self.assertIn("x-tenant-id", body["error"]["message"])
@@ -185,6 +212,32 @@ class TrackingHttpTests(unittest.TestCase):
         self.assertGreaterEqual(tracking["stats"]["camerasTracked"], 1)
         # ⚠️ The whole payload must carry no tenant identifiers — this endpoint is not tenant-scoped.
         self.assertNotIn("tnt_runtime", json.dumps(body))
+
+    def test_prometheus_carries_tracking_and_omits_what_it_cannot_measure(self):
+        """⚠️ ADR-0039 in the one place it is hardest to honour: Prometheus has no null, so an
+        unmeasurable metric must be ABSENT. A zero here would be a verified-looking claim that the
+        deployment had never mistaken one person for another, which nothing checked."""
+        self.feed(tenant="tnt_prom", camera="cam_p")
+        status, text = _get_text(self.base("/metrics"))
+        self.assertEqual(status, 200)
+        for series in (
+            "inference_tracking_enabled",
+            "inference_tracking_active",
+            "inference_tracking_created_total",
+            "inference_tracking_terminated_total",
+            "inference_tracking_recovered_total",
+            "inference_tracking_occlusions_total",
+            "inference_tracking_crossings_total",
+            "inference_tracking_frames_total",
+            "inference_tracking_ground_truth_available",
+        ):
+            self.assertIn(f"\n{series} ", f"\n{text}", f"{series} is missing from /metrics")
+        for absent in ("identity_switch", "reidentification_success", "false_recover"):
+            self.assertNotIn(absent, text, f"a ground-truth metric was published as a number: {absent}")
+        self.assertIn("inference_tracking_ground_truth_available 0", text)
+        # No tenant or camera labels: this scrape is not tenant-scoped.
+        self.assertNotIn("tnt_prom", text)
+        self.assertNotIn("cam_p", text)
 
 
 class TrackingDisabledTests(unittest.TestCase):

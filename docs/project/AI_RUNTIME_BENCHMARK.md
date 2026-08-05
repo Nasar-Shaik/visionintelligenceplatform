@@ -120,6 +120,27 @@ one. That question is deferred to P-9 real-hardware validation, not answered her
 runtime under pressure drops whole frames; it does not quietly return worse answers on the frames it
 keeps. That distinction is the difference between a capacity limit and a correctness bug.
 
+### 🔒 FROZEN SIZING POLICY (P-8 Phase 4 freeze, 2026-08-05)
+
+| Status          | Cameras per host | May be quoted to a customer?                   |
+| --------------- | ---------------: | ---------------------------------------------- |
+| **Supported**   |            **2** | ✅ yes — 0.0 % loss in every run ever measured |
+| **Provisional** |            **4** | ❌ no — three runs disagree at this rung       |
+| Above 4         |                — | ❌ no — measured, never recommended            |
+
+**The rule: no sizing recommendation is published until three independent benchmark runs agree.**
+
+⚠️ **This policy is enforced by the framework, not by memory.** `scripts/nightly/report.mjs` reads
+the persistent ledger (`scripts/reports/history/benchmark.jsonl`), counts the last three recorded
+runs, and prints `Sizing: PROVISIONAL` unless all three agree on the same sustainable camera count.
+A single good night cannot promote a number, and a night that disagrees demotes it automatically. A
+policy nothing checks is a sentence in a document that a confident summary quietly contradicts.
+
+⚠️ **The ledger is deliberately outside the run root.** Run directories are pruned after `KEEP_RUNS`
+days, so a trend built by walking them has a one-month memory however long the platform has run.
+`scripts/reports/history/` is a sibling of `scripts/reports/nightly/`, which is what puts it beyond
+the pruner's reach — see [`scripts/nightly/history.mjs`](../../scripts/nightly/history.mjs).
+
 ### 🎯 Recommendation: **2 cameras** per host at 2 fps, CPU-only
 
 **⚠️ This number was lowered from 4 after the fourth rung failed to reproduce.** The ladder above is
@@ -227,6 +248,32 @@ Not a benchmark — a set of assertions, each with a written-down right answer. 
 ⚠️ **Composited sprites on a plain background, not real CCTV.** No motion blur, no lighting change,
 no perspective, no gait. [L-1](KNOWN_LIMITATIONS.md) stands. These prove the tracking logic on known
 input; tracker performance on real video is P-9's question.
+
+#### The six accuracy metrics, and why they exist only here
+
+The Phase 4 freeze made these machine-readable. Each run writes
+[`docs/review/p8/tracking-truth.json`](../review/p8/tracking-truth.json), the nightly report renders
+it in its own section, and `scripts/reports/history/tracking-truth.jsonl` keeps it indefinitely.
+
+| Metric                    | Scenario  | 1.0 means                                              |
+| ------------------------- | --------- | ------------------------------------------------------ |
+| `identityStability`       | walk      | one authored person produced exactly one identity      |
+| `occlusionRecovery`       | occlusion | the identity survived an **observed** gap              |
+| `reidentificationSuccess` | reentry   | the return was linked to the correct predecessor       |
+| `terminationCorrectness`  | reentry   | the departed identity was retired                      |
+| `crossingCorrectness`     | crossing  | both tracked, neither changed lane                     |
+| `identitySwitches`        | crossing  | _a count_ — 0 means no identity took the other's place |
+| `falseRecoveries`         | crossing  | _a count_ — 0 means no link was invented               |
+
+⚠️ **`identitySwitches` and `falseRecoveries` are the two `/tracking` reports as `null`**, and the
+crossing scenario is the only place on this platform they can be counted. It authors two people into
+two vertical lanes and states that nobody leaves — so a track that changes lane has taken the other
+person's identity, and any re-entry link formed is wrong by construction. On a live camera both
+events are invisible. See [ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md).
+
+⚠️ **A metric whose scenario did not run stays `null`, never 0.** The mutation harness runs subsets,
+and a subset scoring 1.0 on something it never exercised would be the exact failure this measures
+against.
 
 ---
 

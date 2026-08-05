@@ -2,6 +2,7 @@
  * Transport: the operator's view of object tracking (P-8 Phase 4).
  *
  *   GET /perception/tracking                    aggregate statistics for the caller's tenant
+ *   GET /perception/tracking/cameras            the same metrics, per camera
  *   GET /perception/tracking/tracks             live tracks (?cameraId= &state=)
  *   GET /perception/tracking/tracks/:trackId    one track plus its lifecycle timeline
  *
@@ -89,6 +90,20 @@ export function registerTrackingRoutes(app: FastifyInstance, deps: TrackingRoute
     { preHandler: deps.auth.authorize('track:read') },
     async (request, reply) =>
       reply.send(success(await unreachableAsAnswer(() => proxy(request, '/tracking')))),
+  );
+
+  /*
+   * ⚠️ `track:read`, the same permission as the tracks themselves, and deliberately not a weaker
+   * one. A per-camera row names a camera and says how many people it has seen — that is tenant
+   * data about a customer's premises, and a caller who may not read tracks may not read this
+   * either. It is the surface Camera Processing Assignment will build on, so the permission it
+   * inherits is the one that has to be right now rather than later.
+   */
+  app.get(
+    '/perception/tracking/cameras',
+    { preHandler: deps.auth.authorize('track:read') },
+    async (request, reply) =>
+      reply.send(success(await unreachableAsAnswer(() => proxy(request, '/tracking/cameras')))),
   );
 
   app.get<{ Querystring: { cameraId?: string; state?: string } }>(

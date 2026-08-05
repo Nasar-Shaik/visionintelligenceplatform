@@ -178,6 +178,47 @@ console.log(`\nperception boundary · ${files.length} TypeScript source(s) outsi
   );
 }
 
+/*
+ * ### §E the two languages agree on what a document IS
+ *
+ * ⚠️ Schema versions are declared twice — once in `packages/contracts` and once in the Python
+ * runtime that produces the payloads — because the runtime is stdlib-only and cannot import the
+ * TypeScript. Two constants with one meaning drift, and this one drifts SILENTLY: a runtime stamping
+ * `1.0` on a document that is really `1.1` produces a consumer that reads the wrong fields and
+ * reports no error at all. Nothing else in the build compares them, so this does.
+ */
+{
+  const mirrors = [
+    {
+      what: 'Track',
+      ts: ['packages/contracts/src/tracking/tracking.ts', /TRACK_SCHEMA_VERSION = '([^']+)'/],
+      py: ['ai/inference/tracking_contracts.py', /^TRACK_SCHEMA_VERSION = "([^"]+)"/m],
+    },
+    {
+      what: 'TrackingStats',
+      ts: [
+        'packages/contracts/src/tracking/tracking.ts',
+        /TRACKING_STATS_SCHEMA_VERSION = '([^']+)'/,
+      ],
+      py: ['ai/inference/runtime_tracking.py', /^TRACKING_STATS_SCHEMA_VERSION = "([^"]+)"/m],
+    },
+  ];
+
+  for (const { what, ts, py } of mirrors) {
+    const read = ([file, pattern]) => {
+      const found = readFileSync(join(ROOT, file), 'utf8').match(pattern);
+      return found ? found[1] : null;
+    };
+    const left = read(ts);
+    const right = read(py);
+    check(
+      left !== null && right !== null && left === right,
+      `§E ${what} schema version agrees across TypeScript and Python`,
+      left === right ? left : `contracts=${left ?? 'not found'} runtime=${right ?? 'not found'}`,
+    );
+  }
+}
+
 console.log(
   failures === 0
     ? '\nperception boundary: OK — the runtime is the only thing that knows how a model works.\n'

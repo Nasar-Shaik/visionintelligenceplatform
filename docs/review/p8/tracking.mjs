@@ -30,6 +30,19 @@
  * left and right have swapped and position alone cannot distinguish a correct tracker from one that
  * exchanged the identities. Height does not swap.
  *
+ * ### ⚠️ This file is the platform's ONLY source of accuracy numbers
+ *
+ * `/tracking` reports identity switches, re-identification success and false recoveries as `null`,
+ * because on a live camera they are unanswerable (ADR-0039). They are answerable HERE, and only
+ * here, because the trajectories were written down first. The run therefore emits
+ * `tracking-truth.json` — six measurements the nightly report uses to fill those cells, carrying
+ * the caveat that they certify the tracking LOGIC against authored clips and never the platform
+ * against real CCTV (L-1).
+ *
+ * ⚠️ A metric whose scenario did not run stays `null`. The mutation harness runs subsets, and a
+ * subset that scored 1.0 on something it never exercised would be precisely the lie this file
+ * exists to prevent.
+ *
  * ### ⚠️ Scenarios run ONE AT A TIME
  *
  * Measured capacity is two cameras and four is provisional ([AI_RUNTIME_BENCHMARK]). Running four
@@ -51,6 +64,7 @@ const NETWORK = 'vip-prod_default';
 const TAG = 'p8-track';
 const FIXTURE_DIR = join(ROOT, 'infra/docker/fixtures/media/tracking');
 const OUT = process.env.OUT ?? join(ROOT, 'docs/review/p8/tracking-samples.json');
+const TRUTH_OUT = process.env.TRUTH_OUT ?? join(ROOT, 'docs/review/p8/tracking-truth.json');
 /** Seconds of clip to observe per scenario, and how often to read the live tracks. */
 const OBSERVE = Number(process.env.OBSERVE ?? 26);
 const POLL_MS = 1000;
@@ -263,6 +277,35 @@ const wanted = (process.env.SCENARIOS ?? 'walk,occlusion,reentry,crossing')
 
 const results = {};
 
+/**
+ * The six ground-truth measurements, and the ONLY place on this platform they can be made.
+ *
+ * ⚠️ **Every one of these is unanswerable on a live camera**, which is why `/tracking` reports three
+ * of them as `null` (ADR-0039). They are answerable here for exactly one reason: the trajectories
+ * were written down before the run. `ground-truth.json` says one person walks left to right, that
+ * nobody leaves during the crossing clip, that the subject in the re-entry clip genuinely departs.
+ * Against that, "was the tracker right?" has an answer.
+ *
+ * ⚠️ **A metric whose scenario did not run stays `null`.** The mutation harness runs subsets, and a
+ * subset that scored 1.0 on a metric nothing exercised would be the exact failure this file exists
+ * to prevent.
+ */
+const measured = {
+  identityStability: null,
+  reidentificationSuccess: null,
+  occlusionRecovery: null,
+  crossingCorrectness: null,
+  identitySwitches: null,
+  terminationCorrectness: null,
+  falseRecoveries: null,
+};
+const basis = {};
+
+const record = (metric, value, scenario, detail) => {
+  measured[metric] = value;
+  basis[metric] = { scenario, detail };
+};
+
 try {
   // ── 1 · a continuously visible object keeps ONE identity ──────────────────────────────────────
   if (wanted.includes('walk')) {
@@ -292,6 +335,13 @@ try {
      */
     check(last?.motion?.headingLabel === 'right', 'the measured direction matches the authored one',
       last?.motion?.headingLabel ?? 'not measured');
+    /*
+     * ⚠️ Ground truth: the clip contains exactly ONE person. So the ideal identity count is 1, and
+     * anything above it is fragmentation measured against a known answer rather than guessed at
+     * from a ratio. 1.0 is perfect; 0.5 means the person became two identities.
+     */
+    record('identityStability', ids.length > 0 ? Number((1 / ids.length).toFixed(4)) : 0,
+      'walk', `1 authored person → ${ids.length} identity(ies)`);
     console.log('');
   }
 
@@ -312,6 +362,13 @@ try {
       everLost ? 'the engine held the identity open' : 'the subject was never lost; the pillar hid nothing');
     check(ids.length === 1, 'the identity SURVIVES the occlusion — one id across the gap',
       ids.length === 1 ? ids[0] : `${ids.length} ids: ${ids.join(', ')}`);
+    /*
+     * ⚠️ Scored 0 when the pillar hid nothing, NOT 1. A run where the occlusion never happened has
+     * not demonstrated recovery — it has demonstrated a walk — and crediting it would let a broken
+     * fixture certify the mechanism it was supposed to test.
+     */
+    record('occlusionRecovery', everLost && ids.length === 1 ? 1 : 0, 'occlusion',
+      everLost ? `${ids.length} identity(ies) across an observed gap` : 'the subject was never lost');
     console.log('');
   }
 
@@ -379,6 +436,29 @@ try {
         `${gapSeconds.toFixed(1)}s absent against a ${budget}s re-entry window — no link is EXPECTED here, ` +
           'and this scenario is measuring the budget rather than the linking logic');
     }
+
+    /*
+     * ⚠️ Two DIFFERENT questions, scored separately.
+     *
+     * Termination correctness asks whether the departed identity was retired — the subject left, so
+     * a track that stayed alive is wrong regardless of what happened next.
+     *
+     * Re-identification success asks whether the return was linked to the right predecessor. It is
+     * scored only when a link was even eligible: an absence longer than the engine's window means
+     * NO link is the correct answer, and scoring that as a failure would penalise the tracker for
+     * obeying its own configuration. `null` — not 0 — when the scenario could not pose the question.
+     */
+    record('terminationCorrectness', firstGone && ids.length >= 2 ? 1 : 0, 'reentry',
+      firstGone ? `${ids.length} id(s), the first retired on departure` : 'the subject never left');
+    if (gapSeconds !== null && gapSeconds > budget) {
+      basis.reidentificationSuccess = {
+        scenario: 'reentry',
+        detail: `not eligible — ${gapSeconds.toFixed(1)}s absence exceeds the ${budget}s window`,
+      };
+    } else if (ids.length >= 2) {
+      record('reidentificationSuccess', returned?.identityId === ids[0] ? 1 : 0, 'reentry',
+        `identityId=${returned?.identityId ?? 'absent'} against predecessor ${ids[0]}`);
+    }
     console.log('');
   }
 
@@ -420,6 +500,54 @@ try {
       swapped === 0
         ? `vertical spread ${spans.map((s) => s.span.toFixed(3)).join(', ')}`
         : `${swapped} track(s) crossed between lanes: ${JSON.stringify(spans)}`);
+
+    /*
+     * ⚠️ **`identitySwitches` as an actual COUNT** — the metric `/tracking` reports as `null`. It is
+     * countable here and nowhere else: the clip authored two people into two vertical lanes, so a
+     * track that changes lane has taken the other person's identity. On a live camera the same
+     * event is invisible.
+     */
+    record('identitySwitches', swapped, 'crossing', `${spans.length} track(s) examined by lane`);
+    record('crossingCorrectness', ids.length >= 2 && swapped === 0 ? 1 : 0, 'crossing',
+      `${ids.length} identity(ies), ${swapped} lane change(s)`);
+    /*
+     * ⚠️ **`falseRecoveries` is reported `null` here, and finding out why was the point.**
+     *
+     * The intent was sound: nobody leaves and returns in this clip, so any re-entry link formed
+     * would be wrong by construction. The check was then written, ran green — and a mutation that
+     * opened the re-entry gate to 10 000 seconds and ten frame-widths **left it green**.
+     *
+     * The reason is that a link needs a *departed* identity to link back TO. Both subjects appear at
+     * the start of this clip and neither is retired inside the window, so the resolver never holds a
+     * candidate and no gate width can produce a link. The check could not fail. A check that cannot
+     * fail is worth less than no check, because it reports the same green as a real one.
+     *
+     * So the count is recorded only when the scenario actually presented the opportunity, and is
+     * `null` otherwise — ADR-0039 applied to a metric of this file's own making. See
+     * L-45 in KNOWN_LIMITATIONS; measuring it needs a fixture where a genuine stranger arrives after a departure, and
+     * ⚠️ authoring one is not free: under L-42 re-entry is appearance-blind, so a stranger arriving
+     * near the exit point inside the window SHOULD link, and a naive clip would assert against
+     * documented correct behaviour.
+     */
+    const linked = observations
+      .flatMap((o) => o.tracks)
+      .filter((t) => (t.recoveries ?? 0) > 0 || t.precededBy != null)
+      .map((t) => t.trackId);
+    const departures = observations.filter(
+      (o, i) => i > 0 && o.tracks.length < observations[i - 1].tracks.length,
+    ).length;
+    if (departures > 0) {
+      record('falseRecoveries', new Set(linked).size, 'crossing',
+        `${departures} departure(s) created a re-entry opportunity in a clip where nobody returns`);
+      check(new Set(linked).size === 0, 'no FALSE re-entry link was formed — nobody left this clip',
+        linked.length === 0 ? 'no track claimed a predecessor' : [...new Set(linked)].join(', '));
+    } else {
+      basis.falseRecoveries = {
+        scenario: 'crossing',
+        detail: 'not measurable — no identity was retired, so no link could form either way',
+      };
+      console.log('  · falseRecoveries not measurable here — nobody departed, so no link was possible');
+    }
     console.log('');
   }
 
@@ -453,7 +581,49 @@ writeFileSync(
   )}\n`,
 );
 
+/*
+ * ⚠️ A SEPARATE file, and separate on purpose. `tracking-samples.json` is a record of a run;
+ * this is the platform's only source of accuracy numbers, and the nightly report reads it to fill
+ * the three cells `/tracking` reports as `null`. Keeping them apart means a report can never
+ * accidentally source an accuracy figure from a live runtime's statistics.
+ */
+writeFileSync(
+  TRUTH_OUT,
+  `${JSON.stringify(
+    {
+      at: new Date().toISOString(),
+      scenariosRun: wanted,
+      /*
+       * ⚠️ Carried with the numbers so nobody has to go looking for it. These are measurements
+       * against AUTHORED clips — synthetic sprites on a plain background, with trajectories written
+       * down in advance. They say the tracking logic is correct on the scenarios it was given. They
+       * do NOT say what the tracker does on real CCTV; no camera has ever been connected (L-1).
+       */
+      caveat:
+        'measured against authored synthetic clips, not real CCTV. These certify the tracking ' +
+        'logic against known trajectories — never the platform against real footage (L-1).',
+      metrics: measured,
+      basis,
+    },
+    null,
+    2,
+  )}\n`,
+);
+
+console.log('');
+console.log('6 · ground truth — the questions a live camera cannot answer');
+for (const [metric, value] of Object.entries(measured)) {
+  const where = basis[metric];
+  console.log(
+    value === null
+      ? `  · ${metric} — not measured${where ? ` (${where.detail})` : ' (scenario did not run)'}`
+      : `  ✓ ${metric} = ${value}${where ? ` — ${where.detail}` : ''}`,
+  );
+}
+console.log('');
+
 console.log(`samples → ${OUT.replace(`${ROOT}/`, '')}`);
+console.log(`ground truth → ${TRUTH_OUT.replace(`${ROOT}/`, '')}`);
 console.log(
   failures === 0
     ? `\ntracking holds identity across all ${wanted.length} authored scenarios\n`

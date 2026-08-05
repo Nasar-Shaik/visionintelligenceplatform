@@ -262,6 +262,24 @@ try {
       identityStability: created > 0 ? Number((Math.min(cameras, created) / created).toFixed(3)) : null,
       trackingMsAvg: t1.averageTrackingMs ?? null,
       outOfOrderFrames: (t1.outOfOrderFrames ?? 0) - (identityBase.outOfOrderFrames ?? 0),
+      // --- the permanent tracking metrics, differenced against this rung's baseline -------------
+      occlusionsSurvived: (t1.occlusionsSurvived ?? 0) - (identityBase.occlusionsSurvived ?? 0),
+      crossings: (t1.crossings ?? 0) - (identityBase.crossings ?? 0),
+      reentryOpportunities: (t1.reentryOpportunities ?? 0) - (identityBase.reentryOpportunities ?? 0),
+      removedTracks: (t1.removedTracks ?? 0) - (identityBase.removedTracks ?? 0),
+      averageTrackLifetimeSeconds: t1.averageTrackLifetimeSeconds ?? null,
+      averageTrackAgeFrames: t1.averageTrackAgeFrames ?? null,
+      fragmentation: t1.fragmentation ?? null,
+      /*
+       * ⚠️ Carried as `null`, deliberately, on EVERY rung. This ladder runs against live streams, so
+       * it is as blind to identity switches as production is — one walking person per camera tells
+       * you how many identities appeared, never whether two were exchanged. The numbers exist in
+       * `tracking-truth.json`, from the authored scenarios. Emitting the keys keeps the shape
+       * complete; filling them from this ladder would be inventing accuracy. See ADR-0039.
+       */
+      identitySwitches: null,
+      reidentificationSuccessRate: null,
+      falseRecoveries: null,
       runtimeCpu: Number(cpuPeak.toFixed(1)),
       runtimeMemMb: Number(memPeak.toFixed(1)),
       mediaCpu: Number(mediaUsage.cpu.toFixed(1)),
@@ -326,7 +344,39 @@ check(
   costly ? `${costly.trackingMsAvg}ms at ${costly.cameras} cameras` : `≤ ${Math.max(...rows.map((r) => r.trackingMsAvg ?? 0)).toFixed(3)}ms per frame`,
 );
 
-writeFileSync(OUT, `${JSON.stringify({ at: new Date().toISOString(), windowSeconds: WINDOW, rows }, null, 2)}\n`);
+writeFileSync(
+  OUT,
+  `${JSON.stringify(
+    {
+      at: new Date().toISOString(),
+      windowSeconds: WINDOW,
+      /*
+       * ⚠️ The sizing policy travels WITH the measurements, because the two get separated. A table
+       * of camera counts read on its own invites "it did 16, so sell 16" — and this ladder's rungs
+       * are a synthetic clip that is far cheaper to decode than a real scene. The supported number
+       * is 2. See docs/project/AI_RUNTIME_BENCHMARK.md.
+       */
+      sizingPolicy: {
+        supported: 2,
+        provisional: 4,
+        rule: 'no sizing recommendation is published until three independent runs agree',
+        note: 'this ladder measures IDENTITY under load, not the supported camera count',
+      },
+      /*
+       * ⚠️ Named, not filled. This ladder is as blind to identity switching as production is; the
+       * numbers live in tracking-truth.json, from clips whose trajectories were authored first.
+       */
+      groundTruth: {
+        available: false,
+        reason: 'a live ladder cannot know which real object each identity belonged to',
+        measuredBy: 'docs/review/p8/tracking-truth.json',
+      },
+      rows,
+    },
+    null,
+    2,
+  )}\n`,
+);
 console.log(`\nsamples → ${OUT.replace(`${ROOT}/`, '')}`);
 console.log(failures === 0 ? '\ntracking capacity measured\n' : `\n${failures} check(s) failed\n`);
 process.exit(failures === 0 ? 0 : 1);

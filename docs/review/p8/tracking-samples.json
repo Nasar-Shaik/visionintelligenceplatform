@@ -1,5 +1,5 @@
 {
-  "at": "2026-08-05T17:28:13.176Z",
+  "at": "2026-08-05T18:39:31.610Z",
   "observeSeconds": 26,
   "groundTruth": [
     {
@@ -50,66 +50,80 @@
   "results": {
     "walk": {
       "ids": [
-        "trk_cam_0924882087e143ee803b5434a5e0ff39_live-tnt_demo_retail-cam_0924882087e143ee803b5434a5e0ff39_1"
+        "trk_cam_8de6767b973442d2a07545725e874402_live-tnt_demo_retail-cam_8de6767b973442d2a07545725e874402_1"
       ],
-      "observations": 25,
+      "observations": 24,
       "tracked": 21
     },
     "occlusion": {
       "ids": [
-        "trk_cam_4b9e3af3f74c4307990a3be1061c6026_live-tnt_demo_retail-cam_4b9e3af3f74c4307990a3be1061c6026_1"
+        "trk_cam_049492508d97423b80a52a7a400fb141_live-tnt_demo_retail-cam_049492508d97423b80a52a7a400fb141_1"
       ],
       "everLost": true,
-      "observations": 25,
+      "observations": 24,
       "tracked": 20
     },
     "reentry": {
       "ids": [
-        "trk_cam_c4ce0516e8104a6b874c220994b8893e_live-tnt_demo_retail-cam_c4ce0516e8104a6b874c220994b8893e_1",
-        "trk_cam_c4ce0516e8104a6b874c220994b8893e_live-tnt_demo_retail-cam_c4ce0516e8104a6b874c220994b8893e_2"
+        "trk_cam_d467f4fe424d43049af586329a2e6867_live-tnt_demo_retail-cam_d467f4fe424d43049af586329a2e6867_1",
+        "trk_cam_d467f4fe424d43049af586329a2e6867_live-tnt_demo_retail-cam_d467f4fe424d43049af586329a2e6867_2"
       ],
       "firstGone": true,
       "linked": true,
-      "precededBy": "trk_cam_c4ce0516e8104a6b874c220994b8893e_live-tnt_demo_retail-cam_c4ce0516e8104a6b874c220994b8893e_1",
+      "precededBy": "trk_cam_d467f4fe424d43049af586329a2e6867_live-tnt_demo_retail-cam_d467f4fe424d43049af586329a2e6867_1",
       "observations": 43,
-      "gapSeconds": 6.599999999999998
+      "gapSeconds": 6.5
     },
     "crossing": {
       "ids": [
-        "trk_cam_bb001b3de3ad480fa2f5676e791d1de1_live-tnt_demo_retail-cam_bb001b3de3ad480fa2f5676e791d1de1_1",
-        "trk_cam_bb001b3de3ad480fa2f5676e791d1de1_live-tnt_demo_retail-cam_bb001b3de3ad480fa2f5676e791d1de1_2"
+        "trk_cam_0b1c29c052644725bd60b3c051ffcf54_live-tnt_demo_retail-cam_0b1c29c052644725bd60b3c051ffcf54_1",
+        "trk_cam_0b1c29c052644725bd60b3c051ffcf54_live-tnt_demo_retail-cam_0b1c29c052644725bd60b3c051ffcf54_2"
       ],
       "observations": 24,
       "tracked": 23,
       "lanes": [
         {
-          "id": "trk_cam_bb001b3de3ad480fa2f5676e791d1de1_live-tnt_demo_retail-cam_bb001b3de3ad480fa2f5676e791d1de1_1",
+          "id": "trk_cam_0b1c29c052644725bd60b3c051ffcf54_live-tnt_demo_retail-cam_0b1c29c052644725bd60b3c051ffcf54_1",
           "span": 0.004,
           "samples": 23
         },
         {
-          "id": "trk_cam_bb001b3de3ad480fa2f5676e791d1de1_live-tnt_demo_retail-cam_bb001b3de3ad480fa2f5676e791d1de1_2",
+          "id": "trk_cam_0b1c29c052644725bd60b3c051ffcf54_live-tnt_demo_retail-cam_0b1c29c052644725bd60b3c051ffcf54_2",
           "span": 0.006,
           "samples": 23
         }
       ]
     },
     "stats": {
+      "schemaVersion": "1.0",
       "camerasTracked": 5,
-      "activeTracks": 4,
-      "confirmedTracks": 4,
+      "activeTracks": 6,
+      "confirmedTracks": 6,
       "tentativeTracks": 0,
       "lostTracks": 0,
-      "removedTracks": 3,
-      "createdTracks": 7,
+      "removedTracks": 2,
+      "createdTracks": 8,
       "recoveredTracks": 1,
-      "framesTracked": 298,
-      "outOfOrderFrames": 7,
-      "averageTrackingMs": 0.1001,
-      "averageTrackLifetimeSeconds": 21.975,
-      "averageTrackHits": 46,
-      "fragmentation": 1.75,
-      "camerasEvicted": 0
+      "framesTracked": 297,
+      "outOfOrderFrames": 6,
+      "averageTrackingMs": 0.1254,
+      "averageTrackLifetimeSeconds": 22.8865,
+      "averageTrackAgeFrames": 46.8333,
+      "averageTrackHits": 47.8333,
+      "fragmentation": 1.3333,
+      "camerasEvicted": 0,
+      "occlusionsSurvived": 1,
+      "crossings": 0,
+      "reentryOpportunities": 1,
+      "identitySwitches": null,
+      "reidentificationSuccessRate": null,
+      "falseRecoveries": null,
+      "groundTruth": {
+        "available": false,
+        "reason": "these ask whether an identity was CORRECT, which is only answerable against ground truth: which real object each track belonged to. A live camera does not carry that.",
+        "metrics": ["identitySwitches", "reidentificationSuccessRate", "falseRecoveries"],
+        "measuredBy": "docs/review/p8/tracking.mjs"
+      }
     },
     "engine": {
       "enabled": true,
@@ -126,7 +140,7 @@
   "findings": [
     {
       "label": "frames arrived out of order",
-      "detail": "7 skipped rather than tracked backwards"
+      "detail": "6 skipped rather than tracked backwards"
     }
   ]
 }

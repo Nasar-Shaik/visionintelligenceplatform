@@ -570,6 +570,157 @@ class RuntimeTrackerTests(unittest.TestCase):
         self.assertEqual(described["associator"], "predictive-iou")
         self.assertTrue(described["enabled"])
 
+    # -- the permanent runtime metrics ------------------------------------------
+
+    def test_an_occlusion_the_identity_survives_is_counted(self):
+        """⚠️ Distinct from a recovery: the trackId never changed, so no consumer saw a gap."""
+        rt = self.tracker()
+        self.walk(rt, [0.10, 0.14, 0.18, None, None, 0.30, 0.34])
+        stats = rt.stats("tnt_a")
+        self.assertGreaterEqual(stats["occlusionsSurvived"], 1, "a survived occlusion was not counted")
+        self.assertEqual(stats["recoveredTracks"], 0, "an absorbed occlusion was miscounted as a re-entry")
+
+    def test_a_clean_walk_counts_no_occlusion(self):
+        rt = self.tracker()
+        self.walk(rt, [0.10, 0.14, 0.18, 0.22, 0.26])
+        self.assertEqual(rt.stats("tnt_a")["occlusionsSurvived"], 0)
+
+    def test_two_people_meeting_counts_one_crossing_episode(self):
+        """⚠️ Episodes, not frames. Overlap that persists for four frames is still ONE crossing."""
+        rt = self.tracker()
+        left = [0.30, 0.34, 0.38, 0.42, 0.44, 0.46, 0.50, 0.54]
+        right = [0.54, 0.50, 0.46, 0.44, 0.42, 0.38, 0.34, 0.30]
+        for i, (lx, rx) in enumerate(zip(left, right)):
+            rt.run(
+                [
+                    det(bbox=(lx - 0.05, 0.42, 0.10, 0.16)),
+                    det(bbox=(rx - 0.05, 0.46, 0.10, 0.16)),
+                ],
+                ctx(seq=i, at=iso(i * 0.5)),
+            )
+        crossings = rt.stats("tnt_a")["crossings"]
+        self.assertEqual(crossings, 1, f"expected one crossing episode, counted {crossings}")
+
+    def test_people_who_never_meet_count_no_crossing(self):
+        rt = self.tracker()
+        for i in range(6):
+            rt.run(
+                [
+                    det(bbox=(0.10 + i * 0.01, 0.10, 0.08, 0.12)),
+                    det(bbox=(0.70 - i * 0.01, 0.70, 0.08, 0.12)),
+                ],
+                ctx(seq=i, at=iso(i * 0.5)),
+            )
+        self.assertEqual(rt.stats("tnt_a")["crossings"], 0)
+
+    def test_the_three_ground_truth_metrics_are_absent_and_say_why(self):
+        """⚠️ The point of the phase's metric work: unmeasurable is reported, not rounded to zero.
+
+        A `0` here would be a confident claim of a clean identity record that nothing verified. See
+        ADR-0039 — the same rule will govern the Rule Engine's precision and recall.
+        """
+        import runtime_tracking as rt_mod
+
+        rt = self.tracker()
+        self.walk(rt, [0.10, 0.14, 0.18, 0.22])
+        stats = rt.stats("tnt_a")
+        for key in ("identitySwitches", "reidentificationSuccessRate", "falseRecoveries"):
+            self.assertIn(key, stats, f"{key} was omitted — indistinguishable from an unwired metric")
+            self.assertIsNone(stats[key], f"{key} reported a number the runtime cannot know")
+        truth = stats["groundTruth"]
+        self.assertFalse(truth["available"])
+        self.assertTrue(truth["reason"], "an absent metric must carry the reason it is absent")
+        self.assertEqual(sorted(truth["metrics"]), sorted(rt_mod.GROUND_TRUTH_METRICS))
+
+    def test_average_track_age_is_measured_or_none_never_zero(self):
+        rt = self.tracker()
+        self.assertIsNone(rt.stats("tnt_a")["averageTrackAgeFrames"], "an empty runtime reported an average")
+        self.walk(rt, [0.10, 0.14, 0.18, 0.22])
+        self.assertGreater(rt.stats("tnt_a")["averageTrackAgeFrames"], 0)
+
+    def test_reentry_opportunities_are_counted_before_they_are_consumed(self):
+        """The denominator: identities that had actually departed and were available to return."""
+        rt = self.tracker(max_age=2)
+        self.walk(rt, [0.20, 0.24, 0.28])
+        self.walk(rt, [None] * 4, start=10.0)
+        self.assertEqual(rt.stats("tnt_a")["reentryOpportunities"], 0, "nobody returned yet")
+        self.walk(rt, [0.34, 0.38, 0.42], start=16.0)
+        stats = rt.stats("tnt_a")
+        self.assertGreaterEqual(stats["reentryOpportunities"], 1)
+        self.assertLessEqual(
+            stats["recoveredTracks"], stats["reentryOpportunities"], "more links than opportunities"
+        )
+
+    # -- per-camera metrics ------------------------------------------------------
+
+    def test_per_camera_metrics_are_reported_per_camera(self):
+        rt = self.tracker()
+        self.walk(rt, [0.10, 0.14, 0.18, 0.22], camera="cam_1")
+        self.walk(rt, [0.60, 0.64], camera="cam_2")
+        rows = {r["cameraId"]: r for r in rt.cameras("tnt_a")}
+        self.assertEqual(sorted(rows), ["cam_1", "cam_2"])
+        self.assertEqual(rows["cam_1"]["framesTracked"], 4)
+        self.assertEqual(rows["cam_2"]["framesTracked"], 2)
+        self.assertEqual(rows["cam_1"]["createdTracks"], 1)
+        self.assertTrue(all(r["tracking"] for r in rows.values()))
+
+    def test_per_camera_metrics_are_tenant_isolated(self):
+        rt = self.tracker()
+        self.walk(rt, [0.10, 0.14], camera="cam_secret", tenant="tnt_a")
+        self.assertEqual([r["cameraId"] for r in rt.cameras("tnt_b")], [])
+        self.assertEqual(rt.cameras(""), [], "a per-camera read without a tenant returned rows")
+
+    def test_per_camera_totals_outlive_the_camera_going_quiet(self):
+        """⚠️ Under camera assignment, going quiet is an operator action. Switching AI off on a
+        camera must not erase what that camera has already reported."""
+        import runtime_tracking as rt_mod
+
+        rt = self.tracker()
+        self.walk(rt, [0.30, 0.33, 0.36], camera="cam_off")
+        before = {r["cameraId"]: r for r in rt.cameras("tnt_a")}["cam_off"]
+        self.assertTrue(before["tracking"])
+
+        original = rt_mod.CAMERA_IDLE_SECONDS
+        rt_mod.CAMERA_IDLE_SECONDS = -1
+        try:
+            self.walk(rt, [0.30, 0.33], camera="cam_on")
+        finally:
+            rt_mod.CAMERA_IDLE_SECONDS = original
+
+        after = {r["cameraId"]: r for r in rt.cameras("tnt_a")}
+        self.assertIn("cam_off", after, "a released camera lost its whole history")
+        self.assertFalse(after["cam_off"]["tracking"], "a released camera still claims to be tracking")
+        self.assertEqual(after["cam_off"]["framesTracked"], before["framesTracked"])
+        self.assertEqual(after["cam_off"]["activeTracks"], 0, "a released camera reported live tracks")
+
+    def test_per_camera_rates_are_measured_or_absent(self):
+        rt = self.tracker()
+        self.walk(rt, [0.10, 0.14, 0.18])
+        row = rt.cameras("tnt_a")[0]
+        self.assertIsNotNone(row["averageTrackingMs"])
+        # fps needs an observed window; one frame has none, and 0.0 would read as a stalled camera.
+        fresh = self.tracker()
+        fresh.run([det()], ctx(camera="cam_one_frame"))
+        self.assertIsNone(fresh.cameras("tnt_a")[0]["trackingFps"])
+
+    def test_per_camera_counters_sum_to_the_tenant_totals(self):
+        """The two grains are derived from one increment, so they cannot drift apart."""
+        rt = self.tracker()
+        self.walk(rt, [0.10, 0.14, 0.18], camera="cam_1")
+        self.walk(rt, [0.60, 0.64, 0.68], camera="cam_2")
+        rows = rt.cameras("tnt_a")
+        stats = rt.stats("tnt_a")
+        self.assertEqual(sum(r["framesTracked"] for r in rows), stats["framesTracked"])
+        self.assertEqual(sum(r["createdTracks"] for r in rows), stats["createdTracks"])
+
+    def test_the_new_counters_stay_tenant_scoped(self):
+        rt = self.tracker()
+        self.walk(rt, [0.10, 0.14, None, None, 0.26, 0.30], tenant="tnt_a")
+        a = rt.stats("tnt_a")["occlusionsSurvived"]
+        self.assertGreaterEqual(a, 1)
+        self.assertEqual(rt.stats("tnt_b")["occlusionsSurvived"], 0, "a tenant saw another's counter")
+        self.assertEqual(rt.stats()["occlusionsSurvived"], a)
+
 
 class ManagerAdditionsTests(unittest.TestCase):
     """The additive changes to the AI-2 TrackManager, which batch analysis still depends on."""

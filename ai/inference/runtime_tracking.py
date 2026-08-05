@@ -51,7 +51,7 @@ from contracts import Detection, FrameContext
 from reentry import ReentryResolver
 from track_manager import TrackManager
 from track_motion import seconds_of
-from tracker import PredictiveIouAssociator
+from tracker import PredictiveIouAssociator, iou
 from tracking_contracts import Track, TrackTimelineEntry
 
 #: Cameras whose state is retained. Beyond this the least recently seen is evicted, because a
@@ -69,6 +69,58 @@ MAX_TIMELINE = 64
 #: more tenants than this has bigger questions than its statistics page.
 MAX_TENANT_TOTALS = 256
 
+#: Cameras whose LIFETIME totals are retained — deliberately larger than `MAX_CAMERAS`.
+#:
+#: ⚠️ Per-camera totals must outlive the per-camera tracking state, and that is a requirement rather
+#: than a nicety. Tracking state is released the moment a camera goes quiet; under Camera Processing
+#: Assignment (C-14c) going quiet becomes a NORMAL, operator-initiated event. If the counters lived
+#: with the state, turning AI off on a camera would erase everything that camera had ever reported,
+#: and turning it back on would show a camera that had never seen anybody.
+MAX_CAMERA_TOTALS = 512
+
+#: Box overlap at which two tracks are counted as CROSSING. Deliberately low: the metric asks "did
+#: two identities occupy the same place?", which is the situation in which a swap becomes possible.
+CROSSING_IOU = 0.1
+
+#: Live tracks scanned pairwise for crossings. The scan is O(n²) under the update lock, so it is
+#: capped rather than left to grow — a camera with more simultaneous identities than this has an
+#: analytics problem, not a crossings-metric problem.
+MAX_CROSSING_TRACKS = 32
+
+#: The counters `stats()` cannot fill in, and why.
+#:
+#: ⚠️ These are **absent, not zero.** Each one asks whether the tracker was RIGHT, and being right is
+#: defined against which real object each identity belonged to — which no live camera provides. A
+#: switch looks exactly like two people walking on. Emitting `0` would put a confident, verified-
+#: looking number on a dashboard that nothing measured, and on an evidence product that is worse than
+#: an empty cell. They ARE measured, against authored ground truth, by the tracking verification.
+GROUND_TRUTH_METRICS = ("identitySwitches", "reidentificationSuccessRate", "falseRecoveries")
+
+GROUND_TRUTH_REASON = (
+    "these ask whether an identity was CORRECT, which is only answerable against ground truth: "
+    "which real object each track belonged to. A live camera does not carry that."
+)
+
+#: Where they are measured for real — authored scenarios whose trajectories are written down first.
+GROUND_TRUTH_SOURCE = "docs/review/p8/tracking.mjs"
+
+#: Mirrors `TRACKING_STATS_SCHEMA_VERSION` in packages/contracts. ⚠️ Kept in step by
+#: `pnpm verify:contracts`, which is the only thing standing between two languages and one meaning.
+TRACKING_STATS_SCHEMA_VERSION = "1.0"
+
+#: Lifetime counters held per tenant. ⚠️ Declared in one place so a tenant seen after this list grows
+#: is not missing a key that `stats()` then reads as absent-and-therefore-zero for one tenant only.
+_TOTAL_KEYS = (
+    "created",
+    "removed",
+    "recovered",
+    "frames",
+    "outOfOrder",
+    "occlusions",
+    "crossings",
+    "reentryOpportunities",
+)
+
 
 class _CameraState:
     """Everything tracked for one (tenant, camera). One manager, one re-entry pool, one frame clock."""
@@ -84,6 +136,8 @@ class _CameraState:
         "recovered",
         "out_of_order",
         "frames",
+        "prev_state",
+        "overlapping",
     )
 
     def __init__(self, session_id: str, options: "TrackingOptions") -> None:
@@ -114,6 +168,12 @@ class _CameraState:
         self.recovered = 0
         self.out_of_order = 0
         self.frames = 0
+        #: Last observed lifecycle state per live track — the only way to see a `lost → confirmed`
+        #: edge, which is an occlusion the identity SURVIVED. Pruned with the tracks themselves.
+        self.prev_state: Dict[str, str] = {}
+        #: Track pairs currently overlapping. A crossing is counted once per episode, on the frame
+        #: the pair meets; without this a pair that stays overlapped for ten frames scores ten.
+        self.overlapping: set = set()
 
 
 class TrackingOptions:
@@ -182,6 +242,13 @@ class RuntimeTracker:
         #: and the capacity benchmark differenced it into a negative identity count. A monotonic
         #: total must not be assembled from state that is deliberately transient.
         self._totals: Dict[str, Dict[str, int]] = {}
+        #: The same counters at (tenant, camera) grain — see MAX_CAMERA_TOTALS for why they are held
+        #: here and not on `_CameraState`. Timing fields live alongside them so per-camera tracking
+        #: fps and latency are derived from the same record.
+        self._camera_totals: Dict[Tuple[str, str], Dict[str, float]] = {}
+        #: Set only when someone explicitly asks for a recording. See track_replay for why it is not
+        #: a thing an ordinary deployment ever switches on.
+        self._recorder = None
 
     # --- the pipeline stage ------------------------------------------------------
 
@@ -209,14 +276,14 @@ class RuntimeTracker:
                 and captured < state.last_capture_seconds
             ):
                 state.out_of_order += 1
-                self._bump(ctx.tenant_id, "outOfOrder")
+                self._bump(ctx.tenant_id, ctx.camera_id, "outOfOrder")
                 return detections
 
             if captured is not None:
                 state.last_capture_seconds = captured
             state.frame_index += 1
             state.frames += 1
-            self._bump(ctx.tenant_id, "frames")
+            self._bump(ctx.tenant_id, ctx.camera_id, "frames")
             state.last_touched = time.monotonic()
 
             at = ctx.timestamp or _iso(time.time())
@@ -230,36 +297,74 @@ class RuntimeTracker:
             )
 
             for removed in state.manager.drain_removed():
-                self._bump(ctx.tenant_id, "removed")
+                self._bump(ctx.tenant_id, ctx.camera_id, "removed")
                 state.reentry.retire(removed)
                 self._record_transition(state, removed.track_id, state.frame_index, at, "removed", "max-age exceeded")
 
             for track in tracks:
                 if track.track_id not in before:
                     state.created += 1
-                    self._bump(ctx.tenant_id, "created")
-                    self._adopt_identity(state, track, ctx.tenant_id)
+                    self._bump(ctx.tenant_id, ctx.camera_id, "created")
+                    self._adopt_identity(state, track, ctx.tenant_id, ctx.camera_id)
                 self._sync_timeline(state, track)
+
+            self._count_occlusions(state, tracks, ctx.tenant_id, ctx.camera_id)
+            self._count_crossings(state, tracks, ctx.tenant_id, ctx.camera_id)
 
             stamped = self._stamp(detections, state.manager.assignment())
             self._sweep(now=state.last_touched)
-            self._tracking_ms_total += (time.perf_counter() - started) * 1000.0
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            self._tracking_ms_total += elapsed_ms
             self._tracking_frames += 1
+            self._record_timing(ctx.tenant_id, ctx.camera_id, elapsed_ms)
+            if self._recorder is not None:
+                self._recorder.record(ctx, detections, stamped, state.frame_index)
         return stamped
 
     # --- identity ----------------------------------------------------------------
 
-    def _bump(self, tenant_id: str, key: str, by: int = 1) -> None:
+    def _bump(self, tenant_id: str, camera_id: str, key: str, by: int = 1) -> None:
+        """Increment one counter at BOTH grains, so the two views can never disagree."""
         totals = self._totals.get(tenant_id)
         if totals is None:
-            if len(self._totals) >= MAX_TENANT_TOTALS:
-                return
-            totals = {"created": 0, "removed": 0, "recovered": 0, "frames": 0, "outOfOrder": 0}
-            self._totals[tenant_id] = totals
-        totals[key] = totals.get(key, 0) + by
+            if len(self._totals) < MAX_TENANT_TOTALS:
+                totals = dict.fromkeys(_TOTAL_KEYS, 0)
+                self._totals[tenant_id] = totals
+        if totals is not None:
+            totals[key] = totals.get(key, 0) + by
+        camera = self._camera_record(tenant_id, camera_id)
+        if camera is not None:
+            camera[key] = camera.get(key, 0) + by
 
-    def _adopt_identity(self, state: _CameraState, track: Track, tenant_id: str) -> None:
+    def _camera_record(self, tenant_id: str, camera_id: str) -> Optional[Dict[str, float]]:
+        """The lifetime record for one camera, created on demand and LRU-evicted when full."""
+        key = (tenant_id, camera_id)
+        record = self._camera_totals.get(key)
+        if record is None:
+            if len(self._camera_totals) >= MAX_CAMERA_TOTALS:
+                oldest = min(self._camera_totals.items(), key=lambda kv: kv[1].get("lastSeen", 0.0))
+                del self._camera_totals[oldest[0]]
+            record = dict.fromkeys(_TOTAL_KEYS, 0.0)
+            record["trackingMsTotal"] = 0.0
+            record["firstSeen"] = time.monotonic()
+            record["lastSeen"] = record["firstSeen"]
+            self._camera_totals[key] = record
+        return record
+
+    def _record_timing(self, tenant_id: str, camera_id: str, elapsed_ms: float) -> None:
+        record = self._camera_record(tenant_id, camera_id)
+        if record is None:
+            return
+        record["trackingMsTotal"] = record.get("trackingMsTotal", 0.0) + elapsed_ms
+        record["lastSeen"] = time.monotonic()
+
+    def _adopt_identity(self, state: _CameraState, track: Track, tenant_id: str, camera_id: str) -> None:
         """Give a newly created track its own identity, or the one it is returning to."""
+        # ⚠️ Counted BEFORE resolving, because `resolve()` consumes the candidate it accepts. This is
+        # the denominator the link count is meaningful against: how many departed identities were
+        # actually available to return, not how many returned.
+        if state.reentry.pending():
+            self._bump(tenant_id, camera_id, "reentryOpportunities")
         link = state.reentry.resolve(track)
         if link is None:
             # ⚠️ A first appearance is its own identity, set explicitly rather than left absent. A
@@ -271,7 +376,49 @@ class RuntimeTracker:
         track.preceded_by = link.preceded_by
         track.recoveries = link.recoveries
         state.recovered += 1
-        self._bump(tenant_id, "recovered")
+        self._bump(tenant_id, camera_id, "recovered")
+
+    def _count_occlusions(
+        self, state: _CameraState, tracks: Sequence[Track], tenant_id: str, camera_id: str
+    ) -> None:
+        """Count identities that went `lost` and came back as the SAME track.
+
+        ⚠️ This is the occlusion the tracker *absorbed* — distinct from a recovery, which is a new
+        track linked to a departed one. Both are "it came back"; only this one kept its `trackId`,
+        and a consumer holding that id sees no interruption at all. Reporting them as one number
+        would hide which of the two mechanisms is actually carrying the deployment.
+        """
+        live = {t.track_id for t in tracks}
+        for track in tracks:
+            was = state.prev_state.get(track.track_id)
+            now = track.state.value
+            if was == "lost" and now in ("confirmed", "tentative"):
+                self._bump(tenant_id, camera_id, "occlusions")
+            state.prev_state[track.track_id] = now
+        for gone in [tid for tid in state.prev_state if tid not in live]:
+            del state.prev_state[gone]
+
+    def _count_crossings(
+        self, state: _CameraState, tracks: Sequence[Track], tenant_id: str, camera_id: str
+    ) -> None:
+        """Count episodes of two identities occupying the same place.
+
+        ⚠️ A crossing is an OPPORTUNITY for an identity switch, never evidence of one. Two people
+        passing each other and the tracker exchanging their ids look identical from here — telling
+        them apart needs ground truth. The value of the number is as a denominator: zero crossings
+        means a clean identity record proves very little about crowded scenes.
+        """
+        boxes = [t for t in tracks if t.state.value == "confirmed"][:MAX_CROSSING_TRACKS]
+        current = set()
+        for i, a in enumerate(boxes):
+            for b in boxes[i + 1 :]:
+                if iou(a.bbox, b.bbox) < CROSSING_IOU:
+                    continue
+                pair = (a.track_id, b.track_id) if a.track_id < b.track_id else (b.track_id, a.track_id)
+                current.add(pair)
+                if pair not in state.overlapping:
+                    self._bump(tenant_id, camera_id, "crossings")
+        state.overlapping = current
 
     def _sync_timeline(self, state: _CameraState, track: Track) -> None:
         """Mirror the manager's transitions into the contract shape, append-only and bounded."""
@@ -397,25 +544,28 @@ class RuntimeTracker:
             active = confirmed = tentative = lost = 0
             lifetimes: List[float] = []
             hits: List[int] = []
+            ages: List[int] = []
             # ⚠️ Lifetime totals come from `_totals`, which survives a camera being released. The
             # live counts below are gauges and are correctly derived from what is live right now.
             if tenant_id is None:
-                created = sum(t["created"] for t in self._totals.values())
-                removed = sum(t["removed"] for t in self._totals.values())
-                recovered = sum(t["recovered"] for t in self._totals.values())
-                frames = sum(t["frames"] for t in self._totals.values())
-                out_of_order = sum(t["outOfOrder"] for t in self._totals.values())
+                totals = {
+                    key: sum(t.get(key, 0) for t in self._totals.values()) for key in _TOTAL_KEYS
+                }
             else:
                 totals = self._totals.get(tenant_id, {})
-                created = totals.get("created", 0)
-                removed = totals.get("removed", 0)
-                recovered = totals.get("recovered", 0)
-                frames = totals.get("frames", 0)
-                out_of_order = totals.get("outOfOrder", 0)
+            created = totals.get("created", 0)
+            removed = totals.get("removed", 0)
+            recovered = totals.get("recovered", 0)
+            frames = totals.get("frames", 0)
+            out_of_order = totals.get("outOfOrder", 0)
+            occlusions = totals.get("occlusions", 0)
+            crossings = totals.get("crossings", 0)
+            opportunities = totals.get("reentryOpportunities", 0)
             for state in states:
                 for track in state.manager.active():
                     active += 1
                     hits.append(track.hits)
+                    ages.append(track.age)
                     if track.state.value == "confirmed":
                         confirmed += 1
                     elif track.state.value == "lost":
@@ -431,6 +581,9 @@ class RuntimeTracker:
             )
 
         return {
+            # ⚠️ Consumers branch on this, never on whether a field happens to be present. A missing
+            # field means "this runtime does not report it"; the version says which contract applies.
+            "schemaVersion": TRACKING_STATS_SCHEMA_VERSION,
             "camerasTracked": len(states),
             "activeTracks": active,
             "confirmedTracks": confirmed,
@@ -443,13 +596,110 @@ class RuntimeTracker:
             "outOfOrderFrames": out_of_order,
             "averageTrackingMs": round(tracking_ms, 4) if tracking_ms is not None else None,
             "averageTrackLifetimeSeconds": _mean(lifetimes),
+            "averageTrackAgeFrames": _mean(ages),
             "averageTrackHits": _mean(hits),
             # ⚠️ Fragmentation, not accuracy. See the contract's note: an engine that splits one
             # person into six identities scores 6.0, but proving two identities were genuinely
             # SWAPPED needs ground truth this runtime does not have.
             "fragmentation": round(created / confirmed, 4) if confirmed else None,
             "camerasEvicted": self._evictions,
+            # --- occlusion and re-entry, as two separate mechanisms ---------------------------
+            "occlusionsSurvived": occlusions,
+            "crossings": crossings,
+            "reentryOpportunities": opportunities,
+            # --- and the three the runtime cannot answer ---------------------------------------
+            #
+            # ⚠️ `None` is the measurement. Every alternative is worse: `0` claims a verified clean
+            # record, and omitting the keys makes an unmeasurable metric indistinguishable from a
+            # deployment that forgot to wire it up. See ADR-0039.
+            "identitySwitches": None,
+            "reidentificationSuccessRate": None,
+            "falseRecoveries": None,
+            "groundTruth": {
+                "available": False,
+                "reason": GROUND_TRUTH_REASON,
+                "metrics": list(GROUND_TRUTH_METRICS),
+                "measuredBy": GROUND_TRUTH_SOURCE,
+            },
         }
+
+    def cameras(self, tenant_id: str) -> List[dict]:
+        """Per-camera tracking metrics for one tenant.
+
+        ⚠️ `tenant_id` is required, exactly as for `tracks()`. A per-camera view without one is a
+        list of every customer's camera ids and how busy they are.
+
+        ⚠️ **Two kinds of number in one row, and the names say which.** `activeTracks` is a gauge —
+        it is live state and it is `0` for a camera that is currently quiet. Everything ending in a
+        total is a lifetime counter that OUTLIVES the tracking state, so a camera whose AI has been
+        switched off still reports what it saw. `tracking: false` on a row means exactly that: the
+        counters are history, nothing is being analysed right now.
+        """
+        if not tenant_id:
+            return []
+        out: List[dict] = []
+        with self._lock:
+            live: Dict[str, dict] = {}
+            for (tid, cam), state in self._cameras.items():
+                if tid != tenant_id:
+                    continue
+                active = confirmed = lost = 0
+                for track in state.manager.active():
+                    active += 1
+                    if track.state.value == "confirmed":
+                        confirmed += 1
+                    elif track.state.value == "lost":
+                        lost += 1
+                live[cam] = {"activeTracks": active, "confirmedTracks": confirmed, "lostTracks": lost}
+
+            for (tid, cam), record in self._camera_totals.items():
+                if tid != tenant_id:
+                    continue
+                frames = int(record.get("frames", 0))
+                elapsed = max(0.0, record.get("lastSeen", 0.0) - record.get("firstSeen", 0.0))
+                gauges = live.get(cam)
+                out.append(
+                    {
+                        "cameraId": cam,
+                        "tracking": gauges is not None,
+                        "activeTracks": (gauges or {}).get("activeTracks", 0),
+                        "confirmedTracks": (gauges or {}).get("confirmedTracks", 0),
+                        "lostTracks": (gauges or {}).get("lostTracks", 0),
+                        "createdTracks": int(record.get("created", 0)),
+                        "removedTracks": int(record.get("removed", 0)),
+                        "recoveredTracks": int(record.get("recovered", 0)),
+                        "occlusionsSurvived": int(record.get("occlusions", 0)),
+                        "crossings": int(record.get("crossings", 0)),
+                        "framesTracked": frames,
+                        # ⚠️ Frames this TRACKER declined, which is not the pipeline's frame loss.
+                        # Frames dropped before inference are media's number and live in media's
+                        # metrics; two different losses under one name is how a dashboard lies.
+                        "outOfOrderFrames": int(record.get("outOfOrder", 0)),
+                        # ⚠️ `frames - 1`, not `frames`. The window runs from the FIRST frame to the
+                        # last, so n frames span n-1 intervals. Dividing by `frames` inflates every
+                        # rate, and on a camera that has delivered exactly one frame it divides by
+                        # the microseconds that frame itself took — which reported 42,328 fps.
+                        # One frame is not a rate, so it is absent.
+                        "trackingFps": (
+                            round((frames - 1) / elapsed, 3) if frames > 1 and elapsed > 0 else None
+                        ),
+                        "averageTrackingMs": (
+                            round(record.get("trackingMsTotal", 0.0) / frames, 4) if frames else None
+                        ),
+                    }
+                )
+        out.sort(key=lambda row: row["cameraId"])
+        return out
+
+    def start_recording(self, recorder) -> None:
+        """Attach a `TrackingRecorder`. Deliberately not driven by config — see track_replay."""
+        with self._lock:
+            self._recorder = recorder
+
+    def stop_recording(self):
+        with self._lock:
+            recorder, self._recorder = self._recorder, None
+        return recorder
 
     def describe(self) -> dict:
         """What this tracker is, for the runtime's self-description. No tenant data."""

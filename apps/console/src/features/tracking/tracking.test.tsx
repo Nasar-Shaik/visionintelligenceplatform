@@ -51,7 +51,37 @@ const STATS: TrackingStats = {
   averageTrackingMs: 0.42,
   averageTrackLifetimeSeconds: 12.5,
   averageTrackHits: 9.3,
+  averageTrackAgeFrames: 11.0,
   fragmentation: 1.33,
+  occlusionsSurvived: 4,
+  crossings: 2,
+  reentryOpportunities: 3,
+  identitySwitches: null,
+  reidentificationSuccessRate: null,
+  falseRecoveries: null,
+  groundTruth: {
+    available: false,
+    reason: 'these ask whether an identity was CORRECT, which needs ground truth.',
+    metrics: ['identitySwitches', 'reidentificationSuccessRate', 'falseRecoveries'],
+    measuredBy: 'docs/review/p8/tracking.mjs',
+  },
+};
+
+const CAMERA_ROW = {
+  cameraId: 'cam_1',
+  tracking: true,
+  activeTracks: 2,
+  confirmedTracks: 2,
+  lostTracks: 0,
+  createdTracks: 5,
+  removedTracks: 3,
+  recoveredTracks: 1,
+  occlusionsSurvived: 2,
+  crossings: 1,
+  framesTracked: 240,
+  outOfOrderFrames: 0,
+  trackingFps: 1.98,
+  averageTrackingMs: 0.13,
 };
 
 const ENGINE = {
@@ -133,6 +163,12 @@ function mockList(body: unknown, status = 200) {
 
 function mockOverview(body: unknown) {
   server.use(mswHttp.get('/api/tracking', () => HttpResponse.json({ success: true, data: body })));
+}
+
+function mockCameras(body: unknown) {
+  server.use(
+    mswHttp.get('/api/tracking/cameras', () => HttpResponse.json({ success: true, data: body })),
+  );
 }
 
 function mockDetail(body: unknown, status = 200) {
@@ -383,13 +419,14 @@ describe('Track Statistics', () => {
         averageTrackingMs: null,
         averageTrackLifetimeSeconds: null,
         averageTrackHits: null,
+        averageTrackAgeFrames: null,
         fragmentation: null,
       },
     });
     renderWithProviders(<TrackStatisticsPage />, { store });
 
     await screen.findByText('predictive-iou');
-    expect(screen.getAllByText('Not measured')).toHaveLength(4);
+    expect(screen.getAllByText('Not measured')).toHaveLength(5);
     expect(screen.queryByText('0.00 ms')).not.toBeInTheDocument();
   });
 
@@ -407,14 +444,98 @@ describe('Track Statistics', () => {
   it('⚠️ exposes no control that configures the engine', async () => {
     authAs(['admin']);
     mockOverview({ enabled: true, engine: ENGINE, stats: STATS });
+    mockCameras({ cameras: [CAMERA_ROW] });
     const { container } = renderWithProviders(<TrackStatisticsPage />, { store });
     await screen.findByText('predictive-iou');
     /*
      * Camera Processing Assignment and tracker tuning are deployment settings, not operator
      * controls. A page that offered a slider backed by nothing would be worse than one that offers
      * nothing at all — DEFINITION_OF_DONE, "no UI configures functionality that is not implemented".
+     * ⚠️ The per-camera table makes this MORE important, not less: a per-camera row invites an
+     * enable switch, and that switch is Camera Processing Assignment, which is not built.
      */
-    expect(container.querySelectorAll('input, select, textarea')).toHaveLength(0);
+    await screen.findByText('cam_1');
+    expect(container.querySelectorAll('input, select, textarea, button')).toHaveLength(0);
     expect(screen.getByText(/Reported, not editable/)).toBeInTheDocument();
+  });
+
+  it('⚠️ shows the three ground-truth metrics as "Not measurable" with the reason', async () => {
+    authAs(['operator']);
+    mockOverview({ enabled: true, engine: ENGINE, stats: STATS });
+    renderWithProviders(<TrackStatisticsPage />, { store });
+
+    /*
+     * ⚠️ ADR-0039. These must be VISIBLE and unavailable, not omitted: an absent row and a metric
+     * whose exporter is broken look identical, and an operator cannot tell which they have.
+     */
+    expect(await screen.findByText('Identity switches')).toBeInTheDocument();
+    expect(screen.getByText('Re-identification success')).toBeInTheDocument();
+    expect(screen.getByText('False recoveries')).toBeInTheDocument();
+    expect(screen.getAllByText('Not measurable')).toHaveLength(3);
+    expect(screen.getByText(/absent, never zero/i)).toBeInTheDocument();
+    /* Two places say it: the fragmentation note and the ground-truth card. Both should. */
+    expect(screen.getAllByText(/needs ground truth/i).length).toBeGreaterThanOrEqual(1);
+    /* And a zero must never appear in their place. */
+    expect(screen.queryByText('0 switches')).not.toBeInTheDocument();
+  });
+
+  it('⚠️ shows a runtime that reports a number it declared unmeasurable, rather than hiding it', async () => {
+    authAs(['operator']);
+    /*
+     * ⚠️ The defect a mutation found. This card used to hard-code "Not measurable" for every row, so
+     * a runtime reporting `identitySwitches: 0` changed nothing on screen — the page covered up a
+     * contract violation and the browser verification stayed green. A page whose job is to report
+     * runtime truth must not decide in advance what the truth is.
+     */
+    mockOverview({
+      enabled: true,
+      engine: ENGINE,
+      stats: { ...STATS, identitySwitches: 0 },
+    });
+    renderWithProviders(<TrackStatisticsPage />, { store });
+
+    await screen.findByText('Identity switches');
+    expect(screen.getAllByText('Not measurable')).toHaveLength(2);
+    expect(screen.getByText(/contract violation/i)).toBeInTheDocument();
+  });
+
+  it('⚠️ counts occlusions absorbed separately from re-entries', async () => {
+    authAs(['operator']);
+    mockOverview({ enabled: true, engine: ENGINE, stats: STATS });
+    renderWithProviders(<TrackStatisticsPage />, { store });
+
+    /* The two mechanisms are different: one kept the track id, the other minted a new one. */
+    expect(await screen.findByText('Occlusions absorbed')).toBeInTheDocument();
+    expect(screen.getByText(/came back with the SAME track id/)).toBeInTheDocument();
+    expect(screen.getByText('Crossings')).toBeInTheDocument();
+    expect(screen.getByText(/opportunity for a swap, not evidence of one/)).toBeInTheDocument();
+  });
+
+  it('lists per-camera metrics', async () => {
+    authAs(['operator']);
+    mockOverview({ enabled: true, engine: ENGINE, stats: STATS });
+    mockCameras({ cameras: [CAMERA_ROW, { ...CAMERA_ROW, cameraId: 'cam_2', createdTracks: 9 }] });
+    renderWithProviders(<TrackStatisticsPage />, { store });
+
+    expect(await screen.findByText('cam_1')).toBeInTheDocument();
+    expect(screen.getByText('cam_2')).toBeInTheDocument();
+    expect(screen.getByText('9')).toBeInTheDocument();
+    expect(screen.getAllByText('1.98')).toHaveLength(2);
+  });
+
+  it('⚠️ marks a quiet camera as idle rather than showing it as a dead one', async () => {
+    authAs(['operator']);
+    mockOverview({ enabled: true, engine: ENGINE, stats: STATS });
+    mockCameras({
+      cameras: [{ ...CAMERA_ROW, tracking: false, activeTracks: 0, trackingFps: null }],
+    });
+    renderWithProviders(<TrackStatisticsPage />, { store });
+
+    /*
+     * ⚠️ Under Camera Processing Assignment this becomes the ordinary state of a camera whose AI is
+     * switched off. Its counters are history — a row that just showed zeros would read as a fault.
+     */
+    expect(await screen.findByText(/counts are history/)).toBeInTheDocument();
+    expect(screen.getByText('Not measured')).toBeInTheDocument();
   });
 });

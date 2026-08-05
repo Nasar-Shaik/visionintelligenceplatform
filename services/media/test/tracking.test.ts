@@ -111,6 +111,17 @@ describe('tracking authorization', () => {
       expect(res.statusCode, `${role} was refused`).toBe(200);
     }
   });
+
+  it('the per-camera route needs track:read too, not a weaker permission', async () => {
+    const anonymous = await app.inject({ method: 'GET', url: '/perception/tracking/cameras' });
+    expect(anonymous.statusCode).toBe(401);
+    const operator = await app.inject({
+      method: 'GET',
+      url: '/perception/tracking/cameras',
+      headers: auth(await token('tnt_a', ['operator'])),
+    });
+    expect(operator.statusCode).toBe(200);
+  });
 });
 
 describe('tenant scoping', () => {
@@ -148,6 +159,19 @@ describe('tenant scoping', () => {
     });
     expect(seen[0]?.url).toContain('cameraId=cam_1');
     expect(seen[0]?.url).toContain('state=confirmed');
+  });
+
+  it('⚠️ a per-camera read is scoped by the token too — camera ids are tenant data', async () => {
+    await app.inject({
+      method: 'GET',
+      url: '/perception/tracking/cameras',
+      headers: {
+        ...auth(await token('tnt_real', ['operator'])),
+        'x-tenant-id': 'tnt_victim',
+      },
+    });
+    expect(seen[0]?.url).toContain('/tracking/cameras');
+    expect(seen[0]?.headers['x-tenant-id']).toBe('tnt_real');
   });
 
   it('url-encodes a track id rather than pasting it into a path', async () => {

@@ -33,7 +33,7 @@
  * inside a green average.
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const ROOT = resolve(new URL('../../..', import.meta.url).pathname);
@@ -63,6 +63,24 @@ function verify(scenario) {
   const out = shq('node', ['docs/review/p8/tracking.mjs'], {
     env: { ...process.env, SCENARIOS: scenario, OUT: '/dev/null' },
   });
+  const red = [...out.matchAll(/^ {2}✗ (.+)$/gm)].map((m) => m[1].split(' — ')[0].trim());
+  return { out, red, green: !/✗/.test(out) };
+}
+
+/**
+ * Run the BROWSER verification instead of a scenario.
+ *
+ * ⚠️ Some rules are only observable on a page. "An unmeasurable metric must never render as a
+ * number" (ADR-0039) is one: a runtime that reports `0` instead of `null` tracks every identity
+ * perfectly, so no scenario can fail — the damage is entirely in what an operator reads.
+ *
+ * ⚠️ Copied to /private/tmp/pwrun and run from there, as every Playwright script on this project is.
+ */
+function verifyUi() {
+  const staging = '/private/tmp/pwrun';
+  mkdirSync(staging, { recursive: true });
+  copyFileSync(join(ROOT, 'docs/review/p8/tracking-ui.mjs'), join(staging, 'tracking-ui.mjs'));
+  const out = shq('node', ['tracking-ui.mjs'], { cwd: staging, env: { ...process.env, REPO: ROOT } });
   const red = [...out.matchAll(/^ {2}✗ (.+)$/gm)].map((m) => m[1].split(' — ')[0].trim());
   return { out, red, green: !/✗/.test(out) };
 }
@@ -227,6 +245,44 @@ const MUTATIONS = [
         ['        if live.misses > self._max_age:', '        if live.misses > 10_000_000:'],
       ]),
   },
+  /*
+   * ⚠️ **There is deliberately no `false-recovery` mutation, and the absence is a finding.**
+   *
+   * One was written: open the re-entry gate to 10 000 seconds and ten frame-widths, and assert the
+   * crossing verification goes red at "no FALSE re-entry link was formed". It **stayed green**.
+   *
+   * A re-entry link needs a departed identity to link back TO. Both subjects appear at the start of
+   * the crossing clip and neither is retired inside the window, so the resolver never holds a
+   * candidate and no gate width can produce a link. The check could not fail — and a check that
+   * cannot fail reports the same green as a real one, which is the worst outcome a suite can have.
+   *
+   * `tracking.mjs` now reports `falseRecoveries` as `null` for that scenario rather than `0`. The
+   * mutation is not listed here because listing one that cannot go red would recreate the problem it
+   * found. See L-45 in KNOWN_LIMITATIONS; it becomes possible when a fixture presents a genuine stranger after a
+   * departure, which is not free to author (L-42 makes appearance-blind linking correct behaviour).
+   */
+  {
+    name: 'ground-truth-honesty',
+    breaks: 'an unmeasurable metric is reported as 0 instead of null',
+    /*
+     * ⚠️ This mutates the ADR-0039 RULE rather than the tracker, and it is verified in the BROWSER
+     * rather than by a scenario — because the rule's whole point is what an operator ends up
+     * reading. A runtime claiming `identitySwitches: 0` has made a confident, verified-looking
+     * claim that nothing checked, and the page must refuse to render it as a number.
+     *
+     * It is the one mutation here that would leave every identity behaviour perfectly correct.
+     */
+    scenario: null,
+    verifyWith: 'ui',
+    expect: ['no ground-truth metric renders as a number the runtime cannot know'],
+    file: 'ai/inference/runtime_tracking.py',
+    apply: () =>
+      rewrite('ai/inference/runtime_tracking.py', [
+        ['            "identitySwitches": None,', '            "identitySwitches": 0,'],
+        ['            "reidentificationSuccessRate": None,', '            "reidentificationSuccessRate": 0,'],
+        ['            "falseRecoveries": None,', '            "falseRecoveries": 0,'],
+      ]),
+  },
 ];
 
 if (process.argv[2] === 'restore') {
@@ -266,9 +322,10 @@ for (const mutation of wanted) {
       continue;
     }
 
-    const broken = verify(mutation.scenario);
+    const what = mutation.verifyWith === 'ui' ? 'browser' : mutation.scenario;
+    const broken = mutation.verifyWith === 'ui' ? verifyUi() : verify(mutation.scenario);
     const wentRed = !broken.green;
-    check(wentRed, `the ${mutation.scenario} verification goes RED`, wentRed ? broken.red.join(' · ') : 'it stayed green');
+    check(wentRed, `the ${what} verification goes RED`, wentRed ? broken.red.join(' · ') : 'it stayed green');
 
     if (wentRed) {
       const named = mutation.expect.some((want) => broken.red.some((r) => normalise(r).includes(normalise(want))));
@@ -287,7 +344,7 @@ for (const mutation of wanted) {
     await waitForRuntime();
   }
 
-  const restored = verify(mutation.scenario);
+  const restored = mutation.verifyWith === 'ui' ? verifyUi() : verify(mutation.scenario);
   check(restored.green, 'and it is GREEN again once the mutation is restored', restored.green ? '' : restored.red.join(' · '));
   console.log('');
 }

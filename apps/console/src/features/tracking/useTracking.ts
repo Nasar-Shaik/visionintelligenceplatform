@@ -77,6 +77,7 @@ export interface TrackTimelineEntry {
 }
 
 export interface TrackingStats {
+  schemaVersion?: string;
   camerasTracked: number;
   activeTracks: number;
   confirmedTracks: number;
@@ -90,8 +91,60 @@ export interface TrackingStats {
   averageTrackingMs: number | null;
   averageTrackLifetimeSeconds: number | null;
   averageTrackHits: number | null;
+  averageTrackAgeFrames?: number | null;
   fragmentation: number | null;
   camerasEvicted?: number;
+  occlusionsSurvived?: number;
+  crossings?: number;
+  reentryOpportunities?: number;
+  /**
+   * ⚠️ `null` from any live runtime, always — and that is the measurement, not a gap in the wiring.
+   * Each asks whether an identity was CORRECT, which is defined against which real object each track
+   * belonged to. A camera does not carry that. `undefined` is a different statement: this runtime
+   * predates the metric. The page distinguishes them. See ADR-0039.
+   */
+  identitySwitches?: number | null;
+  reidentificationSuccessRate?: number | null;
+  falseRecoveries?: number | null;
+  groundTruth?: {
+    available: boolean;
+    reason: string;
+    metrics: string[];
+    measuredBy?: string;
+  };
+}
+
+/**
+ * One camera's tracking metrics (`/api/tracking/cameras`).
+ *
+ * ⚠️ `tracking: false` means the counters are HISTORY — the camera has gone quiet and its live state
+ * was released, so `activeTracks` is 0 for a reason that is not "nobody is there". Under Camera
+ * Processing Assignment that will be the ordinary state of a camera whose AI is switched off.
+ */
+export interface CameraTrackingStats {
+  cameraId: string;
+  tracking: boolean;
+  activeTracks: number;
+  confirmedTracks: number;
+  lostTracks: number;
+  createdTracks: number;
+  removedTracks: number;
+  recoveredTracks: number;
+  occlusionsSurvived: number;
+  crossings: number;
+  framesTracked: number;
+  outOfOrderFrames: number;
+  trackingFps: number | null;
+  averageTrackingMs: number | null;
+}
+
+/** `/api/tracking/cameras` */
+export interface CameraTrackingListing {
+  enabled?: boolean;
+  detail?: string;
+  unreachable?: boolean;
+  cameras?: CameraTrackingStats[];
+  stats?: TrackingStats;
 }
 
 export interface TrackingEngine {
@@ -149,6 +202,17 @@ export function useTrackingOverview() {
   return useQuery({
     queryKey: queryKeys.tracking.overview(),
     queryFn: () => http.get<TrackingOverview>('/tracking'),
+    refetchInterval: STATS_INTERVAL_MS,
+    refetchIntervalInBackground: false,
+    retry: false,
+    staleTime: 0,
+  });
+}
+
+export function useCameraTracking() {
+  return useQuery({
+    queryKey: queryKeys.tracking.cameras(),
+    queryFn: () => http.get<CameraTrackingListing>('/tracking/cameras'),
     refetchInterval: STATS_INTERVAL_MS,
     refetchIntervalInBackground: false,
     retry: false,

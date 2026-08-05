@@ -104,6 +104,17 @@ references them rather than restating what a capability is.
 > [L-42](KNOWN_LIMITATIONS.md) (appearance-blind re-entry), [L-43](KNOWN_LIMITATIONS.md) (no
 > cross-camera identity) and [L-44](KNOWN_LIMITATIONS.md) (frame widths, not metres).
 >
+> ⚠️ **Frozen 2026-08-05 with eleven permanent metrics, three of which report "not measurable".**
+> `identitySwitches`, `reidentificationSuccessRate` and `falseRecoveries` ask whether the tracker was
+> _right_, which needs ground truth a live camera does not carry — so they are `null` with the reason
+> attached, never `0`
+> ([ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md)). ⚠️ **This bounds what
+> may be claimed for C-14d**: there is no live accuracy number, no tracking health score and no
+> accuracy SLA, and none can be computed from runtime statistics. The six accuracy metrics that do
+> exist are measured against **authored** clips and certify the tracking logic, not the platform
+> against real footage. Per-camera metrics (`/tracking/cameras`) are read-only and tenant-scoped; the
+> per-camera enable switch they suggest is **C-14c**, which is not built.
+>
 > ⛔ **C-14c is not built, and the row exists so nobody assumes otherwise.** A customer cannot choose
 > which cameras are analysed. Today every recording camera's frames are offered and the runtime drops
 > what it cannot keep up with. ⬜ Pilot for C-14b stays unvalidated: two photographs are a smoke test

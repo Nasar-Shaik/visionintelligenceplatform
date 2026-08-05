@@ -1,0 +1,44 @@
+{
+  "at": "2026-08-05T18:39:31.612Z",
+  "scenariosRun": ["walk", "occlusion", "reentry", "crossing"],
+  "caveat": "measured against authored synthetic clips, not real CCTV. These certify the tracking logic against known trajectories — never the platform against real footage (L-1).",
+  "metrics": {
+    "identityStability": 1,
+    "reidentificationSuccess": 1,
+    "occlusionRecovery": 1,
+    "crossingCorrectness": 1,
+    "identitySwitches": 0,
+    "terminationCorrectness": 1,
+    "falseRecoveries": null
+  },
+  "basis": {
+    "identityStability": {
+      "scenario": "walk",
+      "detail": "1 authored person → 1 identity(ies)"
+    },
+    "occlusionRecovery": {
+      "scenario": "occlusion",
+      "detail": "1 identity(ies) across an observed gap"
+    },
+    "terminationCorrectness": {
+      "scenario": "reentry",
+      "detail": "2 id(s), the first retired on departure"
+    },
+    "reidentificationSuccess": {
+      "scenario": "reentry",
+      "detail": "identityId=trk_cam_d467f4fe424d43049af586329a2e6867_live-tnt_demo_retail-cam_d467f4fe424d43049af586329a2e6867_1 against predecessor trk_cam_d467f4fe424d43049af586329a2e6867_live-tnt_demo_retail-cam_d467f4fe424d43049af586329a2e6867_1"
+    },
+    "identitySwitches": {
+      "scenario": "crossing",
+      "detail": "2 track(s) examined by lane"
+    },
+    "crossingCorrectness": {
+      "scenario": "crossing",
+      "detail": "2 identity(ies), 0 lane change(s)"
+    },
+    "falseRecoveries": {
+      "scenario": "crossing",
+      "detail": "not measurable — no identity was retired, so no link could form either way"
+    }
+  }
+}

@@ -134,6 +134,8 @@ def _runtime_metrics(registry, supervisor, service_name: str, version: str) -> s
         ("inference_runtime_sessions_max", "gauge", max_sessions),
         ("inference_runtime_uptime_seconds", "gauge", round(_time.monotonic() - _STARTED_AT, 3)),
     ]
+    rows.extend(_tracking_metrics(registry))
+
     lines = [
         "# TYPE inference_runtime_build_info gauge",
         f'inference_runtime_build_info{{service="{service_name}",version="{version}",provider="{provider}"}} 1',
@@ -142,6 +144,63 @@ def _runtime_metrics(registry, supervisor, service_name: str, version: str) -> s
         lines.append(f"# TYPE {name} {kind}")
         lines.append(f"{name} {value}")
     return "\n".join(lines) + "\n"
+
+
+def _tracking_metrics(registry) -> list:
+    """Tracking's permanent series (P-8 Phase 4 freeze). Deployment-wide counts, no tenant labels.
+
+    ⚠️ **A metric the runtime cannot measure is OMITTED, never emitted as zero.** Prometheus has no
+    null, so `identity_switches`, `reidentification_success` and `false_recoveries` are simply not
+    here — they need ground truth a live camera does not carry. `inference_tracking_ground_truth_
+    available 0` is emitted in their place, so a dashboard can tell "not measurable here" apart from
+    "the exporter is broken", and an alert on the missing series is impossible to write by accident.
+    See ADR-0039.
+
+    ⚠️ **No tenant or camera labels.** `/metrics` is the deployment's own scrape and is not tenant
+    scoped, so labelling by tenant would publish one customer's activity to everyone reading it.
+    Per-camera numbers live behind `/tracking/cameras`, which requires a tenant.
+    """
+    tracker = getattr(registry, "tracker", None)
+    if not callable(getattr(tracker, "stats", None)):
+        return [("inference_tracking_enabled", "gauge", 0)]
+    try:
+        stats = tracker.stats()
+    except Exception:  # noqa: BLE001 - a metrics scrape must never fail the endpoint
+        return [("inference_tracking_enabled", "gauge", 0)]
+
+    rows = [
+        ("inference_tracking_enabled", "gauge", 1),
+        ("inference_tracking_cameras", "gauge", stats.get("camerasTracked", 0)),
+        ("inference_tracking_active", "gauge", stats.get("activeTracks", 0)),
+        ("inference_tracking_confirmed", "gauge", stats.get("confirmedTracks", 0)),
+        ("inference_tracking_tentative", "gauge", stats.get("tentativeTracks", 0)),
+        ("inference_tracking_lost", "gauge", stats.get("lostTracks", 0)),
+        ("inference_tracking_created_total", "counter", stats.get("createdTracks", 0)),
+        ("inference_tracking_terminated_total", "counter", stats.get("removedTracks", 0)),
+        ("inference_tracking_recovered_total", "counter", stats.get("recoveredTracks", 0)),
+        ("inference_tracking_occlusions_total", "counter", stats.get("occlusionsSurvived", 0)),
+        ("inference_tracking_crossings_total", "counter", stats.get("crossings", 0)),
+        (
+            "inference_tracking_reentry_opportunities_total",
+            "counter",
+            stats.get("reentryOpportunities", 0),
+        ),
+        ("inference_tracking_frames_total", "counter", stats.get("framesTracked", 0)),
+        ("inference_tracking_out_of_order_total", "counter", stats.get("outOfOrderFrames", 0)),
+        ("inference_tracking_ground_truth_available", "gauge", 0),
+    ]
+    # ⚠️ The averages are `None` until something has been tracked, and a gauge of 0 there would read
+    # as "tracks last no time at all" rather than "nothing has been tracked". Omitted until measured.
+    for name, key in (
+        ("inference_tracking_track_duration_seconds_avg", "averageTrackLifetimeSeconds"),
+        ("inference_tracking_track_age_frames_avg", "averageTrackAgeFrames"),
+        ("inference_tracking_latency_ms_avg", "averageTrackingMs"),
+        ("inference_tracking_fragmentation", "fragmentation"),
+    ):
+        value = stats.get(key)
+        if isinstance(value, (int, float)):
+            rows.append((name, "gauge", value))
+    return rows
 
 
 def runtime_view(registry, supervisor, service_name: str, version: str, model_store=None) -> dict:
@@ -413,6 +472,7 @@ def make_handler(
             """Read-only views over the live tracker.
 
                 GET /tracking                    aggregate statistics for this tenant
+                GET /tracking/cameras            the same metrics, per camera
                 GET /tracking/tracks             live tracks (optionally ?cameraId=&state=)
                 GET /tracking/tracks/{trackId}   one track plus its lifecycle timeline
 
@@ -447,6 +507,12 @@ def make_handler(
             q = parse_qs(query)
             if len(segs) == 1:
                 self._ok({"enabled": True, "engine": tracker.describe(), "stats": tracker.stats(tenant)})
+            elif len(segs) == 2 and segs[1] == "cameras":
+                # ⚠️ Camera ids for THIS tenant only, from a tracker read that requires the tenant.
+                # There is no "all cameras" here and there must not be: this is the surface that
+                # Camera Processing Assignment will read from, and a list that leaked across tenants
+                # would leak which sites a competitor is watching.
+                self._ok({"cameras": tracker.cameras(tenant), "stats": tracker.stats(tenant)})
             elif len(segs) == 2 and segs[1] == "tracks":
                 states = _first(q.get("state"))
                 tracks = tracker.tracks(

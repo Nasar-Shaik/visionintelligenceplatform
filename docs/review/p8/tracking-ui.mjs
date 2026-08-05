@@ -116,16 +116,18 @@ const page = await context.newPage();
  * before the assertion reads it — a race that produced a real false failure on the AI Runtime page
  * (`Uptime="51s"` against a payload reporting 56).
  */
-const seen = { list: [], overview: [], detail: [] };
+const seen = { list: [], overview: [], detail: [], cameras: [] };
 page.on('response', async (res) => {
   const url = res.url();
   const bucket = url.includes('/api/tracking/tracks/')
     ? 'detail'
     : url.includes('/api/tracking/tracks')
       ? 'list'
-      : url.endsWith('/api/tracking')
-        ? 'overview'
-        : null;
+      : url.endsWith('/api/tracking/cameras')
+        ? 'cameras'
+        : url.endsWith('/api/tracking')
+          ? 'overview'
+          : null;
   if (bucket === null || !res.ok()) return;
   try {
     const body = await res.json();
@@ -258,11 +260,75 @@ try {
    */
   const overview = seen.overview[seen.overview.length - 1];
   if (overview?.stats) {
-    const nulls = Object.entries(overview.stats).filter(([, v]) => v === null).map(([k]) => k);
+    /*
+     * ⚠️ TWO kinds of null, rendered with two different words, and conflating them is the bug this
+     * split exists to prevent. A derived average is `null` because nothing has been tracked YET —
+     * "Not measured", and it will fill in. The three ground-truth metrics are `null` because this
+     * runtime can NEVER measure them — "Not measurable", permanently. One word for both would tell
+     * an operator to wait for a number that is never coming.
+     */
+    const truthKeys = new Set(overview.stats.groundTruth?.metrics ?? []);
+    const nulls = Object.entries(overview.stats)
+      .filter(([k, v]) => v === null && !truthKeys.has(k))
+      .map(([k]) => k);
     const notMeasured = (stats.match(/Not measured/g) ?? []).length;
     check(nulls.length === 0 || notMeasured >= nulls.length,
       '⚠️ every null the API sent renders as "Not measured", never as a number',
       `${nulls.length} null field(s) → ${notMeasured} "Not measured" on screen`);
+
+    /* ── the ADR-0039 surface ──────────────────────────────────────────────────────────────── */
+    if (truthKeys.size > 0) {
+      const notMeasurable = (stats.match(/Not measurable/g) ?? []).length;
+      check(notMeasurable >= truthKeys.size,
+        '⚠️ every ground-truth metric renders as "Not measurable" — visible, not hidden',
+        `${truthKeys.size} unmeasurable metric(s) → ${notMeasurable} on screen`);
+      check(/absent, never zero/i.test(stats),
+        '⚠️ the page says they are absent rather than zero, and why');
+      /*
+       * ⚠️ Case-insensitive, because `innerText` returns RENDERED text and the labels carry Tailwind's
+       * `uppercase`. The page is correct and a case-sensitive assertion is simply wrong about it —
+       * the same trap that failed this file once before.
+       */
+      check(/identity switches/i.test(stats),
+        'identity switches appear by name rather than being silently omitted');
+      /*
+       * ⚠️ The failure this guards: a `0` where the API sent `null`. Read from the `dd` that FOLLOWS
+       * the label — not from an ancestor `div`, which matches the whole page and made this check
+       * pass or fail on unrelated text.
+       */
+      const switchValue = await page
+        .locator('dt', { hasText: /^identity switches$/i })
+        .first()
+        .locator('xpath=following-sibling::dd[1]')
+        .innerText()
+        .catch(() => '');
+      check(switchValue !== '' && !/\d/.test(switchValue),
+        '⚠️ no ground-truth metric renders as a number the runtime cannot know',
+        switchValue.trim() || 'value not found');
+    }
+  }
+
+  /*
+   * ⚠️ Per-camera rows are a VIEW. The obvious next control here is a per-camera enable switch, and
+   * that switch is Camera Processing Assignment (C-14c), which is not built. The `inputs === 0`
+   * check above already covers the page; this asserts the rows themselves arrived.
+   */
+  const cameraPayload = seen.cameras[seen.cameras.length - 1];
+  check(cameraPayload !== undefined, 'the page fetched per-camera metrics', '/api/tracking/cameras');
+  const cameraRows = await page.locator('table tbody tr').count();
+  if ((cameraPayload?.cameras ?? []).length > 0) {
+    check(/Per camera/i.test(stats), 'per-camera metrics are on the page', `${cameraRows} row(s)`);
+    check(/Tracking fps/i.test(stats), "the per-camera table reports each camera's tracking rate");
+    check(cameraRows === cameraPayload.cameras.length,
+      '⚠️ every camera row on screen came from the payload — none invented, none dropped',
+      `${cameraPayload.cameras.length} in payload → ${cameraRows} rendered`);
+    for (const camera of cameraPayload.cameras) {
+      check(stats.includes(camera.cameraId), `camera ${camera.cameraId} is named on the page`);
+    }
+  } else {
+    console.log('  · no camera has tracked anything in this runtime, so there are no per-camera rows');
+    check(cameraRows === 0, '⚠️ an empty payload renders no rows rather than a placeholder',
+      `${cameraRows} row(s)`);
   }
 
   /* ── 5 · permission ─────────────────────────────────────────────────────────────────────────── */

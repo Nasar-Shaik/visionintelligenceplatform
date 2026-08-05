@@ -133,6 +133,7 @@ export function registerSystemRoutes(app: FastifyInstance, deps: SystemRoutesDep
    * Object tracking (P-8 Phase 4).
    *
    *   GET /api/tracking                    aggregate statistics
+   *   GET /api/tracking/cameras            the same metrics, per camera
    *   GET /api/tracking/tracks             live tracks
    *   GET /api/tracking/tracks/:trackId    one track plus its lifecycle
    *
@@ -181,6 +182,9 @@ export function registerSystemRoutes(app: FastifyInstance, deps: SystemRoutesDep
   };
 
   app.get('/api/tracking', async (request, reply) => trackingProxy(request, reply, ''));
+  app.get('/api/tracking/cameras', async (request, reply) =>
+    trackingProxy(request, reply, '/cameras'),
+  );
   app.get('/api/tracking/tracks', async (request, reply) =>
     trackingProxy(request, reply, '/tracks'),
   );

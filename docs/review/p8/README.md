@@ -395,6 +395,26 @@ Detections became **identities**. The scripts below are the evidence.
 | `tracking-benchmark.mjs` | what does tracking cost, and does identity survive load?                     |
 | `tracking-mutations.mjs` | does each verification fail at the check that **names** the fault?           |
 
+### Phase 4 freeze — where each metric is allowed to come from
+
+The freeze added eleven permanent tracking metrics and, with them, a rule about their provenance
+([ADR-0039](../../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md)). Three sources, and
+mixing them is the failure the rule prevents:
+
+| Source                                     | Produces                                         | Can it answer "was it right?" |
+| ------------------------------------------ | ------------------------------------------------ | ----------------------------- |
+| **Live runtime** — `/tracking`, `/metrics` | counts, timings, gauges, per-camera rows         | ❌ never                      |
+| **Capacity ladder** — `tracking-benchmark` | the same counts under load, at 1→16 cameras      | ❌ as blind as production     |
+| **Authored scenarios** — `tracking.mjs`    | the six accuracy metrics → `tracking-truth.json` | ✅ the only place             |
+
+⚠️ **The ladder is the tempting one.** It runs one walking person per camera, so "identities minus
+cameras" looks like a switch count. It is not — it is fragmentation, and at sixteen cameras it is
+driven almost entirely by frame loss. The ladder therefore emits `identitySwitches: null` on every
+rung rather than a number it cannot justify.
+
+⚠️ **A metric whose scenario did not run stays `null`.** `tracking-mutations.mjs` runs subsets, and a
+subset scoring 1.0 on something it never exercised would be exactly the lie this is built against.
+
 ### ⚠️ This is the first verification here that asks whether the answer was RIGHT
 
 Everything else in this directory asks whether the platform produced an answer. Identity questions

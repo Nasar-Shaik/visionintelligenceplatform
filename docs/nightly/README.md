@@ -200,3 +200,44 @@ profile. The engine was not touched, `report.mjs` was not touched, and no existi
 That is the property the domain layout exists to preserve — and the reason the folders for rules,
 incidents, camera assignment, analytics and the verticals are named in
 [`stages/README.md`](../../scripts/nightly/stages/README.md) before anything fills them.
+
+### Persistent metric history — why the run directories are not enough
+
+⚠️ **Run directories are pruned.** `scripts/cleanup.sh --prune` deletes anything older than
+`KEEP_RUNS` days, which is correct — a run directory holds logs, samples and screenshots and there is
+no reason to keep ninety of them. The consequence is that a trend built by walking run directories
+has a **one-month memory however long the platform has been running**, and the questions this data
+exists to answer are longer than that: is p95 creeping up over a quarter, how many cameras did we
+sustain in June, when did identity stability last change.
+
+So [`history.mjs`](../../scripts/nightly/history.mjs) appends a few hundred bytes per run to an
+append-only ledger under `scripts/reports/history/`:
+
+| Ledger                 | Carries                                                            |
+| ---------------------- | ------------------------------------------------------------------ |
+| `benchmark.jsonl`      | sustainable cameras, p95, memory, CPU, drop %                      |
+| `stability.jsonl`      | memory band and drift between halves                               |
+| `tracking.jsonl`       | identity intact to N cameras, tracking cost, occlusions, crossings |
+| `tracking-truth.jsonl` | the six accuracy metrics from the authored scenarios               |
+
+⚠️ **It is a sibling of the run root, not a child, and that placement is the safety.** The pruner runs
+`find "$REPORT_ROOT" -maxdepth 1 -type d -mtime +KEEP`, so anything inside the run root is one quiet
+month away from deletion. Being outside means the pruner cannot reach it by accident, with nothing to
+remember and no exclusion to forget.
+
+⚠️ **Append-only, never rewritten.** Recomputing history is how a regression quietly disappears, and
+on a platform whose verification argument is "measured, not asserted" a mutable measurement record is
+worth less than none. A run that produced no metrics writes **nothing** rather than a line of nulls —
+a ledger of empty rows is indistinguishable from a platform that got slower and slower.
+
+⚠️ **No tenant, camera or track identifiers.** This is engineering telemetry kept far longer than
+anything else, so it holds counts, timings and verdicts and nothing describing a person or a
+customer's premises.
+
+### The sizing policy is enforced here, not just documented
+
+"No sizing recommendation until three independent runs agree" was a standing policy that nothing
+checked. The report now reads the ledger, counts the last three recorded runs, and prints
+`Sizing: PROVISIONAL` unless all three agree on the same sustainable camera count — so one good night
+cannot promote a number and a disagreeing night demotes it automatically. A policy nothing checks is
+a sentence in a document that a confident summary quietly contradicts.

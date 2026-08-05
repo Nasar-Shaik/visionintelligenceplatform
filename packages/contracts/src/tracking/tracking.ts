@@ -280,8 +280,107 @@ export const TrackingStats = z.object({
    * were genuinely swapped needs ground truth the runtime does not have.
    */
   fragmentation: z.number().nonnegative().nullable(),
+
+  // --- P-8 Phase 4 freeze: the permanent tracking metrics ---------------------------------------
+  //
+  // ⚠️ Every field below is `.optional()`, and that is backward compatibility rather than laziness.
+  // A payload captured before the freeze must still parse, and a runtime that has not been upgraded
+  // must not fail validation at the media proxy. `undefined` therefore means "this runtime does not
+  // report it" and is a DIFFERENT statement from `null`, which means "measured as unmeasurable".
+  // The console distinguishes them; collapsing the two would hide an unwired metric behind a
+  // legitimate absence.
+
+  /** Version of this stats document. Consumers branch on it, never on field presence. */
+  schemaVersion: z.string().optional(),
+  /** Mean frames since first sighting across live tracks. Distinct from `averageTrackHits`, which
+   *  counts the frames a track was actually SEEN — the two differ by exactly the coasting. */
+  averageTrackAgeFrames: z.number().nonnegative().nullable().optional(),
+  /** Gaps the tracker absorbed: the identity went `lost` and returned with the SAME `trackId`. */
+  occlusionsSurvived: z.number().int().nonnegative().optional(),
+  /**
+   * Episodes of two confirmed tracks occupying the same place, counted once per meeting.
+   *
+   * ⚠️ **An opportunity for a swap, never evidence of one.** Two people passing cleanly and a
+   * tracker exchanging their identities are indistinguishable from here. Its value is as a
+   * denominator: a clean identity record over zero crossings proves very little.
+   */
+  crossings: z.number().int().nonnegative().optional(),
+  /** Departed identities that were available to be returned to — the denominator for recoveries. */
+  reentryOpportunities: z.number().int().nonnegative().optional(),
+  /** Frames rejected because they arrived out of order. ⚠️ Not the pipeline's frame loss, which is
+   *  media's number; tracking declines these deliberately rather than losing them. */
+  outOfOrderFrames: z.number().int().nonnegative().optional(),
+  /** Cameras whose tracking state was released to stay inside the runtime's bound. */
+  camerasEvicted: z.number().int().nonnegative().optional(),
+
+  // --- and the three no live runtime can answer -------------------------------------------------
+  //
+  // ⚠️ These are `null` from a live runtime, ALWAYS, and that is the measurement. Each asks whether
+  // an identity was CORRECT, which is defined against which real object each track belonged to —
+  // ground truth a camera does not carry. They are measured for real against authored scenarios,
+  // where the trajectories were written down before the run. See ADR-0039.
+  identitySwitches: z.number().int().nonnegative().nullable().optional(),
+  reidentificationSuccessRate: z.number().min(0).max(1).nullable().optional(),
+  falseRecoveries: z.number().int().nonnegative().nullable().optional(),
+  /** Why the three above are absent, carried with them so a consumer never has to guess. */
+  groundTruth: z
+    .object({
+      available: z.boolean(),
+      reason: z.string(),
+      metrics: z.array(z.string()),
+      measuredBy: z.string().optional(),
+    })
+    .optional(),
 });
 export type TrackingStats = z.infer<typeof TrackingStats>;
+
+/**
+ * The version of the `TrackingStats` document (P-8 Phase 4 freeze).
+ *
+ * ⚠️ Separate from `TRACK_SCHEMA_VERSION`. A track and the statistics about tracks are different
+ * documents with different readers and different rates of change, and one version number covering
+ * both would force a track schema bump every time a counter was added.
+ */
+export const TRACKING_STATS_SCHEMA_VERSION = '1.0';
+
+/**
+ * Tracking metrics for ONE camera (P-8 Phase 4 freeze).
+ *
+ * ### ⚠️ Two kinds of number in one row, and the field names say which
+ *
+ * `activeTracks`, `confirmedTracks` and `lostTracks` are **gauges**: live state, and legitimately
+ * `0` for a camera nobody is walking past. Everything else is a **lifetime counter** that outlives
+ * the tracking state itself.
+ *
+ * ### ⚠️ Why the counters outlive the state, and why that is a requirement
+ *
+ * Per-camera tracking state is released the moment a camera goes quiet. Under Camera Processing
+ * Assignment (C-14c) going quiet becomes a normal, operator-initiated event — somebody turns AI off
+ * on a camera. If the counters lived with the state, that click would erase everything the camera
+ * had ever reported, and turning it back on would show a camera that had never seen anybody.
+ * `tracking: false` means exactly that: the counters are history, nothing is being analysed now.
+ */
+export const CameraTrackingStats = z.object({
+  cameraId: z.string(),
+  /** Whether this camera has live tracking state right now. `false` ⇒ the counts are history. */
+  tracking: z.boolean(),
+  activeTracks: z.number().int().nonnegative(),
+  confirmedTracks: z.number().int().nonnegative(),
+  lostTracks: z.number().int().nonnegative(),
+  createdTracks: z.number().int().nonnegative(),
+  removedTracks: z.number().int().nonnegative(),
+  recoveredTracks: z.number().int().nonnegative(),
+  occlusionsSurvived: z.number().int().nonnegative(),
+  crossings: z.number().int().nonnegative(),
+  framesTracked: z.number().int().nonnegative(),
+  outOfOrderFrames: z.number().int().nonnegative(),
+  /** Frames tracked per second over this camera's own observed window, or `null` when it has not
+   *  delivered enough frames to have a rate. ⚠️ One frame is not a rate; `0.0` would read as a
+   *  stalled camera, which is a different and alarming thing. */
+  trackingFps: z.number().nonnegative().nullable(),
+  averageTrackingMs: z.number().nonnegative().nullable(),
+});
+export type CameraTrackingStats = z.infer<typeof CameraTrackingStats>;
 
 // --- Zones (pure geometry) ----------------------------------------------------------------------
 

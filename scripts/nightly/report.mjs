@@ -17,6 +17,7 @@
  */
 import { readFileSync, writeFileSync, existsSync, readdirSync, lstatSync } from 'node:fs';
 import { join, basename } from 'node:path';
+import { read as historyRead } from './history.mjs';
 
 const args = process.argv.slice(2);
 const runFlag = args.indexOf('--run');
@@ -192,8 +193,37 @@ function summariseBenchmark(data) {
   };
 }
 
+/**
+ * The tracking ladder and the authored-scenario accuracy run.
+ *
+ * ⚠️ **Two files, never merged, and the report keeps them apart on purpose.** The ladder measures
+ * identity under LOAD against live streams and is as blind to an identity switch as production is.
+ * `tracking-truth.json` measures whether the tracker was RIGHT, and can only do so because the
+ * trajectories were authored first. Presenting one number sourced from either would be exactly the
+ * confusion ADR-0039 exists to prevent.
+ */
+function summariseTracking(data) {
+  if (!data || !Array.isArray(data.rows) || data.rows.length === 0) return null;
+  const rows = data.rows;
+  const clean = rows.filter((r) => r.identityOverhead === 0).map((r) => r.cameras);
+  const top = rows[rows.length - 1];
+  return {
+    rows,
+    identityIntactTo: clean.length ? Math.max(...clean) : 0,
+    topCameras: top?.cameras ?? null,
+    topOverhead: top?.identityOverhead ?? null,
+    topDrop: top?.dropPercent ?? null,
+    trackingMsMax: Math.max(...rows.map((r) => r.trackingMsAvg ?? 0)),
+    occlusions: rows.reduce((a, r) => a + (r.occlusionsSurvived ?? 0), 0),
+    crossings: rows.reduce((a, r) => a + (r.crossings ?? 0), 0),
+    sizingPolicy: data.sizingPolicy ?? null,
+  };
+}
+
 const stab = summariseStability(stability);
 const bench = summariseBenchmark(benchmark);
+const track = summariseTracking(readJson(join(metricsDir, 'tracking-benchmark.json')));
+const truth = readJson(join(metricsDir, 'tracking-truth.json'));
 
 /**
  * The previous run worth comparing against.
@@ -232,6 +262,15 @@ const cfg = {
 const trends = [];
 const regressions = [];
 
+/** The persistent ledger, or an empty list if it has not been written yet. Never fatal. */
+function history(family, limit = 0) {
+  try {
+    return historyRead(family, limit);
+  } catch {
+    return [];
+  }
+}
+
 const prevBench = previousRun('benchmark.json');
 if (bench && prevBench) {
   const before = summariseBenchmark(prevBench.data);
@@ -268,6 +307,58 @@ if (bench && prevBench) {
   }
 } else if (bench) {
   trends.push('_First run carrying a benchmark — nothing to compare against yet._');
+}
+
+/*
+ * ### ⚠️ The long horizon comes from the LEDGER, not from the run directories
+ *
+ * `previousRun()` above compares against the last night that produced the metric, and that is the
+ * right comparison for "did something break yesterday?". It cannot answer "is this creeping?",
+ * because run directories are pruned after `KEEP_RUNS` days — so a walk over them has a one-month
+ * memory however long the platform has been running. The ledger is append-only and outside the run
+ * root, so it does not.
+ */
+if (track) {
+  const ledger = history('tracking', 10);
+  // ⚠️ Excluding THIS run: it is appended after the report is generated, but a re-run of the report
+  // over an existing directory would otherwise compare the run against itself.
+  const past = ledger.filter((row) => row.runId !== basename(RUN));
+  if (past.length >= 2) {
+    const first = past[0];
+    const intact = past.map((r) => r.identityIntactToCameras ?? 0);
+    trends.push(
+      `**Identity intact to** ${first.identityIntactToCameras} → **${track.identityIntactTo}** camera(s) ` +
+        `over ${past.length} recorded run(s) (range ${Math.min(...intact)}–${Math.max(...intact)})`,
+    );
+    const costs = past.map((r) => r.trackingMsMax ?? 0).filter((n) => n > 0);
+    if (costs.length > 0)
+      trends.push(
+        `**Tracking cost** ${Math.min(...costs).toFixed(3)}–${Math.max(...costs).toFixed(3)} ms/frame historically, ` +
+          `**${track.trackingMsMax.toFixed(3)} ms** tonight`,
+      );
+  }
+}
+
+{
+  /*
+   * ⚠️ The sizing rule, checked rather than restated. "No published recommendation until three
+   * independent runs agree" is only a policy if something counts the runs — otherwise it is a
+   * sentence in a document that a confident summary quietly contradicts.
+   */
+  const ledger = history('benchmark', 6).filter((row) => row.runId !== basename(RUN));
+  const recent = ledger.slice(-3).map((r) => r.sustainableCameras);
+  if (bench) {
+    const agree = recent.length === 3 && new Set(recent).size === 1;
+    trends.push(
+      agree
+        ? `**Sizing:** the last three recorded runs agree at ${recent[0]} camera(s) — a recommendation may be published.`
+        : `**Sizing: PROVISIONAL.** ${
+            recent.length < 3
+              ? `only ${recent.length} recorded run(s) so far`
+              : `the last three runs measured ${recent.join(', ')}`
+          } — no recommendation is published until three independent runs agree.`,
+    );
+  }
 }
 
 const prevStab = previousRun('stability.json');
@@ -387,6 +478,65 @@ if (bench) {
 At ${bench.topCameras} cameras the platform loses ${num(bench.topDrop)} % of offered frames.
 
 See [benchmark.md](benchmark.md) for the full ladder.
+`;
+}
+
+if (track) {
+  summary += `
+## Tracking — identity under load
+
+**Identity intact to ${track.identityIntactTo} camera(s)** — one walking person per camera produced
+exactly one identity per camera up to that rung. At ${track.topCameras} cameras the engine produced
+${track.topOverhead} extra identity(ies) and lost ${num(track.topDrop)} % of offered frames.
+Tracking costs at most ${track.trackingMsMax.toFixed(3)} ms per frame.
+
+${track.occlusions} occlusion(s) absorbed · ${track.crossings} crossing(s) observed.
+
+> ⚠️ **Extra identities here are FRAGMENTATION, not swapping.** Fewer analysed frames per camera
+> means a larger gap between observations, and past the engine's tolerance a new identity is the
+> correct answer. Nothing in this ladder can tell fragmentation from a swap — that needs ground
+> truth, and it is measured separately below.
+>
+> ⚠️ **Do not read this table as a sizing revision.** The ladder streams a synthetic clip that is far
+> cheaper to encode and decode than a real scene${
+    track.sizingPolicy
+      ? `. Supported remains **${track.sizingPolicy.supported} camera(s)**, ${track.sizingPolicy.provisional} provisional — ${track.sizingPolicy.rule}`
+      : ''
+  }.
+`;
+}
+
+if (truth?.metrics) {
+  const label = {
+    identityStability: 'Identity stability',
+    reidentificationSuccess: 'Re-identification success',
+    occlusionRecovery: 'Occlusion recovery',
+    crossingCorrectness: 'Crossing correctness',
+    identitySwitches: 'Identity switches',
+    terminationCorrectness: 'Termination correctness',
+    falseRecoveries: 'False recoveries',
+  };
+  const rows = Object.entries(truth.metrics).map(([key, value]) => {
+    const basis = truth.basis?.[key];
+    return `| **${label[key] ?? key}** | ${
+      value === null ? '_not measured_' : `\`${value}\``
+    } | ${basis?.detail ?? (value === null ? 'scenario did not run' : '—')} |`;
+  });
+  summary += `
+## Tracking — accuracy against authored ground truth
+
+Scenarios run: ${(truth.scenariosRun ?? []).map((x) => `\`${x}\``).join(', ') || '_none_'}
+
+| Metric | Value | Basis |
+| --- | --- | --- |
+${rows.join('\n')}
+
+> ⚠️ **This is the only place on the platform these numbers exist.** \`/tracking\` reports identity
+> switches, re-identification success and false recoveries as \`null\`, because a live camera cannot
+> say which real object an identity belonged to (ADR-0039). They are answerable here because the
+> trajectories were written down before the run.
+>
+> ⚠️ **${truth.caveat ?? 'Measured against authored clips, not real CCTV.'}**
 `;
 }
 
