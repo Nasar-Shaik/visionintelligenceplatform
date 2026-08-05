@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Camera as CameraIcon, Plus, ScanSearch } from 'lucide-react';
 import type { Camera, CameraHealthStatus, CameraLifecycleState, OrgTreeNode } from '@vip/contracts';
-import { usePermission } from '@/app/hooks';
+import { useDebounced, usePermission } from '@/app/hooks';
 import {
   Badge,
   Button,
@@ -31,7 +32,6 @@ import {
   toast,
 } from '@/ui';
 import { AddCameraDialog } from './AddCameraDialog';
-import { CameraDetailSheet } from './CameraDetailSheet';
 import { DiscoveryDialog } from './DiscoveryDialog';
 import {
   HEALTH_LABEL,
@@ -39,9 +39,8 @@ import {
   cameraLifecyclePresentation,
   capabilitySummary,
   healthPresentation,
-  matchesSearch,
 } from './cameraPresentation';
-import { useCameras, useDeleteCamera } from './useCameras';
+import { useCameraPages, useDeleteCamera, useFleetMetrics } from './useCameras';
 import { LocationPicker } from '@/features/organization/LocationPicker';
 import { findNode, subtreeIds } from '@/features/organization/orgPresentation';
 import { useOrgTree } from '@/features/organization/useOrganization';
@@ -77,8 +76,19 @@ const LIFECYCLE_FILTERS: Array<CameraLifecycleState | 'all' | 'active'> = [
  * and a faster poll would put a steady request load on the gateway for information nobody is
  * watching change second to second.
  */
+/**
+ * ⚠️ How far an operator may page before the screen says stop.
+ *
+ * Ten pages of fifty. The bound exists for the reason P-6.5 measured on the Inbox: an infinite query
+ * refetches **every page it has loaded** on each interval, so a list left open all shift costs more
+ * the further it has been paged. Beyond this the answer is a narrower search, not more scrolling.
+ */
+const MAX_PAGES = 10;
+const PAGE_SIZE = 50;
+/** `CAMERA_ZONE_FILTER_LIMIT` — a site with more zones than this narrows by a child instead. */
+const ZONE_FILTER_LIMIT = 200;
+
 export function CamerasPage() {
-  const query = useCameras({ refetchInterval: 30_000 });
   const deleteCamera = useDeleteCamera();
   const canCreate = usePermission('camera:create');
 
@@ -88,10 +98,19 @@ export function CamerasPage() {
   const [location, setLocation] = useState<string>('all');
   const [adding, setAdding] = useState(false);
   const [discovering, setDiscovering] = useState(false);
-  const [selected, setSelected] = useState<Camera | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Camera | null>(null);
 
-  const cameras = query.data ?? [];
+  /*
+   * ⚠️ **The search box is the server's, not the browser's.**
+   *
+   * It used to filter an array the console had already fetched — every camera in the tenant, on
+   * every page load. That works at nine cameras and is a different product at five thousand:
+   * measured at P-6.6, the estate arrives at ~800 bytes a camera. `search`, `zoneId`, `lifecycle`
+   * and `status` are all things the camera service already answers; the console simply never asked.
+   *
+   * Debounced, because a keystroke is not a query.
+   */
+  const debouncedSearch = useDebounced(search, 300);
 
   /*
    * "Everything under this site" resolved by the backend (P-3). The subtree comes from the tree the
@@ -117,21 +136,51 @@ export function CamerasPage() {
     return labels;
   }, [tree.data]);
 
+  /*
+   * ⚠️ **What the server can answer, and what it cannot — kept apart on purpose.**
+   *
+   * `search`, the location subtree and an exact `lifecycle` state are all `CameraQuery` fields, so
+   * they narrow the result **before** it is sent. Two things are not:
+   *
+   *   · **health** — `health.status` is on the record but is not a query field, so filtering by it
+   *     is a refinement of the rows already loaded. The screen says so when there are more.
+   *   · **"active"** — the operator's usual view is "everything except retired", and the query can
+   *     express `lifecycle = retired` but not its complement. Same treatment, same disclosure.
+   *
+   * Inventing either server-side would mean a contract change to a frozen foundation; pretending
+   * they are server-side would mean a filter that silently answers for one page of an estate.
+   */
+  const serverQuery = useMemo(
+    () => ({
+      limit: PAGE_SIZE,
+      ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
+      ...(locationScope ? { zoneIds: [...locationScope].slice(0, ZONE_FILTER_LIMIT) } : {}),
+      ...(lifecycle !== 'all' && lifecycle !== 'active' ? { lifecycle } : {}),
+    }),
+    [debouncedSearch, locationScope, lifecycle],
+  );
+
+  const query = useCameraPages(serverQuery);
+  const loaded = useMemo(
+    () => (query.data?.pages ?? []).flatMap((page) => page.cameras),
+    [query.data],
+  );
+  const fleet = useFleetMetrics('day');
+
+  const atCap = (query.data?.pages.length ?? 0) >= MAX_PAGES;
+  const hasMore = query.hasNextPage === true && !atCap;
+
+  /** The refinements the server cannot do, applied to what is loaded — and only to that. */
   const visible = useMemo(
     () =>
-      cameras.filter(
+      loaded.filter(
         (camera) =>
-          matchesSearch(camera, search) &&
-          (locationScope === null || locationScope.has(camera.zoneId)) &&
           (health === 'all' || camera.health.status === health) &&
-          (lifecycle === 'all'
-            ? true
-            : lifecycle === 'active'
-              ? camera.lifecycle.state !== 'retired'
-              : camera.lifecycle.state === lifecycle),
+          (lifecycle === 'active' ? camera.lifecycle.state !== 'retired' : true),
       ),
-    [cameras, search, health, lifecycle, locationScope],
+    [loaded, health, lifecycle],
   );
+  const refined = visible.length !== loaded.length;
 
   const confirmDelete = () => {
     if (!pendingDelete) return;
@@ -139,7 +188,6 @@ export function CamerasPage() {
       onSuccess: () => {
         toast.success(`${pendingDelete.name} removed`);
         setPendingDelete(null);
-        setSelected(null);
       },
       onError: () => toast.error('Could not remove the camera'),
     });
@@ -208,11 +256,30 @@ export function CamerasPage() {
         </Select>
       </FilterBar>
 
+      {/*
+        ⚠️ **"of N" is the server's N.** The estate size comes from `/cameras/metrics`, not from the
+        length of what happens to be loaded — the two are the same number only until the first page
+        boundary, and a count that quietly becomes a page size is the arithmetic P-6.5 found in the
+        Inbox. When a refinement the server cannot do is active, the line says that too.
+      */}
+      <p className="mb-3 text-sm text-text-subtle" data-testid="camera-count">
+        {query.isLoading
+          ? 'Loading cameras…'
+          : `Showing ${visible.length}${refined ? ` of ${loaded.length} loaded` : ''} of ${
+              /* ⚠️ "about" when the server says the count is sampled — a sampled aggregate presented
+                 as a census is a confident number describing a subset nobody chose. */
+              fleet.data?.sampled ? 'about ' : ''
+            }${fleet.data?.cameras ?? loaded.length} camera${
+              (fleet.data?.cameras ?? loaded.length) === 1 ? '' : 's'
+            }`}
+        {refined ? ' · health and “active” are applied to the rows loaded, not to the estate' : ''}
+      </p>
+
       <QueryBoundary
         isLoading={query.isLoading}
         isError={query.isError}
         error={query.error}
-        isEmpty={cameras.length === 0}
+        isEmpty={loaded.length === 0}
         skeleton={<TableSkeleton rows={6} cols={5} />}
         emptyState={
           <EmptyState
@@ -253,20 +320,19 @@ export function CamerasPage() {
             </TableHeader>
             <TableBody>
               {visible.map((camera) => (
-                <TableRow
-                  key={camera.id}
-                  className="cursor-pointer"
-                  onClick={() => setSelected(camera)}
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setSelected(camera);
-                    }
-                  }}
-                >
+                <TableRow key={camera.id}>
                   <TableCell>
-                    <div className="font-medium">{camera.name}</div>
+                    {/*
+                      ⚠️ A link, not a click handler on the row. It is the same navigation an
+                      operator can middle-click, copy, or reach with the keyboard for free — and it
+                      gives the camera an address, which the row-opens-a-sheet version never did.
+                    */}
+                    <Link
+                      to={`/cameras/${camera.id}`}
+                      className="font-medium hover:underline focus-visible:underline"
+                    >
+                      {camera.name}
+                    </Link>
                     <div className="truncate font-mono text-xs text-text-subtle">
                       {camera.streamUrl}
                     </div>
@@ -293,15 +359,29 @@ export function CamerasPage() {
             </TableBody>
           </Table>
         )}
+
+        {hasMore ? (
+          <div className="mt-4 flex justify-center">
+            <Button
+              variant="outline"
+              onClick={() => void query.fetchNextPage()}
+              disabled={query.isFetchingNextPage}
+            >
+              {query.isFetchingNextPage ? 'Loading…' : 'Load more cameras'}
+            </Button>
+          </div>
+        ) : null}
+
+        {atCap && query.hasNextPage ? (
+          <p className="mt-4 text-center text-sm text-text-subtle">
+            {`Showing the ${loaded.length} cameras loaded so far.`} There are more — narrow the
+            search or pick a location rather than paging further.
+          </p>
+        ) : null}
       </QueryBoundary>
 
       <AddCameraDialog open={adding} onOpenChange={setAdding} />
       <DiscoveryDialog open={discovering} onOpenChange={setDiscovering} />
-      <CameraDetailSheet
-        camera={selected}
-        onClose={() => setSelected(null)}
-        onDelete={setPendingDelete}
-      />
 
       <Dialog
         open={pendingDelete !== null}

@@ -37,6 +37,16 @@ export const queryKeys = {
     replay: (id: string, probeId: string) => ['cameras', 'probes', id, probeId] as const,
     evidence: (id: string) => ['cameras', 'evidence', id] as const,
     decisions: (id: string) => ['cameras', 'decisions', id] as const,
+    /** P-6.6 — the estate's own count, so "showing 50 of N" is the server's N and not a page size. */
+    fleet: (window: string) => ['cameras', 'fleet', window] as const,
+    healthSummary: (id: string, window: string) =>
+      ['cameras', 'health-summary', id, window] as const,
+    probeMetrics: (id: string, window: string) => ['cameras', 'probe-metrics', id, window] as const,
+    confidence: (id: string, window: string) => ['cameras', 'confidence', id, window] as const,
+    /** The id→name map. Bounded and long-lived: names change rarely and this is read everywhere. */
+    names: () => ['cameras', 'names'] as const,
+    /** Media's per-camera stream worker — a different service's answer, keyed separately. */
+    stream: (id: string) => ['cameras', 'stream', id] as const,
   },
   events: {
     all: () => ['events'] as const,

@@ -69,7 +69,14 @@ type Envelope<T> = EnvelopeSuccess<T> | EnvelopeFailure;
 
 export interface RequestOptions {
   /** Query parameters — undefined/null values are dropped. */
-  query?: Record<string, string | number | boolean | undefined | null>;
+  /**
+   * Query parameters — undefined/null values are dropped.
+   *
+   * ⚠️ An array becomes **repeated parameters** (`?zoneId=a&zoneId=b`), not a comma-joined string:
+   * that is what Fastify parses back into an array, and it is how the camera query expresses "every
+   * zone under this site". Joining them would send one zone whose id happens to contain commas.
+   */
+  query?: Record<string, string | number | boolean | readonly string[] | undefined | null>;
   signal?: AbortSignal;
   /** Extra headers (e.g. `x-tenant-id` on the login call). */
   headers?: Record<string, string>;
@@ -80,7 +87,9 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
   if (!query) return url;
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
-    if (value !== undefined && value !== null) params.set(key, String(value));
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value)) for (const one of value) params.append(key, String(one));
+    else params.set(key, String(value));
   }
   const qs = params.toString();
   return qs ? `${url}?${qs}` : url;

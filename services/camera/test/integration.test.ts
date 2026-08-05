@@ -11,6 +11,7 @@ import { SecretBox } from '@vip/crypto';
 import { connectMongo, type MongoAdapter } from '../src/adapters/mongo.js';
 import { CameraService } from '../src/application/camera-service.js';
 import type { CameraDoc } from '../src/domain/camera.js';
+import type { Camera } from '@vip/contracts';
 
 const URI =
   process.env.MONGO_URI ??
@@ -71,6 +72,46 @@ describe.skipIf(!online)('camera inventory against real MongoDB', () => {
 
     await service.remove(scope, created.id);
     await expect(service.get(scope, created.id)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  /**
+   * ⚠️ **Two administrators, one camera — and the edit that was thrown away.**
+   *
+   * Measured on the deployment at P-6.6: one wrote a note, the other a tag, **both were told HTTP
+   * 200, and only one edit survived.** The write filtered on `_id` alone, so whoever arrived second
+   * overwrote a record they had never read. This is the P-6.5 acknowledgement race one layer up, and
+   * what it loses is typed operator work rather than a status.
+   *
+   * ⚠️ Against real MongoDB, because the in-memory store serialises every operation — the same
+   * scenario written against a fake passes on the defect. Written red first: with the guard removed
+   * from the write's filter, this test reports two winners.
+   */
+  it('⚠️ refuses the second of two concurrent edits rather than silently discarding the first', async () => {
+    const scope = TenantScope.fromTenantId('tnt_a');
+    const created = await service.create(scope, camera('rtsp://cam-race.local/1'));
+
+    /* Both operators are holding the record as they read it — the same `updatedAt`. */
+    const loaded = await service.get(scope, created.id);
+
+    const results = await Promise.allSettled([
+      service.update(scope, created.id, { name: 'renamed by alice' }, loaded.updatedAt),
+      service.update(scope, created.id, { name: 'renamed by bob' }, loaded.updatedAt),
+    ]);
+    const winners = results.filter((r) => r.status === 'fulfilled');
+    const losers = results.filter((r) => r.status === 'rejected');
+    expect(winners).toHaveLength(1);
+    expect(losers).toHaveLength(1);
+    expect((losers[0] as PromiseRejectedResult).reason).toMatchObject({ statusCode: 409 });
+
+    /* And the record holds the winner's value, not a merge of the two. */
+    const after = await service.get(scope, created.id);
+    expect(after.name).toBe((winners[0] as PromiseFulfilledResult<Camera>).value.name);
+
+    /* ⚠️ A caller that sends no token keeps the old behaviour — the guard is additive. */
+    const unguarded = await service.update(scope, created.id, { name: 'no token' });
+    expect(unguarded.name).toBe('no token');
+
+    await service.remove(scope, created.id);
   });
 
   it('persists credentials as ciphertext, decryptable only through the vault', async () => {

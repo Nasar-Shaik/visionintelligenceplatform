@@ -8,6 +8,7 @@ import { authenticated, signedOut } from '@/store/sessionSlice';
 import { server } from '@/test/server';
 import { renderWithProviders } from '@/test/render';
 import { CamerasPage } from './CamerasPage';
+import { CameraDetailPage } from './CameraDetailPage';
 import { capabilitySummary, dvrChannels, matchesSearch } from './cameraPresentation';
 
 function authAs(roles: string[]) {
@@ -141,9 +142,60 @@ const DEVICE = {
   identityConfidence: 'unknown',
 };
 
-function listReturns(cameras: unknown[]) {
+/**
+ * ⚠️ **A page, and the query that produced it.**
+ *
+ * P-6.6 moved search, location and lifecycle filtering to the server, so the list route now answers
+ * `{ cameras, nextCursor }` and the console always sends a `limit`. The handler records the query it
+ * was called with, because "the browser filtered it" and "the server filtered it" look identical on
+ * screen and are the whole difference between nine cameras and five thousand.
+ */
+const listCalls: URLSearchParams[] = [];
+
+function listReturns(cameras: unknown[], nextCursor?: string) {
+  listCalls.length = 0;
   server.use(
-    mswHttp.get('/api/camera/cameras', () => HttpResponse.json({ success: true, data: cameras })),
+    mswHttp.get('/api/camera/cameras', ({ request }) => {
+      listCalls.push(new URL(request.url).searchParams);
+      return HttpResponse.json({
+        success: true,
+        data: { cameras, ...(nextCursor ? { nextCursor } : {}) },
+      });
+    }),
+    /* The estate's own count — the page's "of N" comes from here, never from the page length. */
+    mswHttp.get('/api/camera/cameras/metrics', () =>
+      HttpResponse.json({
+        success: true,
+        data: {
+          window: 'day',
+          windowStart: '2026-08-05T00:00:00.000Z',
+          windowEnd: '2026-08-05T12:00:00.000Z',
+          cameras: cameras.length,
+          sampled: false,
+          camerasProbed: 0,
+          camerasNeverProbed: cameras.length,
+          probes: 0,
+          successes: 0,
+          failures: 0,
+        },
+      }),
+    ),
+  );
+}
+
+/** The detail page fetches the camera by id — it no longer inherits a row object from the list. */
+function detailReturns(camera: Record<string, unknown>) {
+  server.use(
+    mswHttp.get('/api/camera/cameras/:id', () =>
+      HttpResponse.json({ success: true, data: camera }),
+    ),
+    /* No stream worker is the normal case, and it is a 404 by design (measured on the deployment). */
+    mswHttp.get('/api/media/streams/:id/status', () =>
+      HttpResponse.json(
+        { success: false, error: { code: 'not_found', message: 'no stream for camera' } },
+        { status: 404 },
+      ),
+    ),
   );
 }
 
@@ -185,29 +237,46 @@ describe('CamerasPage', () => {
     expect(screen.queryByRole('button', { name: /discover/i })).not.toBeInTheDocument();
   });
 
-  it('filters by search across name, url and device metadata', async () => {
+  /**
+   * ⚠️ **The search is the server's, and this asserts that it left the browser.**
+   *
+   * Before P-6.6 this test typed into the box and watched rows disappear — which is what a
+   * *client-side* filter over a fully-loaded estate looks like, and it passed for exactly that
+   * reason. The console now asks the camera service, so the thing worth asserting is that the
+   * request carried the term: rows disappearing would prove nothing here, because the mock returns
+   * whatever it is asked for.
+   */
+  it('sends the search to the server rather than filtering in the browser', async () => {
     authAs(['operator']);
     listReturns([CAMERA, OFFLINE_CAMERA]);
     renderWithProviders(<CamerasPage />, { store });
     await screen.findByText('Front entrance');
 
     await userEvent.type(screen.getByPlaceholderText('Search cameras…'), 'Dahua');
-    await waitFor(() => expect(screen.queryByText('Front entrance')).not.toBeInTheDocument());
-    expect(screen.getByText('Stock room')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(listCalls.some((params) => params.get('search') === 'Dahua')).toBe(true);
+    });
+    /* And it is a page request, never "give me everything and I will look through it". */
+    expect(listCalls.every((params) => params.get('limit') !== null)).toBe(true);
   });
 
   it('opens the detail sheet and shows which profile is analysed', async () => {
     authAs(['operator']);
     listReturns([CAMERA]);
-    renderWithProviders(<CamerasPage />, { store });
-    await userEvent.click(await screen.findByText('Front entrance'));
-
-    const sheet = await screen.findByRole('dialog');
+    detailReturns(CAMERA as never);
+    renderWithProviders(<CameraDetailPage />, {
+      store,
+      route: `/cameras/${CAMERA.id}`,
+      path: '/cameras/:id',
+    });
+    const sheet = await screen.findByRole('main').catch(() => document.body);
     expect(within(sheet).getByText('DS-2CD2143G2')).toBeInTheDocument();
     // Twice, for two different reasons (P-2.2): the firmware the device reports, and the firmware
     // row in the compatibility register saying what has been measured under it.
     expect(within(sheet).getAllByText('V5.7.3')).toHaveLength(2);
-    expect(within(sheet).getByText('Supported')).toBeInTheDocument();
+    /* ⚠️ "Supported" now appears in both the compatibility register and the capability table —
+       the assertion says "at least one", because the page legitimately says it twice. */
+    expect(within(sheet).getAllByText('Supported').length).toBeGreaterThan(0);
     // The stream-profile table names `sub` as the analysed one.
     const rows = within(sheet).getAllByRole('row');
     const subRow = rows.find((r) => within(r).queryByText('sub'));
@@ -218,10 +287,16 @@ describe('CamerasPage', () => {
   it('shows vaulted credentials as a fact, never as a value', async () => {
     authAs(['operator']);
     listReturns([CAMERA]);
-    renderWithProviders(<CamerasPage />, { store });
-    await userEvent.click(await screen.findByText('Front entrance'));
-    const sheet = await screen.findByRole('dialog');
-    expect(within(sheet).getByText('Vaulted')).toBeInTheDocument();
+    detailReturns(CAMERA as never);
+    renderWithProviders(<CameraDetailPage />, {
+      store,
+      route: `/cameras/${CAMERA.id}`,
+      path: '/cameras/:id',
+    });
+    /* ⚠️ Await the page before reading it: a detail page fetches, where a sheet was handed a row. */
+    await screen.findByRole('heading', { level: 1 });
+    const sheet = document.body;
+    expect(within(sheet).getByText('stored, encrypted')).toBeInTheDocument();
   });
 });
 
@@ -418,10 +493,22 @@ const PASSING_PROBE = {
   warnings: [],
 };
 
-async function openDetail(name = 'Front entrance') {
-  const user = userEvent.setup();
-  await user.click(await screen.findByText(name));
-  return user;
+/**
+ * ⚠️ **"Open the detail" is a navigation now, not a click that opens a drawer.**
+ *
+ * The camera has an address (`/cameras/:id`), so these tests render that page directly rather than
+ * clicking a row — which is also what an operator following a link does. The helper keeps the old
+ * name so the tests below read as they did; what changed is the surface underneath them.
+ */
+async function openDetail(camera: Record<string, unknown> = CAMERA as never) {
+  detailReturns(camera);
+  renderWithProviders(<CameraDetailPage />, {
+    store,
+    route: `/cameras/${String(camera.id)}`,
+    path: '/cameras/:id',
+  });
+  await screen.findByRole('heading', { level: 1 });
+  return userEvent.setup();
 }
 
 describe('camera lifecycle (P-2)', () => {
@@ -457,8 +544,7 @@ describe('camera lifecycle (P-2)', () => {
   it('explains what a state means rather than assuming the operator read the ADR', async () => {
     authAs(['operator']);
     listReturns([CAMERA]);
-    renderWithProviders(<CamerasPage />, { store });
-    await openDetail();
+    await openDetail(CAMERA as never);
 
     expect(
       await screen.findByText(/frames were read from the physical device/i),
@@ -473,8 +559,7 @@ describe('camera lifecycle (P-2)', () => {
       lifecycle: { state: 'configured', since: '2026-08-01T09:00:00.000Z', evidence: 'declared' },
     };
     listReturns([unmeasured]);
-    renderWithProviders(<CamerasPage />, { store });
-    await openDetail();
+    await openDetail(unmeasured as never);
 
     // Rendering an unmeasured latency as "0 ms" would claim a measurement nobody took.
     expect(await screen.findByText(/Nothing has ever measured this camera/i)).toBeInTheDocument();
@@ -558,8 +643,7 @@ describe('test connection (P-2)', () => {
   it('does not offer the test to someone who cannot run it', async () => {
     authAs(['viewer']);
     listReturns([CAMERA]);
-    renderWithProviders(<CamerasPage />, { store });
-    await openDetail();
+    await openDetail(CAMERA as never);
 
     expect(await screen.findByRole('button', { name: /test connection/i })).toBeDisabled();
   });
@@ -652,8 +736,7 @@ describe('capability cache and diff (P-2.1)', () => {
   it('shows how stale the capabilities are and what they were read against', async () => {
     authAs(['operator']);
     listReturns([CAMERA]);
-    renderWithProviders(<CamerasPage />, { store });
-    await openDetail();
+    await openDetail(CAMERA as never);
 
     expect(await screen.findByText('Fresh')).toBeInTheDocument();
     expect(screen.getByText(/read against V5\.7\.3/)).toBeInTheDocument();
@@ -712,8 +795,7 @@ describe('device identity history (P-2.1)', () => {
   it('shows when a camera changed address, rather than overwriting the fact', async () => {
     authAs(['operator']);
     listReturns([CAMERA]);
-    renderWithProviders(<CamerasPage />, { store });
-    await openDetail();
+    await openDetail(CAMERA as never);
 
     expect(await screen.findByText('Device identity')).toBeInTheDocument();
     expect(screen.getByText('urn:uuid:abc-123')).toBeInTheDocument();
@@ -784,7 +866,6 @@ describe('probe archive (P-2.2)', () => {
     authAs(['operator']);
     listReturns([CAMERA]);
     archiveReturns([ARCHIVED_OK, ARCHIVED_FAILED]);
-    renderWithProviders(<CamerasPage />, { store });
     await openDetail();
 
     // Before the archive existed each probe overwrote the last, which made "was it always like
@@ -797,7 +878,6 @@ describe('probe archive (P-2.2)', () => {
     authAs(['operator']);
     listReturns([CAMERA]);
     archiveReturns([ARCHIVED_OK], 140);
-    renderWithProviders(<CamerasPage />, { store });
     await openDetail();
 
     // A list that simply stops would let "1 probe, successful" stand for a camera with 140 failures
@@ -917,7 +997,6 @@ describe('evidence timeline (P-2.3)', () => {
       ],
       ['recovery'],
     );
-    renderWithProviders(<CamerasPage />, { store });
     await openDetail();
 
     expect(
@@ -960,7 +1039,6 @@ describe('evidence timeline (P-2.3)', () => {
       ],
       ['lifecycle', 'probe'],
     );
-    renderWithProviders(<CamerasPage />, { store });
     await openDetail();
 
     // Backwards answers "why did this happen"; forwards answers "what did it break".
@@ -1024,6 +1102,108 @@ describe('evidence timeline (P-2.3)', () => {
 });
 
 async function openDetailWithRender() {
-  renderWithProviders(<CamerasPage />, { store });
   return openDetail();
 }
+
+/**
+ * P-6.6 — the claims this milestone added, and the defects behind them.
+ */
+describe('camera management depth (P-6.6)', () => {
+  it('⚠️ refuses to overwrite an edit somebody else made, and keeps what was typed', async () => {
+    authAs(['admin']);
+    listReturns([CAMERA]);
+    const user = await openDetail();
+
+    let sentIfMatch: string | null = null;
+    server.use(
+      mswHttp.patch('/api/camera/cameras/:id', ({ request }) => {
+        sentIfMatch = request.headers.get('if-match');
+        return HttpResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'conflict',
+              message: 'this camera was changed by someone else at 2026-08-05T10:00:00.000Z',
+            },
+          },
+          { status: 409 },
+        );
+      }),
+    );
+
+    await user.click(screen.getByRole('button', { name: /^edit$/i }));
+    const notes = await screen.findByLabelText('Notes');
+    await user.clear(notes);
+    await user.type(notes, 'lens cleaned');
+    await user.click(screen.getByRole('button', { name: /save changes/i }));
+
+    /* The token the server needs in order to be able to refuse at all. */
+    await waitFor(() => expect(sentIfMatch).toBe(CAMERA.updatedAt));
+    /* The refusal is explained in the dialog… */
+    expect(await screen.findByText(/somebody else changed this camera/i)).toBeInTheDocument();
+    /* …and the operator's typing is still there, because retyping it into a record they have not
+       seen is how the *other* person's change gets lost next. */
+    expect(screen.getByLabelText('Notes')).toHaveValue('lens cleaned');
+  });
+
+  it('⚠️ distinguishes a measured capability from one that was merely declared', async () => {
+    authAs(['operator']);
+    listReturns([CAMERA]);
+    await openDetail();
+
+    const ptz = document.querySelector('[data-capability="ptz"]');
+    const health = document.querySelector('[data-capability="health"]');
+    expect(ptz).not.toBeNull();
+    /* PTZ is declared by discovery and has never been exercised — it must not read as proof. */
+    expect(within(ptz as HTMLElement).getByText('declared')).toBeInTheDocument();
+    /* Health has a real observation behind it. */
+    expect(within(health as HTMLElement).getByText('measured')).toBeInTheDocument();
+  });
+
+  it('⚠️ says AI analysis is not built rather than leaving the row blank or hopeful', async () => {
+    authAs(['operator']);
+    listReturns([CAMERA]);
+    await openDetail();
+
+    const ai = document.querySelector('[data-capability="ai"]');
+    expect(within(ai as HTMLElement).getByText('not built')).toBeInTheDocument();
+    expect(within(ai as HTMLElement).getByText(/no camera is analysed/i)).toBeInTheDocument();
+  });
+
+  it('⚠️ reports "no stream worker" as a fact, not as a failure to reach media', async () => {
+    authAs(['operator']);
+    listReturns([CAMERA]);
+    await openDetail();
+
+    expect(await screen.findByText(/no stream worker for this camera/i)).toBeInTheDocument();
+    expect(screen.queryByText(/did not answer/i)).not.toBeInTheDocument();
+  });
+
+  it('⚠️ counts the estate from the server, never from the length of the page', async () => {
+    authAs(['operator']);
+    /* One row on the page, a nextCursor saying there are more — and the server's own total. */
+    listReturns([CAMERA], 'cursor-2');
+    server.use(
+      mswHttp.get('/api/camera/cameras/metrics', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            window: 'day',
+            windowStart: '2026-08-05T00:00:00.000Z',
+            windowEnd: '2026-08-05T12:00:00.000Z',
+            cameras: 4137,
+            sampled: false,
+            camerasProbed: 0,
+            camerasNeverProbed: 4137,
+            probes: 0,
+            successes: 0,
+            failures: 0,
+          },
+        }),
+      ),
+    );
+    renderWithProviders(<CamerasPage />, { store });
+
+    expect(await screen.findByText(/of 4137 cameras/)).toBeInTheDocument();
+  });
+});

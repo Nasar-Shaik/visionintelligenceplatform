@@ -48,7 +48,7 @@ references them rather than restating what a capability is.
 | **C-09** | Camera discovery (ONVIF)                     |    ✅    |              ✅              |             ✅              |  ✅  | ⬜ never met a real device |  ✅  | **P-9**           | hardware     | camera |
 | **C-10** | Camera capabilities & stream probes          |    ✅    |              ✅              | ⚠️ client calls it; UI thin |  ⚠️  |       ⬜ unvalidated       |  ✅  | **P-6** → **P-9** | hardware     | camera |
 | **C-11** | Camera health, measured                      |    ✅    |              ✅              |             ✅              |  ✅  |       ⬜ unvalidated       |  ✅  | **P-9**           | hardware     | camera |
-| **C-12** | Camera lifecycle — retire · reinstate · bulk |    ✅    |              ✅              |         ⚠️ partial          |  ⚠️  |             ⚠️             |  ✅  | **P-6**           | —            | camera |
+| **C-12** | Camera lifecycle — retire · reinstate · bulk |    ✅    |              ✅              |             ✅              |  ✅  |             ✅             |  ✅  | **P-6**           | —            | camera |
 | **C-13** | NVR / DVR channel onboarding                 |    ✅    |      ✅ templates exist      |             ✅              |  ⚠️  |  ⬜ **never met an NVR**   |  ⚠️  | **P-9**           | hardware     | camera |
 | **C-14** | Media catalogue — clips & recordings         |    ✅    |              ✅              |  ⛔ **no console client**   |  ⛔  |             ⛔             |  ✅  | **P-6**           | —            | media  |
 | **C-15** | Camera zone referential integrity            |    ✅    | ⚠️ shape-checked only (TD-3) |             n/a             |  ✅  |             ⚠️             |  ⚠️  | **P-6**           | —            | camera |
@@ -162,6 +162,19 @@ does an operator do when something happens" showed a prospect nothing while the 
 it was full. P-6.5 seeds the channels and the deliveries the Alert Engine would have produced —
 including one webhook failure per vertical, because a product that can only be shown succeeding has
 not been shown.
+
+⚠️ **C-12 is ✅ for what the backend has, and the gaps are named rather than shaded.** P-6.6 audited
+all 26 camera routes: every one now has a console surface, a camera has an address (`/cameras/:id`),
+and the list is answered by the **server** — search across seven fields, location subtree, exact
+lifecycle, keyset paging, and an estate count that is the server's rather than a page length.
+Measured at 100 · 500 · 1 000 · 5 000 cameras: a page of fifty stays **10–11 ms p95** and page ten
+costs what page one costs, so **no virtualization is justified** — the browser holds one page.
+⚠️ Three things are recorded rather than ticked: filtering by health and by "not retired" narrow the
+rows loaded and not the estate (**L-39 · TD-57**); camera names resolve from a bounded page
+(**L-40 · TD-58**); and **no camera is analysed at all** — the media service discards every frame, so
+per-camera AI assignment has no source of truth and is **P-8** (**L-37**). ⚠️ A camera edit could
+**silently overwrite** another administrator's until this milestone; measured, fixed with a
+conditional write, and pinned by a regression written red first.
 
 ⚠️ **C-42 acknowledges a delivery, not an incident — and two operators can split one.** Measured at
 the P-6.5 freeze: each delivery is exclusive (13 rounds, one winner every time), but an incident that

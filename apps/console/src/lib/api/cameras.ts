@@ -1,6 +1,9 @@
 import type {
   BulkCreateCamerasResult,
   Camera,
+  CameraPage,
+  CameraStatus,
+  CameraLifecycleState,
   CameraCapabilities,
   CameraHealthReport,
   CameraHealthSummary,
@@ -30,12 +33,50 @@ import { http } from './http';
  * it reads: it is an active multicast probe against the customer's network, and modelling it as a
  * cacheable GET would let a browser or a proxy replay it.
  */
+/** What the server can filter and page on. Mirrors `CameraQuery`; no client-side substitute. */
+export interface CameraListQuery {
+  search?: string;
+  zoneIds?: string[];
+  status?: CameraStatus;
+  lifecycle?: CameraLifecycleState;
+  limit?: number;
+  cursor?: string;
+}
+
 export const camerasApi = {
-  list: () => http.get<Camera[]>('/camera/cameras'),
+  /**
+   * ⚠️ **Always a page, and always the server's answer.**
+   *
+   * `GET /cameras` returns a bare array when it is given no parameters at all and a `CameraPage`
+   * when it is given any — two shapes from one route. Sending a `limit` every time removes the
+   * ambiguity, and it is the honest call anyway: the console used to ask for the entire estate and
+   * then search, filter and count it in the browser, which works at nine cameras and is a different
+   * product at five thousand.
+   */
+  list: (query: CameraListQuery = {}) =>
+    http.get<CameraPage>('/camera/cameras', {
+      query: {
+        limit: query.limit ?? 50,
+        ...(query.search ? { search: query.search } : {}),
+        ...(query.status ? { status: query.status } : {}),
+        ...(query.lifecycle ? { lifecycle: query.lifecycle } : {}),
+        ...(query.cursor ? { cursor: query.cursor } : {}),
+        ...(query.zoneIds?.length ? { zoneId: query.zoneIds } : {}),
+      },
+    }),
   get: (id: string) => http.get<Camera>(`/camera/cameras/${id}`),
   create: (input: CreateCameraInput) => http.post<Camera>('/camera/cameras', input),
-  update: (id: string, patch: UpdateCameraInput) =>
-    http.patch<Camera>(`/camera/cameras/${id}`, patch),
+  /**
+   * ⚠️ `expectedUpdatedAt` is the record as the operator loaded it, sent as `If-Match`.
+   *
+   * Measured at P-6.6: without it, two administrators editing one camera both received HTTP 200 and
+   * one edit was silently discarded. The server puts the value in the write's filter, so the loser
+   * is told (409) rather than overwriting work it never saw.
+   */
+  update: (id: string, patch: UpdateCameraInput, expectedUpdatedAt?: string) =>
+    http.patch<Camera>(`/camera/cameras/${id}`, patch, {
+      ...(expectedUpdatedAt ? { headers: { 'If-Match': expectedUpdatedAt } } : {}),
+    }),
   remove: (id: string) => http.del<void>(`/camera/cameras/${id}`),
   health: (id: string) => http.get<CameraHealthReport>(`/camera/cameras/${id}/health`),
   capabilities: (id: string) => http.get<CameraCapabilities>(`/camera/cameras/${id}/capabilities`),

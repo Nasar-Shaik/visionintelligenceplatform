@@ -154,13 +154,26 @@ export function registerCameraRoutes(app: FastifyInstance, deps: CameraRoutesDep
     },
   );
 
+  /**
+   * ⚠️ **`If-Match` carries the record's `updatedAt`, and it is optional on purpose.**
+   *
+   * Measured at P-6.6: two administrators editing one camera at the same moment both received
+   * HTTP 200 and one of the two edits was gone. The guard is the record's own `updatedAt`, sent back
+   * by the caller and applied **in the write's filter** (see `CameraService.update`).
+   *
+   * A header rather than a body field, because `UpdateCameraInput` belongs to a **frozen
+   * foundation** and a concurrency token is a transport concern, not a property of a camera. A
+   * caller that sends no header behaves exactly as it did before — additive, no contract moves.
+   */
   app.patch<{ Params: CameraParams }>(
     '/cameras/:id',
     { preHandler: auth.authorize('camera:update') },
     async (request, reply) => {
       const scope = scopeOf(request.principal!.tenantId);
       const patch = parseBody(UpdateCameraInput, request.body);
-      return reply.send(success(await service.update(scope, request.params.id, patch)));
+      const ifMatch = request.headers['if-match'];
+      const expected = typeof ifMatch === 'string' ? ifMatch.replace(/^"|"$/g, '') : undefined;
+      return reply.send(success(await service.update(scope, request.params.id, patch, expected)));
     },
   );
 

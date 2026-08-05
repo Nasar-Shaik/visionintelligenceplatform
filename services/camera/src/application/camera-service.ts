@@ -271,8 +271,33 @@ export class CameraService {
     if (query.zoneIds && query.zoneIds.length > 0) filter.zoneId = { $in: query.zoneIds };
     if (query.status) filter.status = query.status;
     if (query.lifecycle) filter['lifecycle.state'] = query.lifecycle;
+    /*
+     * ⚠️ **Search the fields an installer actually types**, not only the name.
+     *
+     * Until P-6.6 this matched `name` alone while the console — which had loaded the whole estate —
+     * matched name, stream URL, zone, manufacturer, model, location and tags. Moving the search to
+     * the server without widening it here would have quietly removed six of those: an operator
+     * typing "hikvision" or a channel path would have got "no camera matches" against an estate full
+     * of them. The contract did not change; `search` never said "by name".
+     *
+     * ⚠️ It is a case-insensitive regex scan over a tenant-scoped set. That is a **linear** read and
+     * it is recorded as such (INDEX_POLICY): a prefix-anchored or text index would serve one shape
+     * of query and not the substring match an installer expects. The set it scans is one tenant's
+     * cameras, and the page bound applies before anything is returned.
+     */
     if (query.search) {
-      filter.name = { $regex: query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+      const needle = query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const like = { $regex: needle, $options: 'i' };
+      filter.$or = [
+        { name: like },
+        { streamUrl: like },
+        { zoneId: like },
+        { 'metadata.manufacturer': like },
+        { 'metadata.model': like },
+        { 'metadata.serialNumber': like },
+        { 'metadata.location': like },
+        { 'metadata.tags': like },
+      ];
     }
     if (query.cursor) filter._id = { $gt: query.cursor };
 
@@ -294,8 +319,28 @@ export class CameraService {
     return toCamera(await this.require(scope, cameraId));
   }
 
-  /** Update a camera. A new `streamUrl` must keep the (immutable) protocol's scheme. */
-  async update(scope: TenantScope, cameraId: string, patch: UpdateCameraInput): Promise<Camera> {
+  /**
+   * Update a camera. A new `streamUrl` must keep the (immutable) protocol's scheme.
+   *
+   * ### ⚠️ `expectedUpdatedAt` — why a read-modify-write needed a guard
+   *
+   * Measured on the deployment at P-6.6, two administrators editing one camera at the same moment:
+   * one wrote a note, the other a tag, **both were told HTTP 200, and the first edit was gone.** The
+   * write filtered on `_id` alone, so whoever arrived second overwrote a record they had never seen.
+   * That is the P-6.5 acknowledgement race one layer up, and it loses typed operator work rather
+   * than a status transition.
+   *
+   * The guard is the record's own `updatedAt`, carried by the caller as `If-Match` and put **in the
+   * filter**, so MongoDB decides. It is deliberately **optional**: a caller that sends nothing
+   * behaves exactly as before, so this is additive to a frozen foundation and no contract moves. The
+   * console always sends it.
+   */
+  async update(
+    scope: TenantScope,
+    cameraId: string,
+    patch: UpdateCameraInput,
+    expectedUpdatedAt?: string,
+  ): Promise<Camera> {
     const existing = await this.require(scope, cameraId);
     if (patch.streamUrl && !patch.streamUrl.toLowerCase().startsWith(existing.protocol)) {
       throw badRequest(`streamUrl scheme must match protocol "${existing.protocol}"`);
@@ -338,9 +383,19 @@ export class CameraService {
           ]
         : []),
     );
-    await this.cameras.updateOne(
+    /*
+     * ⚠️ The guard goes in the **filter**, not in an `if` above the write.
+     *
+     * Checking `existing.updatedAt` after the read would be the same read-compare-write this exists
+     * to fix — two callers can both pass the check before either writes. `updateOne` matching on
+     * `updatedAt` is atomic: the loser matches nothing, and is told.
+     */
+    const matched = await this.cameras.updateOne(
       scope,
-      { _id: cameraId },
+      {
+        _id: cameraId,
+        ...(expectedUpdatedAt !== undefined ? { updatedAt: expectedUpdatedAt } : {}),
+      } as never,
       {
         $set: {
           name: updated.name,
@@ -358,6 +413,13 @@ export class CameraService {
         },
       },
     );
+    if (matched === 0) {
+      /* Somebody wrote between the read and the write. Say what is true now, and who did it. */
+      const current = await this.require(scope, cameraId);
+      throw conflict(
+        `this camera was changed by someone else at ${current.updatedAt} — reload it and reapply your change`,
+      );
+    }
     await this.publisher.publish({
       type: 'camera.updated',
       tenantId: scope.tenantId,

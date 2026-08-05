@@ -1,7 +1,7 @@
 import { Bell, Camera, ShieldAlert } from 'lucide-react';
 import { MetricCard, PageHeader } from '@/ui';
 import { useIncidents } from '@/features/incidents/useIncidents';
-import { useCameras } from '@/features/cameras/useCameras';
+import { useCameras, useFleetMetrics } from '@/features/cameras/useCameras';
 import { useNotifications } from '@/features/alerts/useNotifications';
 import { ActiveIncidentsPanel } from '@/features/dashboard/ActiveIncidentsPanel';
 import { CameraHealthPanel } from '@/features/dashboard/CameraHealthPanel';
@@ -16,12 +16,25 @@ const ACTIVE = new Set(['raised', 'acknowledged']);
  */
 export function DashboardPage() {
   const incidents = useIncidents({ limit: 50 }, POLL);
-  const cameras = useCameras(POLL);
+  /*
+   * ⚠️ **The denominator is the estate, not the page.**
+   *
+   * This card used to read `${online}/${cameras.length}` over *every* camera the console had
+   * fetched — correct only because the console fetched all of them. Now the list is paged, so the
+   * total comes from the server's own count (`/cameras/metrics`) and the online figure is computed
+   * over the page that was actually read. When the estate does not fit in that page the card says
+   * how many cameras there are and does not pretend to know how many are online — a fraction with
+   * two different denominators is the arithmetic that makes a dashboard untrustworthy.
+   */
+  const cameras = useCameras({ limit: 200 }, POLL);
+  const fleet = useFleetMetrics('day');
   const notifications = useNotifications({ limit: 50 }, POLL);
 
   const activeIncidents = (incidents.data?.items ?? []).filter((i) => ACTIVE.has(i.status)).length;
-  const cameraList = cameras.data ?? [];
+  const cameraList = cameras.data?.cameras ?? [];
   const onlineCameras = cameraList.filter((c) => c.health.status === 'online').length;
+  const estate = fleet.data?.cameras ?? cameraList.length;
+  const wholeEstateLoaded = cameras.data?.nextCursor === undefined;
   const alerts = notifications.data?.items.length ?? 0;
 
   const metric = (loading: boolean, value: string | number) => (loading ? '…' : value);
@@ -41,9 +54,12 @@ export function DashboardPage() {
           icon={<ShieldAlert className="size-4" />}
         />
         <MetricCard
-          label="Cameras online"
-          value={metric(cameras.isLoading, `${onlineCameras}/${cameraList.length}`)}
-          tone={cameraList.length > 0 && onlineCameras < cameraList.length ? 'warning' : 'default'}
+          label={wholeEstateLoaded ? 'Cameras online' : 'Cameras'}
+          value={metric(
+            cameras.isLoading,
+            wholeEstateLoaded ? `${onlineCameras}/${estate}` : `${estate}`,
+          )}
+          tone={wholeEstateLoaded && estate > 0 && onlineCameras < estate ? 'warning' : 'default'}
           icon={<Camera className="size-4" />}
         />
         <MetricCard

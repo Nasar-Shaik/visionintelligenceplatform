@@ -1053,3 +1053,85 @@ No further change to the Inbox or System Health without one of:
 ⚠️ **Gate 5 is reported red rather than rounded up.** It has been red on every page since P-6.2 for
 one defect in one component, and the honest thing at a freeze is to say so — the milestone did not
 cause it and cannot close it.
+
+---
+
+# P-6.6 · Camera management depth (C-12)
+
+**The audit came first, and it decided the milestone.** Every one of the camera service's **26
+routes** was inventoried against what the console actually reached, because building over an
+unaudited surface is how a milestone delivers a second copy of something that already exists.
+
+| Classification                         | What was found                                                                                                                                                                                                                                                                 |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Already exposed**                    | 18 routes — discovery, bulk onboarding, probe, probe archive and replay, capability refresh, health check, evidence, decisions, retire/reinstate, enable/disable, delete                                                                                                       |
+| **Backend exists, UI missing**         | ⚠️ **`PATCH /cameras/:id` — a camera could not be edited at all.** The route has existed since P-1 and the console's client has called it since P2-1, through a hook nothing imported. Plus `GET /cameras/:id`, health summary, probe metrics, confidence trend, fleet metrics |
+| **Backend exists, console ignored it** | ⚠️ **The whole query surface.** `search`, `zoneIds`, `lifecycle`, `status`, `limit`, `cursor` — the console fetched **every camera in the tenant** and searched, filtered and counted them in the browser                                                                      |
+| **Contract exists, backend missing**   | Nothing. Every field the brief named that has a contract has a route behind it                                                                                                                                                                                                 |
+| **Neither exists**                     | Retention (no camera retention concept anywhere) · per-camera AI assignment · playback toggle. Recorded, not built — see below                                                                                                                                                 |
+
+## ⚠️ A production defect, measured before anything was built on it
+
+Two administrators editing one camera at the same moment: **both received HTTP 200 and one edit was
+silently discarded.** The write filtered on `_id` alone, so whoever arrived second overwrote a record
+they had never read. It is the P-6.5 acknowledgement race one layer up, and what it loses is typed
+operator work — notes, tags, a corrected stream URL — rather than a status transition.
+
+The guard is the record's own `updatedAt`, carried as `If-Match` and **put in the write's filter**, so
+MongoDB decides. ⚠️ It is optional: a caller that sends nothing behaves exactly as before, so no
+frozen contract moved — a concurrency token is a transport concern, not a property of a camera. The
+regression was written **red first** against real MongoDB (_expected 1 winner, got 2_), and the
+deployment script was mutation-tested by removing the guard from a real build (`200 and 200`).
+
+## What an operator gets
+
+- **A list the server answers.** Search across name, stream URL, zone, manufacturer, model, serial,
+  location and tags — ⚠️ widened from the name alone, because moving the search to the server without
+  widening it would have quietly removed six fields the browser used to match. Location subtree,
+  exact lifecycle, keyset paging, and a count whose "of N" is the **server's** N.
+- **A camera has an address.** `/cameras/:id` — linkable, refreshable, back-button-able. The detail
+  panels moved from the sheet **unchanged**; what changed is that they can be reached.
+- **A capability table that says how it knows.** Every capability carries `measured` · `validated` ·
+  `declared` · `not built` · `unknown`. ⚠️ A declared PTZ is amber, not green: nobody has panned it.
+- **An edit form**, with a conflict that keeps what the operator typed.
+- **Recording**, from the media service, with "no worker" reported as a fact and the in-memory
+  caveat stated where the control is.
+
+## Scale — measured, and the answer was "do nothing"
+
+| Estate | Page of 50 (p50/p95) | Search (p95) | Page 10 | Payload |
+| ------ | -------------------- | ------------ | ------- | ------- |
+| 134    | 16 / 40 ms           | 16 ms        | 10 ms   | 43 KB   |
+| 534    | 10 / 11 ms           | 12 ms        | 9 ms    | 43 KB   |
+| 1 034  | 10 / 11 ms           | 13 ms        | 10 ms   | 43 KB   |
+| 5 034  | 10 / 11 ms           | 12 ms        | 11 ms   | 43 KB   |
+
+In the browser at **5 009 cameras**: first row **829 ms**, **46 rows** and **1 050 DOM nodes**,
+heap **17.4 MB**. ⚠️ **Virtualization is not justified** — the page renders one server page at a time
+and stops at ten, so the DOM is bounded by how far an operator has _chosen_ to page. The estate count
+is `sampled` above 2 000 and the page says **"about 5 009"** rather than presenting a sample as a
+census.
+
+## ⛔ What could not honestly be delivered
+
+**Selective AI processing.** Measured: the deployed media service uses a **null frame sink** and no
+frame-sink is configured, so **every frame is discarded and no camera is analysed**. There is no
+assignment contract, no store, no route, no cost model. A profile picker over that would be a control
+that configures nothing — the one thing the brief forbids. **P-8**, whose stated dependency is exactly
+this frame path. Recorded as **L-37**, and said on the camera page itself.
+
+Also absent, recorded rather than invented: **retention** (no camera retention concept exists
+anywhere in the contracts), **a playback toggle** (playback follows recorded evidence, not a switch),
+and **PTZ control** (declared by devices, and the platform has no control surface).
+
+## Verification
+
+| Script                                 | What it proves                                                                        | Mutation-tested                                                                         |
+| -------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [`cameras.mjs`](cameras.mjs)           | Server-side query, the conflict, permissions, isolation, capability evidence, latency | ✅ guard removed from a real build → `200 and 200`, three checks red                    |
+| [`cameras-ui.mjs`](cameras-ui.mjs)     | The two screens in a browser, the conflict as an operator meets it, four viewports    | ✅ went red twice for real defects — a 20 px target, and its own naive overflow measure |
+| [`camera-scale.mjs`](camera-scale.mjs) | 100 → 5 000 cameras, and that the harness leaves nothing behind                       | ✅ the cleanup delta is asserted against the estate found at the start                  |
+
+⚠️ **One check was silently skipping.** The manufacturer search only ran if a demo camera happened to
+have a manufacturer — none does, so the output looked complete while the check never ran. It now
+writes the field it needs, measures, and puts it back (P-6.5 §8: silence is not success).

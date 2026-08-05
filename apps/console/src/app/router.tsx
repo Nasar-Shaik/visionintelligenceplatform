@@ -48,6 +48,9 @@ const AlertsPage = lazy(() =>
 const CamerasPage = lazy(() =>
   import('@/features/cameras/CamerasPage').then((m) => ({ default: m.CamerasPage })),
 );
+const CameraDetailPage = lazy(() =>
+  import('@/features/cameras/CameraDetailPage').then((m) => ({ default: m.CameraDetailPage })),
+);
 const LocationsPage = lazy(() =>
   import('@/features/organization/LocationsPage').then((m) => ({ default: m.LocationsPage })),
 );
@@ -94,6 +97,8 @@ export const router = createBrowserRouter([
             element: route(<PlaceholderPage title="Live Monitoring" slice="P2-1.6" />),
           },
           { path: 'cameras', element: route(<CamerasPage />) },
+          /* P-6.6 — a camera has an address, so it can be linked to, refreshed and gone back from. */
+          { path: 'cameras/:id', element: route(<CameraDetailPage />) },
           { path: 'locations', element: route(<LocationsPage />) },
           { path: 'events', element: route(<EventsPage />) },
           { path: 'incidents', element: route(<IncidentsPage />) },

@@ -30,6 +30,10 @@ const INTERNAL_KEY = 'internal-key-at-least-16-chars';
  */
 function matches(doc: Record<string, unknown>, filter: Record<string, unknown>): boolean {
   return Object.entries(filter).every(([key, expected]) => {
+    /* P-6.6: search matches any of several fields, so the fake has to understand `$or` too. */
+    if (key === '$or') {
+      return (expected as Array<Record<string, unknown>>).some((clause) => matches(doc, clause));
+    }
     const actual = key.includes('.')
       ? key.split('.').reduce<unknown>((acc, part) => (acc as Record<string, unknown>)?.[part], doc)
       : doc[key];
@@ -1420,11 +1424,28 @@ describe('camera queries by location', () => {
     expect(second.json().data.nextCursor).toBeUndefined();
   });
 
+  /**
+   * ⚠️ **What an installer types, matched literally.**
+   *
+   * P-6.6 widened the server's search from the name alone to the fields the console used to match in
+   * the browser — stream URL, zone, manufacturer, model, serial, location, tags — because moving the
+   * search to the server without widening it would have removed six of them from a screen that had
+   * them. What must not widen with it is the *syntax*: a search term is a literal, so `.*` finds a
+   * camera called ".*" and never the estate.
+   */
   it('searches by name literally, not as a pattern', async () => {
     const t = await token(TENANT, ['admin']);
     await estate(t);
     const hit = await app.inject({ method: 'GET', url: '/cameras?search=lobby', headers: auth(t) });
     expect(hit.json().data.cameras).toHaveLength(2);
+
+    /* The stream URL is searchable — an installer looks up a channel, not a display name. */
+    const byUrl = await app.inject({
+      method: 'GET',
+      url: `/cameras?search=${encodeURIComponent('b.local:554')}`,
+      headers: auth(t),
+    });
+    expect(byUrl.json().data.cameras.length).toBeGreaterThan(0);
 
     const injected = await app.inject({
       method: 'GET',

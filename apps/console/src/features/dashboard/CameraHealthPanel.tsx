@@ -14,8 +14,9 @@ import { useCameras } from '@/features/cameras/useCameras';
 
 /** Per-camera operational health. Polls every 15s. */
 export function CameraHealthPanel() {
-  const query = useCameras({ refetchInterval: 15_000 });
-  const cameras = (query.data ?? []).slice(0, 8);
+  /* ⚠️ Eight rows is what this panel shows, so eight is what it asks the server for. */
+  const query = useCameras({ limit: 8 }, { refetchInterval: 15_000 });
+  const cameras = query.data?.cameras ?? [];
 
   return (
     <Card>

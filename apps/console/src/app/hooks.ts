@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector, useStore } from 'react-redux';
 import { can } from '@vip/permissions';
 import type { AppDispatch, AppStore, RootState } from './store';
@@ -27,4 +27,20 @@ export function usePermission(permission: string): boolean {
 export function useCan(): (permission: string) => boolean {
   const permissions = useAppSelector((state) => state.session.permissions);
   return useMemo(() => (permission: string) => can(permissions, permission), [permissions]);
+}
+
+/**
+ * A value that settles before it is used — for search boxes that reach the server.
+ *
+ * ⚠️ Without this, "car park north" is fifteen queries. The camera search became a **server** query
+ * at P-6.6 (the browser can no longer filter an estate it has not loaded), and a request per
+ * keystroke is how a correct design becomes a load problem.
+ */
+export function useDebounced<T>(value: T, delayMs: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return settled;
 }

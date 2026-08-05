@@ -21,7 +21,27 @@ function mockGateway() {
     mswHttp.get('/api/workflow/incidents', () =>
       HttpResponse.json({ success: true, data: { items: [RAISED_INCIDENT] } }),
     ),
-    mswHttp.get('/api/camera/cameras', () => HttpResponse.json({ success: true, data: [CAMERA] })),
+    /* P-6.6: the list is paged, and the estate's total comes from the server's own count. */
+    mswHttp.get('/api/camera/cameras', () =>
+      HttpResponse.json({ success: true, data: { cameras: [CAMERA] } }),
+    ),
+    mswHttp.get('/api/camera/cameras/metrics', () =>
+      HttpResponse.json({
+        success: true,
+        data: {
+          window: 'day',
+          windowStart: '2026-08-05T00:00:00.000Z',
+          windowEnd: '2026-08-05T12:00:00.000Z',
+          cameras: 1,
+          sampled: false,
+          camerasProbed: 0,
+          camerasNeverProbed: 1,
+          probes: 0,
+          successes: 0,
+          failures: 0,
+        },
+      }),
+    ),
     mswHttp.get('/api/notify/notifications', () =>
       HttpResponse.json({ success: true, data: { items: [{ id: 'n-1' }, { id: 'n-2' }] } }),
     ),
@@ -57,7 +77,9 @@ describe('DashboardPage', () => {
       mswHttp.get('/api/workflow/incidents', () =>
         HttpResponse.json({ success: true, data: { items: [] } }),
       ),
-      mswHttp.get('/api/camera/cameras', () => HttpResponse.json({ success: true, data: [] })),
+      mswHttp.get('/api/camera/cameras', () =>
+        HttpResponse.json({ success: true, data: { cameras: [] } }),
+      ),
       mswHttp.get('/api/notify/notifications', () =>
         HttpResponse.json({ success: true, data: { items: [] } }),
       ),
