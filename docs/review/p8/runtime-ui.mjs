@@ -216,20 +216,30 @@ console.log('\n2 · every number on the page came from the runtime');
     // formatting and the poll interval).
     const asDate = Date.parse(text);
     if (!Number.isNaN(asDate) && timestamps.some((t) => Math.abs(t - asDate) < 60_000)) return true;
-    // Otherwise every number in the cell must trace to a number in the payload.
-    const found = [...text.matchAll(/(\d+(?:\.\d+)?)/g)].map((m) => Number(m[1]));
-    if (found.length === 0) return true;
-    return found.every((v) =>
-      numbers.some(
+    /*
+     * Otherwise every number in the cell must trace to a number in the payload — rounded to the
+     * precision the cell actually displays.
+     *
+     * ⚠️ The first version tried a fixed list of roundings (0, 1 and 2 decimals) and reported
+     * `Mean confidence="0.889"` as a fabrication: the payload holds `0.8882` and the page renders
+     * three decimals. Worse, it was **latent** — it passed whenever the value happened to round
+     * cleanly at two decimals and failed when it did not, so the check was a coin flip on the data.
+     * Reading the displayed precision off the token itself covers any format the page ever uses.
+     */
+    const tokens = [...text.matchAll(/(\d+(?:\.\d+)?)/g)].map((m) => m[1]);
+    if (tokens.length === 0) return true;
+    return tokens.every((token) => {
+      const v = Number(token);
+      const decimals = (token.split('.')[1] ?? '').length;
+      return numbers.some(
         (source) =>
           source === v ||
+          Number(source.toFixed(decimals)) === v ||
           Math.round(source) === v ||
-          Number(source.toFixed(1)) === v ||
-          Number(source.toFixed(2)) === v ||
-          Math.round(source / 60) === v ||
+          Math.round(source / 60) === v || // a duration rendered as minutes
           Math.round(source % 60) === v,
-      ),
-    );
+      );
+    });
   };
 
   const unexplained = cells.filter((c) => !explains(c.value));
