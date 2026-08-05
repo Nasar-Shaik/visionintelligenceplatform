@@ -183,20 +183,33 @@ warm-up. Raw samples: [`docs/review/p8/tracking-capacity.json`](../review/p8/tra
 subject produces one track that never has to be re-associated, so identity stability against it is
 100 % by construction and measures nothing.
 
-| Cameras | Offered fps | Analysed fps | Identities (truth = cameras) | Extra identities | Tracking cost/frame |
-| ------: | ----------: | -----------: | ---------------------------: | ---------------: | ------------------: |
-|   **1** |         2.0 |          2.0 |                        **1** |            **0** |             0.10 ms |
-|   **2** |         4.0 |          4.0 |                        **2** |            **0** |             0.10 ms |
-|   **4** |         8.1 |          8.1 |                        **4** |            **0** |             0.11 ms |
+| Cameras | Analysed fps | Dropped | Identities (truth = cameras) | Extra | Tracking cost/frame | Runtime CPU / RAM |
+| ------: | -----------: | ------: | ---------------------------: | ----: | ------------------: | ----------------: |
+|   **1** |          2.0 |   0.0 % |                        **1** | **0** |            0.118 ms |    109 % / 101 MB |
+|   **2** |          4.0 |   0.0 % |                        **3** | **1** |            0.106 ms |    197 % / 133 MB |
+|   **4** |          8.1 |   0.0 % |                        **4** | **0** |            0.133 ms |    397 % / 133 MB |
+|   **8** |         16.0 |   0.2 % |                       **11** | **3** |            0.131 ms |    538 % / 139 MB |
+|  **16** |         31.9 |   0.9 % |                       **21** | **5** |            0.157 ms |    928 % / 120 MB |
 
-⚠️ **Tracking is a rounding error beside inference.** ~0.1 ms per frame against ~50 ms of inference —
-about **0.2 %**. Identity is not what limits camera count; frame throughput is, and the sizing above
-is unchanged by tracking.
+⚠️ **Tracking is a rounding error beside inference.** 0.11–0.16 ms per frame against ~50 ms of
+inference — about **0.3 %**, and it grows only slightly with load. Identity is not what limits camera
+count.
 
-⚠️ **"Extra identities" is ground-truth based and named for what it measures.** One walking person
-per camera means `cameras` identities is the right answer; anything above it is the engine
-fragmenting or switching. It is **not** an identity-switch count — distinguishing a fragment from a
-swap needs a labelled dataset. Swap behaviour is proved separately, against authored scenarios.
+⚠️ **Identity fragments under load, and the number is the honest one.** One walking person per camera
+means the right answer is exactly `cameras`. Up to four cameras the engine returns it (one rung
+produced one extra). At eight it produced 11 for 8, and at sixteen **21 for 16** — a ~31 % overhead.
+This is the expected consequence of frames being analysed less often per camera as the host
+saturates: a bigger gap between observations is a harder association, and past the engine's tolerance
+it is correctly a new identity rather than a wrong one. **It is fragmentation, not swapping** — no
+scenario in this ladder can distinguish those, which is why identity _swaps_ are proved separately
+against authored crossings rather than inferred from this table.
+
+⚠️ **Do NOT compare this table's drop rate with the sizing ladder above.** The source differs: this
+one plays a synthetic 640×360 clip with a plain background, which is markedly cheaper to encode and
+decode than the photograph, so media reaches sixteen cameras at 0.9 % loss where the sizing ladder
+measured 18.9–24.4 %. That is a property of the fixture, not a revision of the sizing. **The
+published camera count remains 2** ([L-41](KNOWN_LIMITATIONS.md)); this ladder measures what tracking
+costs, not how many cameras a host carries.
 
 ### Identity behaviour, measured against authored ground truth
 
