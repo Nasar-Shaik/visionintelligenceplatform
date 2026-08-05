@@ -363,3 +363,21 @@ Findings 1–3 were found _by_ the mutation suite. That is the argument for runn
   797 % CPU at 16 cameras, budget first exceeded at 8. Remaining work is the `cpus:` limit itself.
 - **[ADR-0037](../../adr/ADR-0037-model-agnostic-runtime-and-registry-driven-loading.md)** records the
   model-agnostic runtime and registry-driven loading.
+
+### Running it
+
+```sh
+node docs/review/p8/hardening.mjs          # warm-up · reproducibility · capacity ladder · truthfulness
+SECTIONS=5 node docs/review/p8/hardening.mjs   # one section — what the mutation harness runs
+node docs/review/p8/hardening.mjs clean    # if a run was interrupted
+
+node docs/review/p8/inference-soak.mjs     # 15 min, 4 cameras (MINUTES= to extend — see its header)
+node docs/review/p8/mutations.mjs          # all seven; `<name>` for one; `restore` after an interrupt
+
+pnpm verify:contracts                      # includes tools/contracts/perception-boundary.mjs
+```
+
+⚠️ **`mutations.mjs` edits real source files and rebuilds real images.** It restores from a byte
+snapshot in a `finally`, and `restore` reverses the exact substitutions if a run is killed — but it
+is the one script here that writes to the working tree, and it should not be run with unrelated
+work in flight.
