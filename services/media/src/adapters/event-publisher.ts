@@ -107,6 +107,14 @@ export interface EventPublisherStats {
    * arrive out of order; the tracker already skipped these, so they carry no identity.
    */
   droppedOutOfOrder: number;
+  /**
+   * Times a camera's frame sequence restarted and the ordering gate was reset.
+   *
+   * ⚠️ Also not an error — it is a stream that stopped and started. It is counted because the
+   * alternative reading of the same input is "drop everything from this camera for ever", and an
+   * operator needs to be able to tell which of the two happened.
+   */
+  sessionResets: number;
   /** Publishes that waited longer than the delay budget before going out. */
   delayed: number;
   /** Retry attempts made (excludes first attempts). */
@@ -193,6 +201,8 @@ export class BufferedEventPublisher {
   readonly #queues = new Map<string, Queued[]>();
   /** ⚠️ Per (tenant, camera). The highest frame seq already published — the ordering gate. */
   readonly #lastSeq = new Map<string, number>();
+  /** The capture time that went with it — what tells a restarted stream from a reordered response. */
+  readonly #lastCapturedAt = new Map<string, number>();
   #lastKey: string | undefined;
   #pumping = false;
   #inflight = 0;
@@ -204,6 +214,7 @@ export class BufferedEventPublisher {
   #suppressed = 0;
   #droppedQueueFull = 0;
   #droppedOutOfOrder = 0;
+  #sessionResets = 0;
   #delayed = 0;
   #retries = 0;
   #failed = 0;
@@ -287,13 +298,34 @@ export class BufferedEventPublisher {
      * ⚠️ The ordering gate. Responses arrive out of order because the sink runs four in flight; a
      * result older than one already published would break per-camera ordering downstream. It is also
      * one the tracker already skipped, so its detections carry no identity — see the header.
+     *
+     * ⚠️ **Capture TIME breaks the tie, not the sequence alone — and this was a real defect.**
+     *
+     * A stream that stops and starts begins its frame sequence again at 1. Against a gate holding
+     * `lastSeq = 100` that reads as "stale" and every event from the restarted camera is dropped,
+     * indefinitely, with nothing in the logs. Measured exactly that way: a re-enabled camera
+     * published 0 results and dropped 32. ⚠️ That is the shape Camera Processing Assignment will
+     * produce every time an operator switches a camera back on.
+     *
+     * The two cases are distinguishable without a heuristic. A genuinely out-of-order response is
+     * older in wall-clock time as well as in sequence, because it describes an earlier frame. A
+     * restarted stream's frames are NEWER despite a lower sequence. So a backwards sequence is only
+     * stale when the capture time also went backwards; otherwise it is a new session and the gate
+     * resets. No threshold to tune, and no cross-service call to remember to make.
      */
     const last = this.#lastSeq.get(key);
+    const lastAt = this.#lastCapturedAt.get(key);
+    const capturedAt = Date.parse(result.frame.capturedAt);
     if (last !== undefined && result.frame.seq <= last) {
-      this.#droppedOutOfOrder += 1;
-      return;
+      const restarted = lastAt !== undefined && Number.isFinite(capturedAt) && capturedAt > lastAt;
+      if (!restarted) {
+        this.#droppedOutOfOrder += 1;
+        return;
+      }
+      this.#sessionResets += 1;
     }
     this.#lastSeq.set(key, result.frame.seq);
+    if (Number.isFinite(capturedAt)) this.#lastCapturedAt.set(key, capturedAt);
 
     let q = this.#queues.get(key);
     if (q === undefined) {
@@ -344,6 +376,7 @@ export class BufferedEventPublisher {
     const key = `${tenantId} ${cameraId}`;
     this.#queues.delete(key);
     this.#lastSeq.delete(key);
+    this.#lastCapturedAt.delete(key);
   }
 
   stats(): EventPublisherStats {
@@ -363,6 +396,7 @@ export class BufferedEventPublisher {
       suppressed: this.#suppressed,
       droppedQueueFull: this.#droppedQueueFull,
       droppedOutOfOrder: this.#droppedOutOfOrder,
+      sessionResets: this.#sessionResets,
       delayed: this.#delayed,
       retries: this.#retries,
       failed: this.#failed,

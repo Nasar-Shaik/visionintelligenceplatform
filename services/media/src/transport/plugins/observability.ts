@@ -196,6 +196,11 @@ export function registerEventPublisherMetrics(
       (s) => s.droppedOutOfOrder,
     ],
     [
+      'media_event_publisher_session_resets_total',
+      'Times a camera restarted its frame sequence and the ordering gate was reset',
+      (s) => s.sessionResets,
+    ],
+    [
       'media_event_publisher_delayed_total',
       'Publishes that waited beyond the delay budget',
       (s) => s.delayed,

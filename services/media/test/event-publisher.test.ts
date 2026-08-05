@@ -437,6 +437,43 @@ describe('camera assignment compatibility', () => {
     expect(publisher.cameras('tnt_other')).toEqual([]);
   });
 
+  it('⚠️ a RESTARTED stream publishes again, even though its sequence begins at 1', async () => {
+    /*
+     * The defect the resilience run found, and the one that would have blocked Camera Processing
+     * Assignment. A stream that stops and starts begins its frame sequence again; against a gate
+     * holding lastSeq=100 that reads as "stale", so a re-enabled camera published 0 results and
+     * dropped 32 — indefinitely, with nothing in the logs.
+     *
+     * Capture time distinguishes the two cases exactly: a genuinely out-of-order response is older
+     * in wall-clock time as well as in sequence; a restarted stream's frames are NEWER despite a
+     * lower sequence.
+     */
+    const { publisher, published } = make();
+    publisher.publish(result({ frame: { seq: 100, capturedAt: '2026-08-06T09:00:00.000Z' } }));
+    await settle();
+    expect(published).toHaveLength(1);
+
+    // Same camera, sequence restarted at 1 — but the frame is from a minute LATER.
+    publisher.publish(result({ frame: { seq: 1, capturedAt: '2026-08-06T09:01:00.000Z' } }));
+    await settle();
+
+    expect(published).toHaveLength(2);
+    expect(publisher.stats().sessionResets).toBe(1);
+    expect(publisher.stats().droppedOutOfOrder).toBe(0);
+  });
+
+  it('⚠️ but a genuinely LATE response is still dropped — older sequence AND older time', async () => {
+    const { publisher, published } = make();
+    publisher.publish(result({ frame: { seq: 100, capturedAt: '2026-08-06T09:00:10.000Z' } }));
+    await settle();
+    publisher.publish(result({ frame: { seq: 98, capturedAt: '2026-08-06T09:00:09.000Z' } }));
+    await settle();
+
+    expect(published).toHaveLength(1);
+    expect(publisher.stats().droppedOutOfOrder).toBe(1);
+    expect(publisher.stats().sessionResets).toBe(0);
+  });
+
   it('⚠️ releasing a camera clears its ordering gate, so re-enabling it works', async () => {
     /*
      * The failure this prevents: a camera whose AI is switched off and back on keeps a stale
