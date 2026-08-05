@@ -17,6 +17,7 @@ import { MediaCatalogService } from './application/media-catalog-service.js';
 import { HttpCameraSource } from './adapters/http-camera-source.js';
 import { FfmpegDecoder } from './adapters/ffmpeg-decoder.js';
 import { NullFrameSink } from './adapters/null-frame-sink.js';
+import { HttpFrameSink } from './adapters/http-frame-sink.js';
 import { buildServer } from './transport/server.js';
 
 async function main(): Promise<void> {
@@ -68,6 +69,25 @@ async function main(): Promise<void> {
     playbackTtlSeconds: config.playbackTtlSeconds,
   });
 
+  /*
+   * ⚠️ The perception seam (P-8 Phase 2, ADR-A). Configured → frames go to the AI runtime; not
+   * configured → the null sink, which is exactly what every deployment did before this phase. The
+   * choice is one environment variable and it is logged at boot, because "are frames going anywhere"
+   * must be answerable from the log rather than inferred from a counter that reads zero.
+   */
+  const frameSink =
+    config.perception.url === ''
+      ? new NullFrameSink()
+      : new HttpFrameSink({
+          url: config.perception.url,
+          internalKey: config.internal.apiKey,
+          capabilityId: config.perception.capabilityId,
+          queuePerCamera: config.perception.queuePerCamera,
+          maxInflight: config.perception.maxInflight,
+          timeoutMs: config.perception.timeoutMs,
+          onLog: (level, msg, fields) => loggerRef.current?.[level]({ ...fields }, msg),
+        });
+
   const supervisor = new StreamSupervisor({
     cameraSource: new HttpCameraSource({
       baseUrl: config.ingestion.cameraUrl,
@@ -75,7 +95,7 @@ async function main(): Promise<void> {
     }),
     decoder: new FfmpegDecoder({ binary: config.ingestion.ffmpegBinary }),
     objectStore,
-    frameSink: new NullFrameSink(),
+    frameSink,
     clock: { now: () => new Date() },
     options: {
       frameRate: config.ingestion.frameRate,
@@ -87,8 +107,26 @@ async function main(): Promise<void> {
     onLog: (level, msg, fields) => loggerRef.current?.[level]({ ...fields }, msg),
   });
 
-  const { app } = await buildServer({ config, supervisor, catalog, readiness });
+  const { app } = await buildServer({
+    config,
+    supervisor,
+    catalog,
+    readiness,
+    ...(frameSink instanceof HttpFrameSink ? { perception: frameSink } : {}),
+  });
   loggerRef.current = app.log;
+  app.log.info(
+    {
+      perception:
+        config.perception.url === ''
+          ? 'disabled (null sink)'
+          : `${config.perception.url} · ${config.perception.capabilityId}`,
+      frameRate: config.ingestion.frameRate,
+      queuePerCamera: config.perception.queuePerCamera,
+      maxInflight: config.perception.maxInflight,
+    },
+    'perception sink configured',
+  );
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     app.log.info({ signal }, 'shutdown signal received, draining');

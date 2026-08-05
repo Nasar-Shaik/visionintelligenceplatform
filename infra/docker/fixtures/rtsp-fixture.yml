@@ -1,0 +1,27 @@
+# RTSP source fixture for P-8 measurement — NOT part of any deployment.
+#
+# ⚠️ This is a **synthetic** source. Every number measured against it is a measurement of the
+# platform's frame path, never a claim about camera compatibility: L-1 stands until real hardware is
+# connected in P-9, and `profiles/cameras/recorded-mp4.json` is `evidenceClass: simulated` for the
+# same reason.
+#
+# Any path name works and each one starts its own encoder on first read, so `rtsp://host:8554/cam07`
+# is a camera without anything being configured per camera. `runOnDemandCloseAfter` stops the encoder
+# when the last reader leaves, so an idle fixture costs nothing and cameras that media stopped do not
+# quietly keep burning CPU into the measurement.
+logLevel: error
+rtspAddress: :8554
+rtmp: no
+hls: no
+webrtc: no
+srt: no
+pathDefaults:
+  runOnDemand: >-
+    ffmpeg -re -f lavfi -i testsrc=size=640x360:rate=15
+    -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p
+    -f rtsp rtsp://localhost:8554/$MTX_PATH
+  runOnDemandRestart: yes
+  runOnDemandStartTimeout: 15s
+  runOnDemandCloseAfter: 5s
+paths:
+  all_others:

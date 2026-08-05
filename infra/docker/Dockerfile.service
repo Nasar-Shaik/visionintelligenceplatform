@@ -42,9 +42,19 @@ RUN addgroup -S vip && adduser -S vip -G vip
 # without it, `docker stop` kills mid-request and the operator sees a failed call on every deploy.
 RUN apk add --no-cache tini curl
 
+ARG SERVICE
+# ⚠️ **ffmpeg, for media only** (P-8 Phase 2). Found by deploying: the media image had no ffmpeg, so
+# every stream start in production failed with `spawn ffmpeg ENOENT` and reconnected forever —
+# recording has never once run in a deployment. The unit tests could not see it because they drive
+# the supervisor through a decoder fake, and no verification had ever started a stream against a
+# source that exists.
+#
+# ⚠️ Conditional on `SERVICE` rather than unconditional: ffmpeg is ~80 MB and nine of the ten services
+# have no use for it. One Dockerfile stays one Dockerfile; the cost lands only where it buys something.
+RUN if [ "$SERVICE" = "media" ]; then apk add --no-cache ffmpeg; fi
+
 COPY --from=build --chown=vip:vip /app /app
 
-ARG SERVICE
 ENV SERVICE=${SERVICE} \
     NODE_ENV=production \
     NODE_OPTIONS=--enable-source-maps

@@ -97,6 +97,40 @@ _Last updated: 2026-08-05 · Claude_
   Verified: `cameras.mjs` all green · `cameras-ui.mjs` all green (⚠️ red twice first, for a 20 px
   target and for its own naive overflow measure) · `camera-scale.mjs` all green · console **389**
   tests · camera **193 + 5** integration. New: **L-37…L-40 · TD-57…TD-59**.
+- **P-8 Phase 2 · frames reach the runtime ✅ complete, ⏳ awaiting review (2026-08-05)** — the
+  perception seam, connected. Media now delivers every decoded frame to the AI runtime and both ends
+  count them. ⚠️ **Nothing is analysed yet** — the backend is `stub`; transport was the objective and
+  detection is Phase 3, and the limitation register says so rather than letting "frames arrive" be
+  read as "AI works". ⛔ **The defect this phase found before it found anything else: the media image
+  contained no `ffmpeg`.** Every stream start in a deployment failed with `spawn ffmpeg ENOENT` and
+  reconnected forever — **recording had never once run in production**, while the catalogue behind it
+  was marked production-verified. The unit tests could not see it (they drive the supervisor through a
+  decoder fake) and no verification had ever started a stream against a source that exists. One
+  conditional line in `Dockerfile.service` (ffmpeg lands only in the image that needs it) and the
+  capability matrix gains **C-14a** as an explicit correction. **Measured** over 20 s windows against a
+  synthetic RTSP fixture: **1 → 16 cameras, 41 → 649 frames, zero dropped, zero failed**, and transport
+  time _falls_ as load rises (3.1 → 2.4 ms) because connections are reused; frame age at the runtime
+  **2 ms**; per-camera cost **1.9 % CPU** at sixteen; runtime idle **18 MB**. ⚠️ **The hard requirement
+  was proven by breaking it**: the runtime paused for 25 s with sixteen cameras streaming → **8/8
+  cameras wrote a new segment during the outage**, 8/8 streams stayed `connected`, **769 frames lost
+  and every one attributed** (48 failed · 721 dropped), and delivery resumed by itself. Segments are
+  evidence; frames are an opinion about evidence. The sink is **non-blocking, bounded per camera and
+  round-robin fair** — a unit test drives 50 pushes against a never-settling fetch and asserts the
+  decoder thread returns in under 100 ms, and ⚠️ **a fairness test caught a real bug**: the round-robin
+  cursor was an index into a key list whose length changes, so it served one camera twice while
+  another waited. ⚠️ **Frame accounting closes exactly** — `809 offered = 809 accounted` — and the
+  first version of that check went red at `806 vs 770` because it knew four of the six states a frame
+  can be in; the missing 36 were 32 queued plus 4 in flight. **The check was short, not the product**,
+  which is the third time this milestone that a red was the checker's fault and was fixed there.
+  **Debt paid: TD-60** (structured JSON with pino field names, one line per control-plane request, a
+  **30 s heartbeat** whose _absence_ is the signal — and deliberately **no line per frame**, because
+  32/s would bury everything else), **TD-61** (capacity reads the cgroup quota; proven under `cpus: 2`,
+  where the runtime reports `CPU (2 cores, cgroup-limited from 10)` while `os.cpu_count()` in the same
+  container still says 10), **TD-4** (half — the null sink is gone). Also fixed: a client disconnect
+  printed a **Python traceback per abandoned frame**; it is now one warning line. `frame-path.mjs`
+  all green and mutation-tested four ways. New: **TD-63** — the perception tier has no CPU limit and
+  shares a host with recording; raised as a recommendation rather than decided, because the number
+  should come from Phase 6 benchmarks. [review package](../review/p8/README.md).
 - **P-8 Phase 1 · the AI runtime is deployed ✅ complete, ⏳ awaiting review (2026-08-05)** — the
   critical path, and the claim was false until today: 121 Python modules with a green unit-test suite
   had **never run in production**. It now does, and is **connected to nothing** — no camera, no frame,

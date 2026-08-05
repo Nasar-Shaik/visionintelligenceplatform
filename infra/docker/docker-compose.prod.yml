@@ -178,6 +178,13 @@ services:
       PORT: '8083'
       SERVICE_NAME: media
       CAMERA_URL: http://camera:8082
+      # ⚠️ The perception seam, connected (P-8 Phase 2, ADR-A). Blank would keep the null sink and the
+      # pre-Phase-2 behaviour; this is the one variable that turns frame delivery on. Delivery is
+      # non-blocking and bounded per camera, so a slow or absent runtime costs frames and never
+      # segments — the hard requirement of this phase.
+      INFERENCE_URL: ${INFERENCE_URL:-http://inference:8085}
+      MEDIA_FRAME_QUEUE_PER_CAMERA: ${MEDIA_FRAME_QUEUE_PER_CAMERA:-2}
+      MEDIA_FRAME_MAX_INFLIGHT: ${MEDIA_FRAME_MAX_INFLIGHT:-4}
     depends_on:
       <<: *infra-deps
       minio: { condition: service_healthy }

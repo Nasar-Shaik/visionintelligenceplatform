@@ -205,19 +205,74 @@ class ComputeRegistry:
 # --- probes (best-effort, lazy, never fatal) ------------------------------------------------------
 
 
+def available_cores(cgroup_root: str = "/sys/fs/cgroup") -> float:
+    """Cores this process may actually use — **not** `os.cpu_count()` (TD-61, P-8 Phase 1).
+
+    ``os.cpu_count()`` reports the HOST's logical cores inside a container and ignores the cgroup CPU
+    quota entirely. Measured in P-8 Phase 1: a container on a 10-core host reported 10 while its quota
+    said otherwise. Admission control sizes itself from this number, so believing it means admitting
+    sessions for capacity the kernel will not grant — and the failure lands as dropped frames on every
+    camera instead of a refusal on one.
+
+    Reads cgroup v2 (`cpu.max`) then v1 (`cpu.cfs_quota_us`/`cpu.cfs_period_us`), takes the smaller of
+    the quota and the host count, and never returns less than one. Unreadable or unlimited → the host
+    count, which is the truth on a machine without a limit.
+    """
+    host = float(os.cpu_count() or 1)
+    quota = _cgroup_quota_cores(cgroup_root)
+    if quota is None:
+        return host
+    return max(1.0, min(host, quota))
+
+
+def _cgroup_quota_cores(root: str = "/sys/fs/cgroup") -> Optional[float]:
+    """The cgroup CPU quota in cores, or None when there is no limit (never raises)."""
+    try:
+        with open(os.path.join(root, "cpu.max"), "r", encoding="utf-8") as fh:  # cgroup v2
+            raw = fh.read().split()
+        if len(raw) == 2 and raw[0] != "max":
+            period = float(raw[1])
+            if period > 0:
+                return float(raw[0]) / period
+        return None
+    except (OSError, ValueError):
+        pass
+    try:
+        with open(os.path.join(root, "cpu", "cpu.cfs_quota_us"), "r", encoding="utf-8") as fh:  # v1
+            quota = float(fh.read().strip())
+        with open(os.path.join(root, "cpu", "cpu.cfs_period_us"), "r", encoding="utf-8") as fh:
+            period = float(fh.read().strip())
+        if quota > 0 and period > 0:
+            return quota / period
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+
+
+def _cpu_label(cores: float) -> str:
+    """⚠️ Says whether the number is a host count or a quota, so an operator reading capacity knows
+    which one they are looking at."""
+    host = float(os.cpu_count() or 1)
+    if cores < host:
+        return f"CPU ({cores:g} cores, cgroup-limited from {host:g})"
+    return f"CPU ({cores:g} logical cores)"
+
+
 def detect_resources(*, probe_accelerators: bool = True) -> ComputeRegistry:
     """Build a registry for THIS machine. CPU is always present (there is always a CPU); accelerators
     are added only when a lazy probe confirms them, so a machine without CUDA simply has no CUDA
     resource rather than a broken one."""
-    cores = os.cpu_count() or 1
+    cores = available_cores()
     registry = ComputeRegistry(
         [
             ComputeResource(
                 id="cpu:0",
                 kind="cpu",
                 # One session per core is a conservative, measurable starting point.
-                capacity_units=float(max(1, cores)),
-                label=f"CPU ({cores} logical cores)",
+                capacity_units=float(max(1.0, cores)),
+                label=_cpu_label(cores),
             )
         ]
     )
@@ -308,7 +363,7 @@ class ResourceMonitor:
         self._cpu_time = cpu_time or _process_cpu_seconds
         self._rss_mb = rss_mb or _process_rss_mb
         self._now_iso = now_iso or _now_iso
-        self._cores = os.cpu_count() or 1
+        self._cores = available_cores()
         self._last_wall = clock()
         self._last_cpu = self._cpu_time()
 
@@ -321,7 +376,7 @@ class ResourceMonitor:
         self._last_wall, self._last_cpu = wall, cpu
         cpu_percent: Optional[float] = None
         if wall_delta > 0 and cpu_delta >= 0:
-            cpu_percent = min(100.0, 100.0 * cpu_delta / (wall_delta * max(1, self._cores)))
+            cpu_percent = min(100.0, 100.0 * cpu_delta / (wall_delta * max(1.0, self._cores)))
         gpu = None
         if self._gpu_probe is not None:
             try:
@@ -332,7 +387,7 @@ class ResourceMonitor:
             cpu_percent=cpu_percent,
             memory_mb=self._rss_mb(),
             gpu_percent=gpu,
-            logical_cores=self._cores,
+            logical_cores=int(self._cores),
             at=self._now_iso(),
         )
 

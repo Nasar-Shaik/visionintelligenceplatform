@@ -19,7 +19,9 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import threading as _threading
 import time
+import time as _time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
 from urllib.parse import parse_qs, urlsplit
@@ -33,11 +35,143 @@ from errors import (
     NotFound,
     ValidationError,
 )
+import obslog
 from registry import CapabilityRegistry
 
 _MAX_BODY = 32 * 1024 * 1024  # 32 MiB (a base64 frame)
 
 _SESSION_ACTIONS = ("stop", "pause", "resume", "restart")
+
+# ⚠️ Polled or per-frame paths. Logging each one is thousands of lines an hour of no information, and
+# it buries the line that matters — so they are logged only when they FAIL (TD-60).
+_QUIET_PATHS = ("/health", "/ready", "/metrics", "/infer")
+
+# Cameras that have delivered a frame recently: cameraKey -> monotonic seconds. Bounded by the number
+# of cameras a deployment actually has, and pruned on read.
+_CAMERA_WINDOW_SECONDS = 60.0
+_cameras_seen: dict[str, float] = {}
+_cameras_lock = _threading.Lock()
+_STARTED_AT = _time.monotonic()
+
+
+def _note_camera(tenant_id: str, camera_id: str) -> None:
+    """Record that a camera delivered a frame. ⚠️ Derived, never stored: "current cameras" is a
+    question about the last minute, not a count somebody has to remember to decrement."""
+    if not camera_id:
+        return
+    with _cameras_lock:
+        _cameras_seen[f"{tenant_id}/{camera_id}"] = _time.monotonic()
+
+
+def _current_cameras() -> int:
+    cutoff = _time.monotonic() - _CAMERA_WINDOW_SECONDS
+    with _cameras_lock:
+        for key in [k for k, seen in _cameras_seen.items() if seen < cutoff]:
+            del _cameras_seen[key]
+        return len(_cameras_seen)
+
+
+
+def _runtime_metrics(registry, supervisor, service_name: str, version: str) -> str:
+    """Runtime-level Prometheus series — the operational baseline (P-8 Phase 2 item 7).
+
+    ⚠️ Distinct names from the per-capability block above (`inference_runtime_*`), because two series
+    with one name and different meanings is how a dashboard starts lying. Everything here is derived
+    at scrape time from what the runtime already knows; nothing is a counter somebody must remember
+    to increment.
+    """
+    processed = 0.0
+    dropped = 0.0
+    skipped = 0.0
+    latency = 0.0
+    fps = 0.0
+    queue = 0.0
+    provider = "unknown"
+    seen = 0
+    for entry in registry.health():
+        metrics = entry.get("metrics") or {}
+        processed += float(metrics.get("framesProcessed", 0) or 0)
+        dropped += float(metrics.get("droppedFrames", 0) or 0)
+        skipped += float(metrics.get("framesSkipped", 0) or 0)
+        latency += float(metrics.get("avgLatencyMs", 0) or 0)
+        fps += float(metrics.get("fps", 0) or 0)
+        queue += float(metrics.get("queueDepth", 0) or 0)
+        provider = entry.get("executionProvider") or provider
+        seen += 1
+    if seen:
+        latency /= seen
+
+    memory_mb = 0.0
+    cpu_percent = 0.0
+    sessions = 0.0
+    max_sessions = 0.0
+    if supervisor is not None:
+        try:
+            resources = supervisor.scheduler_stats().get("resources") or {}
+            memory_mb = float(resources.get("memoryMb") or 0)
+            cpu_percent = float(resources.get("cpuPercent") or 0)
+        except Exception:  # noqa: BLE001 - a metrics scrape must never fail the endpoint
+            pass
+        try:
+            stats = supervisor.stats()
+            sessions = float(stats.get("activeSessions") or 0)
+            max_sessions = float(stats.get("maxSessions") or 0)
+        except Exception:  # noqa: BLE001
+            pass
+
+    rows = [
+        ("inference_runtime_frames_received_total", "counter", processed + dropped),
+        ("inference_runtime_frames_processed_total", "counter", processed),
+        ("inference_runtime_frames_dropped_total", "counter", dropped),
+        ("inference_runtime_frames_skipped_total", "counter", skipped),
+        ("inference_runtime_queue_depth", "gauge", queue),
+        ("inference_runtime_fps_avg", "gauge", fps),
+        ("inference_runtime_latency_ms_avg", "gauge", latency),
+        ("inference_runtime_memory_rss_mb", "gauge", memory_mb),
+        ("inference_runtime_cpu_percent", "gauge", cpu_percent),
+        ("inference_runtime_cameras_current", "gauge", float(_current_cameras())),
+        ("inference_runtime_sessions_active", "gauge", sessions),
+        ("inference_runtime_sessions_max", "gauge", max_sessions),
+        ("inference_runtime_uptime_seconds", "gauge", round(_time.monotonic() - _STARTED_AT, 3)),
+    ]
+    lines = [
+        "# TYPE inference_runtime_build_info gauge",
+        f'inference_runtime_build_info{{service="{service_name}",version="{version}",provider="{provider}"}} 1',
+    ]
+    for name, kind, value in rows:
+        lines.append(f"# TYPE {name} {kind}")
+        lines.append(f"{name} {value}")
+    return "\n".join(lines) + "\n"
+
+
+def runtime_snapshot(registry, supervisor) -> dict:
+    """The heartbeat's payload — the same readings the metrics expose, as one log line."""
+    processed = 0.0
+    dropped = 0.0
+    for entry in registry.health():
+        metrics = entry.get("metrics") or {}
+        processed += float(metrics.get("framesProcessed", 0) or 0)
+        dropped += float(metrics.get("droppedFrames", 0) or 0)
+    memory_mb = None
+    cpu_percent = None
+    sessions = None
+    if supervisor is not None:
+        try:
+            resources = supervisor.scheduler_stats().get("resources") or {}
+            memory_mb = resources.get("memoryMb")
+            cpu_percent = resources.get("cpuPercent")
+            sessions = supervisor.stats().get("activeSessions")
+        except Exception:  # noqa: BLE001
+            pass
+    return {
+        "framesProcessed": int(processed),
+        "framesDropped": int(dropped),
+        "cameras": _current_cameras(),
+        "sessions": sessions,
+        "memoryMb": memory_mb,
+        "cpuPercent": cpu_percent,
+        "uptimeSeconds": round(_time.monotonic() - _STARTED_AT, 1),
+    }
 
 
 def make_handler(
@@ -62,9 +196,35 @@ def make_handler(
             self.send_response(status)
             self.send_header("content-type", content_type)
             self.send_header("content-length", str(len(body)))
-            self.end_headers()
-            if self.command != "HEAD":
-                self.wfile.write(body)
+            try:
+                self.end_headers()
+                if self.command != "HEAD":
+                    self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                # ⚠️ The client went away mid-response — a media frame whose 2s timeout fired, or a
+                # scraper that gave up. Measured in P-8 Phase 2: without this, every abandoned request
+                # printed a Python traceback to stderr, and at 32 frames a second the tracebacks are
+                # what an operator finds instead of the error that matters. It is a disconnect, not a
+                # fault: counted as a warning line, never a stack trace.
+                obslog.warn("client disconnected before the response was written", path=_split(self.path)[0])
+                return
+            self._log_request(status)
+
+        def _log_request(self, status: int) -> None:
+            """One structured line per control-plane request (TD-60). Quiet paths are logged only
+            when they fail, so a healthcheck every 15s and a frame every 500ms stay out of the way."""
+            path, _ = _split(self.path)
+            if status < 400 and path in _QUIET_PATHS:
+                return
+            started = getattr(self, "_t0", None)
+            obslog.log(
+                "warn" if status >= 400 else "info",
+                "request",
+                method=self.command,
+                path=path,
+                status=status,
+                durationMs=None if started is None else round((time.perf_counter() - started) * 1000, 2),
+            )
 
         def _ok(self, data: object, status: int = 200) -> None:
             self._send(status, {"success": True, "data": data})
@@ -74,6 +234,7 @@ def make_handler(
 
         # --- routing ---------------------------------------------------------------
         def do_GET(self) -> None:  # noqa: N802
+            self._t0 = time.perf_counter()
             path, _ = _split(self.path)
             segs = _segments(path)
             if path == "/health":
@@ -167,6 +328,7 @@ def make_handler(
             self._ok(fn(tenant))
 
         def do_POST(self) -> None:  # noqa: N802
+            self._t0 = time.perf_counter()
             if not hmac.compare_digest(self.headers.get("x-internal-key", ""), internal_key):
                 self._err(401, "unauthenticated", "invalid internal credentials")
                 return
@@ -368,8 +530,10 @@ def make_handler(
             try:
                 result = capability.process(ctx)
             except InferenceError as exc:
+                obslog.error("inference failed", cameraId=ctx.camera_id, error=str(exc))
                 self._err(500, "inference_error", str(exc))
                 return
+            _note_camera(ctx.tenant_id, ctx.camera_id)
             self._ok(result)
 
         # --- AI Playground (AI-1; x-internal-key + x-tenant-id) --------------------
@@ -611,7 +775,11 @@ def make_handler(
                 text = registry.get(None).metrics.prometheus()
             except KeyError:
                 text = ""
-            self._send(200, text, content_type="text/plain; version=0.0.4")
+            self._send(
+                200,
+                text + _runtime_metrics(registry, supervisor, service_name, version),
+                content_type="text/plain; version=0.0.4",
+            )
 
         def _read_json(self, *, allow_empty: bool = False):
             try:

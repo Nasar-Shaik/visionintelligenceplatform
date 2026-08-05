@@ -12,6 +12,8 @@ from __future__ import annotations
 import signal
 import sys
 
+import obslog
+
 from config import InferenceConfig, load_config
 from manifest import CapabilityManifest
 from pipeline import EventSink, ModelAdapter, NullEventSink
@@ -66,6 +68,7 @@ def build_registry(config: InferenceConfig) -> CapabilityRegistry:
 
 def main() -> None:
     config = load_config()
+    obslog.configure(config.log_level, service="inference")
     registry = build_registry(config)  # initializes enabled capabilities (binds models by selector)
 
     # Control plane (P2-2 G-3): the managed model registry + inference-session manager. In-memory for
@@ -133,20 +136,48 @@ def main() -> None:
         },
     )
 
+    # ⚠️ A periodic state line. Its ABSENCE is the signal: an idle runtime and a wedged one produce
+    # identical metrics, and only a heartbeat that stopped arriving tells them apart (TD-60).
+    from server import runtime_snapshot  # noqa: WPS433 - after build_server, same module
+
+    heartbeat = obslog.Heartbeat(
+        config.heartbeat_seconds,
+        lambda: runtime_snapshot(registry, supervisor),
+    )
+
     def shutdown(_signum, _frame) -> None:  # noqa: ANN001
         # Stop every live session first so no thread, queue or source outlives the process
         # (AI-5b refinement 8) — then stop accepting requests.
+        obslog.info("shutdown signal received, draining")
+        heartbeat.stop()
         supervisor.shutdown()
         httpd.shutdown()
+        obslog.info("shutdown complete")
 
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, shutdown)
 
+    obslog.info(
+        "inference runtime listening",
+        version=_RUNTIME_VERSION,
+        backend=config.backend,
+        address=f"{config.host}:{config.port}",
+        capabilities=[d["id"] for d in registry.descriptors()],
+        eventSink=config.event_sink,
+        maxSessions=config.max_sessions,
+        deploymentProfile=config.deployment_profile or None,
+        computeUnits=[f"{r.id}:{r.capacity_units}" for r in compute.resources()]
+        if hasattr(compute, "resources")
+        else None,
+    )
+    # ⚠️ Kept for anyone tailing stderr from before P-8 Phase 2; the structured line above is the one
+    # an aggregator reads.
     print(
         f"inference runtime {_RUNTIME_VERSION} ({config.backend}) listening on "
         f"{config.host}:{config.port} — capabilities: {[d['id'] for d in registry.descriptors()]}",
         file=sys.stderr,
     )
+    heartbeat.start()
     httpd.serve_forever()
 
 

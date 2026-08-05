@@ -10,8 +10,9 @@ import type { ServiceConfig } from '../config/env.js';
 import { ReadinessRegistry } from '../application/readiness.js';
 import type { StreamSupervisor } from '../application/stream-supervisor.js';
 import type { MediaCatalogService } from '../application/media-catalog-service.js';
+import type { FrameSinkStats } from '../adapters/http-frame-sink.js';
 import { registerSecurity } from './plugins/security.js';
-import { registerMetrics } from './plugins/observability.js';
+import { registerMetrics, registerPerceptionMetrics } from './plugins/observability.js';
 import { createAuth, registerPrincipal } from './plugins/auth.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
 import { registerHealthRoutes } from './routes/health.js';
@@ -27,6 +28,8 @@ export interface BuildServerOptions {
   catalog: MediaCatalogService;
   startedAt?: Date;
   readiness?: ReadinessRegistry;
+  /** The perception sink, when one is configured — its counters become `/metrics` series. */
+  perception?: { stats(): FrameSinkStats };
 }
 
 export interface BuiltServer {
@@ -60,6 +63,7 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
 
   await registerSecurity(app);
   const registry = registerMetrics(app, { serviceName: config.serviceName });
+  if (opts.perception !== undefined) registerPerceptionMetrics(registry, opts.perception);
   registerPrincipal(app);
   const auth = createAuth({ secret: config.jwt.secret, issuer: 'identity', audience: 'vip' });
   registerErrorHandler(app);

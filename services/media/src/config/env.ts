@@ -31,6 +31,19 @@ export interface IngestionConfig {
   ffmpegBinary: string;
 }
 
+/**
+ * Where extracted frames go (P-8 Phase 2). ⚠️ **An empty `url` keeps the null sink**, which is the
+ * behaviour every deployment had before this phase — so a deployment that does not configure
+ * perception is unchanged rather than broken, and turning it on is one variable.
+ */
+export interface PerceptionConfig {
+  url: string;
+  capabilityId: string;
+  queuePerCamera: number;
+  maxInflight: number;
+  timeoutMs: number;
+}
+
 export interface ServiceConfig extends AppConfig {
   serviceVersion: string;
   jwt: JwtConfig;
@@ -38,6 +51,7 @@ export interface ServiceConfig extends AppConfig {
   database: DatabaseConfig;
   internal: InternalConfig;
   ingestion: IngestionConfig;
+  perception: PerceptionConfig;
   /** Signed playback-URL lifetime (seconds). */
   playbackTtlSeconds: number;
 }
@@ -55,6 +69,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       MEDIA_SEGMENT_SECONDS: z.coerce.number().int().min(1).max(3600).default(6),
       FFMPEG_BINARY: z.string().min(1).default('ffmpeg'),
       MEDIA_PLAYBACK_TTL_SECONDS: z.coerce.number().int().min(30).max(86_400).default(900),
+      // ⚠️ Blank by default: no URL, no perception, and the deployment behaves exactly as before.
+      INFERENCE_URL: z.string().default(''),
+      INFERENCE_CAPABILITY_ID: z.string().min(1).default('perception.person-detection'),
+      MEDIA_FRAME_QUEUE_PER_CAMERA: z.coerce.number().int().min(1).max(64).default(2),
+      MEDIA_FRAME_MAX_INFLIGHT: z.coerce.number().int().min(1).max(64).default(4),
+      MEDIA_FRAME_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000).default(2000),
     }),
     env,
     'ingestion',
@@ -72,6 +92,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       frameRate: ing.MEDIA_FRAME_RATE,
       segmentSeconds: ing.MEDIA_SEGMENT_SECONDS,
       ffmpegBinary: ing.FFMPEG_BINARY,
+    },
+    perception: {
+      url: ing.INFERENCE_URL.trim(),
+      capabilityId: ing.INFERENCE_CAPABILITY_ID,
+      queuePerCamera: ing.MEDIA_FRAME_QUEUE_PER_CAMERA,
+      maxInflight: ing.MEDIA_FRAME_MAX_INFLIGHT,
+      timeoutMs: ing.MEDIA_FRAME_TIMEOUT_MS,
     },
     playbackTtlSeconds: ing.MEDIA_PLAYBACK_TTL_SECONDS,
   };

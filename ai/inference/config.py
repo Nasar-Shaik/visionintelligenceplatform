@@ -45,6 +45,9 @@ class InferenceConfig:
     reconnect_max_attempts: int
     reconnect_base_ms: float
     reconnect_max_ms: float
+    # --- observability (P-8 Phase 2, TD-60) ----------------------------------------
+    # Seconds between runtime heartbeat log lines. Its absence is the signal that the runtime stopped.
+    heartbeat_seconds: float
     # --- deployment profile (AI-5c) ------------------------------------------------
     # Operational defaults as configuration (retail/warehouse/office/school/hospital/factory/parking).
     # Empty = use the env settings above directly (no profile).
@@ -74,6 +77,7 @@ _DEFAULTS: Mapping[str, str] = {
     "INFERENCE_RECONNECT_BASE_MS": "500",
     "INFERENCE_RECONNECT_MAX_MS": "30000",
     "INFERENCE_DEPLOYMENT_PROFILE": "",
+    "INFERENCE_HEARTBEAT_SECONDS": "30",
 }
 
 _REQUIRED_NONBLANK = ("INTERNAL_API_KEY", "INFERENCE_MANIFESTS_DIR")
@@ -142,6 +146,9 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> InferenceConfig:
         reconnect_max_attempts=reconnect_max_attempts,
         reconnect_base_ms=reconnect_base_ms,
         reconnect_max_ms=reconnect_max_ms,
+        heartbeat_seconds=_positive_float(
+            value("INFERENCE_HEARTBEAT_SECONDS"), "INFERENCE_HEARTBEAT_SECONDS"
+        ),
         deployment_profile=value("INFERENCE_DEPLOYMENT_PROFILE").strip(),
     )
 
