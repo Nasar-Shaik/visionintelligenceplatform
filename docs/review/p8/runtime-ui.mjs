@@ -110,6 +110,30 @@ page.on('pageerror', (e) => errors.push(`[pageerror] ${e.message}`));
 const polls = [];
 page.on('request', (r) => r.url().includes('/api/system/ai-runtime') && polls.push(Date.now()));
 
+/*
+ * ⚠️ **The payload the PAGE received, not one this script fetches separately.**
+ *
+ * Section 2 asks whether every number on screen came from the deployment. Answering it with a fresh
+ * API call is a race: the page renders a payload up to one poll interval old, so any counter that
+ * moves — frames processed, detections, uptime — differs between the two reads and a truthful page
+ * is reported as fabricating numbers. That produced exactly one false red before this was fixed.
+ * Capturing the response the page itself consumed makes the comparison exact rather than tolerant,
+ * and a tolerance wide enough to absorb the drift would be wide enough to absorb an invented number.
+ */
+const seen = { data: null, at: 0 };
+page.on('response', async (r) => {
+  if (!r.url().includes('/api/system/ai-runtime') || !r.ok()) return;
+  try {
+    const body = await r.json();
+    if (body?.data) {
+      seen.data = body.data;
+      seen.at = Date.now();
+    }
+  } catch {
+    /* a body that is not JSON is not this check's business */
+  }
+});
+
 async function signIn(user) {
   await page.goto(`${B}/login`, { waitUntil: 'domcontentloaded' });
   await page.getByLabel(/tenant/i).fill(TENANT);
@@ -144,7 +168,100 @@ await sleep(2500);
   await page.screenshot({ path: `${OUT}/p8-ai-runtime-healthy.png`, fullPage: true });
 }
 
-console.log('\n2 · the polling budget, measured over a real minute');
+console.log('\n2 · every number on the page came from the runtime');
+{
+  /*
+   * ⚠️ **Traced per value cell, not by scraping the page for digits.**
+   *
+   * A dashboard's characteristic failure is not a crash — it is a plausible number that nothing
+   * produced, invisible in a screenshot. So every value the operator can read must be findable in
+   * the payload the page received.
+   *
+   * ⚠️ The first version regex-matched every number in `main.innerText()` and reported the version
+   * string `0.1.0` and the pieces of a rendered date (`2026`, `54`, `11`) as fabrications. It was
+   * wrong in the direction that matters least — a false alarm — but a check that cries wolf is one
+   * that gets deleted, so it now reads `<dt>`/`<dd>` pairs and explains a cell by **any** of:
+   * a number in the payload, a string in the payload (versions, ids, fingerprints), or a date that
+   * parses to a payload timestamp. A fabricated number is none of those.
+   */
+  const shown = await page.locator('main').innerText();
+  check(seen.data !== null, 'the page fetched the runtime view and this run captured it');
+
+  const numbers = [];
+  const strings = [];
+  const walk = (node) => {
+    if (typeof node === 'number') numbers.push(node);
+    else if (typeof node === 'string') strings.push(node);
+    else if (Array.isArray(node)) node.forEach(walk);
+    else if (node && typeof node === 'object') Object.values(node).forEach(walk);
+  };
+  walk(seen.data ?? {});
+  const timestamps = strings
+    .map((s) => Date.parse(s))
+    .filter((t) => !Number.isNaN(t));
+
+  const cells = await page.locator('main dl > div').evaluateAll((nodes) =>
+    nodes.map((n) => ({
+      label: n.querySelector('dt')?.textContent?.trim() ?? '',
+      value: n.querySelector('dd')?.textContent?.trim() ?? '',
+    })),
+  );
+
+  const explains = (value) => {
+    const text = value.trim();
+    if (text === '') return true;
+    // A string the deployment reported — a version, a model id, a preprocessing fingerprint.
+    if (strings.some((s) => s === text || text.includes(s))) return true;
+    // A rendered timestamp that resolves to one the deployment reported (a minute of slack for
+    // formatting and the poll interval).
+    const asDate = Date.parse(text);
+    if (!Number.isNaN(asDate) && timestamps.some((t) => Math.abs(t - asDate) < 60_000)) return true;
+    // Otherwise every number in the cell must trace to a number in the payload.
+    const found = [...text.matchAll(/(\d+(?:\.\d+)?)/g)].map((m) => Number(m[1]));
+    if (found.length === 0) return true;
+    return found.every((v) =>
+      numbers.some(
+        (source) =>
+          source === v ||
+          Math.round(source) === v ||
+          Number(source.toFixed(1)) === v ||
+          Number(source.toFixed(2)) === v ||
+          Math.round(source / 60) === v ||
+          Math.round(source % 60) === v,
+      ),
+    );
+  };
+
+  const unexplained = cells.filter((c) => !explains(c.value));
+  check(
+    cells.length > 0,
+    'the page renders labelled value cells to check',
+    `${cells.length} cell(s)`,
+  );
+  check(
+    unexplained.length === 0,
+    '⚠️ every number rendered traces to a value the deployment reported',
+    unexplained.length
+      ? `unexplained: ${unexplained.slice(0, 5).map((c) => `${c.label}="${c.value}"`).join(', ')}`
+      : `${cells.length} cells checked`,
+  );
+
+  // ⚠️ Scoped to the GPU row, not the whole page. A blanket "no 0 %" ban fires on a truthful page
+  // the moment any genuinely-measured percentage is zero — a dropped-frame rate of 0 % is the
+  // platform working, and a check that calls that a fabrication trains people to ignore it.
+  const gpuCell = cells.find((c) => /gpu/i.test(c.label));
+  check(
+    gpuCell !== undefined && !/%/.test(gpuCell.value),
+    'no "0 %" stands in for a thing that does not exist',
+    gpuCell ? `GPU = "${gpuCell.value}"` : 'no GPU row found',
+  );
+  check(
+    /not measured|none in this deployment/.test(shown),
+    'the page has a vocabulary for "nothing produced this"',
+  );
+}
+
+console.log('\n3 · the polling budget, measured over a real minute');
 {
   polls.length = 0;
   await sleep(60_000);
@@ -161,7 +278,7 @@ console.log('\n2 · the polling budget, measured over a real minute');
   await page.waitForSelector('text=Execution provider', { timeout: 20_000 });
 }
 
-console.log('\n3 · the runtime is stopped underneath the open page');
+console.log('\n4 · the runtime is stopped underneath the open page');
 {
   docker('stop', RUNTIME);
   // ⚠️ Nobody refreshes. The page must reach the truth on its own, within its own poll interval.
@@ -183,7 +300,7 @@ console.log('\n3 · the runtime is stopped underneath the open page');
   check(/CPUExecutionProvider/.test(recovered), 'and recovers on its own when the runtime returns');
 }
 
-console.log('\n4 · a viewer is refused, and told so plainly');
+console.log('\n5 · a viewer is refused, and told so plainly');
 {
   await context.clearCookies();
   await page.evaluate(() => localStorage.clear()).catch(() => {});

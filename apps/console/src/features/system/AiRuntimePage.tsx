@@ -87,9 +87,15 @@ function Runtime({ view }: { view: AiRuntimeView }) {
       <EmptyState
         icon={Boxes}
         title="No perception in this deployment"
+        /*
+         * ⚠️ The specific reason comes from media, which is the service that knows it. The fallback
+         * is deliberately generic: an earlier version repeated media's sentence verbatim, naming the
+         * environment variable — a second copy of a message that can drift, in the one process with
+         * no way to check it. The boundary gate caught it (§B).
+         */
         description={
           view.detail ??
-          'INFERENCE_URL is not set, so frames are recorded but never analysed. Recording is unaffected.'
+          'No inference runtime is configured here, so frames are recorded but never analysed.'
         }
       />
     );

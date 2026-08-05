@@ -230,3 +230,136 @@ node docs/review/p8/inference.mjs clean    # if a run was interrupted
 cp docs/review/p8/runtime-ui.mjs /private/tmp/pwrun/ && cd /private/tmp/pwrun \
   && OUT=<repo>/docs/review/p8/screens node runtime-ui.mjs
 ```
+
+---
+
+## Phase 3H · production hardening — ✅ complete, ⏳ awaiting review
+
+Phase 3 proved inference is **real**. This phase asks whether it is **sellable**: does it stay
+correct under load, does it give the same answer twice, how many cameras does one host actually
+analyse, and is every number on the operator's page a measurement rather than a guess.
+
+**No new capability was built.** No tracking, no zones, no rules, no customer configuration.
+
+### Measured — sizing, on a quiet host
+
+| Cameras | Analysed fps | Detections/s |   Avg / p95 latency |       Dropped |  Runtime CPU / RAM |
+| ------: | -----------: | -----------: | ------------------: | ------------: | -----------------: |
+|       1 |          2.3 |          4.6 |      45.0 / 68.2 ms |     **0.0 %** |      114 % / 73 MB |
+|       2 |          4.4 |          8.9 |      47.4 / 88.6 ms |     **0.0 %** |     197 % / 100 MB |
+|   **4** |      **9.2** |     **18.4** | **57.2 / 122.4 ms** |  **0.4 %** ✅ | **298 % / 112 MB** |
+|       8 |         16.9 |         33.8 |     70.7 / 131.4 ms |  **8.0 %** ⚠️ |     526 % / 113 MB |
+|      12 |         23.8 |         47.7 |     82.3 / 181.9 ms | **14.8 %** ⚠️ |     515 % / 114 MB |
+|      16 |         31.6 |         63.3 |     93.6 / 188.7 ms | **18.9 %** ⚠️ |     797 % / 122 MB |
+
+🎯 **4 cameras per host at 2 fps, CPU-only** — computed as the largest rung inside a 2 % loss budget,
+not chosen. Full table and deployment guidance: [AI_RUNTIME_BENCHMARK](../../project/AI_RUNTIME_BENCHMARK.md).
+
+⚠️ **p95 moved only 122 → 189 ms between 4 and 16 cameras.** A reviewer watching latency would
+conclude sixteen cameras were fine; the cost appears almost entirely as dropped frames. Sizing is
+read from the drop counter, and **the runtime's own queue peaked at 0 at every rung** — back-pressure
+surfaces as slower responses, and media discards what it cannot dispatch. A dashboard showing only
+the runtime queue would look healthy at 18.9 % loss. The page shows media's "Dropped (queue full)"
+counter, which does move.
+
+### The three questions, answered
+
+- **Does it stay correct under load?** Detection consistency held at **exactly 2.00 per frame at
+  every rung including saturation**. Under pressure the runtime drops whole frames rather than
+  returning worse answers on the ones it keeps — a capacity limit, not a correctness bug.
+- **Does it give the same answer twice?** Twenty runs of one frame → **one distinct result**.
+  Detections, ids, boxes, confidences and all metadata byte-identical; only the clock varied
+  (30.1–46.7 ms). The same two confidences reappeared after a container recreation.
+- **Is the dashboard honest?** Every rendered number traced to the producer that measured it,
+  **exactly** — `framesProcessed` 3319 = 3319, `detectionsTotal` 6631 = 6631, p95 188.702 = 188.702.
+  GPU renders "none in this deployment" rather than 0 %.
+
+### Stability run — 53 minutes, 4 cameras
+
+Memory **111 → 118 MB** in a band with no trend, queue 0 throughout, zero runtime-side failures,
+2.00 detections/frame in every sample, 25 868 frames → 51 739 detections.
+
+⚠️ **Stopped at 53 minutes rather than the planned 120**, under the Architect's execution policy of
+2026-08-05 replacing routine multi-hour soaks with short stability runs. It was already four times
+the new standard. **A 53-minute run cannot rule out a slow arena leak** — that question is deferred
+to P-9, not answered here. Raw log: [`soak-53min.txt`](soak-53min.txt).
+
+### Findings
+
+1. ⚠️ **Warm-up earns ~9.5 %, not an order of magnitude.** Unwarmed first frame 40.9 ms, warmed
+   37.0 ms, steady 35.3 ms. It moves cost to load rather than removing it. Kept on — 29 ms at load is
+   free — but it is not a load-bearing optimisation and must not be cited as one.
+2. ⚠️ **Inference capacity is a quarter of the frame path.** Phase 2 carried 16 cameras with zero
+   loss; perception sustains 4. The camera count a deployment advertises is set by the AI tier.
+3. ⚠️ **Three different faults produce a near-identical red signature.** A corrupt artifact, an
+   unknown model id and an unregistered decoder each fail capability load and turn 33 checks red;
+   only artifact corruption additionally names the sha256 check. The suite **detects** all three and
+   does not fully **discriminate** between them — an engineer still needs the runtime log.
+
+### Mutation-tested — seven ways, each red at the check that names it
+
+| Mutation      | What it breaks                                                 | Checks red | Named the fault                                            |
+| ------------- | -------------------------------------------------------------- | ---------: | ---------------------------------------------------------- |
+| **model**     | a byte flipped inside the registered ONNX artifact             |         33 | `every registered artifact matches its recorded sha256`    |
+| **registry**  | the catalogue asked for a model that is not registered         |         33 | `the model bound is the catalogue default`                 |
+| **decoder**   | an `outputFormat` no decoder is registered for                 |         33 | `health is derived from the capabilities`                  |
+| **runtime**   | the container is stopped                                       |         33 | `the running container is configured for the real backend` |
+| **metrics**   | a Prometheus series renamed out from under the page            |      **2** | `detectionsTotal is the runtime's own number`              |
+| **gateway**   | `MEDIA_URL` pointed at a host that does not exist              |          3 | `an administrator can read the runtime view`               |
+| **dashboard** | the page renders a fabricated `0 %` where nothing was measured |          4 | `⚠️ GPU says "none in this deployment", not "0%"`          |
+
+Every one restored to green afterwards.
+
+⚠️ **The `metrics` row is the one to read.** Two checks red, not thirty-three — because that mutation
+is verified by running the **shipped** truthfulness check (`hardening.mjs §5`) rather than a copy of
+it inside the harness. A narrow, diagnostic failure is worth more than a blanket one.
+
+⚠️ **And the honest limit: three faults share a signature.** A corrupt artifact, an unknown model id
+and an unregistered decoder each prevent capability load and turn the same 33 checks red; only
+artifact corruption additionally names the sha256 check. The suite **detects** all three and does not
+fully **discriminate** between them — an engineer still needs the runtime log to tell them apart.
+
+### ⚠️ Five defects found **in the verification**, not in the product
+
+Mutation-testing a verification suite is only worth doing if you are willing to publish what it finds
+about the suite. Every one of these was green-looking beforehand.
+
+1. **The mutation harness destroyed uncommitted work.** Restore was `git checkout -- <path>`, which
+   reverts to HEAD — so an uncommitted fix to `AiRuntimePage.tsx` was silently deleted while the
+   harness reported success. It surfaced only because the _post-restore_ verification went red for a
+   reason the mutation could not explain. Restore is now a **byte snapshot** taken before the edit,
+   and the interrupted-run path reverses the exact substitution instead of touching git.
+2. **A mutation that mutated nothing looked like a verification gap.** `String.replace` with a string
+   argument replaces the **first** match, and the first `none in this deployment` in the page is
+   inside the comment explaining why the phrase is there. The shipped page was identical; the harness
+   reported "red, but not at the named check". It now targets the JSX text node `>…<`.
+3. **The gateway mutation was broken twice over, and each fault alone produced the same silence.**
+   It turned the verification red at **zero** checks. First cause: `FAST=1` stopped after section 4,
+   while the route check lives in section 6 — and a comment in that file asserted the opposite, that
+   "a broken route is already decided by sections 0–4". Second cause, only visible once the first was
+   fixed: the mutation exported `MEDIA_URL` into the environment, but `docker-compose.prod.yml` sets
+   it as a **literal** under `environment:`, which beats the process environment. The gateway came up
+   healthy pointing at the right service. It now rewrites the compose value itself.
+   ⚠️ Two independent bugs with an identical symptom is the case that defeats a single fix — the
+   harness only kept reporting failure because it demands red _at the named check_, not merely red.
+4. **The dashboard's number-tracing check had never passed.** Written during this phase, first run
+   inside a mutation. It regex-matched every digit in the page text and called the version string
+   `0.1.0` and the pieces of a rendered date (`2026`, `54`, `11`) fabrications. It now reads
+   `<dt>`/`<dd>` cells and explains each against payload numbers, payload strings or a parsed
+   timestamp — **28 cells, all traced**. Its companion check banned any `0 %` on a page mentioning
+   GPU, which would fire on a truthful 0 % drop rate; it is now scoped to the GPU row.
+   ⚠️ It also compared the DOM against a **separately fetched** payload — a race against the page's
+   own 5-second poll. It now captures the response the page actually received.
+5. **"Confidence variance is exactly zero" failed at `1.2e-32`.** Not runtime wobble: √1.2e-32 ≈ one
+   ULP of a double near 0.92, produced by summing twenty identical values and dividing. The
+   assertion now counts **distinct values**, which has no such artefact.
+
+Findings 1–3 were found _by_ the mutation suite. That is the argument for running one.
+
+### Governance
+
+- **[L-41](../../project/KNOWN_LIMITATIONS.md) opened** — one host analyses ~4 cameras, not 16.
+- **[TD-63](../../../tracking/TECH-DEBT.md) sharpened** — the re-measurement it asked for is done;
+  797 % CPU at 16 cameras, budget first exceeded at 8. Remaining work is the `cpus:` limit itself.
+- **[ADR-0037](../../adr/ADR-0037-model-agnostic-runtime-and-registry-driven-loading.md)** records the
+  model-agnostic runtime and registry-driven loading.

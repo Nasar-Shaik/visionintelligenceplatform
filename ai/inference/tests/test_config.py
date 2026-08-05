@@ -38,6 +38,45 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             load_config({"INTERNAL_API_KEY": "short"})
 
+    # --- model resolution + engine tuning (P-8 Phase 3) -----------------------------
+
+    def test_models_resolve_locally_by_default(self) -> None:
+        """⚠️ The production default is `local`, and it is asserted rather than assumed: a
+        deployment that silently resolved through MLflow would put a dev-stack service on the
+        critical path of every container start."""
+        cfg = load_config({})
+        self.assertEqual(cfg.model_source, "local")
+        self.assertTrue(cfg.model_catalogue.endswith(os.path.join("models", "registry.json")))
+        self.assertEqual(cfg.model_dir, "/opt/vip/models")
+        self.assertEqual(cfg.active_model, "")
+
+    def test_rejects_an_unknown_model_source(self) -> None:
+        with self.assertRaises(ValueError):
+            load_config({"INFERENCE_MODEL_SOURCE": "s3"})
+
+    def test_thread_pools_default_to_deriving_from_the_cgroup_quota(self) -> None:
+        cfg = load_config({})
+        self.assertEqual(cfg.onnx_intra_threads, 0, "0 means: read the cgroup limit (TD-61)")
+        self.assertEqual(cfg.onnx_inter_threads, 1)
+        self.assertEqual(cfg.onnx_providers, "CPUExecutionProvider")
+
+    def test_warmup_is_on_by_default(self) -> None:
+        self.assertTrue(load_config({}).onnx_warmup)
+
+    def test_warmup_accepts_the_spellings_an_operator_will_actually_type(self) -> None:
+        for raw in ("1", "true", "TRUE", "yes", "on"):
+            with self.subTest(raw=raw):
+                self.assertTrue(load_config({"INFERENCE_ONNX_WARMUP": raw}).onnx_warmup)
+        for raw in ("0", "false", "no", "off"):
+            with self.subTest(raw=raw):
+                self.assertFalse(load_config({"INFERENCE_ONNX_WARMUP": raw}).onnx_warmup)
+
+    def test_an_unrecognised_boolean_is_a_misconfiguration_not_a_false(self) -> None:
+        """⚠️ The failure mode this prevents: `INFERENCE_ONNX_WARMUP=enabled` quietly meaning "off",
+        and a first-frame latency regression shipping without anyone touching the code."""
+        with self.assertRaises(ValueError):
+            load_config({"INFERENCE_ONNX_WARMUP": "enabled"})
+
     def test_rejects_unknown_backend(self) -> None:
         with self.assertRaises(ValueError):
             load_config({"INFERENCE_BACKEND": "tensorrt"})

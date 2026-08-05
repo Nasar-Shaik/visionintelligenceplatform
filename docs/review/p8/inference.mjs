@@ -487,7 +487,23 @@ console.log('\n4 · the decoder’s own tests, inside the deployed image');
   check(!/skipped/.test(out) && Number(ran) > 0, '⚠️ and it was NOT skipped here', out.split('\n').pop());
 }
 
+/*
+ * ⚠️ `FAST=1` skips only what needs a **camera** — sections 5 and 7–9. It still runs section 6.
+ *
+ * It exists for the **mutation harness**, which runs this file seven times and would otherwise spend
+ * nine of every ten minutes on the ladder.
+ *
+ * ⚠️ **An earlier version stopped here, after section 4, and claimed in this very comment that "a
+ * broken route is already decided by sections 0–4". It is not — the route lives in section 6.** The
+ * gateway mutation (media pointed at a host that does not exist) turned the verification red at
+ * **zero** checks, because the check that names the fault had been skipped. The mutation harness
+ * caught a lie in a comment, which is the entire argument for mutation-testing a verification: a
+ * shortcut that skips what a mutation needs launders a red into a green.
+ */
+const FAST = process.env.FAST === '1';
+
 /* ── 5 · end to end: camera → RTSP → media → runtime → detections ────────────────────────────── */
+if (!FAST) {
 console.log('\n5 · end to end, through a camera');
 startFixture();
 await sleep(3000);
@@ -550,6 +566,7 @@ await sleep(3000);
   // Back on for the ladder, which counts this camera as its first rung.
   await api(`/media/streams/${camId}/start`, { method: 'POST', headers: H, body: '{}' });
 }
+}
 
 /* ── 6 · the dashboard's route, and the boundary it must not cross ───────────────────────────── */
 console.log('\n6 · the operator route');
@@ -562,11 +579,17 @@ console.log('\n6 · the operator route');
     'and the runtime answered through media',
     `${admin.json?.data?.runtime?.latencyMs}ms`,
   );
-  check(
-    admin.json?.data?.pipeline?.detections > 0,
-    'the page would show real detections',
-    `${admin.json?.data?.pipeline?.detections}`,
-  );
+  // ⚠️ Skipped, not weakened, under FAST. This reads media's cumulative counter, which section 5
+  // fills — with no camera run in this invocation a freshly restarted media would read 0 and the
+  // check would be reporting on history rather than on the route. An assertion rewritten to pass
+  // when it has nothing to measure is worse than an honest skip.
+  if (!FAST) {
+    check(
+      admin.json?.data?.pipeline?.detections > 0,
+      'the page would show real detections',
+      `${admin.json?.data?.pipeline?.detections}`,
+    );
+  }
 
   const viewerToken = await tokenFor(VIEWER);
   const viewer = await api('/system/ai-runtime', { headers: { authorization: `Bearer ${viewerToken}` } });
@@ -582,6 +605,16 @@ console.log('\n6 · the operator route');
 
   const published = shq('docker', ['port', RUNTIME]);
   check(published === '', 'and still publishes no port to the host', published || 'none');
+}
+
+/* ⚠️ The fast path ends HERE — after the route, not before it. See the note above section 5. */
+if (FAST) {
+  console.log(
+    failures === 0
+      ? `\n✓ fast checks passed (sections 0–4 and 6)${findings.length ? ` · ${findings.length} finding(s)` : ''}\n`
+      : `\n✗ ${failures} check(s) failed\n`,
+  );
+  process.exit(failures === 0 ? 0 : 1);
 }
 
 /* ── 7 · the ladder ──────────────────────────────────────────────────────────────────────────── */

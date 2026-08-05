@@ -59,6 +59,7 @@ def _factories(config: InferenceConfig):
                 providers,
                 intra_op_threads=intra,
                 inter_op_threads=config.onnx_inter_threads,
+                warmup=config.onnx_warmup,
             )
 
         if config.model_source == "mlflow":

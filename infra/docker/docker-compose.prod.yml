@@ -290,6 +290,9 @@ services:
       INFERENCE_ACTIVE_MODEL: ${INFERENCE_ACTIVE_MODEL:-}
       # 0 = derive the intra-op pool from the cgroup CPU quota (TD-61), not the host's core count.
       INFERENCE_ONNX_INTRA_THREADS: ${INFERENCE_ONNX_INTRA_THREADS:-0}
+      # ⚠️ Warm-up stays ON in production. It is exposed here only so the hardening verification can
+      # turn it off and MEASURE what it buys — a claim nobody had numbers for until P-8 Phase 3H.
+      INFERENCE_ONNX_WARMUP: ${INFERENCE_ONNX_WARMUP:-1}
 
   gateway:
     <<: *service-common

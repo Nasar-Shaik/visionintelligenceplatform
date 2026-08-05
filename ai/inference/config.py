@@ -44,6 +44,10 @@ class InferenceConfig:
     # onnxruntime thread pools. 0 = derive intra-op from the cgroup CPU quota (see compute.py).
     onnx_intra_threads: int
     onnx_inter_threads: int
+    # Run one inference over a blank tensor at load, so the first real frame is not an outlier.
+    # ⚠️ Exists as a switch only so the improvement can be MEASURED (P-8 Phase 3H). Production keeps
+    # it on; turning it off is how the deployment verification proves it is worth having.
+    onnx_warmup: bool
     # Model Registry (MLflow) — only used when model_source is "mlflow".
     mlflow_tracking_uri: str
     s3_endpoint_url: str
@@ -90,6 +94,7 @@ _DEFAULTS: Mapping[str, str] = {
     "INFERENCE_ONNX_PROVIDERS": "CPUExecutionProvider",
     "INFERENCE_ONNX_INTRA_THREADS": "0",
     "INFERENCE_ONNX_INTER_THREADS": "1",
+    "INFERENCE_ONNX_WARMUP": "1",
     "MLFLOW_TRACKING_URI": "http://localhost:45000",
     "MLFLOW_S3_ENDPOINT_URL": "http://localhost:49000",
     "INFERENCE_EVENT_SINK": "null",
@@ -176,6 +181,7 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> InferenceConfig:
         onnx_inter_threads=_nonnegative_int(
             value("INFERENCE_ONNX_INTER_THREADS"), "INFERENCE_ONNX_INTER_THREADS"
         ),
+        onnx_warmup=_flag(value("INFERENCE_ONNX_WARMUP"), "INFERENCE_ONNX_WARMUP"),
         mlflow_tracking_uri=value("MLFLOW_TRACKING_URI"),
         s3_endpoint_url=value("MLFLOW_S3_ENDPOINT_URL"),
         event_sink=event_sink,
@@ -213,6 +219,17 @@ def _int(raw: str, key: str) -> int:
         return int(raw)
     except (TypeError, ValueError):
         raise ValueError(f"config {key} must be an integer, got '{raw}'") from None
+
+
+def _flag(raw: str, key: str) -> bool:
+    """A boolean from the environment. ⚠️ An unrecognised value is a MISCONFIGURATION, not a false:
+    `INFERENCE_ONNX_WARMUP=yes` silently meaning "off" is how a performance regression gets shipped."""
+    normalized = raw.strip().lower()
+    if normalized in ("1", "true", "yes", "on"):
+        return True
+    if normalized in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(f"config {key} must be a boolean (1/0, true/false, yes/no, on/off), got '{raw}'")
 
 
 def _positive_float(raw: str, key: str) -> float:

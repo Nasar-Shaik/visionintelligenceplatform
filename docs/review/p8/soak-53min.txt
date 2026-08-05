@@ -1,0 +1,17 @@
+
+P-8 Phase 3H · inference soak — 4 cameras, 120 minutes
+
+(node:98594) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
+(Use `node --trace-warnings ...` to show where the warning was created)
+4 cameras streaming; warming up for 60s before the first sample
+    1m · 452 analysed · 2.00/frame · p95 124ms · queue 0 · dropped 25 · runtime 212% / 111MB
+    5m · 491 analysed · 2.00/frame · p95 128ms · queue 0 · dropped 16 · runtime 154% / 111MB
+   11m · 489 analysed · 2.00/frame · p95 168ms · queue 0 · dropped 24 · runtime 209% / 111MB
+   16m · 483 analysed · 2.00/frame · p95 118ms · queue 0 · dropped 22 · runtime 173% / 111MB
+   21m · 472 analysed · 2.00/frame · p95 132ms · queue 0 · dropped 32 · runtime 292% / 112MB
+   27m · 496 analysed · 2.00/frame · p95 100ms · queue 0 · dropped 14 · runtime 157% / 113MB
+   32m · 499 analysed · 2.00/frame · p95 98ms · queue 0 · dropped 12 · runtime 137% / 113MB
+   37m · 498 analysed · 2.00/frame · p95 104ms · queue 0 · dropped 10 · runtime 166% / 114MB
+   42m · 487 analysed · 2.00/frame · p95 108ms · queue 0 · dropped 20 · runtime 296% / 113MB
+   48m · 495 analysed · 2.00/frame · p95 114ms · queue 0 · dropped 14 · runtime 347% / 112MB
+   53m · 491 analysed · 2.00/frame · p95 116ms · queue 0 · dropped 27 · runtime 210% / 118MB

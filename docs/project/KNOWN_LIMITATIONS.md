@@ -344,6 +344,14 @@ cost of a missing one is a relationship.
 | **Customer impact**   | On an estate over 200 cameras, an incident on camera 900 can show `cam_…` where a name belongs. Visible, not wrong                                                                                        |
 | **Planned**           | A batch resolve (`GET /cameras?ids=…`) is the fix and is additive to the camera API. ⚠️ Loading the whole estate to build a name map is what P-6.6 removed, and would be a worse answer than an honest id |
 
+## L-41 · One host analyses about four cameras, not sixteen
+
+|                       |                                                                                                                                                                                                                                                                                                                                                 |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | Measured on a 10-core CPU-only host: **4 cameras** at 2 fps each are analysed inside a 2 % frame-loss budget (0.4 % measured). At 8 cameras 8.0 % of offered frames are dropped, at 16 cameras 18.9 % — see [AI_RUNTIME_BENCHMARK](AI_RUNTIME_BENCHMARK.md)                                                                                     |
+| **Customer impact**   | ⚠️ **The video tier and the AI tier have different capacities and only one of them is advertised.** Recording carried 16 cameras with zero loss; perception sustains 4. Beyond 4, analysis **samples** the stream rather than covering it — detections stay correct (exactly 2.00 per frame at every rung) but some frames are never examined   |
+| **Planned**           | GPU execution is the real answer and is why the provider is a registry field rather than a constant. Before that, `cpus:` on the perception tier ([TD-63](../../tracking/TECH-DEBT.md)) so inference cannot starve the decode path that writes evidence. ⚠️ Any per-host camera number quoted to a customer must state the fps and the hardware |
+
 ---
 
 ## How to use this in a pilot

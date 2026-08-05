@@ -155,6 +155,31 @@ _Last updated: 2026-08-05 · Claude_
   labelled series. Verified: `inference.mjs` all green · `runtime-ui.mjs` all green in a browser ·
   python **928** · media **51**. **TD-5 resolved · TD-63 escalated to high (6–8 cores at 16 cameras) ·
   TD-64 opened (no accuracy gates).** `15ab3a1`
+- **P-8 Phase 3H · production hardening ✅ complete, ⏳ awaiting review (2026-08-05)** — no new
+  capability: the question was whether the inference platform is **sellable**, not whether it works.
+  **Sizing is now measured and computed rather than estimated: 4 cameras per host at 2 fps on a
+  10-core CPU-only box**, being the largest rung inside a 2 % frame-loss budget (0.4 % at four; 8.0 %
+  at eight; 18.9 % at sixteen). ⚠️ **p95 moved only 122 → 189 ms between 4 and 16 cameras** — a
+  reviewer watching latency would have concluded sixteen were fine, because the cost lands almost
+  entirely as dropped frames. ⚠️ **The runtime's own queue peaked at 0 at every rung**; back-pressure
+  surfaces as slower responses and _media_ discards what it cannot dispatch, so sizing must be read
+  from media's drop counter. Inference sustains a quarter of what the frame path carries (Phase 2:
+  16 cameras, zero loss). **Reproducibility is exact** — twenty runs of one frame gave **one distinct
+  result**, the same two confidences to the last bit, and again after a container recreation; all
+  eight reproduction fields present and shaped. **Detection consistency held at exactly 2.00 per
+  frame at every rung including saturation** — under pressure the runtime drops whole frames rather
+  than degrading answers. **Dashboard truthfulness traced exactly** (`framesProcessed` 3319 = 3319,
+  p95 188.702 = 188.702) and **28 rendered cells** all traced to the payload the page received.
+  Stability run **53 minutes / 4 cameras** — memory 111→118 MB in a band, queue 0, zero failures —
+  ⚠️ **stopped short of the planned 2 h under the Architect's new execution policy**, and a 53-minute
+  run cannot rule out a slow leak (deferred to P-9). ⚠️ **Mutation testing found five defects in the
+  verification suite and none in the product**, one of them destructive: the harness restored files
+  with `git checkout --` and **silently deleted uncommitted work** (now a byte snapshot); a mutation
+  rewrote a comment instead of the JSX and shipped an identical page; the gateway mutation was inert
+  twice over; the dashboard's number-tracing check had never passed; and "variance is exactly zero"
+  failed at `1.2e-32` of its own arithmetic. New: **`perception-boundary.mjs` in `verify:contracts`**
+  (model-agnosticism is now a build failure), **[ADR-0037](../adr/ADR-0037-model-agnostic-runtime-and-registry-driven-loading.md)**,
+  **[AI_RUNTIME_BENCHMARK](../project/AI_RUNTIME_BENCHMARK.md)**, **L-41**, TD-63 sharpened.
 - **P-8 Phase 1 · the AI runtime is deployed ✅ complete, ⏳ awaiting review (2026-08-05)** — the
   critical path, and the claim was false until today: 121 Python modules with a green unit-test suite
   had **never run in production**. It now does, and is **connected to nothing** — no camera, no frame,

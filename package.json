@@ -16,7 +16,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "check:imports": "node tools/import-graph/check-imports.mjs",
-    "verify:contracts": "node tools/contracts/verify-schemas.mjs",
+    "verify:contracts": "node tools/contracts/verify-schemas.mjs && node tools/contracts/perception-boundary.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
     "dev:stack": "docker compose -f infra/docker/docker-compose.dev.yml up -d",

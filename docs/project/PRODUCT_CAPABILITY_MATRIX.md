@@ -72,6 +72,14 @@ references them rather than restating what a capability is.
 > tracking, no rules, no incidents, no alerts, no storage. Frontend is ✅ for **reporting** — the
 > AI Runtime page shows what the runtime is doing and configures nothing.
 >
+> ⚠️ **Hardened and sized, P-8 Phase 3H (2026-08-05).** Results are **reproducible** — twenty runs of
+> one frame gave one distinct result, the same two confidences to the last bit, across a container
+> recreation. The sizing answer is **4 cameras per host at 2 fps on a 10-core CPU-only box**, computed
+> from a 2 % frame-loss budget; 8 cameras loses 8.0 %, 16 loses 18.9 % ([L-41](KNOWN_LIMITATIONS.md),
+> [AI_RUNTIME_BENCHMARK](AI_RUNTIME_BENCHMARK.md)). ⚠️ **Detection consistency held at exactly 2.00
+> per frame at every rung including saturation** — under pressure the runtime drops whole frames
+> rather than returning worse answers, which is a capacity limit and not a correctness bug.
+>
 > ⛔ **C-14c is not built, and the row exists so nobody assumes otherwise.** A customer cannot choose
 > which cameras are analysed. Today every recording camera's frames are offered and the runtime drops
 > what it cannot keep up with. ⬜ Pilot for C-14b stays unvalidated: two photographs are a smoke test
