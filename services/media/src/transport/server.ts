@@ -22,6 +22,7 @@ import { registerStreamRoutes } from './routes/streams.js';
 import { registerRecordingRoutes } from './routes/recordings.js';
 import { registerClipRoutes } from './routes/clips.js';
 import { registerPerceptionRoutes } from './routes/perception.js';
+import { registerTrackingRoutes } from './routes/tracking.js';
 
 export interface BuildServerOptions {
   config: ServiceConfig;
@@ -31,6 +32,8 @@ export interface BuildServerOptions {
   readiness?: ReadinessRegistry;
   /** The perception sink, when one is configured — its counters become `/metrics` series. */
   perception?: { stats(): FrameSinkStats };
+  /** Injected so the tracking proxy can be driven without a runtime (tests only). */
+  trackingFetch?: typeof fetch;
 }
 
 export interface BuiltServer {
@@ -81,6 +84,12 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
     runtimeUrl: config.perception.url,
     internalKey: config.internal.apiKey,
     capabilityId: config.perception.capabilityId,
+  });
+  registerTrackingRoutes(app, {
+    auth,
+    runtimeUrl: config.perception.url,
+    internalKey: config.internal.apiKey,
+    ...(opts.trackingFetch === undefined ? {} : { fetch: opts.trackingFetch }),
   });
 
   return { app, readiness };

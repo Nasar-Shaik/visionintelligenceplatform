@@ -11,18 +11,33 @@ from typing import Callable, Dict, List
 
 from capability import Capability
 from manifest import CapabilityManifest, load_manifests
-from pipeline import EventSink, ModelAdapter, NullEventSink
+from pipeline import EventSink, ModelAdapter, NoopTracker, NullEventSink, Tracker
 from resolver import ModelResolver
 
 
 class CapabilityRegistry:
-    def __init__(self, runtime_version: str, event_sink: EventSink | None = None) -> None:
+    def __init__(
+        self,
+        runtime_version: str,
+        event_sink: EventSink | None = None,
+        tracker: Tracker | None = None,
+    ) -> None:
         self._runtime_version = runtime_version
         # Shared across capabilities: the result carries its own tenant/capability, so one sink
         # routes every capability's outputs to the right tenant-partitioned subject. Default = null.
         self._event_sink: EventSink = event_sink or NullEventSink()
+        # ⚠️ ONE tracker across every capability, for the same reason (P-8 Phase 4). An identity
+        # belongs to a **camera**, not to whichever capability happened to analyse the frame — give
+        # each capability its own tracker and the same person walking past one camera acquires two
+        # unrelated identities the moment a second capability is enabled.
+        self._tracker: Tracker = tracker or NoopTracker()
         self._by_id: Dict[str, Capability] = {}
         self._default_id: str | None = None
+
+    @property
+    def tracker(self) -> Tracker:
+        """The shared tracking stage — what `/tracking` reads and what `/runtime` describes."""
+        return self._tracker
 
     def register(
         self,
@@ -31,7 +46,12 @@ class CapabilityRegistry:
         adapter: ModelAdapter,
     ) -> Capability:
         capability = Capability(
-            manifest, resolver, adapter, self._runtime_version, event_sink=self._event_sink
+            manifest,
+            resolver,
+            adapter,
+            self._runtime_version,
+            event_sink=self._event_sink,
+            tracker=self._tracker,
         )
         self._by_id[manifest.capability_id] = capability
         if self._default_id is None and manifest.enabled:

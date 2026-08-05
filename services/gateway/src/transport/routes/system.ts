@@ -23,26 +23,36 @@
  * no credentials and no versions — component names, states, and the dependency-check names the
  * services already report about themselves.
  */
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { JwtOptions } from '@vip/auth';
 import { principalCan } from '@vip/permissions';
 import { authenticateRequest } from '../edge-auth.js';
 import { forbidden } from '../../application/errors.js';
 import type { SystemHealthService } from '../../application/system-health.js';
 
-/** The upstream prefix this route occupies. An upstream may not claim it. */
+/**
+ * The upstream prefixes these routes occupy. An upstream may not claim either.
+ *
+ * ⚠️ `tracking` joined `system` in P-8 Phase 4 for exactly the same reason: `/api/tracking/*` is a
+ * static path beside the proxy's `/api/:service/*`, so an upstream named `tracking` would make
+ * `/api/tracking/tracks` answer here while `/api/tracking/anything-else` proxied to a different
+ * process — a route that half-works, which is worse than one that does not.
+ */
 export const RESERVED_PREFIX = 'system';
+export const RESERVED_PREFIXES = ['system', 'tracking'] as const;
 
 /**
  * ⚠️ Fails the boot if an upstream is named `system`, because the failure mode otherwise is a route
  * that half-works: the health path answers here and every sibling path proxies elsewhere.
  */
 export function assertSystemPrefixFree(upstreams: Record<string, string>): void {
-  if (RESERVED_PREFIX in upstreams) {
-    throw new Error(
-      `gateway: "${RESERVED_PREFIX}" is a reserved route prefix (/api/${RESERVED_PREFIX}/health) ` +
-        'and cannot also be an upstream service name',
-    );
+  for (const prefix of RESERVED_PREFIXES) {
+    if (prefix in upstreams) {
+      throw new Error(
+        `gateway: "${prefix}" is a reserved route prefix (/api/${prefix}/…) ` +
+          'and cannot also be an upstream service name',
+      );
+    }
   }
 }
 
@@ -118,4 +128,65 @@ export function registerSystemRoutes(app: FastifyInstance, deps: SystemRoutesDep
       });
     }
   });
+
+  /**
+   * Object tracking (P-8 Phase 4).
+   *
+   *   GET /api/tracking                    aggregate statistics
+   *   GET /api/tracking/tracks             live tracks
+   *   GET /api/tracking/tracks/:trackId    one track plus its lifecycle
+   *
+   * ⚠️ Proxied through media for the same reason as the AI runtime view: the runtime is not an
+   * upstream, and P-8 Phase 1 asserts that as a deployment property.
+   *
+   * ⚠️ **No permission check here, and that is deliberate.** Media authorises `track:read`
+   * independently against the caller's own token, which is forwarded unchanged. Checking here as
+   * well would be defence in depth if it were free — but the failure mode of a *second* copy is
+   * drift: two places to update when the permission changes, and the one that is forgotten becomes
+   * either a leak or a lockout. The gateway does not vouch for a principal, and it never substitutes
+   * a service key for one, because that would be a hidden privilege escalation.
+   */
+  const trackingProxy = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    path: string,
+  ): Promise<unknown> => {
+    const authorization = request.headers.authorization;
+    const search = request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : '';
+    try {
+      const response = await doFetch(
+        `${deps.mediaUrl.replace(/\/$/, '')}/perception/tracking${path}${search}`,
+        {
+          signal: AbortSignal.timeout(AI_RUNTIME_TIMEOUT_MS),
+          headers: {
+            accept: 'application/json',
+            ...(typeof authorization === 'string' ? { authorization } : {}),
+          },
+        },
+      );
+      const body = await response.text();
+      return reply.status(response.status).header('content-type', 'application/json').send(body);
+    } catch (err) {
+      const timedOut = err instanceof Error && err.name === 'TimeoutError';
+      return reply.status(503).send({
+        success: false,
+        error: {
+          code: 'upstream_unavailable',
+          message: timedOut
+            ? `media did not answer within ${AI_RUNTIME_TIMEOUT_MS} ms`
+            : 'media is not reachable, so tracking cannot be read',
+        },
+      });
+    }
+  };
+
+  app.get('/api/tracking', async (request, reply) => trackingProxy(request, reply, ''));
+  app.get('/api/tracking/tracks', async (request, reply) =>
+    trackingProxy(request, reply, '/tracks'),
+  );
+  app.get<{ Params: { trackId: string } }>(
+    '/api/tracking/tracks/:trackId',
+    async (request, reply) =>
+      trackingProxy(request, reply, `/tracks/${encodeURIComponent(request.params.trackId)}`),
+  );
 }

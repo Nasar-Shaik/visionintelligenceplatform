@@ -16,7 +16,7 @@ import obslog
 
 from config import InferenceConfig, load_config
 from manifest import CapabilityManifest
-from pipeline import EventSink, ModelAdapter, NullEventSink
+from pipeline import EventSink, ModelAdapter, NoopTracker, NullEventSink
 from registry import CapabilityRegistry
 from resolver import FakeModelResolver, ModelResolver
 
@@ -95,11 +95,40 @@ def _factories(config: InferenceConfig):
     return resolver_factory, adapter_factory, None
 
 
+def _build_tracker(config: InferenceConfig):
+    """The live tracking stage (P-8 Phase 4), or the no-op when tracking is switched off.
+
+    ⚠️ Built here rather than inside the registry so the composition root stays the only place that
+    reads configuration — and so `INFERENCE_TRACKING_ENABLED=0` produces a runtime with genuinely no
+    tracking, rather than one holding a disabled tracker that still allocates per-camera state.
+    """
+    if not config.tracking_enabled:
+        return NoopTracker()
+    from runtime_tracking import RuntimeTracker, TrackingOptions  # noqa: WPS433 - keeps imports lean
+
+    return RuntimeTracker(
+        TrackingOptions(
+            enabled=True,
+            min_iou=config.tracking_min_iou,
+            min_iou_lost=config.tracking_min_iou_lost,
+            min_hits=config.tracking_min_hits,
+            max_age=config.tracking_max_age,
+            history_max=config.tracking_history_max,
+            reentry_gap_seconds=config.tracking_reentry_seconds,
+            reentry_distance=config.tracking_reentry_distance,
+        )
+    )
+
+
 def build_registry(config: InferenceConfig):
     """Build the capability registry, and the model catalogue it resolved against (or `None` when
     the backend does not use one). The catalogue is returned so `/runtime` can report **what is
     registered** beside what is loaded — an operator needs both to explain a selection."""
-    registry = CapabilityRegistry(_RUNTIME_VERSION, event_sink=_build_event_sink(config))
+    registry = CapabilityRegistry(
+        _RUNTIME_VERSION,
+        event_sink=_build_event_sink(config),
+        tracker=_build_tracker(config),
+    )
     resolver_factory, adapter_factory, store = _factories(config)
     registry.load_from_dir(config.manifests_dir, resolver_factory, adapter_factory)
     return registry, store

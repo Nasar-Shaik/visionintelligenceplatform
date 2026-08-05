@@ -44,7 +44,7 @@ _SESSION_ACTIONS = ("stop", "pause", "resume", "restart")
 
 # ⚠️ Polled or per-frame paths. Logging each one is thousands of lines an hour of no information, and
 # it buries the line that matters — so they are logged only when they FAIL (TD-60).
-_QUIET_PATHS = ("/health", "/ready", "/metrics", "/infer", "/runtime")
+_QUIET_PATHS = ("/health", "/ready", "/metrics", "/infer", "/runtime", "/tracking", "/tracking/tracks")
 
 # Cameras that have delivered a frame recently: cameraKey -> monotonic seconds. Bounded by the number
 # of cameras a deployment actually has, and pruned on read.
@@ -207,6 +207,10 @@ def runtime_view(registry, supervisor, service_name: str, version: str, model_st
         "registeredModels": registered,
         "cameras": _current_cameras(),
         "sessionsActive": sessions_active,
+        # ⚠️ Deployment-wide COUNTS only, no tenant scope and no identities — this is the same
+        # engineering view as everything else on `/runtime`, and it must stay safe to show to an
+        # operator of any tenant. Per-tenant tracks live behind `/tracking`, which requires a tenant.
+        "tracking": _tracking_summary(registry),
         "resources": {
             "memoryMb": resources.get("memoryMb"),
             "cpuPercent": resources.get("cpuPercent"),
@@ -218,6 +222,22 @@ def runtime_view(registry, supervisor, service_name: str, version: str, model_st
             "gpuPercent": resources.get("gpuPercent"),
         },
     }
+
+
+def _tracking_summary(registry) -> dict:
+    """What the runtime can say about tracking without naming a tenant.
+
+    ⚠️ `enabled: false` is a real answer, not an omission. A runtime with tracking switched off must
+    look different from one where nobody has walked past a camera, and on a status page those two
+    render identically unless the difference is stated.
+    """
+    tracker = getattr(registry, "tracker", None)
+    if not callable(getattr(tracker, "stats", None)):
+        return {"enabled": False}
+    try:
+        return {"enabled": True, "engine": tracker.describe(), "stats": tracker.stats()}
+    except Exception as exc:  # noqa: BLE001 - a status page must never be the thing that breaks
+        return {"enabled": True, "error": str(exc)[:200]}
 
 
 def _available_cores():
@@ -352,6 +372,8 @@ def make_handler(
                 # carries no tenant data. Reached only through media, which is the one service
                 # allowed to talk to the runtime — the runtime stays off the gateway.
                 self._ok(runtime_view(registry, supervisor, service_name, version, model_store))
+            elif segs[:1] == ["tracking"]:
+                self._get_tracking(segs)
             elif segs[:1] == ["models"]:
                 self._get_models(segs)
             elif segs[:1] == ["sessions"]:
@@ -383,6 +405,62 @@ def make_handler(
                 self._certification_matrix()
             elif path == "/certification/coverage":
                 self._dataset_coverage()
+            else:
+                self._err(404, "not_found", f"no route for GET {self.path}")
+
+        # --- object tracking (P-8 Phase 4) -----------------------------------------
+        def _get_tracking(self, segs) -> None:
+            """Read-only views over the live tracker.
+
+                GET /tracking                    aggregate statistics for this tenant
+                GET /tracking/tracks             live tracks (optionally ?cameraId=&state=)
+                GET /tracking/tracks/{trackId}   one track plus its lifecycle timeline
+
+            ### ⚠️ Tenant-scoped, and it is not optional
+
+            Unlike `/runtime`, this is **tenant data**: a track is a record of a person moving through
+            a customer's premises. Every route below requires `x-tenant-id` and fails closed without
+            it. The header is set by media from the caller's verified claims and never from anything
+            the browser sent — see services/media/src/transport/routes/tracking.ts.
+
+            ### ⚠️ Read-only, deliberately
+
+            There is no route here that starts, stops, resets or reassigns anything. Tracking is a
+            consequence of frames arriving, not a thing an operator steers, and a control that
+            configures nothing would be worse than an absent one.
+            """
+            tracker = getattr(registry, "tracker", None)
+            reads_tracks = callable(getattr(tracker, "tracks", None))
+            if not reads_tracks:
+                # ⚠️ A first-class answer, not an error: `INFERENCE_TRACKING_ENABLED=0` is a valid
+                # deployment and the page must say "not enabled here" rather than render an empty
+                # table that looks exactly like "nobody has walked past a camera".
+                self._ok({"enabled": False, "detail": "object tracking is not enabled on this runtime"})
+                return
+
+            tenant = self._tenant()
+            if tenant is None:
+                self._err(400, "bad_request", "x-tenant-id header is required")
+                return
+
+            _, query = _split(self.path)
+            q = parse_qs(query)
+            if len(segs) == 1:
+                self._ok({"enabled": True, "engine": tracker.describe(), "stats": tracker.stats(tenant)})
+            elif len(segs) == 2 and segs[1] == "tracks":
+                states = _first(q.get("state"))
+                tracks = tracker.tracks(
+                    tenant,
+                    camera_id=_first(q.get("cameraId")),
+                    states=[s for s in states.split(",") if s] if states else None,
+                )
+                self._ok({"tracks": [t.to_dict() for t in tracks], "stats": tracker.stats(tenant)})
+            elif len(segs) == 3 and segs[1] == "tracks":
+                detail = tracker.detail(tenant, segs[2])
+                if detail is None:
+                    self._err(404, "not_found", f"no live track '{segs[2]}'")
+                    return
+                self._ok(detail)
             else:
                 self._err(404, "not_found", f"no route for GET {self.path}")
 

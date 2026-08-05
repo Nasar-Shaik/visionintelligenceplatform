@@ -54,6 +54,17 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
      * `inspect`, for the same reason `audit:inspect` is not `audit:read` (TD-26, §69).
      */
     'system:inspect',
+    /*
+     * ⚠️ P-8 Phase 4 — object tracking. Granted explicitly here for the reason the note above
+     * records: `admin` holds no `*:read`, so a resource that only reaches operators and viewers
+     * through the wildcard would leave the tenant's own administrator refused a page their staff
+     * can see. That failure has happened once in this file already.
+     *
+     * `track:read` rather than folding it into `camera:read`, because a track is a record of a
+     * PERSON moving rather than a property of a device — and a tenant that wants to withhold
+     * movement analytics from a role must be able to, without also withholding the camera list.
+     */
+    'track:read',
   ],
   operator: [
     '*:read',
@@ -94,6 +105,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
      */
     'system:inspect',
   ],
+  /*
+   * ⚠️ `*:read` includes `track:read`, and that is correct rather than an oversight: a viewer can
+   * already watch the footage a track is derived from, so withholding the derived, anonymous path
+   * while showing the video it came from would protect nothing.
+   */
   viewer: ['*:read'],
 };
 

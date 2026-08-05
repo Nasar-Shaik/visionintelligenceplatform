@@ -71,6 +71,27 @@ class InferenceConfig:
     # --- observability (P-8 Phase 2, TD-60) ----------------------------------------
     # Seconds between runtime heartbeat log lines. Its absence is the signal that the runtime stopped.
     heartbeat_seconds: float
+    # --- object tracking (P-8 Phase 4) ---------------------------------------------
+    # ⚠️ ON by default, and that is a deliberate reversal of the usual "new subsystem ships off".
+    # The switch exists so the deployment verification can prove tracking is what produces track ids
+    # — turning it off must make them disappear — and a feature that is off in production is a
+    # feature nobody has verified in production. See docs/review/p8/tracking-mutations.mjs.
+    tracking_enabled: bool
+    # Association floor for a track seen on the previous frame.
+    tracking_min_iou: float
+    # Stricter floor for a track being re-matched across a gap: a coasting prediction is a guess,
+    # and a guess must clear a higher bar before it is allowed to claim an identity.
+    tracking_min_iou_lost: float
+    # Detections before an identity is trusted (`confirmed`).
+    tracking_min_hits: int
+    # Frames a track may coast unseen before it is removed. ⚠️ In FRAMES, not seconds: at the
+    # deployment's 2 fps, 8 frames is about 4 seconds.
+    tracking_max_age: int
+    # Trajectory points retained per track (bounded — a week-long session costs the same as a minute).
+    tracking_history_max: int
+    # How long a departed identity stays eligible to be re-entered, and how far away it may reappear.
+    tracking_reentry_seconds: float
+    tracking_reentry_distance: float
     # --- deployment profile (AI-5c) ------------------------------------------------
     # Operational defaults as configuration (retail/warehouse/office/school/hospital/factory/parking).
     # Empty = use the env settings above directly (no profile).
@@ -107,6 +128,14 @@ _DEFAULTS: Mapping[str, str] = {
     "INFERENCE_RECONNECT_MAX_ATTEMPTS": "10",
     "INFERENCE_RECONNECT_BASE_MS": "500",
     "INFERENCE_RECONNECT_MAX_MS": "30000",
+    "INFERENCE_TRACKING_ENABLED": "1",
+    "INFERENCE_TRACKING_MIN_IOU": "0.3",
+    "INFERENCE_TRACKING_MIN_IOU_LOST": "0.45",
+    "INFERENCE_TRACKING_MIN_HITS": "2",
+    "INFERENCE_TRACKING_MAX_AGE": "8",
+    "INFERENCE_TRACKING_HISTORY_MAX": "50",
+    "INFERENCE_TRACKING_REENTRY_SECONDS": "12",
+    "INFERENCE_TRACKING_REENTRY_DISTANCE": "0.35",
     "INFERENCE_DEPLOYMENT_PROFILE": "",
     "INFERENCE_HEARTBEAT_SECONDS": "30",
 }
@@ -197,7 +226,36 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> InferenceConfig:
             value("INFERENCE_HEARTBEAT_SECONDS"), "INFERENCE_HEARTBEAT_SECONDS"
         ),
         deployment_profile=value("INFERENCE_DEPLOYMENT_PROFILE").strip(),
+        tracking_enabled=_flag(value("INFERENCE_TRACKING_ENABLED"), "INFERENCE_TRACKING_ENABLED"),
+        tracking_min_iou=_unit_interval(value("INFERENCE_TRACKING_MIN_IOU"), "INFERENCE_TRACKING_MIN_IOU"),
+        tracking_min_iou_lost=_unit_interval(
+            value("INFERENCE_TRACKING_MIN_IOU_LOST"), "INFERENCE_TRACKING_MIN_IOU_LOST"
+        ),
+        tracking_min_hits=_positive_int(value("INFERENCE_TRACKING_MIN_HITS"), "INFERENCE_TRACKING_MIN_HITS"),
+        tracking_max_age=_positive_int(value("INFERENCE_TRACKING_MAX_AGE"), "INFERENCE_TRACKING_MAX_AGE"),
+        tracking_history_max=_positive_int(
+            value("INFERENCE_TRACKING_HISTORY_MAX"), "INFERENCE_TRACKING_HISTORY_MAX"
+        ),
+        tracking_reentry_seconds=_positive_float(
+            value("INFERENCE_TRACKING_REENTRY_SECONDS"), "INFERENCE_TRACKING_REENTRY_SECONDS"
+        ),
+        tracking_reentry_distance=_unit_interval(
+            value("INFERENCE_TRACKING_REENTRY_DISTANCE"), "INFERENCE_TRACKING_REENTRY_DISTANCE"
+        ),
     )
+
+
+def _unit_interval(raw: str, name: str) -> float:
+    """A ratio in [0, 1]. ⚠️ Refused rather than clamped: an IoU floor of 1.5 is a typo whose effect
+    is that nothing ever associates, and silently clamping it to 1.0 produces the same broken
+    tracking with no way to tell why."""
+    try:
+        parsed = float(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a number between 0 and 1, got '{raw}'") from None
+    if not 0.0 <= parsed <= 1.0:
+        raise ValueError(f"{name} must be between 0 and 1, got {parsed}")
+    return parsed
 
 
 def _positive_int(raw: str, key: str) -> int:
