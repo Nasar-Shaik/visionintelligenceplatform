@@ -4,6 +4,11 @@
 # ⚠️ EDITS REAL SOURCE FILES and REBUILDS the runtime image. Restores from a byte snapshot in a
 # `finally`, and the engine runs the guard below if this stage is killed. Never run it with
 # uncommitted work in flight — that is what REQUIRE_CLEAN_TREE enforces in pre-flight.
+#
+# ⚠️ And never COMMIT while it is running, which is the direction nobody writes down. A `git add -A`
+# during a mutation stages the mutation; the harness then restores the working tree from its
+# snapshot, leaving the tree correct and the COMMIT carrying a deliberately broken tracker. Nothing
+# looks wrong locally. That has happened once — see the fix commit after 5f0720c.
 . "${STAGES_DIR:?stage must be run by the engine}/_preamble.sh"
 
 SCRIPT="docs/review/p8/tracking-mutations.mjs"

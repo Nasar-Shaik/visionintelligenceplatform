@@ -69,13 +69,36 @@ function verify(scenario) {
 
 const snapshots = new Map();
 
-function rewrite(relPath, mutate) {
+/**
+ * Apply every replacement to a file, or fail.
+ *
+ * ⚠️ **Each pair is checked individually, and that is not pedantry.** The first version took a
+ * `mutate` callback and only asserted that the file had *changed* — so in a mutation with two
+ * `.replace()` calls, one succeeding masked the other silently failing. Measured: the occlusion
+ * mutation's second edit targeted `predict_bbox` with eight spaces of indentation where the function
+ * has four, never matched, and the mutation ran for the whole phase disabling ONE of the two
+ * mechanisms it claimed to disable. It still went red, so nothing looked wrong — a weaker test
+ * reporting the same green as a strong one is the worst outcome available to a mutation harness.
+ */
+function rewrite(relPath, pairs) {
   const path = join(ROOT, relPath);
   const before = readFileSync(path, 'utf8');
-  const after = mutate(before);
-  if (after === before) throw new Error(`mutation for ${relPath} matched nothing — the target moved`);
-  if (!snapshots.has(relPath)) snapshots.set(relPath, before);
+  let after = before;
+  for (const [from, to] of pairs) {
+    if (!after.includes(from)) {
+      throw new Error(
+        `mutation for ${relPath} did not match — the target moved:\n${from.slice(0, 120)}`,
+      );
+    }
+    after = after.replace(from, to);
+  }
+  if (!snapshots.has(relPath)) throw new Error(`no snapshot taken for ${relPath}`);
   writeFileSync(path, after);
+}
+
+/** Take the byte snapshot before anything is written, so a failed match still restores cleanly. */
+function snapshot(relPath) {
+  if (!snapshots.has(relPath)) snapshots.set(relPath, readFileSync(join(ROOT, relPath), 'utf8'));
 }
 
 function restoreFile(relPath) {
@@ -123,12 +146,12 @@ const MUTATIONS = [
     expect: ['both people were tracked'],
     file: 'ai/inference/track_manager.py',
     apply: () =>
-      rewrite('ai/inference/track_manager.py', (s) =>
-        s.replace(
+      rewrite('ai/inference/track_manager.py', [
+        [
           'tid = f"trk_{camera_id}_{self._session_id}_{self._seq}"',
           'tid = f"trk_{camera_id}_{self._session_id}_1"',
-        ),
-      ),
+        ],
+      ]),
   },
   {
     name: 'association',
@@ -137,12 +160,12 @@ const MUTATIONS = [
     expect: ['a continuously visible person holds exactly ONE track id'],
     file: 'ai/inference/tracker.py',
     apply: () =>
-      rewrite('ai/inference/tracker.py', (s) =>
-        s.replace(
+      rewrite('ai/inference/tracker.py', [
+        [
           '                if score >= floor:\n                    candidates.append((score, t.track_id, di))',
           '                if False:\n                    candidates.append((score, t.track_id, di))',
-        ),
-      ),
+        ],
+      ]),
   },
   {
     name: 'occlusion',
@@ -159,17 +182,15 @@ const MUTATIONS = [
      * mutation only removed one.
      */
     apply: () =>
-      rewrite('ai/inference/tracker.py', (s) =>
-        s
-          .replace(
-            '            coasting = (frame_index - t.last_seen_frame) > 1',
-            '            coasting = False',
-          )
-          .replace(
-            '        gap = frame_index - track.last_seen_frame\n        if gap <= 0:\n            return track.bbox',
-            '        gap = frame_index - track.last_seen_frame\n        if gap >= 0:\n            return track.bbox',
-          ),
-      ),
+      rewrite('ai/inference/tracker.py', [
+        ['            coasting = (frame_index - t.last_seen_frame) > 1', '            coasting = False'],
+        // ⚠️ FOUR spaces. `predict_bbox` is a module-level function, not a method — the first version
+        // wrote eight, matched nothing, and disabled only half the mutation without saying so.
+        [
+          '    gap = frame_index - track.last_seen_frame\n    if gap <= 0:\n        return track.bbox',
+          '    gap = frame_index - track.last_seen_frame\n    if gap >= 0:\n        return track.bbox',
+        ],
+      ]),
   },
   {
     name: 'direction',
@@ -184,12 +205,12 @@ const MUTATIONS = [
     expect: ['the measured direction matches the authored one'],
     file: 'ai/inference/track_motion.py',
     apply: () =>
-      rewrite('ai/inference/track_motion.py', (s) =>
-        s.replace(
+      rewrite('ai/inference/track_motion.py', [
+        [
           '    return math.degrees(math.atan2(dy, dx)) % 360.0',
           '    return math.degrees(math.atan2(-dy, -dx)) % 360.0',
-        ),
-      ),
+        ],
+      ]),
   },
   {
     name: 'lifetime',
@@ -202,12 +223,9 @@ const MUTATIONS = [
     expect: ['a return after termination gets a NEW track id'],
     file: 'ai/inference/track_manager.py',
     apply: () =>
-      rewrite('ai/inference/track_manager.py', (s) =>
-        s.replace(
-          '        if live.misses > self._max_age:',
-          '        if live.misses > 10_000_000:',
-        ),
-      ),
+      rewrite('ai/inference/track_manager.py', [
+        ['        if live.misses > self._max_age:', '        if live.misses > 10_000_000:'],
+      ]),
   },
 ];
 
@@ -229,12 +247,16 @@ if (wanted.length === 0) {
 
 console.log('\nP-8 Phase 4 · tracking mutation verification\n');
 console.log('  ⚠️ This EDITS REAL SOURCE FILES and REBUILDS the runtime image. Every edit is restored');
-console.log('     from a byte snapshot in a finally — but never run it with uncommitted work in flight.\n');
+console.log('     from a byte snapshot in a finally.');
+console.log('  ⚠️ Never run it with uncommitted work in flight — AND never commit while it is running.');
+console.log('     A `git add -A` during a mutation stages the mutation; the harness then restores the');
+console.log('     working tree, leaving the tree correct and the COMMIT wrong. That has happened.\n');
 
 for (const mutation of wanted) {
   console.log(`▶ ${mutation.name} — ${mutation.breaks}`);
   let applied = false;
   try {
+    snapshot(mutation.file);
     mutation.apply();
     applied = true;
     rebuildRuntime();
