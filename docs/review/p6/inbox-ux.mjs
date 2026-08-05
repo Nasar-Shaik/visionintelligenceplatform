@@ -24,6 +24,8 @@ const check = (ok, label, detail = '') => {
   if (!ok) failures += 1;
 };
 
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 const browser = await chromium.launch();
 
 /** A real browser session: its own context, its own storage, its own token. Not a second tab. */
@@ -59,23 +61,74 @@ const findLoadEntry = async (page) => {
   return page.locator('main > div > ul > li').filter({ has: page.getByRole('button', { name: 'Acknowledge' }) }).first();
 };
 
+/**
+ * ⚠️ **Prefer an incident that reached two channels.**
+ *
+ * Acknowledging is per delivery and the button is per incident, so an entry with one delivery and an
+ * entry with two are different races — and only the second can *split*. Every session of this script
+ * had taken "the first acknowledgeable entry", which on the demo dataset is usually a single in-app
+ * delivery, so the split was never exercised here. It was found by a screenshot assertion instead.
+ *
+ * ⚠️ Asked of the API with a token of its own. Asking from inside the page returned 401, and the
+ * `null` that produced was indistinguishable from "no such incident is waiting" — so the script
+ * would have gone quietly back to testing the case that hides the defect.
+ */
+async function twoChannelIncident() {
+  const auth = await fetch(`${B}/api/identity/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-tenant-id': TENANT },
+    body: JSON.stringify(ALICE),
+  }).then((r) => r.json());
+  const res = await fetch(`${B}/api/notify/notifications?acknowledged=false&limit=200`, {
+    headers: { accept: 'application/json', authorization: `Bearer ${auth.data.accessToken}` },
+  }).then((r) => r.json());
+  const byIncident = new Map();
+  for (const n of res.data.items) {
+    if (n.status !== 'delivered' && n.status !== 'sent') continue;
+    byIncident.set(n.incidentId, (byIncident.get(n.incidentId) ?? 0) + 1);
+  }
+  const found = [...byIncident.entries()].find(([, count]) => count >= 2);
+  return found ? found[0] : null;
+}
+
 /*
  * ⚠️ Bob is pointed at **Alice's** entry by title, not at whatever happens to be top of his own
  * queue. Taking "the first row" in each session made the check intermittent: a real alert arriving
  * between the two page loads left the two operators reaching for different alerts, and the run
  * failed on a race in the harness rather than one in the product.
  */
-const aliceRow = await findLoadEntry(alice.page);
+await findLoadEntry(alice.page);
+const splitIncident = await twoChannelIncident();
+const aliceRow =
+  splitIncident === null
+    ? alice.page.locator('main > div > ul > li').filter({ has: alice.page.getByRole('button', { name: 'Acknowledge' }) }).first()
+    : alice.page.locator('main > div > ul > li').filter({ has: alice.page.locator(`a[href="/workspace/${splitIncident}"]`) }).first();
+console.log(
+  `  · target: ${splitIncident === null ? 'a single-delivery entry (no two-channel incident is waiting)' : `an incident that reached two channels (${splitIncident.slice(0, 8)}) — the race that can split`}`,
+);
 const aliceTitle = (await aliceRow.locator('p').first().textContent())?.trim();
+/*
+ * ⚠️ **The incident, not the wording.** Each entry links to `/workspace/{incidentId}`, which is the
+ * only unique thing about it: the load harness gives 2,500 incidents six titles between them, so
+ * "the row whose text is X" can be a dozen rows. Targeting by title made Bob's press land on a
+ * different alert from Alice's, and made the "both queues stopped offering it" check below count
+ * rows that were never involved — a red on a run where the product did exactly the right thing.
+ */
+const aliceHref = await aliceRow.locator('a[href^="/workspace/"]').first().getAttribute('href');
+const entryFor = (p, href) =>
+  p
+    .locator('main > div > ul > li')
+    .filter({ has: p.locator(`a[href="${href}"]`) })
+    .first();
 await findLoadEntry(bob.page);
-const bobRow = bob.page
-  .locator('main > div > ul > li')
-  .filter({ hasText: aliceTitle })
-  .filter({ has: bob.page.getByRole('button', { name: 'Acknowledge' }) })
-  .first();
-const bobTitle = (await bobRow.locator('p').first().textContent())?.trim();
-console.log(`  · both queues top out on: "${aliceTitle}" / "${bobTitle}"`);
-check(aliceTitle === bobTitle, '1a · both operators are looking at the same alert', `${aliceTitle}`);
+const bobRow = entryFor(bob.page, aliceHref);
+const bobHref = await bobRow.locator('a[href^="/workspace/"]').first().getAttribute('href');
+console.log(`  · both queues top out on: "${aliceTitle}" (${aliceHref})`);
+check(
+  aliceHref !== null && aliceHref === bobHref,
+  '1a · both operators are looking at the same alert',
+  `${aliceTitle} — ${aliceHref} / ${bobHref}`,
+);
 
 /* Press at the same moment, from two independent browsers. */
 const [aliceResult, bobResult] = await Promise.all([
@@ -109,27 +162,63 @@ const [aliceToast, bobToast] = await Promise.all([
 console.log(`  · Alice is told: "${aliceToast.slice(0, 90)}"`);
 console.log(`  · Bob is told:   "${bobToast.slice(0, 90)}"`);
 
-const won = (t) => /acknowledged/i.test(t) && !/could not|already|someone|moment/i.test(t);
-const lost = (t) => /could not|already|someone|moment/i.test(t);
+/*
+ * ⚠️ **Three outcomes, and only one of them may leave somebody thinking they are alone on it.**
+ *
+ * A clean race has a winner and a loser. A race over an incident that reached two channels can
+ * **split** — each operator wins one delivery — and the deployment does exactly that: measured here,
+ * both operators were told "Alert acknowledged" and each walked away believing they were the one
+ * attending it. That is the hazard the per-delivery fix removed, one level up, and the message now
+ * has to carry both facts: the incident is taken, and somebody else is on it.
+ */
+const lost = (t) => /could not|already|acknowledged by/i.test(t);
+const shared = (t) => /on this incident too/i.test(t);
+const sole = (t) => /acknowledged/i.test(t) && !lost(t) && !shared(t);
+const outcome = [aliceToast, bobToast];
 check(
-  [aliceToast, bobToast].filter(won).length === 1,
-  '1c · ⚠️ exactly one operator is told they have it',
-  `${[aliceToast, bobToast].filter(won).length} success message(s)`,
+  outcome.filter(sole).length <= 1,
+  '1c · ⚠️ at most one operator is told they have it to themselves',
+  `${outcome.filter(sole).length} told they have it alone`,
 );
 check(
-  [aliceToast, bobToast].filter(lost).length === 1,
-  '1d · ⚠️ and the other is told, rather than left believing they took it',
-  `${[aliceToast, bobToast].filter(lost).length} failure message(s)`,
+  (outcome.filter(sole).length === 1 && outcome.filter(lost).length === 1) ||
+    outcome.filter(shared).length === 2,
+  '1d · ⚠️ and nobody is left believing they are the only one on it',
+  `${outcome.filter(sole).length} sole · ${outcome.filter(shared).length} shared · ${outcome.filter(lost).length} told someone else has it`,
 );
 
-/* Both screens must agree afterwards, without either being reloaded. */
-await alice.page.waitForTimeout(2_000);
-const aliceSays = await alice.page.locator('main').textContent();
-const bobSays = await bob.page.locator('main').textContent();
+/*
+ * Both screens must agree afterwards, without either being reloaded.
+ *
+ * ⚠️ **A fourth check that could not fail, and the only one found by reading rather than by
+ * measuring.** This was `!aliceSays.includes(aliceTitle) || !bobSays.includes(bobTitle) || true` —
+ * and `|| true` cannot be false, so it reported "both queues refreshed themselves" on every run
+ * since it was written, including runs where neither did. What is actually being claimed is below:
+ * neither session goes on offering an alert somebody else has already taken, and neither of them
+ * was reloaded to find that out.
+ */
+const stillOffering = (p) =>
+  p
+    .locator('main > div > ul > li')
+    .filter({ has: p.locator(`a[href="${aliceHref}"]`) })
+    .filter({ has: p.getByRole('button', { name: 'Acknowledge' }) })
+    .count();
+let aliceOffers = 1;
+let bobOffers = 1;
+const settledFrom = Date.now();
+for (let i = 0; i < 30 && (aliceOffers > 0 || bobOffers > 0); i += 1) {
+  await alice.page.waitForTimeout(1_000);
+  aliceOffers = await stillOffering(alice.page);
+  bobOffers = await stillOffering(bob.page);
+}
 check(
-  !aliceSays.includes(aliceTitle) || !bobSays.includes(bobTitle) || true,
-  '1e · both queues refreshed themselves after the acknowledgement',
+  aliceOffers === 0 && bobOffers === 0,
+  '1e · ⚠️ both queues stopped offering the taken alert on their own — neither was reloaded',
+  aliceOffers === 0 && bobOffers === 0
+    ? `agreed in ${Math.round((Date.now() - settledFrom) / 1000)}s`
+    : `alice ${aliceOffers} · bob ${bobOffers} still offering it`,
 );
+const aliceSays = await alice.page.locator('main').textContent();
 const takenBy = (t) => (t.match(/taken by ([^\s·]+)/) ?? [])[1];
 console.log(`  · after the dust settles the entry reads: ${takenBy(aliceSays) ?? '(left the queue)'}`);
 
@@ -209,12 +298,20 @@ execFileSync('docker', [
   'vip-prod-notify-1:/tmp/lifecycle-publish.mjs',
 ]);
 const incidentId = crypto.randomUUID();
+/*
+ * ⚠️ **A title unique to this run.** The probe used to be called "ux-probe — arrived while you were
+ * looking at the screen" every time, and the check below matched that phrase in the page text — so
+ * a probe left in the queue by an *earlier* run satisfied it, and the check reported "a new alert
+ * reached the screen" without a new alert reaching the screen. Found by mutation: with polling, the
+ * post-acknowledgement refresh and the live stream's queue refresh all removed, it still passed.
+ */
+const stamp = incidentId.slice(0, 8);
 const at = new Date().toISOString();
 execFileSync(
   'docker',
   ['exec', 'vip-prod-notify-1', 'node', '/tmp/lifecycle-publish.mjs', JSON.stringify({
     id: incidentId, tenantId: TENANT, status: 'raised', severity: 'critical',
-    title: 'ux-probe — arrived while you were looking at the screen', category: 'perception',
+    title: `ux-probe ${stamp} — arrived while you were looking at the screen`, category: 'perception',
     source: { ruleId: 'rule_demo_retail_theft', ruleVersion: 1, ruleName: 'Suspected theft — high-value goods', candidateId: crypto.randomUUID(), dedupKey: `ux-probe:${incidentId}` },
     triggeredBy: { eventId: crypto.randomUUID(), eventType: 'behavior.theft.suspected', cameraId: 'cam_demo_retail_01', occurredAt: at },
     matchedCount: 1, version: 1, correlationId: `corr-ux-probe-${incidentId.slice(0, 8)}`,
@@ -227,7 +324,7 @@ let appeared = false;
 const waitedFrom = Date.now();
 for (let i = 0; i < 40 && !appeared; i += 1) {
   await page.waitForTimeout(1_000);
-  appeared = (await page.locator('main').textContent()).includes('arrived while you were looking');
+  appeared = (await page.locator('main').textContent()).includes(`ux-probe ${stamp}`);
 }
 const arrivedIn = Math.round((Date.now() - waitedFrom) / 1000);
 console.log(`  · a new critical alert appeared ${appeared ? `after ${arrivedIn}s` : 'NOT AT ALL'} — no refresh, no click`);

@@ -54,6 +54,22 @@ through.
 there isn't one, it is decoration — that is exactly how a crashed page passed a UI audit
 ([§111](CONSTRAINTS.md)).
 
+## Verification additions (from the P-6.5 freeze · 2026-08-05)
+
+⚠️ Items 17–30 made a milestone prove the product works. These make a milestone prove that **the
+proof works** — each was added because a green check hid a real defect. Full account:
+[P-6.5 Lessons](../review/p6/P6-5-LESSONS.md).
+
+| #   | Item                                                   | Meaning                                                                                                                                                                                                                                                                                  |
+| --- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 31  | ✅ **Deployment integrity proven first**               | Before any verification is allowed to mean anything: the running bytes are the committed bytes — every service, every shared package, the browser bundle the **edge serves**, and the tools that are not services and that nothing restarts. The commit hash goes in the report          |
+| 32  | ✅ **Every verification script mutation-tested**       | In the milestone that introduces it: break the behaviour it claims, confirm it goes red **on the owning check** with a message that names the fault, restore, confirm green. ⚠️ Mutate the **product** — flipping the script's own assertion proves only that the assertion is evaluated |
+| 33  | ✅ **Exclusivity proven under real concurrency**       | Any transition whose correctness depends on only one caller winning is proven against the **real** dependency, from overlapping connections, over enough rounds that one lucky ordering cannot carry it — and the regression test is written **red first**                               |
+| 34  | ✅ **Fixtures measured, not imagined**                 | A fixture value that describes platform behaviour is measured **from the platform** and pinned by a check that goes red when the behaviour changes. The check asserts what is true, never what is intended                                                                               |
+| 35  | ✅ **Operator-facing words asserted verbatim**         | Every string a person acts on is asserted word for word against a real counterpart, including what it must **not** say. Judged by what the reader concludes — two accurate sentences can leave a false impression                                                                        |
+| 36  | ✅ **Silence reported as a finding**                   | Skipped, excluded, crashed, unreachable and "0 of 9 were published" are results, not gaps in the output. ⚠️ And a run installs every fixture it depends on rather than assuming a previous run's survived a rebuild                                                                      |
+| 37  | ✅ **A shared-pattern defect is fixed at the pattern** | When a defect is found in a shared component or shape, the unit of repair is the pattern and the verification enumerates every place it is used. "Fixed on the page it was reported on" is a status, not a fix                                                                           |
+
 ## Governance trackers (must all be updated as part of Done)
 
 - [ ] [ENGINEERING_DECISION_LOG](ENGINEERING_DECISION_LOG.md) — new decisions appended

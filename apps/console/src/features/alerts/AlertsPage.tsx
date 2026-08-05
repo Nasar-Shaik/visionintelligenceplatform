@@ -159,6 +159,28 @@ export function AlertsPage() {
 
         if (broke > 0) {
           toast.error(`${broke} of ${targets.length} could not be acknowledged`);
+        } else if (succeeded > 0 && conflicts.length > 0) {
+          /*
+           * ⚠️ **A split race, and the half the first version of this message left out.**
+           *
+           * Measured at the freeze: two operators pressed Acknowledge on one incident that had
+           * reached two channels, each won one delivery, and **both** were told "Alert
+           * acknowledged". Neither statement was false and the pair of them was: two people walked
+           * away believing they were the one attending it, which is the operational hazard the
+           * per-delivery race fix existed to remove, one level up.
+           *
+           * Incident-level exclusivity would need a claim on the incident — architecture, not a
+           * freeze. What is owed here is that neither operator is misled: the incident is taken,
+           * and somebody else is on it.
+           */
+          const other = /acknowledged by (\S+)/.exec(
+            (conflicts[0]?.reason as Error | undefined)?.message ?? '',
+          )?.[1];
+          toast.info(
+            other === undefined
+              ? 'Alert acknowledged — somebody else is on this incident too'
+              : `Alert acknowledged — ${other} is on this incident too`,
+          );
         } else if (succeeded > 0) {
           toast.success(
             succeeded === targets.length && targets.length > 1

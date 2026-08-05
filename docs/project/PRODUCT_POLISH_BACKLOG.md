@@ -27,6 +27,19 @@ Three rules:
 
 ---
 
+## Classification review — P-6.5 freeze · 2026-08-05
+
+Every open row was re-read against the split at the top of this file: _does a customer notice, and
+does it annoy or does it block?_ **Nothing moved.** PB-12 and PB-13 already point at the tracker rows
+that own them (TD-47, and the pass that resolved the slice numbers), and PB-24/PB-25 — both about how
+the Inbox describes a delivery that will never be retried — remain annoyances on top of a limitation
+that is disclosed (**L-32**) and planned (**TD-53 → P-7**). ⚠️ A polish item sitting on top of a
+promoted roadmap item is not itself promoted: the wording is still owed even after the retry exists.
+
+Two items from the freeze were **not** filed here, deliberately. The split acknowledgement (**L-36**)
+changes behaviour, not wording, and the stale demonstration seeder (**TD-55**) is invisible to a
+customer right up to the moment it is the only thing they see. Neither is polish.
+
 ## Open
 
 Ranked by what a customer notices first, which is not the order they are cheapest to fix.

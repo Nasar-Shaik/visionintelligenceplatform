@@ -163,6 +163,19 @@ it was full. P-6.5 seeds the channels and the deliveries the Alert Engine would 
 including one webhook failure per vertical, because a product that can only be shown succeeding has
 not been shown.
 
+⚠️ **C-42 acknowledges a delivery, not an incident — and two operators can split one.** Measured at
+the P-6.5 freeze: each delivery is exclusive (13 rounds, one winner every time), but an incident that
+reached two channels can be taken one channel each by two operators pressing together, and both
+acknowledgements are genuine. The console now tells each of them the other is there; nothing yet
+**stops** the second. **L-36 → P-7.** ⚠️ The cell stays ✅: what C-42 claims — an operator can see and
+clear the queue — is true, and the limitation is disclosed rather than folded into a tick.
+
+⚠️ **C-41's demo column was ✅ on a dataset that was quietly wrong again.** The seeder runs from a
+service image nothing rebuilds, so `demo.sh reset` restored the fabricated `attempts: 3` after the
+milestone had removed it. Found by the check that asserts the measured truth; fixed by rebuilding;
+guarded by `deployment-integrity.mjs` (**TD-55**). A capability matrix cell is a claim about the
+**deployment**, and the deployment now has to prove it is the commit before any cell is read.
+
 ⚠️ **C-41 delivers once, and that is the whole of it.** The P-6.5 freeze pass drove the real Alert
 Engine over four real transports and measured `attempts: 1` on every delivery, successful or failed.
 There is no retry, and the fan-out's idempotency guard means a redelivered incident **skips** a

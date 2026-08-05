@@ -126,12 +126,24 @@ today. The extension is **additive; no ADR**. The transport-agnostic seam alread
 - **Escalation** — unacknowledged after _n_ minutes goes further up.
 - Delivery state, retry and failure surfaced in the console. ⚠️ A notification that silently failed
   to send is worse than one never configured.
+- ⚠️ **Retry with backoff (TD-53 · L-32).** Promoted from debt at the P-6.5 freeze: every delivery is
+  attempted exactly **once**, measured, and a redelivered incident skips a channel that already has a
+  record — so a customer's webhook that blips for thirty seconds loses those alerts permanently. It
+  is visible in the Inbox with its reason, and visibility is not delivery. This is customer-facing
+  behaviour, not an internal shortcut, and it belongs to the milestone that owns delivery.
+- ⚠️ **An acknowledgement claims the incident, not one delivery (L-36).** Promoted from the P-6.5
+  freeze: each delivery is exclusive, but two operators pressing together on an incident that reached
+  two channels take one each and both are told it is theirs (the console now names the other person).
+  Stopping the second operator needs an owner on the incident and a conditional write — a design
+  change, which is why it is here and not in a freeze.
 
 **Exit criteria**
 
 - [ ] A critical incident on a demo camera delivers an email and an SMS to a real address and number
 - [ ] A failed delivery is **visible in the console**, with the reason
 - [ ] Escalation fires on a genuinely unacknowledged incident, proven by waiting
+- [ ] A delivery that failed is **re-sent** and the attempt count on the record proves it (TD-53)
+- [ ] Two operators cannot both come away owning the same incident (L-36)
 - [ ] Delivery is scoped by hierarchy node, not by a list of camera ids
 - [ ] Contract change is additive — no existing consumer changes
 

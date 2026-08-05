@@ -189,9 +189,19 @@ check(withFailure !== undefined, 'C2 · the entry itself is marked', withFailure
 const toggles = page.getByRole('button', { name: /show delivery detail/i });
 await toggles.nth(queue.findIndex((e) => e === withFailure)).click();
 await sleep(600);
-const reason = await page.evaluate(() =>
-  /ETIMEDOUT|ECONNREFUSED|timeout/i.test(document.querySelector('main')?.textContent ?? ''),
-);
+/*
+ * ⚠️ **This check could not pass, and it took the freeze close-out to notice.** It matched
+ * `/ETIMEDOUT|ECONNREFUSED|timeout/` — the wording of the *fabricated* demo failure P-6.5 removed,
+ * along with the retry count it described. The deployment now says "no response within 5s" and "the
+ * endpoint's host name could not be resolved", so the check went red against a screen that was
+ * doing exactly what the exit criterion asks. An assertion pinned to a string is pinned to the day
+ * it was written; what is owed is that the reason is **there and actionable**.
+ */
+const detail = await page.evaluate(() => document.querySelector('main')?.textContent ?? '');
+const reason =
+  /no response within|rejected it \(HTTP|connection refused|could not be resolved|closed the connection/i.test(
+    detail,
+  ) && !/fetch failed|operation was aborted/i.test(detail);
 check(reason, 'C2 · ⚠️ expanding it shows the reason — the 0.5 exit criterion, on screen');
 await page.screenshot({ path: `${OUT}/inbox-02-delivery-failure.png`, fullPage: true });
 

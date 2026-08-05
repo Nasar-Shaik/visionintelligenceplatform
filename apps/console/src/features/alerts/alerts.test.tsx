@@ -262,14 +262,16 @@ describe('AlertsPage — the inbox', () => {
   });
 
   /**
-   * ⚠️ **A split incident is a taken incident.**
+   * ⚠️ **A split incident is a taken incident — and the operator is not the only one on it.**
    *
    * Acknowledging is per delivery; the operator acted on an incident. Two operators pressing at the
-   * same moment can take one channel each — measured on the deployment — and both were then told
-   * "1 of 2 could not be acknowledged", on an incident that is now unambiguously taken. The message
-   * has to follow what became true, not the tally of requests.
+   * same moment can take one channel each — measured on the deployment — and both were told
+   * "1 of 2 could not be acknowledged", on an incident that is now unambiguously taken. Correcting
+   * that to "Alert acknowledged" then told **both** of them they had it, and two people attending
+   * one incident while each believes they are alone is the hazard the race fix existed to remove.
+   * So the message says both true things: it is taken, and somebody else is on it.
    */
-  it('reports a race-split acknowledgement as taken, not as a failure', async () => {
+  it('reports a race-split acknowledgement as taken, and names the other operator', async () => {
     mockList([
       notification({ id: 'a', channelId: 'c1', channelType: 'in-app', status: 'delivered' }),
       notification({ id: 'b', channelId: 'c2', channelType: 'webhook', status: 'delivered' }),
@@ -294,7 +296,9 @@ describe('AlertsPage — the inbox', () => {
     renderWithToasts();
 
     await userEvent.click(await screen.findByRole('button', { name: /^acknowledge$/i }));
-    expect(await screen.findByText('Alert acknowledged')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Alert acknowledged — sam@acme.test is on this incident too'),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/could not be acknowledged/i)).not.toBeInTheDocument();
   });
 

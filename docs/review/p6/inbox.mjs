@@ -125,6 +125,23 @@ check(
   waitingIncidents.size <= waiting.json.data.items.length,
   '1f · deliveries group into fewer incidents than records',
 );
+/*
+ * ⚠️ **Newest first, asked of the server.**
+ *
+ * The console groups the log into entries and sorts them itself, so the Inbox looks newest-first
+ * whatever order it is handed — which is why the soak's ordering check stayed green through a build
+ * that served the queue **oldest-first**. The order the API returns is a separate fact and it is the
+ * one that decides what an operator sees on page one of a five-thousand-row queue.
+ */
+const out = allItems.map((n) => n.createdAt);
+const firstOutOfOrder = out.findIndex((t, i) => i > 0 && out[i - 1] < t);
+check(
+  firstOutOfOrder === -1,
+  '1g · ⚠️ the delivery log comes back newest-first from the server, not only on screen',
+  firstOutOfOrder === -1
+    ? `${out.length} records in order`
+    : `row ${firstOutOfOrder} (${out[firstOutOfOrder - 1]} then ${out[firstOutOfOrder]})`,
+);
 
 // ── 2 · a failed delivery, with its reason ──────────────────────────────────────────────────────
 console.log('\n2 · delivery failures');

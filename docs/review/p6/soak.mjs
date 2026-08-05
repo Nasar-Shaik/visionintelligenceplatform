@@ -31,6 +31,11 @@ const TENANT = 'tnt_demo_retail';
 const ADMIN = { email: 'security.manager@northgate.demo', password: 'Vip-Demo-2026!' };
 const MINUTES = Number(process.env.MINUTES ?? 40);
 
+/* ⚠️ The browser is told to ignore the deployment's self-signed certificate; Node is not, and the
+   server-side count below is a Node fetch. Without this it fails with `fetch failed` after forty
+   minutes of otherwise green run — which is at least what it now *says*, rather than crashing. */
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 let failures = 0;
 const check = (ok, label, detail = '') => {
   console.log(`${ok ? '  ✓' : '  ✗'} ${label}${detail ? ` — ${detail}` : ''}`);
@@ -50,6 +55,18 @@ context.on('page', (p) => {
     if (r.url().includes('/api/')) apiRequests += 1;
   });
 });
+
+/*
+ * ⚠️ Copied in **this** run. The publisher lives at /tmp inside the notify container, and rebuilding
+ * or recreating that container takes it with it — after which every alert this soak tries to raise
+ * fails silently and the run reports "9 could not be published" as a footnote under checks that all
+ * passed. A fixture the run depends on is copied by the run.
+ */
+execFileSync('docker', [
+  'cp',
+  new URL('./lifecycle-publish.mjs', import.meta.url).pathname,
+  'vip-prod-notify-1:/tmp/lifecycle-publish.mjs',
+]);
 
 const inbox = await context.newPage();
 await inbox.goto(`${B}/login`, { waitUntil: 'domcontentloaded' });
@@ -303,16 +320,37 @@ check(dupes.length === 0, '5c · ⚠️ no delivery appears twice after all the 
 /* ⚠️ Ordering: newest first, still. */
 const times = last.times.filter(Boolean);
 const ordered = times.every((t, i) => i === 0 || Date.parse(times[i - 1]) >= Date.parse(t));
-check(ordered, '5d · ⚠️ still newest-first after every disruption', `${times.length} timestamps`);
+/*
+ * ⚠️ This is what the **browser** shows, and the console sorts entries itself after grouping them —
+ * so a build that served the queue oldest-first still rendered newest-first and this check stayed
+ * green through it (measured). The server's own order is asserted in `inbox.mjs` (1g); what is
+ * claimed here is narrower: nothing about forty minutes of restarts disturbs the rendered order.
+ */
+check(ordered, '5d · ⚠️ still newest-first on screen after every disruption', `${times.length} timestamps`);
 
 /* ⚠️ The count against the **server's** answer, not against its own earlier self. */
-const serverSays = await inbox.evaluate(async () => {
-  const res = await fetch('/api/notify/notifications?acknowledged=false&limit=200', {
-    headers: { accept: 'application/json' },
-  });
-  const body = await res.json();
-  return new Set(body.data.items.map((n) => n.incidentId)).size;
-});
+/*
+ * ⚠️ Asked with a token of its own, and never allowed to take the run down with it. Asking from
+ * inside the page returned 401, `body.data` was undefined, and the uncaught TypeError ended the
+ * process **after** 5d and before 5e, 5f, 5g, 8h and 8i — a crash where a verdict should be, and
+ * five checks that silently did not run.
+ */
+const serverSays = await (async () => {
+  try {
+    const auth = await fetch(`${B}/api/identity/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-tenant-id': TENANT },
+      body: JSON.stringify(ADMIN),
+    }).then((r) => r.json());
+    const body = await fetch(`${B}/api/notify/notifications?acknowledged=false&limit=200`, {
+      headers: { accept: 'application/json', authorization: `Bearer ${auth.data.accessToken}` },
+    }).then((r) => r.json());
+    return new Set(body.data.items.map((n) => n.incidentId)).size;
+  } catch (err) {
+    console.log(`  · ⚠️ could not ask the server for the count: ${err.message}`);
+    return -1;
+  }
+})();
 const badge = Number((last.bell.match(/(\d+)/) ?? [])[1] ?? -1);
 console.log(`  · the bell says ${badge}, the server says ${serverSays} incidents waiting`);
 check(
@@ -329,8 +367,13 @@ check(
 );
 
 check(
+  publishFailures === 0,
+  '5g · ⚠️ every alert this run tried to raise was accepted — a run that raised none proves nothing',
+  `${raised} raised, ${publishFailures} refused`,
+);
+check(
   raised > 0 && last.titles.some((t) => t.startsWith('soak — alert')),
-  '5g · ⚠️ alerts raised during the run are on the screen — the live path survived the restarts',
+  '5h · ⚠️ alerts raised during the run are on the screen — the live path survived the restarts',
 );
 
 check(!finalHealth.stale, '8h · System Health is current again at the end');

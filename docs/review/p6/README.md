@@ -939,3 +939,82 @@ delivery is never retried and nothing re-sends it — **say this before a custom
 webhook** · **L-33** a delivery interrupted mid-flight stays `pending` for ever · **L-34** the queue
 shows the most recent 500 deliveries and then says so · **L-35** a notification does not name the
 service that produced it.
+
+---
+
+# P-6.5 freeze close-out — 2026-08-05
+
+**Not an implementation pass.** P-6.5 was feature-complete and committed at `a139080`. What follows
+is the audit that decided whether the _verification_ could be believed: every script mutation-tested,
+every claim traced to the deployment, and the deployment traced to the commit.
+
+Full inventory: **[VERIFICATION_MATRIX](VERIFICATION_MATRIX.md)**. Engineering lessons, written so a
+later milestone inherits them without the incident: **[P6-5-LESSONS](P6-5-LESSONS.md)**.
+
+## What the audit found
+
+Two product defects, both customer-facing, neither visible to any check that existed:
+
+⚠️ **The demonstration reset was putting back the fabrication the milestone removed.** The seeder runs
+out of a service image, and that image had not been rebuilt since before the fix — so `demo.sh reset`
+restored `attempts: 3` and _"connect ETIMEDOUT … after 3 attempts"_, describing a retry mechanism the
+platform has never had, on a deployment whose source, tests and scripts were all correct. It surfaced
+because `inbox.mjs` **2d** asserts the measured truth (`attempts === 1`) rather than the intent, and
+went red on a dataset a salesperson would have demonstrated. Fixed by rebuilding; guarded by
+[`deployment-integrity.mjs`](deployment-integrity.mjs) §5 and recorded as **TD-55**.
+
+⚠️ **Two operators could both come away owning one incident.** Acknowledging is per delivery; the
+button is per incident. On an incident that reached two channels, two operators pressing together
+take one delivery each — both acknowledgements genuine, both told _"Alert acknowledged"_. Each
+sentence was true and the pair of them was not. Measured on the deployment, then fixed to say both
+things: _"Alert acknowledged — day.operator@northgate.demo is on this incident too"_. Incident-level
+exclusivity needs a claim on the incident and is **L-36 → P-7**, deliberately not built inside a
+freeze. ⚠️ It was found by a screenshot assertion added an hour earlier — a check on a _file_
+catching a defect in the _product_.
+
+## Seven verification defects, in four shapes
+
+Three **could not fail**. Two **could pass for the wrong reason**. One **could fail for the wrong
+reason**. One could do neither — it crashed where a verdict belonged and took five later checks with
+it.
+
+| Where                    | What it was doing                                                                                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `inbox-ux.mjs` 1e        | `… \|\| true` — a tautology. Reported "both queues refreshed themselves" on every run since it was written                        |
+| `inbox-scale.mjs` 2a/2b  | `explain()`ed a query **the script wrote**. A build doing a 5,000-row in-memory sort passed both checks                           |
+| `p65-freeze-screens.mjs` | Wrote eight PNGs and asserted nothing about any of them. A blank page, a spinner or the login screen would have passed            |
+| `inbox-ux.mjs` 2d        | Matched a probe title that persists **across runs** — an earlier run's alert satisfied "a new alert arrived"                      |
+| `inbox-ux.mjs` targeting | Matched entries **by title**, and the load harness gives 2,500 incidents six titles. Two operators pressed different alerts       |
+| `soak.mjs`               | Two: a fixture a container rebuild had deleted (nine alerts silently never raised), and a crash after 5d that skipped five checks |
+
+All fixed. `inbox.mjs` gained **1g** — the server's own ordering — because the console sorts client-side,
+so `soak.mjs` 5d rendered newest-first through a build that served the queue oldest-first.
+
+## Mutation testing — the product was broken, not the assertion
+
+Ten scripts, each run against a deliberately broken build or dataset, then restored and re-run.
+Highlights, with the rest in the [matrix](VERIFICATION_MATRIX.md):
+
+- **The atomic filter removed from the acknowledgement write.** `inbox-concurrency.mjs` §5 went red
+  with 2–4 winners in 8 of 12 rounds; the notify integration test went red with _expected 1, got 10_;
+  `inbox-ux.mjs` showed both operators told they had won. ⚠️ **§1's single six-racer round passed
+  against the defect** — the round that reads best in a report is not the round that does the work.
+- **The queue's page cap removed.** `inbox-scale-ui.mjs` measured 25 clicks, 651 entries and 27
+  requests per 20 s — the TD-54 growth, visible again the moment its bound came off.
+- **The retained queue's staleness label removed.** `outage.mjs` caught the queue being kept and
+  passed off as current, which is the more dangerous half of the P-6.4 defect.
+- **Polling, ack-refresh and the live stream's refresh all removed together.** Only then did the
+  Inbox stop converging — two independent paths keep it fresh, which is worth knowing.
+
+## Deployment integrity
+
+[`deployment-integrity.mjs`](deployment-integrity.mjs) compares every service's and package's
+compiled output, the console bundle in the image **and the one the edge serves**, the image each
+container is actually running, and the seed inside the tool image, against a build of the working
+tree. It needed no mutation to prove it works: it went red the first time on three real states — a
+dirty tree, the stale seeder, and a stale local `dist` carrying a route file whose source had been
+deleted two milestones earlier.
+
+⚠️ It also exposed that `.d.ts` output is **not** byte-reproducible (TypeScript does not fix union
+order across compilations), so runtime bytes are compared strictly and declarations are reported
+rather than judged. A check that goes red on a correct deployment is a check that gets explained away.

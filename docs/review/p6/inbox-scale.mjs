@@ -251,33 +251,63 @@ check(
   `worst ${deep[deep.length - 1].toFixed(1)} ms`,
 );
 
-// ── 2 · what the database actually does ─────────────────────────────────────────────────────────
-console.log('\n2 · measured in the database, not inferred from the clock');
+/*
+ * ── 2 · what the database actually does ─────────────────────────────────────────────────────────
+ *
+ * ⚠️ **The query the service issues, not one this script writes.**
+ *
+ * Until the freeze close-out this ran `explain()` on a `find(...).sort({createdAt:-1,id:-1})`
+ * composed *here*, and reported the plan for it. That measures whether an index exists that could
+ * serve that shape — it says nothing about the shape the deployed service asks for. Mutation-tested
+ * by rebuilding notify with the queue sorted on `updatedAt` (a field in no index): the service was
+ * doing a 5,000-row in-memory sort, and both checks stayed green.
+ *
+ * So the plan cache is cleared, the queue is fetched **through the gateway**, and the entry MongoDB
+ * then holds is the one the service caused. The sort in it is the service's sort.
+ */
+console.log('\n2 · measured in the database, on the query the service actually issues');
+
+mongo('db.notifications.getPlanCache().clear()');
+await api('GET', '/notify/notifications?acknowledged=false&limit=50', { token: tok });
 
 const explain = JSON.parse(
   mongo(`
-    const e = db.notifications.find({tenantId:${JSON.stringify(TENANT)}, status:{$ne:'acked'}})
-      .sort({createdAt:-1,id:-1}).limit(51).explain('executionStats');
-    const s = e.executionStats;
-    print(JSON.stringify({
-      returned: s.nExecuted ?? s.nReturned,
-      examined: s.totalDocsExamined,
-      keys: s.totalKeysExamined,
-      ms: s.executionTimeMillis,
-      stage: JSON.stringify(e.queryPlanner.winningPlan).includes('IXSCAN') ? 'IXSCAN' : 'COLLSCAN',
-      sortInMemory: JSON.stringify(e.queryPlanner.winningPlan).includes('SORT_KEY_GENERATOR') ||
-                    JSON.stringify(e.queryPlanner.winningPlan).includes('"stage":"SORT"'),
-    }));
+    const entries = db.notifications.aggregate([{$planCacheStats:{}}]).toArray()
+      .filter(e => JSON.stringify(e.createdFromQuery.query).includes('acked'));
+    const e = entries[0];
+    if (!e) { print(JSON.stringify({missing:true})); } else {
+      const s = e.creationExecStats && e.creationExecStats[0] ? e.creationExecStats[0] : {};
+      print(JSON.stringify({
+        entries: entries.length,
+        sort: e.createdFromQuery.sort,
+        query: e.createdFromQuery.query,
+        returned: s.nReturned,
+        examined: s.totalDocsExamined,
+        keys: s.totalKeysExamined,
+        ms: s.executionTimeMillisEstimate,
+        stage: JSON.stringify(e.cachedPlan).includes('IXSCAN') ? 'IXSCAN' : 'COLLSCAN',
+        sortInMemory: JSON.stringify(e.cachedPlan).includes('SORT_KEY_GENERATOR') ||
+                      JSON.stringify(e.cachedPlan).includes('"stage":"SORT"'),
+      }));
+    }
   `).split('\n').pop(),
 );
-console.log(
-  `  · plan ${explain.stage} · keys ${explain.keys} · docs examined ${explain.examined} · returned ${explain.returned} · ${explain.ms} ms`,
-);
-check(explain.stage === 'IXSCAN', '2a · the queue query uses an index, not a collection scan');
 check(
-  explain.sortInMemory === false,
-  '2b · ⚠️ the sort is served by the index — an in-memory sort fails at 32 MB, not gradually',
+  explain.missing !== true,
+  '2_ · ⚠️ the fetch reached the database — otherwise the plan below belongs to nobody',
+  explain.missing ? 'no plan-cache entry for the queue query' : `${explain.entries} entry`,
 );
+if (explain.missing !== true) {
+  console.log(
+    `  · the service asked for sort ${JSON.stringify(explain.sort)} · plan ${explain.stage} · keys ${explain.keys} · docs examined ${explain.examined} · returned ${explain.returned} · ${explain.ms} ms`,
+  );
+  check(explain.stage === 'IXSCAN', '2a · the queue query uses an index, not a collection scan');
+  check(
+    explain.sortInMemory === false,
+    '2b · ⚠️ the sort is served by the index — an in-memory sort fails at 32 MB, not gradually',
+    `sort ${JSON.stringify(explain.sort)}`,
+  );
+}
 /*
  * ⚠️ This is the honest number. `status: {$ne:'acked'}` is not in the index, so the newest-first
  * walk fetches documents and discards the acknowledged ones. On a tenant that acknowledges promptly

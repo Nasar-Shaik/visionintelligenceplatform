@@ -33,6 +33,23 @@ async function reachable(): Promise<boolean> {
 }
 
 const online = await reachable();
+
+/*
+ * ⚠️ **This suite carries the acknowledgement-race regression, and a skip is silent.**
+ *
+ * Two operators taking the same alert is a defect that only a real database can catch — the
+ * in-memory store serialises every operation, so the same scenario written against it passes on the
+ * defect. That makes this file the only thing standing between a refactor and the race coming back,
+ * and it is excluded from `pnpm test` (integration) *and* skips itself when no MongoDB is reachable.
+ * A regression guard that can quietly not run is a guard that can only pass. The production gate
+ * sets `VIP_REQUIRE_MONGO=1`, which turns "no database" from a shrug into a failure. See TD-56.
+ */
+if (!online && process.env['VIP_REQUIRE_MONGO'] === '1') {
+  throw new Error(
+    `VIP_REQUIRE_MONGO=1 but no MongoDB is reachable at ${URI} — the acknowledgement-race regression cannot run, and a green result would mean nothing`,
+  );
+}
+
 const scopeA = TenantScope.fromTenantId('tnt_a');
 const scopeB = TenantScope.fromTenantId('tnt_b');
 
