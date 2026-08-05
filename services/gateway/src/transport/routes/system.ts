@@ -89,10 +89,30 @@ export function registerSystemRoutes(app: FastifyInstance, deps: SystemRoutesDep
    * ⚠️ Same permission as System Health, for the same reason: this is deployment state, identical
    * for every tenant, carrying no tenant data. `inspect`, not `read` (TD-26).
    */
-  app.get('/api/system/ai-runtime', async (request, reply) => {
+  app.get('/api/system/ai-runtime', async (request, reply) =>
+    mediaInspect(request, reply, '/perception/runtime', 'the AI runtime'),
+  );
+
+  /**
+   * The Event Publisher bridge (P-8 Phase 5).
+   *
+   * ⚠️ Same path, same permission and same reasoning as the AI runtime view above: deployment state,
+   * identical for every tenant, carrying no tenant data. It goes gateway → media because media owns
+   * the publisher, exactly as it owns the perception seam.
+   */
+  app.get('/api/system/event-bridge', async (request, reply) =>
+    mediaInspect(request, reply, '/perception/event-bridge', 'the event bridge'),
+  );
+
+  async function mediaInspect(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    path: string,
+    what: string,
+  ): Promise<unknown> {
     const claims = await authenticateRequest(request, deps.jwt);
     if (!principalCan(claims, 'system:inspect')) {
-      throw forbidden('not permitted to view the AI runtime');
+      throw forbidden(`not permitted to view ${what}`);
     }
     /*
      * ⚠️ The caller's own token is forwarded. Media authorises the request independently — the
@@ -102,7 +122,7 @@ export function registerSystemRoutes(app: FastifyInstance, deps: SystemRoutesDep
      */
     const authorization = request.headers.authorization;
     try {
-      const response = await doFetch(`${deps.mediaUrl.replace(/\/$/, '')}/perception/runtime`, {
+      const response = await doFetch(`${deps.mediaUrl.replace(/\/$/, '')}${path}`, {
         signal: AbortSignal.timeout(AI_RUNTIME_TIMEOUT_MS),
         headers: {
           accept: 'application/json',
@@ -123,11 +143,11 @@ export function registerSystemRoutes(app: FastifyInstance, deps: SystemRoutesDep
           code: 'upstream_unavailable',
           message: timedOut
             ? `media did not answer within ${AI_RUNTIME_TIMEOUT_MS} ms`
-            : 'media is not reachable, so the AI runtime cannot be inspected',
+            : `media is not reachable, so ${what} cannot be inspected`,
         },
       });
     }
-  });
+  }
 
   /**
    * Object tracking (P-8 Phase 4).

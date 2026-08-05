@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   MonitorPlay,
   Radar,
+  Radio,
   Settings,
   ShieldAlert,
   Telescope,
@@ -121,6 +122,19 @@ export const NAV_GROUPS: NavGroup[] = [
        * sounds like a feature is a promise the product has not made.
        */
       { to: '/system/ai-runtime', label: 'AI Runtime', icon: Cpu, permission: 'system:inspect' },
+      /*
+       * P-8 Phase 5 — the bridge from perception to the event platform.
+       *
+       * ⚠️ Its own entry rather than a section of AI Runtime, because the two fail independently:
+       * the runtime can be healthy while the broker is unreachable, and an operator needs to see
+       * which of the two is wrong without one page's failure hiding the other.
+       */
+      {
+        to: '/system/event-bridge',
+        label: 'Event Bridge',
+        icon: Radio,
+        permission: 'system:inspect',
+      },
     ],
   },
 ];

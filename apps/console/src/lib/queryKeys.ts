@@ -97,6 +97,9 @@ export const queryKeys = {
     // P-8 Phase 3. Separate from `system()`: a different upstream, a different refresh budget, and
     // an operator watching a deploy should not invalidate one by refreshing the other.
     aiRuntime: () => ['health', 'ai-runtime'] as const,
+    // P-8 Phase 5. Separate again: the bridge can be down while the runtime is fine, and an
+    // operator must be able to see that without one page's failure emptying the other.
+    eventBridge: () => ['health', 'event-bridge'] as const,
   },
   /*
    * P-8 Phase 4 — object tracking. ⚠️ Separate keys rather than one, because the pages have

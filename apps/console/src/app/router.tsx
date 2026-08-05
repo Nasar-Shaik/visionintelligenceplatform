@@ -66,6 +66,9 @@ const SystemHealthPage = lazy(() =>
 const AiRuntimePage = lazy(() =>
   import('@/features/system/AiRuntimePage').then((m) => ({ default: m.AiRuntimePage })),
 );
+const EventBridgePage = lazy(() =>
+  import('@/features/system/EventBridgePage').then((m) => ({ default: m.EventBridgePage })),
+);
 const LiveTracksPage = lazy(() =>
   import('@/features/tracking/LiveTracksPage').then((m) => ({ default: m.LiveTracksPage })),
 );
@@ -163,6 +166,7 @@ export const router = createBrowserRouter([
           // permission as System Health (`system:inspect`); the runtime itself stays off the
           // gateway, so this page is served through media.
           { path: 'system/ai-runtime', element: route(<AiRuntimePage />) },
+          { path: 'system/event-bridge', element: route(<EventBridgePage />) },
           // P-6.3 — tenant settings. Was a placeholder; the route is unchanged so every existing
           // link, bookmark and runbook reference still lands somewhere real.
           { path: 'settings', element: route(<SettingsPage />) },
