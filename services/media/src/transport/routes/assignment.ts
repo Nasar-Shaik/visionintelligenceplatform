@@ -156,8 +156,15 @@ async function liveTracks(
       signal: AbortSignal.timeout(TRACK_TIMEOUT_MS),
     });
     if (!res.ok) return null;
-    const body = (await res.json()) as { data?: unknown };
-    const rows = Array.isArray(body.data) ? body.data : [];
+    /*
+     * ⚠️ The runtime answers `{ cameras: [...], stats: {...} }`, not a bare array. The first version
+     * read `data` as an array, found none, and reported every camera's track count as `null` — which
+     * is *honest* (ADR-0039 says an unavailable metric is absent, not zero) and is exactly why it
+     * survived: a wrong shape and a runtime that has not tracked anything are indistinguishable
+     * from the caller's side. The deployment run surfaced it as a finding rather than a failure.
+     */
+    const body = (await res.json()) as { data?: { cameras?: unknown } };
+    const rows = Array.isArray(body.data?.cameras) ? body.data.cameras : [];
     const out = new Map<string, number>();
     for (const row of rows) {
       const r = row as { cameraId?: unknown; activeTracks?: unknown; active?: unknown };

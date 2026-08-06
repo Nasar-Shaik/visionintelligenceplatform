@@ -1,0 +1,753 @@
+{
+  "gate": {
+    "enabled": true,
+    "planVersion": 10,
+    "plannedCameras": 0,
+    "cycles": 2,
+    "failures": 0,
+    "releases": 0,
+    "lastPlanAt": "2026-08-06T03:54:42.278Z",
+    "lastError": null,
+    "lastErrorAt": null,
+    "runtimes": [
+      {
+        "runtimeId": "inference",
+        "health": "healthy",
+        "latencyMs": 3
+      }
+    ]
+  },
+  "runtimes": [
+    {
+      "id": "inference",
+      "name": "Inference runtime",
+      "url": "http://inference:8085",
+      "labels": [],
+      "maxCameras": 4,
+      "enabled": true,
+      "health": "healthy",
+      "observedAt": "2026-08-06T03:54:42.288Z",
+      "observedBy": "media",
+      "latencyMs": 3,
+      "capabilities": ["perception.person-detection"],
+      "createdAt": "2026-08-06T03:42:06.479Z",
+      "updatedAt": "2026-08-06T03:42:06.479Z",
+      "updatedBy": "system"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "disabled",
+      "tenantId": "tnt_demo_retail",
+      "name": "Disabled",
+      "description": "Recording only. The camera is deliberately excluded from AI processing.",
+      "capabilities": ["perception.person-detection"],
+      "targetFps": null,
+      "builtIn": true,
+      "supported": true,
+      "version": 1,
+      "createdAt": "2026-08-06T03:42:39.575Z",
+      "updatedAt": "2026-08-06T03:42:39.575Z",
+      "updatedBy": "system"
+    },
+    {
+      "id": "person-tracking",
+      "tenantId": "tnt_demo_retail",
+      "name": "Person Tracking",
+      "description": "Detect and track people. The baseline profile every deployment can run.",
+      "capabilities": ["perception.person-detection"],
+      "targetFps": null,
+      "builtIn": true,
+      "supported": true,
+      "version": 1,
+      "createdAt": "2026-08-06T03:42:39.575Z",
+      "updatedAt": "2026-08-06T03:42:39.575Z",
+      "updatedBy": "system"
+    },
+    {
+      "id": "queue-analytics",
+      "tenantId": "tnt_demo_retail",
+      "name": "Queue Analytics",
+      "description": "Queue length and waiting time at service points.",
+      "capabilities": ["perception.queue-analytics"],
+      "targetFps": null,
+      "builtIn": true,
+      "supported": false,
+      "version": 1,
+      "createdAt": "2026-08-06T03:42:39.575Z",
+      "updatedAt": "2026-08-06T03:42:39.575Z",
+      "updatedBy": "system"
+    },
+    {
+      "id": "retail-monitoring",
+      "tenantId": "tnt_demo_retail",
+      "name": "Retail Monitoring",
+      "description": "Person tracking tuned for shop floors, tills and high-value displays.",
+      "capabilities": ["perception.person-detection"],
+      "targetFps": null,
+      "builtIn": true,
+      "supported": true,
+      "version": 1,
+      "createdAt": "2026-08-06T03:42:39.575Z",
+      "updatedAt": "2026-08-06T03:42:39.575Z",
+      "updatedBy": "system"
+    },
+    {
+      "id": "safety-monitoring",
+      "tenantId": "tnt_demo_retail",
+      "name": "Safety Monitoring",
+      "description": "PPE, restricted areas and hazard proximity for industrial sites.",
+      "capabilities": ["perception.safety-monitoring"],
+      "targetFps": null,
+      "builtIn": true,
+      "supported": false,
+      "version": 1,
+      "createdAt": "2026-08-06T03:42:39.575Z",
+      "updatedAt": "2026-08-06T03:42:39.575Z",
+      "updatedBy": "system"
+    },
+    {
+      "id": "vehicle-analytics",
+      "tenantId": "tnt_demo_retail",
+      "name": "Vehicle Analytics",
+      "description": "Vehicle detection for car parks, loading bays and barriers.",
+      "capabilities": ["perception.vehicle-detection"],
+      "targetFps": null,
+      "builtIn": true,
+      "supported": false,
+      "version": 1,
+      "createdAt": "2026-08-06T03:42:39.575Z",
+      "updatedAt": "2026-08-06T03:42:39.575Z",
+      "updatedBy": "system"
+    }
+  ],
+  "unassigned": {
+    "streams": [
+      {
+        "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+        "tenantId": "tnt_demo_retail",
+        "state": "connected",
+        "since": "2026-08-06T03:54:49.103Z",
+        "recording": true,
+        "reconnectAttempts": 0,
+        "framesReceived": 37,
+        "lastSegmentAt": "2026-08-06T03:55:01.703Z"
+      },
+      {
+        "cameraId": "cam_75981f1785d245d3a9e506d4b8466af7",
+        "tenantId": "tnt_demo_retail",
+        "state": "connected",
+        "since": "2026-08-06T03:54:49.102Z",
+        "recording": true,
+        "reconnectAttempts": 0,
+        "framesReceived": 37,
+        "lastSegmentAt": "2026-08-06T03:55:01.716Z"
+      },
+      {
+        "cameraId": "cam_ac1c23978d1648cf824293c6ef50f634",
+        "tenantId": "tnt_demo_retail",
+        "state": "connected",
+        "since": "2026-08-06T03:54:49.102Z",
+        "recording": true,
+        "reconnectAttempts": 0,
+        "framesReceived": 37,
+        "lastSegmentAt": "2026-08-06T03:55:01.727Z"
+      }
+    ],
+    "measured": [
+      {
+        "tenantId": "tnt_demo_retail",
+        "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+        "aiEnabled": false,
+        "state": "unassigned",
+        "profileId": null,
+        "runtimeId": null,
+        "processingFps": null,
+        "framesOffered": 37,
+        "framesDelivered": 0,
+        "framesSkippedUnassigned": 37,
+        "framesDroppedQueueFull": 0,
+        "queueDepth": 0,
+        "processingLatencyMs": null,
+        "eventsPublished": null,
+        "activeTracks": null,
+        "lastFrameAt": null,
+        "lastErrorAt": null,
+        "lastError": null
+      },
+      {
+        "tenantId": "tnt_demo_retail",
+        "cameraId": "cam_75981f1785d245d3a9e506d4b8466af7",
+        "aiEnabled": false,
+        "state": "unassigned",
+        "profileId": null,
+        "runtimeId": null,
+        "processingFps": null,
+        "framesOffered": 37,
+        "framesDelivered": 0,
+        "framesSkippedUnassigned": 37,
+        "framesDroppedQueueFull": 0,
+        "queueDepth": 0,
+        "processingLatencyMs": null,
+        "eventsPublished": null,
+        "activeTracks": null,
+        "lastFrameAt": null,
+        "lastErrorAt": null,
+        "lastError": null
+      },
+      {
+        "tenantId": "tnt_demo_retail",
+        "cameraId": "cam_ac1c23978d1648cf824293c6ef50f634",
+        "aiEnabled": false,
+        "state": "unassigned",
+        "profileId": null,
+        "runtimeId": null,
+        "processingFps": null,
+        "framesOffered": 37,
+        "framesDelivered": 0,
+        "framesSkippedUnassigned": 37,
+        "framesDroppedQueueFull": 0,
+        "queueDepth": 0,
+        "processingLatencyMs": null,
+        "eventsPublished": null,
+        "activeTracks": null,
+        "lastFrameAt": null,
+        "lastErrorAt": null,
+        "lastError": null
+      }
+    ]
+  },
+  "assigned": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+    "state": "running",
+    "aiEnabled": true,
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "version": 6,
+    "sessionEpoch": 1,
+    "reason": "observation",
+    "placementFailure": null,
+    "lastError": null,
+    "observed": {
+      "state": "active",
+      "at": "2026-08-06T03:55:27.297Z",
+      "runtimeId": "inference",
+      "planVersion": 11,
+      "stale": false
+    },
+    "updatedAt": "2026-08-06T03:55:27.297Z",
+    "updatedBy": "system",
+    "createdAt": "2026-08-06T03:55:06.756Z"
+  },
+  "targetRow": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 2,
+    "framesOffered": 121,
+    "framesDelivered": 83,
+    "framesSkippedUnassigned": 38,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 61.33734939759036,
+    "eventsPublished": 81,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-06T03:55:48.362Z",
+    "lastErrorAt": null,
+    "lastError": null
+  },
+  "event": {
+    "id": "01ae2da5-bb07-4154-b943-63f911c3bf25",
+    "type": "perception.person.detected",
+    "envelopeVersion": "1.0.0",
+    "category": "perception",
+    "schemaVersion": "1.0.0",
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+    "occurredAt": "2026-08-06T03:55:40.283Z",
+    "ingestedAt": "2026-08-06T03:55:40.354Z",
+    "producer": {
+      "capability": "perception.person-detection",
+      "capabilityVersion": "0.1.0",
+      "modelVersion": "1.0.0"
+    },
+    "confidence": 0.886192,
+    "subjects": [
+      {
+        "class": "person",
+        "bbox": [0.817336, 0.417993, 0.138819, 0.534222],
+        "trackId": "trk_cam_6953862c60af4f469a706d615bc7895e_live-tnt_demo_retail-cam_6953862c60af4f469a706d615bc7895e_1",
+        "identityId": "trk_cam_6953862c60af4f469a706d615bc7895e_live-tnt_demo_retail-cam_6953862c60af4f469a706d615bc7895e_1"
+      }
+    ],
+    "payload": {
+      "label": "person",
+      "executionProvider": "CPUExecutionProvider",
+      "runtimeVersion": "0.1.0",
+      "frameId": "tnt_demo_retail:cam_6953862c60af4f469a706d615bc7895e:104",
+      "frameSeq": 104
+    },
+    "evidenceRefs": [],
+    "priority": "info",
+    "correlationId": "tnt_demo_retail:cam_6953862c60af4f469a706d615bc7895e:104"
+  },
+  "rule": {
+    "ruleId": "0892b2c4-41c0-426b-a032-5bc99094dbfc",
+    "ruleName": "p8-assignment any person detection",
+    "ruleVersion": 2,
+    "evaluations": 5,
+    "matches": 5,
+    "failures": 0,
+    "avgEvaluationMicros": 2.208399772644043,
+    "maxEvaluationMicros": 2.4159997701644897,
+    "lastEvaluatedAt": "2026-08-06T03:55:40.358Z",
+    "lastMatchedAt": "2026-08-06T03:55:40.358Z"
+  },
+  "hot": {
+    "before": {
+      "tenantId": "tnt_demo_retail",
+      "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+      "state": "running",
+      "aiEnabled": true,
+      "profileId": "person-tracking",
+      "runtimeId": "inference",
+      "version": 10,
+      "sessionEpoch": 1,
+      "reason": "observation",
+      "placementFailure": null,
+      "lastError": null,
+      "observed": {
+        "state": "active",
+        "at": "2026-08-06T03:55:47.310Z",
+        "runtimeId": "inference",
+        "planVersion": 11,
+        "stale": false
+      },
+      "updatedAt": "2026-08-06T03:55:47.310Z",
+      "updatedBy": "system",
+      "createdAt": "2026-08-06T03:55:06.756Z"
+    },
+    "after": {
+      "tenantId": "tnt_demo_retail",
+      "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+      "state": "running",
+      "aiEnabled": true,
+      "profileId": "person-tracking",
+      "runtimeId": "inference",
+      "version": 14,
+      "sessionEpoch": 1,
+      "reason": "observation",
+      "placementFailure": null,
+      "lastError": null,
+      "observed": {
+        "state": "active",
+        "at": "2026-08-06T03:56:07.320Z",
+        "runtimeId": "inference",
+        "planVersion": 12,
+        "stale": false
+      },
+      "updatedAt": "2026-08-06T03:56:07.320Z",
+      "updatedBy": "system",
+      "createdAt": "2026-08-06T03:55:06.756Z"
+    }
+  },
+  "paused": {
+    "assignment": {
+      "tenantId": "tnt_demo_retail",
+      "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+      "state": "paused",
+      "aiEnabled": true,
+      "profileId": "retail-monitoring",
+      "runtimeId": "inference",
+      "version": 21,
+      "sessionEpoch": 1,
+      "reason": "operator",
+      "placementFailure": null,
+      "lastError": null,
+      "observed": {
+        "state": "paused",
+        "at": "2026-08-06T03:56:52.307Z",
+        "runtimeId": "inference",
+        "planVersion": 14,
+        "stale": false
+      },
+      "updatedAt": "2026-08-06T03:56:32.968Z",
+      "updatedBy": "usr_demo_retail_mgr",
+      "createdAt": "2026-08-06T03:55:06.756Z"
+    },
+    "row": {
+      "tenantId": "tnt_demo_retail",
+      "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+      "aiEnabled": true,
+      "state": "paused",
+      "profileId": "retail-monitoring",
+      "runtimeId": "inference",
+      "processingFps": null,
+      "framesOffered": 274,
+      "framesDelivered": 181,
+      "framesSkippedUnassigned": 38,
+      "framesDroppedQueueFull": 0,
+      "queueDepth": 0,
+      "processingLatencyMs": 79.81,
+      "eventsPublished": 154,
+      "activeTracks": 1,
+      "lastFrameAt": "2026-08-06T03:56:37.295Z",
+      "lastErrorAt": null,
+      "lastError": null
+    },
+    "stream": {
+      "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+      "tenantId": "tnt_demo_retail",
+      "state": "connected",
+      "since": "2026-08-06T03:55:59.023Z",
+      "recording": true,
+      "reconnectAttempts": 0,
+      "framesReceived": 274,
+      "lastSegmentAt": "2026-08-06T03:57:00.026Z",
+      "lastError": "ffmpeg exited (code 0)"
+    }
+  },
+  "stopped": {
+    "assignment": {
+      "tenantId": "tnt_demo_retail",
+      "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+      "state": "stopped",
+      "aiEnabled": false,
+      "profileId": "retail-monitoring",
+      "runtimeId": "inference",
+      "version": 23,
+      "sessionEpoch": 1,
+      "reason": "observation",
+      "placementFailure": null,
+      "lastError": null,
+      "observed": {
+        "state": "idle",
+        "at": "2026-08-06T03:57:22.318Z",
+        "runtimeId": null,
+        "planVersion": 15,
+        "stale": false
+      },
+      "updatedAt": "2026-08-06T03:57:07.322Z",
+      "updatedBy": "system",
+      "createdAt": "2026-08-06T03:55:06.756Z"
+    },
+    "stream": {
+      "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+      "tenantId": "tnt_demo_retail",
+      "state": "connected",
+      "since": "2026-08-06T03:57:08.935Z",
+      "recording": true,
+      "reconnectAttempts": 0,
+      "framesReceived": 318,
+      "lastSegmentAt": "2026-08-06T03:57:21.855Z",
+      "lastError": "ffmpeg exited (code 0)"
+    }
+  },
+  "resumed": {
+    "assignment": {
+      "tenantId": "tnt_demo_retail",
+      "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+      "state": "running",
+      "aiEnabled": true,
+      "profileId": "person-tracking",
+      "runtimeId": "inference",
+      "version": 33,
+      "sessionEpoch": 2,
+      "reason": "observation",
+      "placementFailure": null,
+      "lastError": null,
+      "observed": {
+        "state": "active",
+        "at": "2026-08-06T03:58:07.331Z",
+        "runtimeId": "inference",
+        "planVersion": 16,
+        "stale": false
+      },
+      "updatedAt": "2026-08-06T03:58:07.331Z",
+      "updatedBy": "system",
+      "createdAt": "2026-08-06T03:55:06.756Z"
+    },
+    "row": {
+      "tenantId": "tnt_demo_retail",
+      "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+      "aiEnabled": true,
+      "state": "running",
+      "profileId": "person-tracking",
+      "runtimeId": "inference",
+      "processingFps": 2,
+      "framesOffered": 402,
+      "framesDelivered": 264,
+      "framesSkippedUnassigned": 77,
+      "framesDroppedQueueFull": 0,
+      "queueDepth": 0,
+      "processingLatencyMs": 79.12048192771084,
+      "eventsPublished": 234,
+      "activeTracks": 1,
+      "lastFrameAt": "2026-08-06T03:58:08.715Z",
+      "lastErrorAt": null,
+      "lastError": null
+    }
+  },
+  "matrix": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+    "generatedAt": "2026-08-06T03:58:09.129Z",
+    "recording": {
+      "available": true,
+      "evidence": "measured",
+      "at": "2026-08-06T03:58:07.331Z"
+    },
+    "aiProcessing": {
+      "available": true,
+      "evidence": "measured",
+      "at": "2026-08-06T03:58:07.331Z"
+    },
+    "tracking": {
+      "available": true,
+      "evidence": "measured",
+      "at": "2026-08-06T03:58:07.331Z"
+    },
+    "events": {
+      "available": true,
+      "evidence": "measured",
+      "at": "2026-08-06T03:58:07.331Z"
+    },
+    "rules": {
+      "available": true,
+      "evidence": "declared",
+      "at": null,
+      "detail": "5 enabled rule(s) in this tenant"
+    },
+    "snapshots": {
+      "available": true,
+      "evidence": "declared",
+      "at": null,
+      "detail": "declared by the camera record; not verified against the device"
+    },
+    "recordingHealth": {
+      "available": true,
+      "evidence": "measured",
+      "at": "2026-08-06T03:58:07.331Z",
+      "detail": "healthy"
+    },
+    "aiHealth": {
+      "available": true,
+      "evidence": "measured",
+      "at": "2026-08-06T03:58:07.331Z",
+      "detail": "healthy"
+    },
+    "assignment": {
+      "state": "running",
+      "profileId": "person-tracking",
+      "runtimeId": "inference"
+    }
+  },
+  "otherMatrix": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_ac1c23978d1648cf824293c6ef50f634",
+    "generatedAt": "2026-08-06T03:58:09.171Z",
+    "recording": {
+      "available": true,
+      "evidence": "measured",
+      "at": "2026-08-06T03:58:07.331Z"
+    },
+    "aiProcessing": {
+      "available": false,
+      "evidence": "declared",
+      "at": null,
+      "detail": "no AI assignment"
+    },
+    "tracking": {
+      "available": false,
+      "evidence": "unavailable",
+      "at": "2026-08-06T03:58:07.331Z"
+    },
+    "events": {
+      "available": false,
+      "evidence": "unavailable",
+      "at": "2026-08-06T03:58:07.331Z"
+    },
+    "rules": {
+      "available": true,
+      "evidence": "declared",
+      "at": null,
+      "detail": "5 enabled rule(s) in this tenant"
+    },
+    "snapshots": {
+      "available": true,
+      "evidence": "declared",
+      "at": null,
+      "detail": "declared by the camera record; not verified against the device"
+    },
+    "recordingHealth": {
+      "available": true,
+      "evidence": "measured",
+      "at": "2026-08-06T03:58:07.331Z",
+      "detail": "healthy"
+    },
+    "aiHealth": {
+      "available": null,
+      "evidence": "unknown",
+      "at": null,
+      "detail": "this camera is not placed on a runtime"
+    },
+    "assignment": {
+      "state": "unassigned",
+      "profileId": null,
+      "runtimeId": null
+    }
+  },
+  "history": [
+    {
+      "id": "ash_eb75c15414a848f68e34f8a99cd629f0",
+      "tenantId": "tnt_demo_retail",
+      "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+      "at": "2026-08-06T03:58:07.331Z",
+      "action": "observe-running",
+      "reason": "observation",
+      "actor": "system",
+      "before": {
+        "state": "running",
+        "profileId": "person-tracking",
+        "runtimeId": "inference",
+        "version": 32,
+        "sessionEpoch": 2
+      },
+      "after": {
+        "state": "running",
+        "profileId": "person-tracking",
+        "runtimeId": "inference",
+        "version": 33,
+        "sessionEpoch": 2
+      }
+    },
+    {
+      "id": "ash_ff64a2e1613e4a82a7c368f937ae94ef",
+      "tenantId": "tnt_demo_retail",
+      "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+      "at": "2026-08-06T03:58:02.326Z",
+      "action": "observe-running",
+      "reason": "observation",
+      "actor": "system",
+      "before": {
+        "state": "running",
+        "profileId": "person-tracking",
+        "runtimeId": "inference",
+        "version": 31,
+        "sessionEpoch": 2
+      },
+      "after": {
+        "state": "running",
+        "profileId": "person-tracking",
+        "runtimeId": "inference",
+        "version": 32,
+        "sessionEpoch": 2
+      }
+    },
+    {
+      "id": "ash_be1f1ae9870a45168263915a70d28abc",
+      "tenantId": "tnt_demo_retail",
+      "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+      "at": "2026-08-06T03:57:57.327Z",
+      "action": "observe-running",
+      "reason": "observation",
+      "actor": "system",
+      "before": {
+        "state": "running",
+        "profileId": "person-tracking",
+        "runtimeId": "inference",
+        "version": 30,
+        "sessionEpoch": 2
+      },
+      "after": {
+        "state": "running",
+        "profileId": "person-tracking",
+        "runtimeId": "inference",
+        "version": 31,
+        "sessionEpoch": 2
+      }
+    },
+    {
+      "id": "ash_29c0512d2c0e4b938cb19abbbb6f38a7",
+      "tenantId": "tnt_demo_retail",
+      "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+      "at": "2026-08-06T03:57:52.326Z",
+      "action": "observe-running",
+      "reason": "observation",
+      "actor": "system",
+      "before": {
+        "state": "running",
+        "profileId": "person-tracking",
+        "runtimeId": "inference",
+        "version": 29,
+        "sessionEpoch": 2
+      },
+      "after": {
+        "state": "running",
+        "profileId": "person-tracking",
+        "runtimeId": "inference",
+        "version": 30,
+        "sessionEpoch": 2
+      }
+    },
+    {
+      "id": "ash_ef1524c3afdd4369a9865a972cbff256",
+      "tenantId": "tnt_demo_retail",
+      "cameraId": "cam_6953862c60af4f469a706d615bc7895e",
+      "at": "2026-08-06T03:57:47.324Z",
+      "action": "observe-running",
+      "reason": "observation",
+      "actor": "system",
+      "before": {
+        "state": "running",
+        "profileId": "person-tracking",
+        "runtimeId": "inference",
+        "version": 28,
+        "sessionEpoch": 2
+      },
+      "after": {
+        "state": "running",
+        "profileId": "person-tracking",
+        "runtimeId": "inference",
+        "version": 29,
+        "sessionEpoch": 2
+      }
+    }
+  ],
+  "capacity": {
+    "tenantId": "tnt_demo_retail",
+    "generatedAt": "2026-08-06T03:58:09.217Z",
+    "totalCameras": 12,
+    "assignedCameras": 2,
+    "runningCameras": 2,
+    "pausedCameras": 0,
+    "idleCameras": 10,
+    "failedCameras": 0,
+    "availableCapacity": 2,
+    "runtimes": [
+      {
+        "runtimeId": "inference",
+        "name": "Inference runtime",
+        "health": "healthy",
+        "maxCameras": 4,
+        "assignedCameras": 2,
+        "activeCameras": 2,
+        "pausedCameras": 0,
+        "failedCameras": 0,
+        "utilization": 0.5,
+        "remaining": 2,
+        "observedAt": "2026-08-06T03:58:07.331Z"
+      }
+    ],
+    "suggestions": [],
+    "limits": {
+      "maxAiCameras": null,
+      "maxActiveRuntimes": null,
+      "maxProcessingProfiles": null
+    }
+  }
+}

@@ -813,6 +813,20 @@ export const AssignmentPlan = z.object({
   version: z.number().int().min(0),
   generatedAt: IsoDateTime,
   entries: z.array(AssignmentPlanEntry),
+  /**
+   * **Every registered runtime**, whether or not a camera is on it.
+   *
+   * ⚠️ This exists because of a chicken-and-egg the deployment exposed and the unit tests could not:
+   * the enforcement point probed only the runtimes the plan's *entries* named, so a freshly
+   * registered runtime with no cameras was never health-checked. Placement uses runtime health, and
+   * profile support is derived from the capabilities a runtime advertises — so a deployment with no
+   * assignments yet showed `health: unknown` and `supported: null` for ever, and the first assignment
+   * had to be made blind.
+   *
+   * The plan is *what the enforcement point needs to know*, and it needs to know which runtimes to
+   * measure. One poll, one document.
+   */
+  runtimes: z.array(z.object({ runtimeId: z.string().min(1), url: z.string().min(1) })).default([]),
 });
 export type AssignmentPlan = z.infer<typeof AssignmentPlan>;
 

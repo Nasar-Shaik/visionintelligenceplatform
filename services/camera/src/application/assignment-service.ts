@@ -894,7 +894,13 @@ export class AssignmentService {
         ? a.cameraId.localeCompare(b.cameraId)
         : a.tenantId.localeCompare(b.tenantId),
     );
-    return { version: meta.version, generatedAt: now.toISOString(), entries };
+    return {
+      version: meta.version,
+      generatedAt: now.toISOString(),
+      entries,
+      /* ⚠️ Every registered runtime, not just the ones with cameras — see `AssignmentPlan`. */
+      runtimes: runtimes.map((r) => ({ runtimeId: r._id, url: r.url })),
+    };
   }
 
   /**

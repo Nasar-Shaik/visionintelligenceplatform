@@ -76,6 +76,8 @@ export class AssignmentGate {
   #planVersion: number | null = null;
   /** Cameras released since the last report, so `stopping → stopped` can be confirmed. */
   #released = new Set<string>();
+  /** Every runtime the control plane has registered — see `runtimes()`. */
+  #declaredRuntimes: { runtimeId: string; url: string }[] = [];
 
   /**
    * Adopt a new plan and say what must be released.
@@ -149,6 +151,7 @@ export class AssignmentGate {
       changed = true;
     }
 
+    this.#declaredRuntimes = plan.runtimes ?? [];
     this.#planVersion = plan.version;
     return { release, changed };
   }
@@ -181,9 +184,22 @@ export class AssignmentGate {
     held.lastError = error;
   }
 
-  /** Runtimes named by the current plan, deduplicated — what the health poller must probe. */
+  /**
+   * What the health poller must probe.
+   *
+   * ⚠️ **Every registered runtime the plan declares**, not only the ones with cameras on them. The
+   * first version derived this from the plan's entries, so a runtime with no cameras was never
+   * measured — and since placement uses runtime health and profile support comes from the
+   * capabilities a runtime advertises, a deployment with no assignments could never make its first
+   * one on anything but a guess. The deployment showed it; no unit test could, because they all
+   * assign a camera first.
+   *
+   * The entries are still folded in, so a plan from an older control plane (no `runtimes` field)
+   * degrades to the previous behaviour rather than probing nothing at all.
+   */
   runtimes(): { runtimeId: string; url: string }[] {
     const byId = new Map<string, string>();
+    for (const runtime of this.#declaredRuntimes) byId.set(runtime.runtimeId, runtime.url);
     for (const held of this.#held.values()) {
       byId.set(held.entry.runtimeId, held.entry.runtimeUrl);
     }

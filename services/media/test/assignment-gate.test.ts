@@ -45,8 +45,12 @@ function entry(cameraId: string, over: Partial<AssignmentPlanEntry> = {}): Assig
   };
 }
 
-function plan(version: number, entries: AssignmentPlanEntry[]): AssignmentPlan {
-  return { version, generatedAt: '2026-08-06T10:00:00.000Z', entries };
+function plan(
+  version: number,
+  entries: AssignmentPlanEntry[],
+  runtimes: { runtimeId: string; url: string }[] = [],
+): AssignmentPlan {
+  return { version, generatedAt: '2026-08-06T10:00:00.000Z', entries, runtimes };
 }
 
 const frame = (seq: number): Frame => ({
@@ -175,6 +179,32 @@ describe('P-8.6 · the assignment gate', () => {
       { runtimeId: 'rt1', url: 'http://rt1:8085' },
       { runtimeId: 'rt2', url: 'http://rt2:8085' },
     ]);
+  });
+
+  /**
+   * ⚠️ **The deployment found this; no unit test could have.**
+   *
+   * The first version derived the probe list from the plan's ENTRIES, so a registered runtime with
+   * no cameras on it was never health-checked. Placement uses runtime health and profile support
+   * comes from the capabilities a runtime advertises — so a fresh deployment showed `unknown` and
+   * `supported: null` for ever, and the very first assignment had to be made blind. Every unit test
+   * assigned a camera first, which is exactly why they all passed.
+   */
+  it('⚠️ probes a REGISTERED runtime with no cameras on it', () => {
+    const gate = new AssignmentGate();
+    gate.applyPlan(plan(1, [], [{ runtimeId: 'rt-idle', url: 'http://rt-idle:8085' }]));
+    expect(gate.runtimes()).toEqual([{ runtimeId: 'rt-idle', url: 'http://rt-idle:8085' }]);
+  });
+
+  it('degrades to the entry-derived list when a control plane sends no runtime registry', () => {
+    const gate = new AssignmentGate();
+    const legacy = {
+      version: 1,
+      generatedAt: '2026-08-06T10:00:00.000Z',
+      entries: [entry('cam1')],
+    };
+    gate.applyPlan(legacy as AssignmentPlan);
+    expect(gate.runtimes()).toEqual([{ runtimeId: 'rt1', url: 'http://rt1:8085' }]);
   });
 });
 
