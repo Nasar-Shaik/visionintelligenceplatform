@@ -13,4 +13,8 @@ nvr       | Four-channel NVR ingest         | hardware/nvr.sh   | RUN_NVR       
 h265      | H.265 decode path               | hardware/h265.sh  | RUN_H265      | preflight | continue | TIMEOUT_RUNTIME
 stability | Stability run on real streams   | runtime/stability.sh    | RUN_SOAK      | preflight | continue | TIMEOUT_SOAK
 benchmark | Capacity ladder on real streams | runtime/benchmark.sh    | RUN_BENCHMARK | preflight | continue | TIMEOUT_BENCHMARK
+# ⚠️ On real hardware the question is which cameras a box can actually take, and that is a
+# placement decision before it is a throughput one.
+assignment           | Camera assignment, end to end | assignment/assignment.sh | RUN_ASSIGNMENT | preflight | continue | TIMEOUT_ASSIGNMENT
+assignment-benchmark | Assignment capacity ladder    | assignment/benchmark.sh  | RUN_ASSIGNMENT_BENCHMARK | preflight | continue | TIMEOUT_ASSIGNMENT_BENCHMARK
 report    | Morning summary                 | platform/report.sh      | RUN_REPORT    | always   | continue | TIMEOUT_REPORT

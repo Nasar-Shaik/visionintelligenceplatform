@@ -18,12 +18,21 @@ tracking-browser     | Track pages in a browser          | tracking/browser.sh  
 event-bridge         | Live event bridge, end to end     | events/bridge.sh        | RUN_EVENT_BRIDGE         | preflight | continue | TIMEOUT_EVENT_BRIDGE
 event-replay         | Duplicates, correlation, replay   | events/replay.sh        | RUN_EVENT_REPLAY         | preflight | continue | TIMEOUT_EVENT_REPLAY
 event-browser        | Event bridge page in a browser    | events/browser.sh       | RUN_EVENT_BROWSER        | preflight | continue | TIMEOUT_EVENT_BROWSER
+# ── Camera Processing Assignment (P-8 Phase 6) ───────────────────────────────────────────
+# ⚠️ `assignment` carries the milestone's central invariant: three cameras record, ONE is
+# assigned, and the other two must analyse nothing. Every stage above proves the platform can
+# analyse a camera; only this one proves it can decline to.
+assignment           | Camera assignment, end to end      | assignment/assignment.sh | RUN_ASSIGNMENT           | preflight | continue | TIMEOUT_ASSIGNMENT
+assignment-runtime   | Runtime health, capacity, failover | assignment/runtime.sh    | RUN_ASSIGNMENT_RUNTIME   | preflight | continue | TIMEOUT_ASSIGNMENT_RUNTIME
+assignment-browser   | Assignment pages in a browser      | assignment/browser.sh    | RUN_ASSIGNMENT_BROWSER   | preflight | continue | TIMEOUT_ASSIGNMENT_BROWSER
 stability            | Long stability run                | runtime/stability.sh    | RUN_SOAK                 | preflight | continue | TIMEOUT_SOAK
 benchmark            | Capacity ladder and benchmark     | runtime/benchmark.sh    | RUN_BENCHMARK            | preflight | continue | TIMEOUT_BENCHMARK
 tracking-benchmark   | Tracking capacity ladder          | tracking/benchmark.sh   | RUN_TRACKING_BENCHMARK   | preflight | continue | TIMEOUT_TRACKING_BENCHMARK
+assignment-benchmark | Assignment capacity ladder         | assignment/benchmark.sh  | RUN_ASSIGNMENT_BENCHMARK | preflight | continue | TIMEOUT_ASSIGNMENT_BENCHMARK
 publisher-benchmark  | Publisher capacity ladder         | publisher/benchmark.sh  | RUN_PUBLISHER_BENCHMARK  | preflight | continue | TIMEOUT_PUBLISHER_BENCHMARK
 mutation             | Mutation verification             | runtime/mutation.sh     | RUN_MUTATION             | preflight | continue | TIMEOUT_MUTATION
 tracking-mutations   | Tracking mutation verification    | tracking/mutations.sh   | RUN_TRACKING_MUTATION    | preflight | continue | TIMEOUT_TRACKING_MUTATION
+assignment-mutations | Assignment mutation verification   | assignment/mutations.sh  | RUN_ASSIGNMENT_MUTATION  | preflight | continue | TIMEOUT_ASSIGNMENT_MUTATION
 bridge-mutations     | Bridge mutation verification      | publisher/mutations.sh  | RUN_BRIDGE_MUTATION      | preflight | continue | TIMEOUT_BRIDGE_MUTATION
 # ⚠️ After every measurement and before the cleanup — it is the one stage that stops the broker the
 # whole platform shares, so nothing that assumes a healthy stack may follow it.

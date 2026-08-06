@@ -254,6 +254,72 @@ _Last updated: 2026-08-05 · Claude_
   **1032** · contracts · import graph 0 violations.
   [ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md).
 
+- **P-8 Phase 6 · camera processing assignment ✅ complete, ⏳ awaiting review (2026-08-06)** — the
+  platform can now **choose which cameras consume AI**, which is the product's commercial proposition
+  for the market it is sold into: record everything, spend compute on the till. Before this, perception
+  was one deployment variable — set it and every camera was analysed, unset it and none were, with one
+  implicit runtime, no capacity, no failover and no record of who decided anything.
+  Built as **two halves that cannot reach each other's failure modes**: a control plane in
+  `services/camera` that decides, and an enforcement point in `services/media` that obeys at the
+  **perception seam**. ⚠️ **The central invariant is structural, not careful**: the gate sits in
+  `FrameSink.push()`, downstream of the decoder and downstream of the segment writer, so the code that
+  writes MP4 segments never reads anything the assignment layer produces — asserted end to end by
+  driving a real `StreamSupervisor` with a camera the gate refuses and counting the segments.
+  Guardrails held: **no new service** (the module is self-contained inside the camera service, which
+  media already had a client to); **no frozen contract changed** (`@vip/contracts/assignment` is
+  additive); **nothing added to the frozen AI runtime**. A **formal state machine** (Architect rec 2),
+  exported as DATA so the ADR, the tests and the runtime read one table — a test asserts **all 108
+  cells**, including the illegal ones. ⚠️ **That test cut a claim I had written and believed**: the
+  first draft called five states "observed", and `starting` is reached by `start`, `resume` and
+  `restart`, all operator actions. The invariant read well and was false. It now names the two states
+  that would be **lies** if the control plane set them itself — `running` and `stopped` — and a second
+  test proves the `observe-*` actions are the only way into them.
+  **`sessionEpoch` closes the defect P-8 Phase 5 measured**: a re-enabled camera restarts its frame
+  sequence at 1 and a publisher holding the old `lastSeq` drops every event for ever (Phase 5 measured
+  0 published, 32 dropped). The epoch bumps on `start`/`restart` **and whenever the runtime changes** —
+  derived from the runtime id rather than the action, which is what lets `assign` stay a hot
+  self-transition on a running camera: a **profile** change keeps the session, a **runtime** change does
+  not, because the tracks live inside the runtime process. `BufferedEventPublisher.release()` was
+  written in Phase 5 and deliberately left uncalled; this is the call.
+  **Health is measured by media and reported inward** — media is the only service permitted to talk to
+  the runtime and is also the process that actually posts frames, so polling from the control plane
+  would have measured a path no frame ever takes and reported a healthy runtime during exactly the
+  outage that matters. **Placement is capability-aware**, because the deployed runtime advertises one
+  capability: four of the six seeded profiles cannot run anywhere and say so on every read, and binding
+  a camera to one is a 409 rather than a camera that quietly produces nothing.
+  ⚠️ **THREE DEFECTS THE DEPLOYMENT FOUND THAT UNIT TESTS COULD NOT.** (1) A registered runtime with
+  **no cameras was never health-probed** — the enforcement point derived its probe list from the plan's
+  entries, so a fresh install showed `unknown` health and `supported: null` for every profile for ever,
+  and the first assignment had to be made blind; every unit test assigns a camera first, which is
+  precisely why they all passed. The plan now carries the whole runtime registry. (2) A camera parked
+  in **`error` could not climb out of it**: the failover sweep looked only at cameras whose runtime had
+  become unusable, and a stranded camera's runtime is by then perfectly usable, so it was skipped every
+  cycle — waiting for an operator who had no reason to know they were needed. (3) The runtime's
+  per-camera tracking payload is `{cameras: […]}`, not a bare array, so every live track count read
+  `null` — **honest** under ADR-0039 and therefore invisible, which is exactly why it survived.
+  ⚠️ **And one in my own verification**: the pause check measured across the convergence boundary and
+  failed a correct system (164 → 170 frames), because a change takes a poll interval to reach media and
+  the in-flight queue drains behind it. The window now starts after the pause settles — 181 → 181.
+  **Six operator pages** under their own `/assignment` tree, not under `/system`: those are engineering
+  views gated on `system:inspect`, and filing a tenant-facing feature there would hide it behind an
+  infrastructure permission. ⚠️ The Camera Assignment page shows the **decision** and the
+  **measurement** as separate columns from separate services — a camera reading `Running` with `Not
+measured` beside it is a plan media has not picked up, and it is the most useful thing the page can
+  show. They fail independently: a media outage degrades the measurements behind a banner and leaves
+  every control working. ⚠️ A **nav label collision** was a real navigation defect caught by an
+  accessibility query — a second sidebar entry called "Cameras".
+  **Verification, all green:** `assignment.mjs` (the chain **and its negative half** — three cameras
+  recording, one assigned, the other two analysing zero frames while writing every segment; hot
+  assignment asserted on the cameras that were **not** touched; disable → release confirmed → re-enable
+  with a new epoch → events resume 154 → 234) · `assignment-runtime.mjs` (an unreachable runtime
+  measured `offline` with **null** latency, capacity refused at a one-camera runtime, failover moving
+  only the affected camera, a stranded camera recovering on its own, assignments surviving a restart of
+  **both** halves) · `assignment-ui.mjs` **37/37** in a real browser with every figure traced to the
+  payload · 61 camera-service tests · 18 media tests · 13 console tests.
+  Gate green: format · typecheck 28 · lint 20 · test 28 · build 19.
+  [ADR-0043](../adr/ADR-0043-assignment-is-a-control-plane-with-a-measured-data-plane.md) · C-14c
+  (⛔ across every column until today) · L-50 · L-51 · L-52 · L-53 · R-028 · R-029.
+
 - **P-8 Phase 5 FREEZE · the live event bridge 🔒 frozen (2026-08-06)** — every gate green against
   the committed deployment, and the evidence below re-run on the frozen commit rather than carried
   over from development. **Gate:** format · typecheck 28 · lint 20 · test 28 · build 19 · python

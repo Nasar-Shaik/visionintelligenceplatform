@@ -53,7 +53,7 @@ references them rather than restating what a capability is.
 | **C-14**  | Media catalogue — clips & recordings           |    ✅    |              ✅              |  ⛔ **no console client**   |  ⛔  |             ⛔             |  ✅  | **P-6**           | —            | media     |
 | **C-14a** | ⚠️ **Recording — corrected 2026-08-05**        |    ✅    |              ✅              |             n/a             |  ✅  |       ⬜ unvalidated       |  ✅  | **P-8 Phase 2**   | —            | media     |
 | **C-14b** | ⚠️ **AI inference — real detections**          |    ✅    |              ✅              |  ✅ reporting only (C-14c)  |  ✅  |       ⬜ unvalidated       |  ✅  | **P-8 Phase 3**   | —            | inference |
-| **C-14c** | Selective AI processing (per-camera enable)    |    ⛔    |              ⛔              |             ⛔              |  ⛔  |             ⛔             |  ⛔  | **P-9+**          | C-14b        | media     |
+| **C-14c** | ⚠️ **Camera processing assignment — BUILT**    |    ✅    |              ✅              |         ✅ 6 pages          |  ✅  |       ⬜ unvalidated       |  ✅  | **P-8 Phase 6**   | C-14b        | camera    |
 | **C-14d** | ⚠️ **Object tracking — persistent identities** |    ✅    |              ✅              |    ✅ read-only, 4 pages    |  ✅  |       ⬜ unvalidated       |  ✅  | **P-8 Phase 4**   | C-14b        | inference |
 | **C-14e** | ⚠️ **Event bridge — perception → events**      |    ✅    |              ✅              |    ✅ read-only, 1 page     |  ✅  |       ⬜ unvalidated       |  ✅  | **P-8 Phase 5**   | C-14d        | media     |
 | **C-15**  | Camera zone referential integrity              |    ✅    | ⚠️ shape-checked only (TD-3) |             n/a             |  ✅  |             ⚠️             |  ⚠️  | **P-6**           | —            | camera    |
@@ -116,9 +116,22 @@ references them rather than restating what a capability is.
 > against real footage. Per-camera metrics (`/tracking/cameras`) are read-only and tenant-scoped; the
 > per-camera enable switch they suggest is **C-14c**, which is not built.
 >
-> ⛔ **C-14c is not built, and the row exists so nobody assumes otherwise.** A customer cannot choose
-> which cameras are analysed. Today every recording camera's frames are offered and the runtime drops
-> what it cannot keep up with. ⬜ Pilot for C-14b stays unvalidated: two photographs are a smoke test
+> ⚠️ **C-14c — camera processing assignment, P-8 Phase 6 (2026-08-06). This row said ⛔ across every
+> column until today.** A customer can now choose which cameras are analysed: a control plane in the
+> camera service decides, an enforcement point in media obeys at the perception seam, and recording is
+> structurally untouched by the decision. Verified on the deployment with its **negative half** —
+> three cameras recording, one assigned, the other two analysing zero frames while writing every
+> segment. Profiles, runtimes, capacity, failover, an immutable audit trail and six operator pages;
+> ADR-0043.
+>
+> ⚠️ **What C-14c does NOT include, so nobody reads the ✅ as more than it is.** No auto-balancing
+> between runtimes (deliberately deferred — the seam exists, the behaviour does not, and the
+> permission for it deliberately does not exist). No licensing enforcement (the limits contract and
+> its check exist and answer "no limit configured" on every deployment). Camera groups are stored and
+> listed but **no bulk operation targets one**. Four of the six seeded profiles name capabilities the
+> deployed runtime does not advertise and are reported as unsupported rather than hidden.
+>
+> ⬜ Pilot for C-14b stays unvalidated: two photographs are a smoke test
 > of the deployed path, **not an accuracy evaluation** — no mAP, no labelled corpus, no claim about
 > how this model behaves on a customer's cameras (L-1).
 >

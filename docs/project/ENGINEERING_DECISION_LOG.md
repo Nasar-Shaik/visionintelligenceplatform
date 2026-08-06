@@ -1521,3 +1521,62 @@ explaining why an untrustworthy index is worse than none, and was four ADRs behi
 mechanism. Recorded as DEFINITION_OF_DONE item 8 of the eight subsystem deliverables, with the
 operational form: the row belongs in the commit that adds the file, and a reviewer should look for it
 before reading the diff.
+
+---
+
+## ED-0074 — P-8 Phase 6: the honesty discipline hid two of its own bugs
+
+**Date:** 2026-08-06 · **Phase:** P-8 Phase 6 (Camera Processing Assignment) ·
+**ADR:** [0043](../adr/ADR-0043-assignment-is-a-control-plane-with-a-measured-data-plane.md)
+
+### The decision
+
+Camera Processing Assignment was built as a **control plane** in the camera service and an
+**enforcement point** in media, meeting at a versioned plan that media polls. The reasoning is in
+ADR-0043. This entry records the two things the milestone taught that are not decisions about
+assignment at all.
+
+### 1 · A correct absence and a bug produce the same reading
+
+The platform's metric discipline (ADR-0039) says an unavailable measurement is `null`, never `0`.
+That rule is right, and it is now the reason two defects survived every check written to find them.
+
+- The runtime's per-camera tracking payload is `{cameras: […]}`; the client read `data` as an array,
+  found none, and reported every live track count as `null`. **`null` is what a runtime that has
+  tracked nothing also reports.** Indistinguishable from the caller's side.
+- A registered runtime with no cameras was never probed, so its health stayed `unknown` and every
+  profile read `supported: null`. **`unknown` is also what a runtime nobody has looked at yet
+  correctly reports** — which is the state a fresh deployment is genuinely in for its first seconds.
+
+⚠️ **The generalisation: when a check reports an absence, ask what else produces that same absence.**
+An honesty discipline converts a class of loud failures into quiet ones, and that is a good trade
+only if something is looking for the quiet ones. Both were found by running against the deployment
+and reading the numbers, not by a check.
+
+Recorded operationally in DEFINITION_OF_DONE under deliverable 4.
+
+### 2 · A test that walks the whole table beats a test that walks the paths you thought of
+
+The assignment state machine's transition table is exported as **data**, and a test asserts every one
+of its 108 cells. That test immediately falsified a claim already written into the contract, the ADR
+draft and the commit message: that five states required an observation. Three of them do not —
+`starting` is reached by `start`, `resume` and `restart`, all operator actions.
+
+The claim was plausible, it read well, and nobody re-derives a sentence like that in review. The
+invariant is now stated over the two states that would be **lies** if the control plane set them
+itself, and a second test proves the table itself has that property.
+
+⚠️ This is ED-0072 ("a check that cannot fail is not a check") from the other side: **a check that
+covers the whole domain will contradict you.** Exporting the table as data is what made covering it
+cheap; a `switch` would have made the exhaustive test impossible to write and the false claim
+permanent.
+
+### 3 · A control plane can strand its own outputs
+
+The failover sweep re-placed cameras whose runtime had become unusable. A camera already parked in
+`error` has a runtime that is, by then, perfectly usable — so it was skipped on every cycle and
+waited for an operator who had no reason to know they were needed.
+
+⚠️ **Any "retry only what changed" loop can strand its own outputs.** The fix is to sweep two
+populations — what changed, and what is already in a failed state — and the test that holds it
+asserts unattended recovery rather than the failover it was written for. Recorded as R-028.

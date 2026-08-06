@@ -250,11 +250,41 @@ function summarisePublisher(data) {
   };
 }
 
+/**
+ * The assignment ladder (P-8 Phase 6).
+ *
+ * ⚠️ `assignmentLatencyMs` may legitimately be `null` — the control plane exports no sample until a
+ * change has been published AND reported back, and reporting that as `0 ms` would tell a reader that
+ * assignments apply instantly on a deployment where none ever applied.
+ */
+function summariseAssignment(data) {
+  if (!data || !Array.isArray(data.rows) || data.rows.length === 0) return null;
+  const rows = data.rows;
+  const top = rows[rows.length - 1];
+  const dropping = rows.find((r) => (r.dropped ?? 0) > 0);
+  const latencies = rows.map((r) => r.assignmentLatencyMs).filter((n) => typeof n === 'number');
+  return {
+    rows,
+    topCameras: top?.cameras ?? null,
+    assignmentLatencyMsMax: latencies.length ? Math.max(...latencies) : null,
+    runtimeLatencyMs: top?.runtimeLatencyMs ?? null,
+    fpsPerCamera: top?.processingFpsPerCamera ?? null,
+    utilization: top?.runtimeUtilization ?? null,
+    droppingFrom: dropping?.cameras ?? null,
+    dropped: rows.reduce((a, r) => a + (r.dropped ?? 0), 0),
+    refused: rows.reduce((a, r) => a + (r.refused ?? 0), 0),
+    sizingPolicy: data.sizingPolicy ?? null,
+  };
+}
+
 const stab = summariseStability(stability);
 const bench = summariseBenchmark(benchmark);
 const track = summariseTracking(readJson(join(metricsDir, 'tracking-benchmark.json')));
 const truth = readJson(join(metricsDir, 'tracking-truth.json'));
 const pub = summarisePublisher(readJson(join(metricsDir, 'publisher-benchmark.json')));
+const assign = summariseAssignment(readJson(join(metricsDir, 'assignment-capacity.json')));
+const assignmentRun = readJson(join(metricsDir, 'assignment.json'));
+const assignmentRuntime = readJson(join(metricsDir, 'assignment-runtime.json'));
 const bridge = readJson(join(metricsDir, 'event-bridge.json'));
 const replay = readJson(join(metricsDir, 'event-replay.json'));
 
@@ -632,6 +662,81 @@ ${pub.rejected} result(s) failed the contract, ${pub.failed} exhausted their ret
 >
 > ⚠️ **Shedding is not a fault.** Under pressure the bridge drops events and keeps recording, by
 > design. \`rejected\` and \`failed\` are the numbers that mean something is wrong.
+`;
+}
+
+/* ── Camera Processing Assignment (P-8 Phase 6) ────────────────────────────────────────────────── */
+if (assignmentRun) {
+  const cap = assignmentRun.capacity ?? {};
+  const rt = (assignmentRun.runtimes ?? [])[0] ?? {};
+  const profiles = assignmentRun.profiles ?? [];
+  const supported = profiles.filter((p) => p.supported === true).length;
+  const unsupported = profiles.filter((p) => p.supported === false).length;
+  summary += `
+## Camera assignment — which cameras consume AI
+
+**${cap.assignedCameras ?? '?'} of ${cap.totalCameras ?? '?'} cameras are analysed**; ${
+    cap.idleCameras ?? '?'
+  } record only.
+The runtime is **${rt.health ?? 'not observed'}**${
+    rt.latencyMs === null || rt.latencyMs === undefined ? '' : ` (${rt.latencyMs} ms)`
+  } and advertises ${
+    rt.capabilities === null || rt.capabilities === undefined
+      ? '_capabilities not read_'
+      : `\`${(rt.capabilities ?? []).join('`, `')}\``
+  }.
+Of ${profiles.length} profiles, ${supported} can run here and ${unsupported} cannot.
+
+> ⚠️ **The number this milestone sells is the second one.** "10 cameras recording, 2 analysed" is the
+> proposition — record everything, spend compute on the tills. A night where every camera is analysed
+> is a night where the gate is not doing its job.
+>
+> ⚠️ **${unsupported} profile(s) name a capability no registered runtime advertises**, and that is
+> reported rather than hidden. An operator must see it before binding a camera, not a week later from
+> an events page that stayed empty.
+`;
+}
+
+if (assignmentRuntime) {
+  const before = (assignmentRuntime.beforeFailover ?? [])[0] ?? {};
+  const after = (assignmentRuntime.afterFailover ?? [])[0] ?? {};
+  const gate = assignmentRuntime.gateAfterRestart ?? {};
+  summary += `
+## Camera assignment — failover and persistence
+
+Failover moved a camera **${before.runtimeId ?? '?'} → ${after.runtimeId ?? '?'}**; the camera on the
+healthy runtime was not touched.
+After restarting the control plane and the enforcement point, the plan re-applied on its own at
+version ${gate.planVersion ?? '_not measured_'} covering ${gate.plannedCameras ?? '?'} camera(s).
+
+> ⚠️ **"The camera on the healthy runtime was not touched" is the assertion that matters.** A
+> failover that restarted everything would pass every other check in this section.
+`;
+}
+
+if (assign) {
+  summary += `
+## Camera assignment — orchestration capacity
+
+At ${assign.topCameras} cameras: assignment latency ${
+    assign.assignmentLatencyMsMax === null
+      ? '_not measured_'
+      : `peaked at ${assign.assignmentLatencyMsMax.toFixed(0)} ms`
+  }, runtime probe ${
+    assign.runtimeLatencyMs === null ? '_not measured_' : `${assign.runtimeLatencyMs.toFixed(0)} ms`
+  },
+${num(assign.fpsPerCamera)} fps per camera, utilisation ${
+    assign.utilization === null ? '_no capacity declared_' : `${(assign.utilization * 100).toFixed(0)}%`
+  }.
+${assign.dropped} frame(s) dropped${
+    assign.droppingFrom === null ? '' : ` (first at ${assign.droppingFrom} camera(s))`
+  }; ${assign.refused} assignment(s) refused.
+
+> ⚠️ **Assignment latency is the CONTROL PLANE's own measurement** of accepted-change →
+> reported-applied, not this harness's stopwatch. It is \`null\` until a full round trip completes,
+> and a \`0\` here would mean "nothing was ever applied" rather than "instant".
+>
+> ⚠️ ${assign.sizingPolicy ?? 'Sizing policy unchanged: 2 supported, 4 provisional, three agreeing runs.'}
 `;
 }
 

@@ -208,6 +208,45 @@ export function summarise(runDir) {
     });
   }
 
+  /*
+   * Camera Processing Assignment (P-8 Phase 6).
+   *
+   * ⚠️ The ledger keeps the CONTROL PLANE's own latency, not this harness's. A regression in "how
+   * long does a decision take to reach the data plane" is invisible in a throughput ladder, and it
+   * is the number an operator feels — they click pause and wait.
+   */
+  const assignment = readJson(join(metrics, 'assignment-capacity.json'));
+  if (assignment?.rows?.length) {
+    const top = assignment.rows[assignment.rows.length - 1];
+    const shed = assignment.rows.find((r) => (r.dropped ?? 0) > 0);
+    const latencies = assignment.rows
+      .map((r) => r.assignmentLatencyMs)
+      .filter((n) => typeof n === 'number');
+    out.push({
+      family: 'assignment',
+      row: {
+        v: HISTORY_VERSION,
+        runId,
+        at,
+        topCameras: top?.cameras ?? null,
+        /* ⚠️ `null` when no round trip completed in the window — never 0 (ADR-0039). */
+        assignmentLatencyMsMax: latencies.length ? Math.max(...latencies) : null,
+        topRuntimeLatencyMs: top?.runtimeLatencyMs ?? null,
+        topProcessingFpsPerCamera: top?.processingFpsPerCamera ?? null,
+        topRuntimeUtilization: top?.runtimeUtilization ?? null,
+        /* Where frames FIRST start being dropped — see `sheddingFromCameras` above for why. */
+        droppingFromCameras: shed?.cameras ?? null,
+        totalDropped: assignment.rows.reduce((a, r) => a + (r.dropped ?? 0), 0),
+        totalRefused: assignment.rows.reduce((a, r) => a + (r.refused ?? 0), 0),
+        totalAssignmentFailures: assignment.rows.reduce((a, r) => a + (r.assignmentFailures ?? 0), 0),
+        topMediaCpuPeak: top?.mediaCpuPeak ?? null,
+        topControlPlaneCpuPeak: top?.cameraCpuPeak ?? null,
+        /* ⚠️ Carried on every line, forever — see the publisher family above. */
+        sizingPolicy: '2 supported / 4 provisional; no recommendation until three runs agree',
+      },
+    });
+  }
+
   return out;
 }
 

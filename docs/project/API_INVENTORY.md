@@ -64,11 +64,47 @@
 | POST   | `/cameras/discover`               | ONVIF/network discovery (stub)          | `camera:create` | `DiscoverCamerasInput` | `501 not_implemented`                           | —                                | stub     | 0.1.0   |
 | GET    | `/health` `/ready` `/metrics` `/` | Liveness / readiness / metrics / info   | None            | —                      | as identity (`/ready` includes a `mongo` check) | prom-client                      | scaffold | 0.1.0   |
 
+### Camera Processing Assignment — the control plane (P-8 Phase 6)
+
+> Decides which cameras consume AI, on which runtime, under which profile. ⚠️ **No route here can
+> affect recording**: there is no recording field on any request or response, and nothing calls into
+> the stream supervisor ([ADR-0043](../adr/ADR-0043-assignment-is-a-control-plane-with-a-measured-data-plane.md)).
+
+| Method | Endpoint                               | Purpose                                                         | Auth                 | Body                           | Output                                                           |
+| ------ | -------------------------------------- | --------------------------------------------------------------- | -------------------- | ------------------------------ | ---------------------------------------------------------------- |
+| GET    | `/assignments`                         | Every camera's assignment (`?state=&runtimeId=&profileId=`)     | `assignment:read`    | —                              | `200 {data:CameraAssignment[]}`                                  |
+| GET    | `/assignments/capacity`                | Totals, per-runtime occupancy, **suggested placement**          | `assignment:read`    | —                              | `200 {data:AssignmentCapacityReport}`                            |
+| GET    | `/assignments/history`                 | Immutable audit trail (`?cameraId=&limit=`)                     | `assignment:read`    | —                              | `200 {data:AssignmentHistoryEntry[]}`                            |
+| POST   | `/assignments/bulk`                    | Bulk enable/disable/pause/resume/restart/assign/remove          | `assignment:write`   | `BulkAssignmentRequest`        | `200` \| ⚠️ **`207` when partial** `{data:BulkAssignmentResult}` |
+| GET    | `/assignments/:cameraId`               | One camera's assignment                                         | `assignment:read`    | —                              | `200 {data:CameraAssignment}` · `404`                            |
+| POST   | `/assignments/:cameraId/enable`        | Bind a profile, place, and start                                | `assignment:write`   | `{profileId,runtimeId?,note?}` | `200 {data:CameraAssignment}` · `409` naming the refusal         |
+| POST   | `/assignments/:cameraId/runtime`       | Move to a runtime (omit to re-place)                            | `assignment:write`   | `{runtimeId?,note?}`           | `200 {data:CameraAssignment}` · `409`                            |
+| POST   | `/assignments/:cameraId/disable`       | Stop AI — releases tracking and publisher state                 | `assignment:write`   | `{note?}`                      | `200 {data:CameraAssignment}`                                    |
+| POST   | `/assignments/:cameraId/restart`       | New session on the same assignment                              | `assignment:write`   | `{note?}`                      | `200 {data:CameraAssignment}`                                    |
+| POST   | `/assignments/:cameraId/pause`         | ⚠️ Suspend frames, **retain** state — shift work                | `assignment:control` | `{note?}`                      | `200 {data:CameraAssignment}`                                    |
+| POST   | `/assignments/:cameraId/resume`        | Resume a paused camera                                          | `assignment:control` | `{note?}`                      | `200 {data:CameraAssignment}`                                    |
+| DELETE | `/assignments/:cameraId`               | Remove the assignment entirely                                  | `assignment:write`   | —                              | `200 {data:CameraAssignment}`                                    |
+| GET    | `/cameras/:cameraId/capability-matrix` | ⚠️ What this camera can do, **with the evidence for each fact** | `assignment:read`    | —                              | `200 {data:CameraCapabilityMatrix}` · `404`                      |
+| GET    | `/processing-profiles`                 | Catalogue, with `supported` **measured** per deployment         | `assignment:read`    | —                              | `200 {data:ProcessingProfile[]}`                                 |
+| POST   | `/processing-profiles`                 | Create a tenant profile                                         | `assignment:write`   | `CreateProcessingProfileInput` | `201` · `409`                                                    |
+| PATCH  | `/processing-profiles/:profileId`      | Edit a profile (built-ins included)                             | `assignment:write`   | `UpdateProcessingProfileInput` | `200` · `404`                                                    |
+| DELETE | `/processing-profiles/:profileId`      | Delete — refuses built-ins and profiles in use                  | `assignment:write`   | —                              | `204` · `409`                                                    |
+| GET    | `/processing-runtimes`                 | Registered runtimes with **measured** health                    | `assignment:read`    | —                              | `200 {data:ProcessingRuntime[]}`                                 |
+| POST   | `/processing-runtimes`                 | Register a runtime (health starts `unknown`)                    | `assignment:runtime` | `RegisterRuntimeInput`         | `201` · `409`                                                    |
+| PATCH  | `/processing-runtimes/:runtimeId`      | Edit URL, capacity, labels, enabled                             | `assignment:runtime` | `UpdateRuntimeInput`           | `200` · `404`                                                    |
+| DELETE | `/processing-runtimes/:runtimeId`      | Deregister — **re-places** its cameras, never drops them        | `assignment:runtime` | —                              | `200 {data:{reassigned,failed}}`                                 |
+| GET    | `/camera-groups`                       | ⚠️ Stored and listed; **no bulk operation targets one yet**     | `assignment:read`    | —                              | `200 {data:CameraGroup[]}`                                       |
+| POST   | `/camera-groups`                       | Create a group                                                  | `assignment:write`   | `CreateCameraGroupInput`       | `201` · `409`                                                    |
+| PATCH  | `/camera-groups/:groupId`              | Edit a group                                                    | `assignment:write`   | `UpdateCameraGroupInput`       | `200` · `404`                                                    |
+| DELETE | `/camera-groups/:groupId`              | Delete a group                                                  | `assignment:write`   | —                              | `204` · `404`                                                    |
+
 ### Internal (service-to-service, not gateway-exposed)
 
-| Method | Endpoint                       | Purpose                                                        | Auth                             | Output                                                |
-| ------ | ------------------------------ | -------------------------------------------------------------- | -------------------------------- | ----------------------------------------------------- |
-| GET    | `/internal/cameras/:id/stream` | Resolve a camera's connection **with decrypted creds** (media) | `x-internal-key` + `x-tenant-id` | `200 {success,data:StreamConnection}` · `401/400/404` |
+| Method | Endpoint                       | Purpose                                                                         | Auth                             | Output                                                |
+| ------ | ------------------------------ | ------------------------------------------------------------------------------- | -------------------------------- | ----------------------------------------------------- |
+| GET    | `/internal/cameras/:id/stream` | Resolve a camera's connection **with decrypted creds** (media)                  | `x-internal-key` + `x-tenant-id` | `200 {success,data:StreamConnection}` · `401/400/404` |
+| GET    | `/internal/assignment/plan`    | ⚠️ **Cross-tenant** processing plan for the enforcement point                   | `x-internal-key`                 | `200 {success,data:AssignmentPlan}` · `401`           |
+| POST   | `/internal/assignment/report`  | ⚠️ The **only** path to an observed state — runtime health and per-camera facts | `x-internal-key`                 | `200 {success,data:{failover,failed}}` · `400/401`    |
 
 > Camera context, P1-4. The single sanctioned credential-decryption point; the gateway **strips**
 > client `x-internal-key`, so only trusted internal services reach it ([ED-0025](ENGINEERING_DECISION_LOG.md)).
@@ -77,14 +113,16 @@
 
 > Phase 1 P1-4. Per-camera ingestion workers: connect RTSP/RTMP (creds from camera), decode (ffmpeg), extract frames, record segments to tenant-scoped MinIO (`{tenantId}/{cameraId}/recordings/…`, @vip/storage). Auto-reconnect with backoff; emits `media.stream.*` + `media.recording.segment`. Verifies the identity token itself (`iss=identity`); tenant from the token — another tenant's stream is a **404**.
 
-| Method | Endpoint                          | Purpose                               | Auth             | Output                                               | Dependencies                 | Status   | Version |
-| ------ | --------------------------------- | ------------------------------------- | ---------------- | ---------------------------------------------------- | ---------------------------- | -------- | ------- |
-| POST   | `/streams/:cameraId/start`        | Start a camera's ingestion worker     | `stream:control` | `202 {success,data:StreamStatus}` · `401/403`        | @vip/storage, camera, ffmpeg | beta     | 0.1.0   |
-| POST   | `/streams/:cameraId/stop`         | Stop the worker (no reconnect)        | `stream:control` | `200 {success,data:StreamStatus}` · `401/403/404`    | —                            | beta     | 0.1.0   |
-| GET    | `/streams/:cameraId/status`       | Worker status                         | `stream:read`    | `200 {success,data:StreamStatus}` · `401/403/404`    | —                            | beta     | 0.1.0   |
-| GET    | `/streams`                        | List the tenant's workers             | `stream:read`    | `200 {success,data:StreamStatus[]}` · `401/403`      | —                            | beta     | 0.1.0   |
-| GET    | `/perception/event-bridge`        | Event Publisher state (P-8 Phase 5)   | `system:inspect` | `200 {success,data:EventPublisherStats}` · `401/403` | @vip/messaging               | beta     | 0.1.0   |
-| GET    | `/health` `/ready` `/metrics` `/` | Liveness / readiness / metrics / info | None             | as template (`/ready` includes a `storage` check)    | prom-client, @vip/storage    | scaffold | 0.1.0   |
+| Method | Endpoint                          | Purpose                                            | Auth              | Output                                                     | Dependencies                 | Status   | Version |
+| ------ | --------------------------------- | -------------------------------------------------- | ----------------- | ---------------------------------------------------------- | ---------------------------- | -------- | ------- |
+| POST   | `/streams/:cameraId/start`        | Start a camera's ingestion worker                  | `stream:control`  | `202 {success,data:StreamStatus}` · `401/403`              | @vip/storage, camera, ffmpeg | beta     | 0.1.0   |
+| POST   | `/streams/:cameraId/stop`         | Stop the worker (no reconnect)                     | `stream:control`  | `200 {success,data:StreamStatus}` · `401/403/404`          | —                            | beta     | 0.1.0   |
+| GET    | `/streams/:cameraId/status`       | Worker status                                      | `stream:read`     | `200 {success,data:StreamStatus}` · `401/403/404`          | —                            | beta     | 0.1.0   |
+| GET    | `/streams`                        | List the tenant's workers                          | `stream:read`     | `200 {success,data:StreamStatus[]}` · `401/403`            | —                            | beta     | 0.1.0   |
+| GET    | `/perception/event-bridge`        | Event Publisher state (P-8 Phase 5)                | `system:inspect`  | `200 {success,data:EventPublisherStats}` · `401/403`       | @vip/messaging               | beta     | 0.1.0   |
+| GET    | `/perception/assignment`          | Assignment gate state (P-8 Phase 6)                | `system:inspect`  | `200 {success,data:AssignmentClientStats}` · `401/403`     | camera service               | beta     | 0.1.0   |
+| GET    | `/perception/assignment/cameras`  | ⚠️ Per-camera processing metrics — **TENANT DATA** | `assignment:read` | `200 {success,data:CameraProcessingMetrics[]}` · `401/403` | runtime, publisher           | beta     | 0.1.0   |
+| GET    | `/health` `/ready` `/metrics` `/` | Liveness / readiness / metrics / info              | None              | as template (`/ready` includes a `storage` check)          | prom-client, @vip/storage    | scaffold | 0.1.0   |
 
 > ⚠️ **`/perception/event-bridge` is deployment state, not tenant data**, which is why it is behind
 > `system:inspect` rather than a media permission and why it carries **no camera id** — the last

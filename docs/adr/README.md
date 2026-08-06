@@ -64,6 +64,7 @@ Any decision that changes: a **contract**, a **boundary/dependency rule**, a **t
 | [0040](ADR-0040-one-event-envelope-many-payload-schemas.md) | One `EventEnvelope`. Many payload schemas. No second transport | Accepted |
 | [0041](ADR-0041-identity-travels-with-the-subject.md) | Identity travels with the subject, or rules under-fire silently | Accepted |
 | [0042](ADR-0042-at-least-once-delivery-with-bounded-suppression.md) | Delivery is at-least-once, suppression is bounded, and recording outranks both | Accepted |
+| [0043](ADR-0043-assignment-is-a-control-plane-with-a-measured-data-plane.md) | Camera Processing Assignment is a control plane with a measured data plane | Accepted |
 
 _Add new rows as ADRs are created. Never renumber; never delete._
 
@@ -76,5 +77,8 @@ _Add new rows as ADRs are created. Never renumber; never delete._
 > The lesson from the first backfill was recorded and did not change the outcome, which says the
 > instruction is not the mechanism: **the row belongs in the same commit as the file**, and a
 > reviewer of a commit adding `docs/adr/ADR-nnnn-*.md` should look for the row before anything else.
+>
+> ✅ 0043 was added here in the same commit as its file (2026-08-06). One data point, not a fix — but
+> it is the first ADR since the practice was written down that did not need backfilling.
 
 > ADRs 0006–0010 were produced by the **Enterprise Architecture Review** (2026-07-26). ADRs 0011–0015 were produced by the **Final Architecture Enhancement** (2026-07-27) that froze the architecture as **v1.0**. All are strengthenings that preserve the existing philosophy. **After v1.0 freeze, every architectural change requires a new ADR.**

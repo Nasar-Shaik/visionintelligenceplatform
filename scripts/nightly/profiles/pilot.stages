@@ -14,6 +14,9 @@ runtime      | Real inference, end to end        | runtime/inference.sh    | RUN
 dashboard    | Operator page in a browser        | runtime/dashboard.sh    | RUN_DASHBOARD   | preflight | continue | TIMEOUT_DASHBOARD
 integration  | Cross-service integration tests   | platform/integration.sh | RUN_INTEGRATION | preflight | continue | TIMEOUT_INTEGRATION
 event-bridge | Live event bridge, end to end     | events/bridge.sh        | RUN_EVENT_BRIDGE | preflight | continue | TIMEOUT_EVENT_BRIDGE
+# ⚠️ A pilot site's whole proposition is "record everything, analyse the tills". This is the stage
+# that proves the deployment in front of a customer actually does that.
+assignment   | Camera assignment, end to end     | assignment/assignment.sh| RUN_ASSIGNMENT   | preflight | continue | TIMEOUT_ASSIGNMENT
 event-replay | Duplicates, correlation, replay   | events/replay.sh        | RUN_EVENT_REPLAY | preflight | continue | TIMEOUT_EVENT_REPLAY
 stability    | Long stability run                | runtime/stability.sh    | RUN_SOAK        | preflight | continue | TIMEOUT_SOAK
 benchmark    | Capacity ladder and benchmark     | runtime/benchmark.sh    | RUN_BENCHMARK   | preflight | continue | TIMEOUT_BENCHMARK

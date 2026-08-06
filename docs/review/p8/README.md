@@ -585,3 +585,55 @@ cd /private/tmp/pwrun && node <repo>/docs/review/p8/event-bridge-ui.mjs
 ```
 
 Each takes `clean` (or `restore`) if a run was interrupted.
+
+---
+
+## Phase 6 · Camera Processing Assignment (2026-08-06)
+
+The platform can now **choose which cameras consume AI**. Phase 5 proved a frame can become an
+incident candidate; this proves the platform can decline to analyse a camera **while it is still
+recording it**, which is the product's commercial proposition.
+
+⚠️ **The negative half is the important half.** `assignment.mjs` runs three cameras, assigns one, and
+asserts the other two analysed **zero** frames while writing every recording segment. A milestone that
+only proved the positive case would be satisfied equally well by a gate that lets everything through
+— which is the behaviour it replaced.
+
+### What the verification covers
+
+| script                     | proves                                                                                                                                         |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `assignment.mjs`           | the chain **and** selectivity · hot assignment · pause · release · re-enable · capability matrix · audit trail · capacity                      |
+| `assignment-runtime.mjs`   | measured health · capacity refused · failover moving only what it must · unattended recovery · persistence across a restart of **both** halves |
+| `assignment-ui.mjs`        | six operator pages, every figure traced to the payload the browser received                                                                    |
+| `assignment-benchmark.mjs` | 1 → 16 cameras: assignment latency, runtime latency, fps, queue, utilisation, CPU, memory                                                      |
+| `assignment-mutations.mjs` | eight deliberate breaks, each required to go red **at the check that names it**                                                                |
+
+### Three defects the deployment found that unit tests could not
+
+1. **A registered runtime with no cameras was never health-probed.** The enforcement point derived
+   its probe list from the plan's _entries_, so a fresh install showed `unknown` health and
+   `supported: null` for every profile for ever. Every unit test assigns a camera first — which is
+   precisely why they all passed.
+2. **A camera stranded in `error` could not climb out.** The failover sweep looked only at cameras
+   whose runtime had become unusable, and a stranded camera's runtime is by then perfectly usable.
+3. **The runtime's per-camera tracking payload is `{cameras: […]}`, not a bare array**, so every live
+   track count read `null` — _honest_ under ADR-0039 and therefore invisible.
+
+### Nightly
+
+A new domain — `assignment/` — and five stages, registered in **every** profile. The mutation stage
+rebuilds images and restarts containers, so it must not run beside anything else touching the
+deployment.
+
+### Running it
+
+```sh
+node docs/review/p8/assignment.mjs               # the chain, and the cameras that are NOT analysed
+node docs/review/p8/assignment-runtime.mjs       # ⚠️ registers runtimes and disables the deployment's own
+node docs/review/p8/assignment-benchmark.mjs     # 1 → 16 cameras
+node docs/review/p8/assignment-mutations.mjs     # ⚠️ edits source and rebuilds camera + media
+cd /private/tmp/pwrun && node <repo>/docs/review/p8/assignment-ui.mjs
+```
+
+Each takes `clean` (or `restore`) if a run was interrupted.

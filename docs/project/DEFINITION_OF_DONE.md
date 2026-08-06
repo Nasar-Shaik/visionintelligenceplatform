@@ -81,11 +81,26 @@ and the eighth is always the one that would have caught the defect.
 | 1   | **Runtime implementation**  | —                                                                                                                                                                                                                                  |
 | 2   | **Runtime metrics**         | A subsystem nobody can see the state of. Every metric separates **measurable** from **unavailable**; an absent value is `null` with a reason, never `0` ([ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md)) |
 | 3   | **Browser visibility**      | Rules that are only observable on a page go unverified. A hard-coded "Not measurable" once made a contract violation invisible while the check stayed green                                                                        |
-| 4   | **Deployment verification** | A subsystem proven under `pnpm dev` and broken in the deployment. P-5.8 found playback had never worked outside it                                                                                                                 |
+| 4   | **Deployment verification** | A subsystem proven under `pnpm dev` and broken in the deployment. P-5.8 found playback had never worked outside it. ⚠️ P-8 Phase 6 found **three** defects here that no unit test could reach — see the note below                 |
 | 5   | **Mutation testing**        | A verification that cannot fail. Two of this milestone's checks were **vacuous** and only mutation found them                                                                                                                      |
 | 6   | **Nightly automation**      | A verification that ran once. Registered in **every** profile, never left to manual invocation                                                                                                                                     |
 | 7   | **Benchmark evidence**      | A capacity claim from nothing. Numbers carry their conditions, and no sizing recommendation publishes until **three independent runs agree**                                                                                       |
 | 8   | **Governance updates**      | Work nobody after you can find. Capability matrix, limitation register, ADR index, and the tracker — in the **same commit**                                                                                                        |
+
+⚠️ **Item 4 catches a class of defect the unit suite is structurally unable to reach: the code path
+that only runs in a configuration no test creates.** P-8 Phase 6 found three, all the same shape.
+
+- A registered runtime with **no cameras** was never health-probed, because the probe list came from
+  the plan's _entries_. **Every unit test assigns a camera first**, so every one of them passed.
+- A camera stranded in `error` was never re-placed, because the failover sweep looked for cameras
+  whose _runtime_ had become unusable — and a stranded camera's runtime is by then perfectly usable.
+- A payload shape mismatch made every live track count read `null`, which is **honest** under
+  ADR-0039 and therefore invisible: a wrong shape and a runtime that has tracked nothing are
+  indistinguishable from the caller's side.
+
+The generalisation is worth more than the three instances: **when a check reports an absence, ask
+what else produces that same absence.** Two of these survived precisely because the platform's own
+honesty discipline made a bug look like a correct "we do not know".
 
 ⚠️ **Item 8 has failed twice in this repository, the same way both times.** The ADR index went
 thirteen ADRs stale, was backfilled with a note explaining why that mattered, and went four ADRs
