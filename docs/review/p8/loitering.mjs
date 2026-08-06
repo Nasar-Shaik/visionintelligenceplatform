@@ -193,8 +193,14 @@ try {
     });
     return r.json?.data?.id;
   };
+  /*
+   * ⚠️ Different fixture paths. The camera service refuses a duplicate `streamUrl`, so pointing both
+   * cameras at `walk1` silently created only one — and the control half of this run then asserted
+   * nothing at all while reporting a tidy "0 unexpectedly zoned". The fixture matches `~^walk[0-9]+$`
+   * so each camera gets an independent publisher, which is also what the capacity ladder needs.
+   */
   watchedCamera = await makeCamera('watched', 'walk1');
-  controlCamera = await makeCamera('control', 'walk1');
+  controlCamera = await makeCamera('control', 'walk2');
   check(
     watchedCamera !== undefined && controlCamera !== undefined,
     'two cameras were created on the fixture stream',
@@ -260,6 +266,11 @@ try {
         dwell: {
           minSeconds: DWELL,
           groupBy: 'identity',
+          /*
+           * ⚠️ 15s — above the ~10s interval at which the platform actually observes a present
+           * subject (the event dedup window). At 5s this run would have accumulated nothing and the
+           * red would have looked like a broken dwell stage.
+           */
           resetAfterSeconds: 15,
           /* ⚠️ Zero, so a repeat is visible within the run's window rather than 300 s later. */
           cooldownSeconds: 0,
@@ -328,12 +339,19 @@ try {
    */
   const gate = await api('/system/ai-runtime', { headers: H });
   samples.gate = gate.json?.data ?? null;
-  const zoneStats = gate.json?.data?.zones;
+  /* ⚠️ The frame sink's stats sit under `pipeline` — the route wraps them with runtime metadata. */
+  const zoneStats = gate.json?.data?.pipeline?.zones;
   if (zoneStats !== undefined) {
     check(
       (zoneStats.zonesLoaded ?? 0) > 0,
       '⚠️ the enforcement point HOLDS the zone — it travelled on the assignment plan',
       `${zoneStats.zonesLoaded} zone(s) across ${zoneStats.camerasWithZones} camera(s)`,
+    );
+    check(
+      (zoneStats.insideDetections ?? 0) > 0,
+      'and it RESOLVED subjects into it — the geometry ran on the frame path',
+      `${zoneStats.insideDetections} membership(s) from ${zoneStats.detectionsTested} tested, ` +
+        `${zoneStats.averageResolveMicros?.toFixed?.(1) ?? '—'}µs/frame`,
     );
   } else {
     finding('the gate does not report zone statistics', 'media may predate P-8 Phase 7');
@@ -406,8 +424,14 @@ try {
 
   /* ── 7 · the candidate ─────────────────────────────────────────────────────────────────────── */
   console.log('7 · the incident candidate');
+  /*
+   * ⚠️ `data.items`, not `data.incidents`. The first version of this run read the wrong key, got an
+   * empty array, and reported "the live rule raised an incident — 0" while the dry-run twin with
+   * identical configuration was demonstrably withholding candidates. The two halves disagreeing is
+   * what exposed it; a run with only the positive half would have blamed the product.
+   */
   const incidents =
-    (await api(`/workflow/incidents?limit=100`, { headers: H })).json?.data?.incidents ?? [];
+    (await api(`/workflow/incidents?limit=100`, { headers: H })).json?.data?.items ?? [];
   const mine = incidents.filter(
     (i) => i.source?.ruleId === ruleId && Date.parse(i.raisedAt) >= Date.parse(startedAt),
   );

@@ -154,27 +154,32 @@ export function dwellChecks(rule: Rule): RuleValidationIssue[] {
   const issues: RuleValidationIssue[] = [];
 
   /*
-   * ⚠️ The reset must exceed the observation interval or the visit resets between frames and nothing
-   * ever accumulates. The platform's conservative sizing runs at 2 fps, so a reset under a second is
-   * always wrong; between 1s and 5s it depends on the deployment's frame rate, which this pure module
-   * cannot know — hence a warning rather than an error.
+   * ⚠️ **The binding constraint is the EVENT DEDUP WINDOW, not the frame rate**, and the first
+   * version of this check had it wrong.
+   *
+   * The obvious reasoning is: frames arrive at 2 fps, so a reset above a second is safe. The
+   * deployment says otherwise. `services/events` collapses repeated detections of one subject into
+   * one event per dedup bucket (`EVENTS_DEDUP_WINDOW_MS`, 10 s by default), so a dwell rule observes
+   * a *continuously present* person about once every ten seconds however fast the camera runs. A
+   * reset below that restarts the visit on almost every observation and the threshold is never
+   * reached — silently, on a rule that validates, enables and reports healthy.
+   *
+   * ⚠️ This module is pure and cannot read another service's configuration, so the floor is the
+   * documented default rather than the deployed value. It is stated as such in the message: an
+   * operator who has tuned the window down can act on that sentence, and one who has not is
+   * protected by it.
    */
-  if (dwell.resetAfterSeconds < 1) {
+  const OBSERVATION_INTERVAL_SECONDS = 10;
+  if (dwell.resetAfterSeconds < OBSERVATION_INTERVAL_SECONDS) {
     issues.push(
       issue(
-        'dwell-reset-too-short',
-        'error',
+        'dwell-reset-below-observation-interval',
+        dwell.resetAfterSeconds < OBSERVATION_INTERVAL_SECONDS / 2 ? 'error' : 'warning',
         'dwell',
-        `a reset of ${dwell.resetAfterSeconds}s is shorter than the gap between two frames — every observation would start a new visit and the threshold could never be reached`,
-      ),
-    );
-  } else if (dwell.resetAfterSeconds < 5) {
-    issues.push(
-      issue(
-        'dwell-reset-near-frame-interval',
-        'warning',
-        'dwell',
-        `a reset of ${dwell.resetAfterSeconds}s is close to the frame interval on a conservatively sized deployment — a single dropped frame would restart the clock`,
+        `a reset of ${dwell.resetAfterSeconds}s is at or below the interval at which this platform ` +
+          `observes a continuously present subject (~${OBSERVATION_INTERVAL_SECONDS}s, set by the ` +
+          `event dedup window rather than by the frame rate) — the visit would restart on almost ` +
+          `every observation and the threshold would never be reached`,
       ),
     );
   }

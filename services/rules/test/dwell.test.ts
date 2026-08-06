@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EventEnvelope, RuleDwell } from '@vip/contracts';
 import {
+  gapIsUnusual,
   dwellKey,
   moments,
   observe,
@@ -238,6 +239,52 @@ describe('confidence', () => {
   /** ⚠️ `null`, never 0 — an unmeasured confidence and a confidence of zero mean opposite things. */
   it('reports null when nothing carried a confidence', () => {
     expect(last(walk([0, 10])).meanConfidence).toBeNull();
+  });
+});
+
+describe('the typical gap (found by the deployment)', () => {
+  /**
+   * ⚠️ **The defect this exists to prevent shipped and was caught by reading a green run.**
+   *
+   * `services/events` collapses repeated detections of one subject into one event per dedup bucket
+   * (10 s by default), so a *continuously present* person is observed about once every ten seconds
+   * however fast the camera runs. The first version reported `longestGapSeconds: 10` on every single
+   * incident and the summary said "the longest unobserved gap was 10s" — true, alarming, and
+   * describing nothing but the platform's own sampling. An operator would have learned within a week
+   * to ignore the one field that exists to make them careful.
+   */
+  it('reports regular sampling as regular, not as a gap', () => {
+    const outcomes = walk([0, 10, 20, 30, 40, 50]);
+    const last10 = last(outcomes);
+    expect(last10.longestGapSeconds).toBe(10);
+    expect(last10.typicalGapSeconds).toBe(10);
+    expect(gapIsUnusual(last10.longestGapSeconds, last10.typicalGapSeconds)).toBe(false);
+  });
+
+  it('reports a genuine hole as unusual', () => {
+    const outcomes = walk([0, 10, 20, 45, 55, 65]);
+    const withHole = last(outcomes);
+    expect(withHole.longestGapSeconds).toBe(25);
+    expect(withHole.typicalGapSeconds).toBe(10);
+    expect(gapIsUnusual(withHole.longestGapSeconds, withHole.typicalGapSeconds)).toBe(true);
+  });
+
+  /** ⚠️ `null`, not 0 — a visit seen once has no interval, and `0` would claim continuous sampling. */
+  it('has no typical gap after a single observation', () => {
+    expect(walk([0])[0]?.typicalGapSeconds).toBeNull();
+  });
+
+  it('uses the median, so one hole does not redefine what normal looks like', () => {
+    /* ⚠️ The hole must stay under `resetAfterSeconds` (30) or it ends the visit and there is
+     * nothing left to take a median of — which is the rule working, not a missing statistic. */
+    const outcomes = walk([0, 5, 10, 15, 20, 25, 50]);
+    /* Five 5s gaps and one 25s hole: the mean would be ~8.3, the median stays 5. */
+    expect(last(outcomes).typicalGapSeconds).toBe(5);
+    expect(last(outcomes).longestGapSeconds).toBe(25);
+  });
+
+  it('never flags a sub-second jitter, however large the ratio', () => {
+    expect(gapIsUnusual(0.4, 0.1)).toBe(false);
   });
 });
 

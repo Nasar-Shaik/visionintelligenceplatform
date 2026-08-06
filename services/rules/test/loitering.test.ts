@@ -120,21 +120,40 @@ describe('dwell validation', () => {
     ).toEqual([]);
   });
 
-  /** ⚠️ Every one of these saves cleanly, enables cleanly, reports healthy, and never fires. */
-  it('refuses a reset shorter than a frame interval', () => {
-    expect(
-      codes(
-        rule({ minSeconds: 60, groupBy: 'identity', resetAfterSeconds: 0, cooldownSeconds: 300 }),
-      ),
-    ).toContain('dwell-reset-too-short');
+  /**
+   * ⚠️ Every one of these saves cleanly, enables cleanly, reports healthy, and never fires.
+   *
+   * The floor is the **event dedup window**, not the frame rate — the deployment showed that a
+   * continuously present person is observed about once every ten seconds however fast the camera
+   * runs, because `services/events` collapses repeats into one event per bucket. The first version
+   * of this check used the frame interval and would have blessed a 3-second reset that could never
+   * accumulate anything.
+   */
+  it('refuses a reset far below the interval at which subjects are actually observed', () => {
+    const issues = dwellChecks(
+      rule({ minSeconds: 60, groupBy: 'identity', resetAfterSeconds: 3, cooldownSeconds: 300 }),
+    );
+    expect(issues.map((i) => i.code)).toContain('dwell-reset-below-observation-interval');
+    expect(issues.find((i) => i.code === 'dwell-reset-below-observation-interval')?.severity).toBe(
+      'error',
+    );
   });
 
-  it('warns when the reset is close to the frame interval', () => {
+  it('warns when the reset is near that interval rather than far below it', () => {
+    const issues = dwellChecks(
+      rule({ minSeconds: 60, groupBy: 'identity', resetAfterSeconds: 8, cooldownSeconds: 300 }),
+    );
+    expect(issues.find((i) => i.code === 'dwell-reset-below-observation-interval')?.severity).toBe(
+      'warning',
+    );
+  });
+
+  it('says nothing about a reset comfortably above it', () => {
     expect(
       codes(
-        rule({ minSeconds: 60, groupBy: 'identity', resetAfterSeconds: 3, cooldownSeconds: 300 }),
+        rule({ minSeconds: 60, groupBy: 'identity', resetAfterSeconds: 30, cooldownSeconds: 300 }),
       ),
-    ).toContain('dwell-reset-near-frame-interval');
+    ).not.toContain('dwell-reset-below-observation-interval');
   });
 
   it('warns when the threshold is at or below the reset', () => {

@@ -147,6 +147,11 @@ export const LOITERING_TEMPLATE: RuleTemplate = {
     eventTypes: ['perception.person.detected'],
     categories: [],
     condition: { field: 'subjects.0.identityId', op: 'exists' },
+    /*
+     * ⚠️ `resetAfterSeconds: 30` — comfortably above the ~10 s interval at which the platform
+     * observes a continuously present subject (the event dedup window, not the frame rate). A
+     * shorter reset restarts the visit on almost every observation and the rule never fires.
+     */
     dwell: { minSeconds: 60, groupBy: 'identity', resetAfterSeconds: 30, cooldownSeconds: 300 },
     dryRun: false,
     severity: 'medium',

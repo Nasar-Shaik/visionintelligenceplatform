@@ -22,7 +22,7 @@ import type {
   EventEnvelope,
   Rule,
 } from '@vip/contracts';
-import { moments, type DwellOutcome } from './dwell.js';
+import { gapIsUnusual, moments, type DwellOutcome } from './dwell.js';
 
 /**
  * How long before and after the observed window an evidence reference should reach.
@@ -75,8 +75,17 @@ export function buildExplanation(input: CandidateDetailInput): CandidateExplanat
         'spans a link the platform inferred rather than observed',
     );
   }
-  if (outcome.longestGapSeconds >= 1) {
-    parts.push(`; the longest unobserved gap was ${secs(outcome.longestGapSeconds)}`);
+  /*
+   * ⚠️ Mentioned only when it is UNUSUAL for this deployment. Before `typicalGapSeconds` existed
+   * this fired on every single incident — the events dedup window is ten seconds, so a continuously
+   * observed person always had a "ten-second unobserved gap". A qualification that appears every
+   * time is a qualification nobody reads.
+   */
+  if (gapIsUnusual(outcome.longestGapSeconds, outcome.typicalGapSeconds)) {
+    parts.push(
+      `; ⚠️ the longest unobserved gap was ${secs(outcome.longestGapSeconds)}, against a typical ` +
+        `${secs(outcome.typicalGapSeconds ?? 0)} between sightings`,
+    );
   }
 
   const explanation: CandidateExplanation = {
@@ -104,6 +113,7 @@ export function buildExplanation(input: CandidateDetailInput): CandidateExplanat
   explanation.observations = outcome.record.observations;
   explanation.trackFragments = outcome.trackFragments;
   explanation.longestGapSeconds = outcome.longestGapSeconds;
+  explanation.typicalGapSeconds = outcome.typicalGapSeconds;
   explanation.meanConfidence = outcome.meanConfidence;
   return explanation;
 }
@@ -219,7 +229,8 @@ export function buildTimeline(input: CandidateDetailInput): CandidateTimeline {
   return {
     entries,
     omitted: outcome.record.omitted,
-    total: outcome.record.observations,
+    /* ⚠️ Moments, not observations — see `CandidateTimeline.total`. */
+    total: entries.length + outcome.record.omitted,
   };
 }
 

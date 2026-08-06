@@ -775,9 +775,17 @@ export type CandidateTimelineEntry = z.infer<typeof CandidateTimelineEntry>;
  */
 export const CandidateTimeline = z.object({
   entries: z.array(CandidateTimelineEntry).max(64).default([]),
-  /** Observations not included between the head and the tail. `0` means the timeline is complete. */
+  /** Moments dropped between the head and the tail. `0` means the timeline is complete. */
   omitted: z.number().int().nonnegative().default(0),
-  /** Every observation that contributed, included or not — the denominator for `omitted`. */
+  /**
+   * Every moment that ever existed — `entries.length + omitted`, and the denominator for `omitted`.
+   *
+   * ⚠️ **Moments, not observations**, and the difference was a rendering bug the deployment found.
+   * A timeline carries derived markers (`gap`, `threshold-crossed`, `raised`) as well as sightings,
+   * so counting observations here made `entries.length` exceed `total` and the console rendered
+   * "15 of 6 shown". The observation count lives on `CandidateExplanation.observations`, which is
+   * where a reader asking "how many times was this person seen?" should look.
+   */
   total: z.number().int().nonnegative().default(0),
 });
 export type CandidateTimeline = z.infer<typeof CandidateTimeline>;
@@ -847,6 +855,18 @@ export const CandidateExplanation = z.object({
    */
   trackFragments: z.number().int().nonnegative().optional(),
   longestGapSeconds: z.number().nonnegative().optional(),
+  /**
+   * The **median** interval between observations (P-8 Phase 7 — added after the deployment).
+   *
+   * ⚠️ `longestGapSeconds` is meaningless without this, and shipping it alone would have been an
+   * honesty field that lied. The events service collapses repeated detections of one subject into
+   * one event per dedup bucket, so a *continuously present* person is observed about once per
+   * bucket however fast the camera runs — and every incident reported a ten-second "unobserved gap"
+   * that described nothing but the platform's own sampling. Read the two together: longest ≈
+   * typical is regular sampling; longest ≫ typical is a real hole. `gapIsUnusual` is the shared
+   * predicate, so no two surfaces can disagree about which it was.
+   */
+  typicalGapSeconds: z.number().nonnegative().nullable().optional(),
   /** Mean confidence over the contributing observations. `null` when none carried one (ADR-0039). */
   meanConfidence: z.number().min(0).max(1).nullable().optional(),
   /** Rendered from the fields above. Never authored independently — see the header. */
@@ -1812,3 +1832,26 @@ export const LiveRuleStatus = z.object({
   at: IsoDateTime,
 });
 export type LiveRuleStatus = z.infer<typeof LiveRuleStatus>;
+
+/**
+ * Is a dwell's longest gap **unusual**, or just this deployment's sampling interval?
+ *
+ * ⚠️ Exported from contracts so the rule engine's summary, the incident panel and the live view all
+ * ask the same question of the same numbers. Three implementations of "was that gap suspicious?"
+ * would disagree the first time any of them was tuned, and the disagreement would be invisible —
+ * the summary would qualify a duration the panel presented as clean.
+ *
+ * Both halves are needed. A ratio alone flags a 0.2 s gap against a 0.1 s typical; an absolute alone
+ * flags every incident on a deployment whose event dedup window is ten seconds, which is what the
+ * first version of this did.
+ */
+export function gapIsUnusual(
+  longestGapSeconds: number,
+  typicalGapSeconds: number | null | undefined,
+): boolean {
+  if (longestGapSeconds < 2) return false;
+  if (typicalGapSeconds === null || typicalGapSeconds === undefined || typicalGapSeconds <= 0) {
+    return longestGapSeconds >= 2;
+  }
+  return longestGapSeconds > typicalGapSeconds * 2;
+}

@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { AlertTriangle, Clock, Film, Link2, User } from 'lucide-react';
+import { gapIsUnusual } from '@vip/contracts';
 import type { CandidateEvidenceRef, CandidateExplanation, CandidateTimeline } from '@vip/contracts';
 import { Alert, Badge } from '@/ui';
 
@@ -55,7 +56,17 @@ export function LoiteringEvidence({
   if (explanation === undefined) return null;
 
   const fragmented = (explanation.trackFragments ?? 1) > 1;
-  const gappy = (explanation.longestGapSeconds ?? 0) >= 1;
+  /*
+   * ⚠️ **Unusual for this deployment**, not merely non-zero. The events service samples a
+   * continuously present subject once per dedup bucket, so every incident carries a gap of about
+   * that size — and a banner that appeared on every incident would train operators to scroll past
+   * the one thing that qualifies a duration. `gapIsUnusual` is the shared predicate, so this panel
+   * and the candidate's own summary cannot disagree about which it was.
+   */
+  const gappy = gapIsUnusual(
+    explanation.longestGapSeconds ?? 0,
+    explanation.typicalGapSeconds ?? null,
+  );
 
   return (
     <section className="space-y-4" data-testid="loitering-evidence">
@@ -71,7 +82,7 @@ export function LoiteringEvidence({
             ? `Identity was carried across ${explanation.trackFragments} track fragments — the platform inferred that these were the same person from position and timing, with no appearance model. `
             : ''}
           {gappy
-            ? `The longest stretch with no observation was ${secs(explanation.longestGapSeconds)}.`
+            ? `The longest stretch with no observation was ${secs(explanation.longestGapSeconds)}, against a typical ${secs(explanation.typicalGapSeconds ?? undefined)} between sightings.`
             : ''}
         </Alert>
       ) : null}
@@ -100,7 +111,15 @@ export function LoiteringEvidence({
         <Field label="Camera">{explanation.cameraId ?? '—'}</Field>
         <Field label="Observed">{secs(explanation.observedSeconds)}</Field>
         <Field label="Threshold">{secs(explanation.thresholdSeconds)}</Field>
-        <Field label="Observations">{explanation.observations ?? '—'}</Field>
+        <Field label="Observations">
+          {explanation.observations ?? '—'}
+          {/* ⚠️ The sampling interval, beside the count — one is unreadable without the other. */}
+          {explanation.typicalGapSeconds !== undefined && explanation.typicalGapSeconds !== null ? (
+            <span className="ml-1 text-xs text-fg-muted">
+              every ~{secs(explanation.typicalGapSeconds)}
+            </span>
+          ) : null}
+        </Field>
         <Field label="Entry">{explanation.firstObservedAt ?? '—'}</Field>
         <Field label="Last seen">{explanation.lastObservedAt ?? '—'}</Field>
         {/*

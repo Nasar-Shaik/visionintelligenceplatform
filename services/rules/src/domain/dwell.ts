@@ -83,6 +83,22 @@ export interface DwellRecord {
    */
   trackIds: string[];
   longestGapMs: number;
+  /**
+   * Recent inter-observation gaps, for the **typical** gap (P-8 Phase 7, found by the deployment).
+   *
+   * ⚠️ `longestGapMs` alone is meaningless, and the deployment proved it. The events service
+   * collapses repeated detections of one subject into one event per dedup bucket
+   * (`EVENTS_DEDUP_WINDOW_MS`, 10 s by default), so a dwell rule observes a *continuously present*
+   * person about once every ten seconds however fast the camera runs. Every incident therefore
+   * reported "the longest unobserved gap was 10s" — true, alarming, and describing nothing but the
+   * platform's own sampling. An operator would have learned within a week to ignore the one field
+   * that exists to make them careful.
+   *
+   * The median of these gaps is what "normal" looks like for this deployment, so a *real* hole is
+   * one that stands out against it. Bounded: only the most recent are kept, because the median of a
+   * recent window is the useful statistic and an unbounded array on a per-subject record is a leak.
+   */
+  gapsMs: number[];
   confidenceSum: number;
   confidenceCount: number;
   /** When this visit last raised a candidate. `undefined` until it has. Anchors the cool-down. */
@@ -99,6 +115,9 @@ export interface DwellRecord {
 
 /** ⚠️ Cap on distinct track ids retained per visit. The count is what matters; the ids are for detail. */
 const MAX_TRACK_IDS = 32;
+
+/** Gaps kept for the median. Enough to characterise the sampling, small enough to be free. */
+const MAX_GAP_SAMPLES = 64;
 
 /** What one observation did to a visit. */
 export interface DwellOutcome {
@@ -121,6 +140,16 @@ export interface DwellOutcome {
   /** Distinct track ids seen — `> 1` means tracking fragmented and identity bridged it. */
   readonly trackFragments: number;
   readonly longestGapSeconds: number;
+  /**
+   * The **median** gap between observations — what regular sampling looks like on this deployment.
+   *
+   * ⚠️ `null` until at least one gap has been measured; a single observation has no interval, and
+   * reporting `0` would say "sampled continuously" about a visit nobody has watched twice.
+   *
+   * Read `longestGapSeconds` against this, never alone. Longest ≈ typical means regular sampling;
+   * longest ≫ typical means the platform genuinely lost sight of the subject.
+   */
+  readonly typicalGapSeconds: number | null;
   /** Mean confidence over the visit, or `null` when no observation carried one (ADR-0039). */
   readonly meanConfidence: number | null;
 }
@@ -176,6 +205,7 @@ function begin(atMs: number, moment: DwellMoment, trackId: string | undefined): 
     observations: 1,
     trackIds: trackId === undefined ? [] : [trackId],
     longestGapMs: 0,
+    gapsMs: [],
     confidenceSum: moment.confidence ?? 0,
     confidenceCount: moment.confidence === undefined ? 0 : 1,
     head: [{ ...moment, kind: 'first-observed' }],
@@ -252,6 +282,7 @@ export function observe(
     record = {
       ...previous,
       trackIds: [...previous.trackIds],
+      gapsMs: [...previous.gapsMs],
       head: [...previous.head],
       tail: [...previous.tail],
     };
@@ -259,6 +290,8 @@ export function observe(
     if (input.atMs > record.lastObservedAtMs) {
       record.lastObservedAtMs = input.atMs;
       if (gapMs > record.longestGapMs) record.longestGapMs = gapMs;
+      record.gapsMs.push(gapMs);
+      while (record.gapsMs.length > MAX_GAP_SAMPLES) record.gapsMs.shift();
     }
     if (input.confidence !== undefined) {
       record.confidenceSum += input.confidence;
@@ -328,6 +361,7 @@ export function observe(
     /* ⚠️ At least 1: a visit with one track id is one fragment, not zero. */
     trackFragments: Math.max(1, record.trackIds.length),
     longestGapSeconds: record.longestGapMs / 1000,
+    typicalGapSeconds: median(record.gapsMs),
     meanConfidence:
       record.confidenceCount === 0 ? null : record.confidenceSum / record.confidenceCount,
   };
@@ -442,3 +476,23 @@ export function parseDwellKey(
   if (subject === '') return undefined;
   return { tenantId, ruleId, zoneKey, subject };
 }
+
+/**
+ * The median of a small sample, in seconds. `null` for an empty one.
+ *
+ * ⚠️ Median rather than mean, because one genuine hole would drag a mean towards itself and the
+ * statistic would stop describing "normal" at exactly the moment it matters.
+ */
+function median(valuesMs: readonly number[]): number | null {
+  if (valuesMs.length === 0) return null;
+  const sorted = [...valuesMs].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const value =
+    sorted.length % 2 === 1
+      ? (sorted[mid] as number)
+      : ((sorted[mid - 1] as number) + (sorted[mid] as number)) / 2;
+  return value / 1000;
+}
+
+/* ⚠️ `gapIsUnusual` lives in `@vip/contracts` so every surface asks the same question — see there. */
+export { gapIsUnusual } from '@vip/contracts';
