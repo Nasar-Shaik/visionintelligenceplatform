@@ -116,6 +116,23 @@ references them rather than restating what a capability is.
 > against real footage. Per-camera metrics (`/tracking/cameras`) are read-only and tenant-scoped; the
 > per-camera enable switch they suggest is **C-14c**, which is not built.
 >
+> ⚠️ **C-14f / C-14g — detection zones and Retail Loitering, P-8 Phase 7 (2026-08-06).** The first
+> **complete customer feature** the platform can demonstrate end to end: a person observed in a named
+> area of a camera's picture for longer than a configured time becomes an incident candidate carrying
+> the identity, the zone, the duration, an ordered timeline and references to the footage.
+>
+> ⚠️ **C-14g is a capability of the RULE ENGINE, not a loitering feature.** The word "loitering"
+> appears in the id of one template and nowhere in the evaluation path. What was added is a dwell
+> stage and a zone scope; intrusion, queue monitoring and abandoned object are the same primitives
+> with different parameters. `FUTURE_WORKFLOW_COVERAGE` records, per workflow, which primitive
+> expresses it and — for line crossing, occupancy, PPE and theft — exactly what is still missing.
+>
+> ⚠️ **Hardware validation is ⬜ for both, and the reason is specific rather than procedural.** Zone
+> geometry is validated against normalised coordinates; a real camera's lens distortion, mounting
+> angle and field of view all change where a floor polygon actually lies. Nothing in this milestone
+> was measured against a physical camera, and the accuracy of "was this person inside that area" on
+> real hardware is unknown. See KNOWN_LIMITATIONS.
+>
 > ⚠️ **C-14c — camera processing assignment, P-8 Phase 6 (2026-08-06). This row said ⛔ across every
 > column until today.** A customer can now choose which cameras are analysed: a control plane in the
 > camera service decides, an enforcement point in media obeys at the perception seam, and recording is

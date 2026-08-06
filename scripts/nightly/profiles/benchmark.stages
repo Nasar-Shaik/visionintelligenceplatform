@@ -11,4 +11,5 @@ publisher | Publisher capacity ladder     | publisher/benchmark.sh  | RUN_PUBLIS
 stability | Stability run                 | runtime/stability.sh    | RUN_SOAK       | preflight | continue | TIMEOUT_SOAK
 # ⚠️ The orchestration layer's own cost, measured beside the runtime's — they scale differently.
 assignment-benchmark | Assignment capacity ladder | assignment/benchmark.sh | RUN_ASSIGNMENT_BENCHMARK | preflight | continue | TIMEOUT_ASSIGNMENT_BENCHMARK
+rule-benchmark       | Loitering capacity ladder  | loitering/rule-benchmark.sh | RUN_RULE_BENCHMARK | preflight | continue | TIMEOUT_RULE_BENCHMARK
 report    | Morning summary               | platform/report.sh      | RUN_REPORT     | always   | continue | TIMEOUT_REPORT

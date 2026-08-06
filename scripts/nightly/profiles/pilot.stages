@@ -17,6 +17,9 @@ event-bridge | Live event bridge, end to end     | events/bridge.sh        | RUN
 # ⚠️ A pilot site's whole proposition is "record everything, analyse the tills". This is the stage
 # that proves the deployment in front of a customer actually does that.
 assignment   | Camera assignment, end to end     | assignment/assignment.sh| RUN_ASSIGNMENT   | preflight | continue | TIMEOUT_ASSIGNMENT
+# ⚠️ The customer-facing one. A pilot is judged on whether the feature works, not on whether
+# the harness does — so the workflow runs here and the mutation suite does not.
+loitering    | Retail loitering, end to end      | loitering/loitering.sh  | RUN_LOITERING    | preflight | continue | TIMEOUT_LOITERING
 event-replay | Duplicates, correlation, replay   | events/replay.sh        | RUN_EVENT_REPLAY | preflight | continue | TIMEOUT_EVENT_REPLAY
 stability    | Long stability run                | runtime/stability.sh    | RUN_SOAK        | preflight | continue | TIMEOUT_SOAK
 benchmark    | Capacity ladder and benchmark     | runtime/benchmark.sh    | RUN_BENCHMARK   | preflight | continue | TIMEOUT_BENCHMARK

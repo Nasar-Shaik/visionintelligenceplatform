@@ -1580,3 +1580,82 @@ waited for an operator who had no reason to know they were needed.
 ⚠️ **Any "retry only what changed" loop can strand its own outputs.** The fix is to sweep two
 populations — what changed, and what is already in a failed state — and the test that holds it
 asserts unattended recovery rather than the failover it was written for. Recorded as R-028.
+
+---
+
+## ED-0075 — P-8 Phase 7: an honesty field that lied, and the green run that said so
+
+**Date:** 2026-08-06 · **Milestone:** the first complete customer workflow (Retail Loitering)
+
+### 1 · A qualification that appears every time is not a qualification
+
+Every loitering incident carries `longestGapSeconds` — the biggest hole in the observation series —
+so an operator can tell a duration that was watched continuously from one assembled across a gap. It
+is the field that stops a 94-second dwell being taken on trust.
+
+It read **10 seconds on every single incident**, and the summary said *"the longest unobserved gap
+was 10s"*. True, alarming, and describing nothing but the platform's own sampling: `services/events`
+collapses repeated detections of one subject into one event per dedup bucket, so a **continuously
+present** person is observed about once every ten seconds however fast the camera runs.
+
+An operator would have learned within a week to ignore it. The field that exists to make people
+careful would have taught them that this platform's warnings mean nothing.
+
+⚠️ **A measurement of absence needs a measurement of normal beside it.** `typicalGapSeconds` — the
+**median** interval, so one real hole cannot redefine normal — now travels with it, and `gapIsUnusual`
+lives in `@vip/contracts` so the candidate summary, the incident panel and the live view cannot
+disagree about which it was. Three implementations of "was that gap suspicious?" would have diverged
+the first time any of them was tuned, invisibly.
+
+⚠️ This generalises [[absence-hides-defects]] one step further. That lesson was *an honest absence and
+a broken code path look the same*. This one is: **an honest absence and an uninteresting absence also
+look the same**, and the second is what makes people stop reading.
+
+### 2 · The binding constraint was one layer away from where everyone would look
+
+The dwell validation warned when `resetAfterSeconds` fell below the **frame interval** — obvious,
+defensible, and wrong. At 2 fps that put the floor at about a second; the real floor is the event
+dedup window at ten. A 3-second reset would have passed validation, saved cleanly, enabled cleanly,
+reported healthy, and restarted the visit on almost every observation so the threshold was never
+reached.
+
+⚠️ **When a stage consumes another service's output, its resolution is set by that service's
+batching, not by the original source rate.** The template, the console form and the verification all
+now sit above the real floor, and the validation message names the dedup window as the reason so
+whoever tunes it can act on the sentence.
+
+### 3 · Two halves disagreeing is what exposed the harness bug
+
+The verification reported "the live rule raised an incident — 0" while its **dry-run twin**, with
+identical configuration, was demonstrably withholding four candidates. Those two statements cannot
+both be true, and the contradiction pointed straight at the run reading `data.incidents` where the
+API returns `data.items`.
+
+⚠️ A verification with only the positive half would have reported the same red and blamed the
+product. The negative control was written to prove the rule does not fire for everybody; it earned
+its place by catching an error in the instrument instead.
+
+Three of that run's first-attempt failures were the instrument, not the product: both cameras pointed
+at one fixture path (so the second was silently never created, and the negative control asserted
+nothing while reporting a tidy "0 unexpectedly zoned"), the incidents key, and the level of the
+runtime payload the zone statistics sit at.
+
+### 4 · A flaky gate is worse than a missing one
+
+Running the production gate cold and in parallel turned up two **pre-existing** intermittent
+failures, neither caused by this milestone — the first reproduces on the P-8 Phase 6 freeze commit
+with these changes stashed:
+
+- three index-coverage tests did `await import('@vip/contracts')` **inside the test body**, and the
+  cold barrel import exceeded vitest's 5 s default when 28 suites competed. The failure read as an
+  assertion about indexes;
+- a tenant scale check compared two single-shot timings, so a descheduled measurement blew past its
+  bound.
+
+Both are fixed, and neither fix weakens an assertion: the imports are hoisted to module scope where
+no timeout applies, and the scale check takes the **best** of five samples — an O(n²) implementation
+is quadratic in its fastest run too, so it cannot pass by getting lucky.
+
+⚠️ **A gate that fails at random teaches people to re-run it**, and the next real failure gets
+re-run too. Fixing someone else's flake is in scope for any milestone that needs the gate to mean
+something.

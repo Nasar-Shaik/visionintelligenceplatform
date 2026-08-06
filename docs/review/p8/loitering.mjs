@@ -366,10 +366,22 @@ try {
   const mid = await api('/rules/rules/live', { headers: H });
   samples.liveMidRun = mid.json?.data ?? null;
   const midTimers = mid.json?.data?.timers ?? [];
+  const longestElapsed = Math.max(0, ...midTimers.map((t) => t.elapsedSeconds));
   check(
     midTimers.length > 0,
     '⚠️ a dwell clock is RUNNING mid-observation — the loiter timer is real, not a post-hoc figure',
-    `${midTimers.length} timer(s); longest ${Math.max(0, ...midTimers.map((t) => t.elapsedSeconds)).toFixed(1)}s`,
+    `${midTimers.length} timer(s); longest ${longestElapsed.toFixed(1)}s`,
+  );
+  /*
+   * ⚠️ **Running is not the same as accumulating**, and separating them is what makes an identity
+   * failure attributable. If re-entry linking breaks, every sighting becomes a different subject: the
+   * status page fills with clocks, all of them reading 0.0 s for ever. "A clock is running" stays
+   * green on a completely broken identity chain — this is the check that does not.
+   */
+  check(
+    longestElapsed > 0,
+    '⚠️ and it has ACCUMULATED across observations — the identity chain is carrying the visit',
+    `longest ${longestElapsed.toFixed(1)}s across ${Math.max(0, ...midTimers.map((t) => t.observations))} observation(s)`,
   );
   const named = midTimers.find((t) => t.zoneName !== undefined);
   check(

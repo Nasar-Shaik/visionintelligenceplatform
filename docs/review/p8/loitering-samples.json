@@ -1,8 +1,8 @@
 {
-  "at": "2026-08-06T08:22:20.794Z",
+  "at": "2026-08-06T08:34:25.490Z",
   "samples": {
     "validation": {
-      "ruleId": "291b3805-76e9-49d8-a28b-6db0bbfaaef4",
+      "ruleId": "5e97a2b6-fdb5-4c31-8920-4791ce41912c",
       "ruleVersion": 2,
       "valid": true,
       "verified": true,
@@ -14,41 +14,48 @@
           "message": "with no cool-down this rule raises a candidate on every frame once the threshold is met — set one unless the reset window is doing that job"
         }
       ],
-      "checked": ["event-type", "category", "action", "camera", "zone", "dwell"],
-      "checkedAt": "2026-08-06T08:20:58.539Z"
+      "checked": [
+        "event-type",
+        "category",
+        "action",
+        "camera",
+        "zone",
+        "dwell"
+      ],
+      "checkedAt": "2026-08-06T08:33:03.158Z"
     },
     "gate": {
       "configured": true,
       "capabilityId": "perception.person-detection",
       "pipeline": {
-        "offered": 208,
-        "delivered": 196,
+        "offered": 44,
+        "delivered": 42,
         "droppedNoImage": 0,
         "droppedQueueFull": 0,
         "failed": 0,
-        "inflight": 0,
+        "inflight": 2,
         "queueDepth": 0,
         "activeCameras": 0,
-        "deliverMsAvg": 65.8061224489796,
-        "frameAgeMsAvg": 65.86224489795919,
+        "deliverMsAvg": 97.85714285714286,
+        "frameAgeMsAvg": 98.33333333333333,
         "assignmentEnabled": true,
-        "skippedUnassigned": 12,
+        "skippedUnassigned": 0,
         "zones": {
           "zonesLoaded": 1,
           "camerasWithZones": 1,
-          "detectionsTested": 147,
-          "insideDetections": 147,
-          "averageResolveMicros": 10.258468749270833
+          "detectionsTested": 15,
+          "insideDetections": 15,
+          "averageResolveMicros": 40.00785714327191
         },
         "skippedHeld": 0,
-        "detections": 163,
+        "detections": 30,
         "detectionsByLabel": {
-          "person": 163
+          "person": 30
         },
-        "framesWithDetections": 163,
-        "inferenceMsAvg": 56.79766326530607,
-        "frameLatencyMsAvg": 64.5765306122449,
-        "lastDetectionAt": "2026-08-06T08:21:10.524Z",
+        "framesWithDetections": 30,
+        "inferenceMsAvg": 83.17252380952381,
+        "frameLatencyMsAvg": 96.9047619047619,
+        "lastDetectionAt": "2026-08-06T08:33:14.865Z",
         "modelId": "yolox-nano",
         "executionProvider": "CPUExecutionProvider"
       },
@@ -57,7 +64,7 @@
         "latencyMs": 2,
         "service": "inference",
         "runtimeVersion": "0.1.0",
-        "uptimeSeconds": 205.4,
+        "uptimeSeconds": 27.7,
         "executionProvider": "CPUExecutionProvider",
         "health": "ok",
         "capabilities": [
@@ -74,45 +81,64 @@
               "id": "yolox-nano"
             },
             "metrics": {
-              "fps": 4.147,
-              "framesProcessed": 196,
+              "fps": 4.144,
+              "framesProcessed": 42,
               "framesSkipped": 0,
               "droppedFrames": 0,
-              "avgLatencyMs": 56.798,
-              "latencyP50Ms": 53.08,
-              "latencyP95Ms": 84.045,
+              "avgLatencyMs": 83.173,
+              "latencyP50Ms": 75.473,
+              "latencyP95Ms": 135.849,
               "queueDepth": 0,
-              "confidenceDistribution": [0, 0, 0, 0, 0, 0, 0, 5, 100, 58],
-              "memoryMb": 112.61,
-              "uptimeSeconds": 206.212,
-              "avgFrameLatencyMs": 64.577,
-              "detectionsTotal": 163,
+              "confidenceDistribution": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                2,
+                20,
+                8
+              ],
+              "memoryMb": 121.8,
+              "uptimeSeconds": 28.313,
+              "avgFrameLatencyMs": 96.905,
+              "detectionsTotal": 30,
               "detectionsByLabel": {
-                "person": 163
+                "person": 30
               },
-              "avgConfidence": 0.8855,
-              "avgInferenceMs": 56.798,
-              "avgDecodeMs": 5.598,
-              "maxRssKb": 115312,
-              "cpuUserSeconds": 91.003,
-              "cpuSystemSeconds": 0.857
+              "avgConfidence": 0.8729,
+              "avgInferenceMs": 83.173,
+              "avgDecodeMs": 9.681,
+              "maxRssKb": 124728,
+              "cpuUserSeconds": 16.131,
+              "cpuSystemSeconds": 0.325
             },
             "adapter": {
               "modelId": "yolox-nano",
               "outputFormat": "yolox",
               "preprocessingVersion": "1.0/letterbox-416x416-NCHW-float32-BGR-pad114",
               "executionProvider": "CPUExecutionProvider",
-              "requestedProviders": ["CPUExecutionProvider"],
-              "availableProviders": ["AzureExecutionProvider", "CPUExecutionProvider"],
+              "requestedProviders": [
+                "CPUExecutionProvider"
+              ],
+              "availableProviders": [
+                "AzureExecutionProvider",
+                "CPUExecutionProvider"
+              ],
               "inputName": "images",
-              "inputSize": [416, 416],
+              "inputSize": [
+                416,
+                416
+              ],
               "inputLayout": "NCHW",
               "intraOpThreads": 10,
               "interOpThreads": 1,
               "loaded": true,
-              "loadedAt": 1786004264.5826578,
-              "warmupMs": 290.06,
-              "lastInferenceMs": 68.305
+              "loadedAt": 1786005167.124686,
+              "warmupMs": 164.28,
+              "lastInferenceMs": 75.894
             }
           }
         ],
@@ -134,17 +160,25 @@
               "outputFormat": "yolox",
               "preprocessingVersion": "1.0/letterbox-416x416-NCHW-float32-BGR-pad114",
               "executionProvider": "CPUExecutionProvider",
-              "requestedProviders": ["CPUExecutionProvider"],
-              "availableProviders": ["AzureExecutionProvider", "CPUExecutionProvider"],
+              "requestedProviders": [
+                "CPUExecutionProvider"
+              ],
+              "availableProviders": [
+                "AzureExecutionProvider",
+                "CPUExecutionProvider"
+              ],
               "inputName": "images",
-              "inputSize": [416, 416],
+              "inputSize": [
+                416,
+                416
+              ],
               "inputLayout": "NCHW",
               "intraOpThreads": 10,
               "interOpThreads": 1,
               "loaded": true,
-              "loadedAt": 1786004264.5826578,
-              "warmupMs": 290.06,
-              "lastInferenceMs": 68.305
+              "loadedAt": 1786005167.124686,
+              "warmupMs": 164.28,
+              "lastInferenceMs": 75.894
             }
           }
         ],
@@ -159,9 +193,16 @@
             "format": "yolox",
             "status": "enabled",
             "default": true,
-            "capabilities": ["perception.person-detection"],
-            "accelerators": ["cpu"],
-            "inputSize": [416, 416],
+            "capabilities": [
+              "perception.person-detection"
+            ],
+            "accelerators": [
+              "cpu"
+            ],
+            "inputSize": [
+              416,
+              416
+            ],
             "labelCount": 80,
             "sizeBytes": 3659407,
             "checksum": "sha256:c789161ed43c",
@@ -187,49 +228,53 @@
           },
           "stats": {
             "schemaVersion": "1.0",
-            "camerasTracked": 3,
-            "activeTracks": 3,
-            "confirmedTracks": 3,
+            "camerasTracked": 2,
+            "activeTracks": 2,
+            "confirmedTracks": 2,
             "tentativeTracks": 0,
             "lostTracks": 0,
-            "removedTracks": 1,
-            "createdTracks": 4,
+            "removedTracks": 0,
+            "createdTracks": 2,
             "recoveredTracks": 0,
-            "framesTracked": 193,
-            "outOfOrderFrames": 3,
-            "averageTrackingMs": 0.1127,
-            "averageTrackLifetimeSeconds": 7.7337,
-            "averageTrackAgeFrames": 15.6667,
-            "averageTrackHits": 16.6667,
-            "fragmentation": 1.3333,
+            "framesTracked": 42,
+            "outOfOrderFrames": 0,
+            "averageTrackingMs": 0.1432,
+            "averageTrackLifetimeSeconds": 6.999,
+            "averageTrackAgeFrames": 14,
+            "averageTrackHits": 15,
+            "fragmentation": 1,
             "camerasEvicted": 0,
             "occlusionsSurvived": 0,
             "crossings": 0,
-            "reentryOpportunities": 1,
+            "reentryOpportunities": 0,
             "identitySwitches": null,
             "reidentificationSuccessRate": null,
             "falseRecoveries": null,
             "groundTruth": {
               "available": false,
               "reason": "these ask whether an identity was CORRECT, which is only answerable against ground truth: which real object each track belonged to. A live camera does not carry that.",
-              "metrics": ["identitySwitches", "reidentificationSuccessRate", "falseRecoveries"],
+              "metrics": [
+                "identitySwitches",
+                "reidentificationSuccessRate",
+                "falseRecoveries"
+              ],
               "measuredBy": "docs/review/p8/tracking.mjs"
             }
           }
         },
         "resources": {
-          "memoryMb": 112.609,
-          "cpuPercent": 4.638,
+          "memoryMb": 121.805,
+          "cpuPercent": 5.34,
           "cpuCores": 10,
           "gpuPercent": null
         }
       },
-      "observedAt": "2026-08-06T08:21:10.653Z"
+      "observedAt": "2026-08-06T08:33:15.312Z"
     },
     "liveMidRun": {
       "tenantId": "tnt_demo_retail",
-      "node": "6e73964aecd8",
-      "uptimeSeconds": 245.345,
+      "node": "05c5d09b1b93",
+      "uptimeSeconds": 66.986,
       "activeRules": 6,
       "dwellRules": 2,
       "dryRunRules": 1,
@@ -240,109 +285,109 @@
       "activeDwellTimers": 2,
       "timers": [
         {
-          "ruleId": "291b3805-76e9-49d8-a28b-6db0bbfaaef4",
-          "ruleName": "p8-loiter live",
-          "subject": "trk_cam_410f3357e92348d1a67f37a64a149316_live-tnt_demo_retail-cam_410f3357e92348d1a67f37a64a149316_1",
-          "subjectKind": "identity",
-          "firstObservedAt": "2026-08-06T08:21:02.917Z",
-          "lastObservedAt": "2026-08-06T08:21:50.455Z",
-          "elapsedSeconds": 47.538,
-          "thresholdSeconds": 20,
-          "observations": 6,
-          "trackFragments": 1,
-          "longestGapSeconds": 10.004,
-          "state": "met",
-          "cooldownRemainingSeconds": null,
-          "dryRun": false,
-          "zoneId": "zn-53e9ea73-2c8",
-          "zoneName": "p8-loiter whole frame"
-        },
-        {
-          "ruleId": "e6d94f4f-2479-40c7-b96f-0864eda1675b",
+          "ruleId": "58eb761a-f65e-4255-8261-59e76091e001",
           "ruleName": "p8-loiter dry run",
-          "subject": "trk_cam_410f3357e92348d1a67f37a64a149316_live-tnt_demo_retail-cam_410f3357e92348d1a67f37a64a149316_1",
+          "subject": "trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1",
           "subjectKind": "identity",
-          "firstObservedAt": "2026-08-06T08:21:02.917Z",
-          "lastObservedAt": "2026-08-06T08:21:50.455Z",
-          "elapsedSeconds": 47.538,
+          "firstObservedAt": "2026-08-06T08:33:07.777Z",
+          "lastObservedAt": "2026-08-06T08:33:50.304Z",
+          "elapsedSeconds": 42.527,
           "thresholdSeconds": 20,
           "observations": 6,
           "trackFragments": 1,
-          "longestGapSeconds": 10.004,
+          "longestGapSeconds": 10,
           "state": "met",
           "cooldownRemainingSeconds": null,
           "dryRun": true,
-          "zoneId": "zn-53e9ea73-2c8",
+          "zoneId": "zn-79966a40-029",
+          "zoneName": "p8-loiter whole frame"
+        },
+        {
+          "ruleId": "5e97a2b6-fdb5-4c31-8920-4791ce41912c",
+          "ruleName": "p8-loiter live",
+          "subject": "trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1",
+          "subjectKind": "identity",
+          "firstObservedAt": "2026-08-06T08:33:07.777Z",
+          "lastObservedAt": "2026-08-06T08:33:50.304Z",
+          "elapsedSeconds": 42.527,
+          "thresholdSeconds": 20,
+          "observations": 6,
+          "trackFragments": 1,
+          "longestGapSeconds": 10,
+          "state": "met",
+          "cooldownRemainingSeconds": null,
+          "dryRun": false,
+          "zoneId": "zn-79966a40-029",
           "zoneName": "p8-loiter whole frame"
         }
       ],
       "dwellWithoutIdentity": 0,
-      "dwellStateEntries": 4,
+      "dwellStateEntries": 2,
       "dwellStateCapacity": 50000,
       "dwellStateEvicted": 0,
-      "at": "2026-08-06T08:21:52.674Z"
+      "at": "2026-08-06T08:33:57.370Z"
     },
     "events": {
-      "watched": 4,
-      "control": 4
+      "watched": 5,
+      "control": 5
     },
-    "incidents": 3,
+    "incidents": 4,
     "incident": {
-      "id": "f6478788-93e4-4e20-8fa7-c757ef7da801",
+      "id": "5f8479ab-3ff9-4f73-a6fb-c02122427dac",
       "tenantId": "tnt_demo_retail",
       "status": "raised",
       "severity": "low",
-      "title": "p8-loiter live: 48s in p8-loiter whole frame",
+      "title": "p8-loiter live: 53s in p8-loiter whole frame",
       "category": "perception",
       "source": {
-        "ruleId": "291b3805-76e9-49d8-a28b-6db0bbfaaef4",
+        "ruleId": "5e97a2b6-fdb5-4c31-8920-4791ce41912c",
         "ruleVersion": 2,
         "ruleName": "p8-loiter live",
-        "candidateId": "e537c9ef-6a8b-4f1d-ad19-886058a805ab",
-        "dedupKey": "tnt_demo_retail|291b3805-76e9-49d8-a28b-6db0bbfaaef4|zn-53e9ea73-2c8|trk_cam_410f3357e92348d1a67f37a64a149316_live-tnt_demo_retail-cam_410f3357e92348d1a67f37a64a149316_1|1786004462917|1786004510455"
+        "candidateId": "12ba950c-bca1-4c86-96f5-71906f5a9eaa",
+        "dedupKey": "tnt_demo_retail|5e97a2b6-fdb5-4c31-8920-4791ce41912c|zn-79966a40-029|trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1|1786005187777|1786005240307"
       },
       "triggeredBy": {
-        "eventId": "a7f5e6b5-2a2a-495c-9604-37cafb611979",
+        "eventId": "29a5ea11-f7f1-4ef3-9afd-d0919f6ef630",
         "eventType": "perception.person.detected",
-        "occurredAt": "2026-08-06T08:21:50.455Z",
-        "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-        "zoneId": "zn-53e9ea73-2c8"
+        "occurredAt": "2026-08-06T08:34:00.307Z",
+        "cameraId": "cam_1b6866602503464d88488513fa00558e",
+        "zoneId": "zn-79966a40-029"
       },
       "evidence": [
         {
           "kind": "recording-interval",
-          "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-          "startedAt": "2026-08-06T08:20:52.917Z",
-          "endedAt": "2026-08-06T08:22:00.455Z",
-          "locator": "/media/recordings?cameraId=cam_410f3357e92348d1a67f37a64a149316&from=2026-08-06T08:20:52.917Z&to=2026-08-06T08:22:00.455Z",
-          "label": "Recorded footage — 47.5s in zone, ±10s"
+          "cameraId": "cam_1b6866602503464d88488513fa00558e",
+          "startedAt": "2026-08-06T08:32:57.777Z",
+          "endedAt": "2026-08-06T08:34:10.307Z",
+          "locator": "/media/recordings?cameraId=cam_1b6866602503464d88488513fa00558e&from=2026-08-06T08:32:57.777Z&to=2026-08-06T08:34:10.307Z",
+          "label": "Recorded footage — 52.5s in zone, ±10s"
         },
         {
           "kind": "event",
-          "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-          "id": "a7f5e6b5-2a2a-495c-9604-37cafb611979",
-          "startedAt": "2026-08-06T08:21:50.455Z",
-          "locator": "/events/events/a7f5e6b5-2a2a-495c-9604-37cafb611979",
+          "cameraId": "cam_1b6866602503464d88488513fa00558e",
+          "id": "29a5ea11-f7f1-4ef3-9afd-d0919f6ef630",
+          "startedAt": "2026-08-06T08:34:00.307Z",
+          "locator": "/events/events/29a5ea11-f7f1-4ef3-9afd-d0919f6ef630",
           "label": "The event that raised this candidate"
         },
         {
           "kind": "event",
-          "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-          "id": "458a1af8-ae0d-47ee-a1e4-06e4c75407cf",
-          "startedAt": "2026-08-06T08:21:02.917Z",
-          "locator": "/events/events/458a1af8-ae0d-47ee-a1e4-06e4c75407cf",
+          "cameraId": "cam_1b6866602503464d88488513fa00558e",
+          "id": "e84673e3-7f10-4a51-8e4a-0a5446e74c44",
+          "startedAt": "2026-08-06T08:33:07.777Z",
+          "locator": "/events/events/e84673e3-7f10-4a51-8e4a-0a5446e74c44",
           "label": "The first observation — where the clock started"
         }
       ],
-      "matchedCount": 6,
+      "matchedCount": 7,
       "version": 1,
-      "correlationId": "tnt_demo_retail:cam_410f3357e92348d1a67f37a64a149316:101",
-      "causationId": "e537c9ef-6a8b-4f1d-ad19-886058a805ab",
+      "correlationId": "tnt_demo_retail:cam_1b6866602503464d88488513fa00558e:111",
+      "causationId": "12ba950c-bca1-4c86-96f5-71906f5a9eaa",
       "history": [
         {
           "from": null,
           "to": "raised",
-          "at": "2026-08-06T08:21:50.551Z",
+          "at": "2026-08-06T08:34:00.392Z",
           "by": "system",
           "actor": {
             "kind": "system",
@@ -352,310 +397,349 @@
       ],
       "assignments": [],
       "notes": [],
-      "raisedAt": "2026-08-06T08:21:50.551Z",
-      "updatedAt": "2026-08-06T08:21:50.551Z",
-      "identityId": "trk_cam_410f3357e92348d1a67f37a64a149316_live-tnt_demo_retail-cam_410f3357e92348d1a67f37a64a149316_1",
-      "durationSeconds": 47.538,
+      "raisedAt": "2026-08-06T08:34:00.392Z",
+      "updatedAt": "2026-08-06T08:34:00.392Z",
+      "identityId": "trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1",
+      "durationSeconds": 52.53,
       "explanation": {
         "trigger": "dwell",
         "subjectKind": "identity",
-        "identityId": "trk_cam_410f3357e92348d1a67f37a64a149316_live-tnt_demo_retail-cam_410f3357e92348d1a67f37a64a149316_1",
-        "trackId": "trk_cam_410f3357e92348d1a67f37a64a149316_live-tnt_demo_retail-cam_410f3357e92348d1a67f37a64a149316_1",
-        "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-        "zoneId": "zn-53e9ea73-2c8",
+        "identityId": "trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1",
+        "trackId": "trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1",
+        "cameraId": "cam_1b6866602503464d88488513fa00558e",
+        "zoneId": "zn-79966a40-029",
         "zoneName": "p8-loiter whole frame",
         "zoneVersion": 1,
-        "observedSeconds": 47.538,
+        "observedSeconds": 52.53,
         "thresholdSeconds": 20,
-        "firstObservedAt": "2026-08-06T08:21:02.917Z",
-        "lastObservedAt": "2026-08-06T08:21:50.455Z",
-        "observations": 6,
+        "firstObservedAt": "2026-08-06T08:33:07.777Z",
+        "lastObservedAt": "2026-08-06T08:34:00.307Z",
+        "observations": 7,
         "trackFragments": 1,
-        "longestGapSeconds": 10.004,
-        "meanConfidence": 0.8690824999999999,
-        "summary": "the same subject was observed in p8-loiter whole frame for 47.5s, above the 20s threshold across 6 observation(s); the longest unobserved gap was 10s"
+        "longestGapSeconds": 10.003,
+        "typicalGapSeconds": 9.999,
+        "meanConfidence": 0.8709998571428571,
+        "summary": "the same subject was observed in p8-loiter whole frame for 52.5s, above the 20s threshold across 7 observation(s)"
       },
       "timeline": {
         "entries": [
           {
-            "at": "2026-08-06T08:21:02.917Z",
+            "at": "2026-08-06T08:33:07.777Z",
             "kind": "first-observed",
-            "eventId": "458a1af8-ae0d-47ee-a1e4-06e4c75407cf",
+            "eventId": "e84673e3-7f10-4a51-8e4a-0a5446e74c44",
             "eventType": "perception.person.detected",
-            "frameId": "tnt_demo_retail:cam_410f3357e92348d1a67f37a64a149316:6",
-            "trackId": "trk_cam_410f3357e92348d1a67f37a64a149316_live-tnt_demo_retail-cam_410f3357e92348d1a67f37a64a149316_1",
-            "zoneId": "zn-53e9ea73-2c8",
+            "frameId": "tnt_demo_retail:cam_1b6866602503464d88488513fa00558e:6",
+            "trackId": "trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1",
+            "zoneId": "zn-79966a40-029",
             "confidence": 0.75016,
             "elapsedSeconds": 0,
             "evidence": [
               {
                 "kind": "event",
-                "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-                "id": "458a1af8-ae0d-47ee-a1e4-06e4c75407cf",
-                "startedAt": "2026-08-06T08:21:02.917Z",
-                "locator": "/events/events/458a1af8-ae0d-47ee-a1e4-06e4c75407cf",
+                "cameraId": "cam_1b6866602503464d88488513fa00558e",
+                "id": "e84673e3-7f10-4a51-8e4a-0a5446e74c44",
+                "startedAt": "2026-08-06T08:33:07.777Z",
+                "locator": "/events/events/e84673e3-7f10-4a51-8e4a-0a5446e74c44",
                 "label": "The event at this moment"
               },
               {
                 "kind": "frame",
-                "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-                "id": "tnt_demo_retail:cam_410f3357e92348d1a67f37a64a149316:6",
-                "startedAt": "2026-08-06T08:21:02.917Z",
-                "locator": "/playback?cameraId=cam_410f3357e92348d1a67f37a64a149316&at=2026-08-06T08:21:02.917Z",
+                "cameraId": "cam_1b6866602503464d88488513fa00558e",
+                "id": "tnt_demo_retail:cam_1b6866602503464d88488513fa00558e:6",
+                "startedAt": "2026-08-06T08:33:07.777Z",
+                "locator": "/playback?cameraId=cam_1b6866602503464d88488513fa00558e&at=2026-08-06T08:33:07.777Z",
                 "label": "Footage at 0s into the visit"
               },
               {
                 "kind": "identity",
-                "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-                "id": "trk_cam_410f3357e92348d1a67f37a64a149316_live-tnt_demo_retail-cam_410f3357e92348d1a67f37a64a149316_1",
-                "startedAt": "2026-08-06T08:21:02.917Z",
-                "locator": "/media/tracking/cam_410f3357e92348d1a67f37a64a149316/tracks?identityId=trk_cam_410f3357e92348d1a67f37a64a149316_live-tnt_demo_retail-cam_410f3357e92348d1a67f37a64a149316_1",
+                "cameraId": "cam_1b6866602503464d88488513fa00558e",
+                "id": "trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1",
+                "startedAt": "2026-08-06T08:33:07.777Z",
+                "locator": "/media/tracking/cam_1b6866602503464d88488513fa00558e/tracks?identityId=trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1",
                 "label": "This subject’s track history"
               }
             ],
             "summary": "first seen in the zone — the clock starts"
           },
           {
-            "at": "2026-08-06T08:21:10.448Z",
-            "kind": "gap",
-            "zoneId": "zn-53e9ea73-2c8",
-            "elapsedSeconds": 7.531,
-            "evidence": [],
-            "summary": "not observed for 7.5s"
-          },
-          {
-            "at": "2026-08-06T08:21:10.448Z",
+            "at": "2026-08-06T08:33:10.307Z",
             "kind": "observed",
-            "eventId": "d6676951-9939-4e65-84ee-85154a7619f4",
+            "eventId": "e79b5969-4730-49b4-a943-51f62389a665",
             "eventType": "perception.person.detected",
-            "frameId": "tnt_demo_retail:cam_410f3357e92348d1a67f37a64a149316:21",
-            "trackId": "trk_cam_410f3357e92348d1a67f37a64a149316_live-tnt_demo_retail-cam_410f3357e92348d1a67f37a64a149316_1",
-            "zoneId": "zn-53e9ea73-2c8",
-            "confidence": 0.879744,
-            "elapsedSeconds": 7.531,
+            "frameId": "tnt_demo_retail:cam_1b6866602503464d88488513fa00558e:11",
+            "trackId": "trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1",
+            "zoneId": "zn-79966a40-029",
+            "confidence": 0.859024,
+            "elapsedSeconds": 2.53,
             "evidence": [
               {
                 "kind": "event",
-                "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-                "id": "d6676951-9939-4e65-84ee-85154a7619f4",
-                "startedAt": "2026-08-06T08:21:10.448Z",
-                "locator": "/events/events/d6676951-9939-4e65-84ee-85154a7619f4",
+                "cameraId": "cam_1b6866602503464d88488513fa00558e",
+                "id": "e79b5969-4730-49b4-a943-51f62389a665",
+                "startedAt": "2026-08-06T08:33:10.307Z",
+                "locator": "/events/events/e79b5969-4730-49b4-a943-51f62389a665",
                 "label": "The event at this moment"
               },
               {
                 "kind": "frame",
-                "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-                "id": "tnt_demo_retail:cam_410f3357e92348d1a67f37a64a149316:21",
-                "startedAt": "2026-08-06T08:21:10.448Z",
-                "locator": "/playback?cameraId=cam_410f3357e92348d1a67f37a64a149316&at=2026-08-06T08:21:10.448Z",
-                "label": "Footage at 7.5s into the visit"
+                "cameraId": "cam_1b6866602503464d88488513fa00558e",
+                "id": "tnt_demo_retail:cam_1b6866602503464d88488513fa00558e:11",
+                "startedAt": "2026-08-06T08:33:10.307Z",
+                "locator": "/playback?cameraId=cam_1b6866602503464d88488513fa00558e&at=2026-08-06T08:33:10.307Z",
+                "label": "Footage at 2.5s into the visit"
               }
             ],
-            "summary": "still in the zone at 7.5s"
+            "summary": "still in the zone at 2.5s"
           },
           {
-            "at": "2026-08-06T08:21:20.452Z",
+            "at": "2026-08-06T08:33:20.306Z",
             "kind": "gap",
-            "zoneId": "zn-53e9ea73-2c8",
-            "elapsedSeconds": 17.535,
+            "zoneId": "zn-79966a40-029",
+            "elapsedSeconds": 12.529,
             "evidence": [],
             "summary": "not observed for 10s"
           },
           {
-            "at": "2026-08-06T08:21:20.452Z",
+            "at": "2026-08-06T08:33:20.306Z",
             "kind": "observed",
-            "eventId": "7c74d305-af0e-4923-b99f-c1d0ed09097e",
+            "eventId": "fd7622dd-7ff5-49a9-bfa1-5b45b99145d1",
             "eventType": "perception.person.detected",
-            "frameId": "tnt_demo_retail:cam_410f3357e92348d1a67f37a64a149316:41",
-            "trackId": "trk_cam_410f3357e92348d1a67f37a64a149316_live-tnt_demo_retail-cam_410f3357e92348d1a67f37a64a149316_1",
-            "zoneId": "zn-53e9ea73-2c8",
-            "confidence": 0.883798,
-            "elapsedSeconds": 17.535,
+            "frameId": "tnt_demo_retail:cam_1b6866602503464d88488513fa00558e:31",
+            "trackId": "trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1",
+            "zoneId": "zn-79966a40-029",
+            "confidence": 0.916326,
+            "elapsedSeconds": 12.529,
             "evidence": [
               {
                 "kind": "event",
-                "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-                "id": "7c74d305-af0e-4923-b99f-c1d0ed09097e",
-                "startedAt": "2026-08-06T08:21:20.452Z",
-                "locator": "/events/events/7c74d305-af0e-4923-b99f-c1d0ed09097e",
+                "cameraId": "cam_1b6866602503464d88488513fa00558e",
+                "id": "fd7622dd-7ff5-49a9-bfa1-5b45b99145d1",
+                "startedAt": "2026-08-06T08:33:20.306Z",
+                "locator": "/events/events/fd7622dd-7ff5-49a9-bfa1-5b45b99145d1",
                 "label": "The event at this moment"
               },
               {
                 "kind": "frame",
-                "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-                "id": "tnt_demo_retail:cam_410f3357e92348d1a67f37a64a149316:41",
-                "startedAt": "2026-08-06T08:21:20.452Z",
-                "locator": "/playback?cameraId=cam_410f3357e92348d1a67f37a64a149316&at=2026-08-06T08:21:20.452Z",
-                "label": "Footage at 17.5s into the visit"
+                "cameraId": "cam_1b6866602503464d88488513fa00558e",
+                "id": "tnt_demo_retail:cam_1b6866602503464d88488513fa00558e:31",
+                "startedAt": "2026-08-06T08:33:20.306Z",
+                "locator": "/playback?cameraId=cam_1b6866602503464d88488513fa00558e&at=2026-08-06T08:33:20.306Z",
+                "label": "Footage at 12.5s into the visit"
               }
             ],
-            "summary": "still in the zone at 17.5s"
+            "summary": "still in the zone at 12.5s"
           },
           {
-            "at": "2026-08-06T08:21:30.456Z",
+            "at": "2026-08-06T08:33:30.305Z",
             "kind": "gap",
-            "zoneId": "zn-53e9ea73-2c8",
-            "elapsedSeconds": 27.539,
+            "zoneId": "zn-79966a40-029",
+            "elapsedSeconds": 22.528,
             "evidence": [],
             "summary": "not observed for 10s"
           },
           {
-            "at": "2026-08-06T08:21:30.456Z",
+            "at": "2026-08-06T08:33:30.305Z",
             "kind": "observed",
-            "eventId": "b7164191-cd5a-43ae-aa1e-5c75a5ff2a9d",
+            "eventId": "7a7d39e6-f31c-42e3-af5e-5fc1cd42b910",
             "eventType": "perception.person.detected",
-            "frameId": "tnt_demo_retail:cam_410f3357e92348d1a67f37a64a149316:61",
-            "trackId": "trk_cam_410f3357e92348d1a67f37a64a149316_live-tnt_demo_retail-cam_410f3357e92348d1a67f37a64a149316_1",
-            "zoneId": "zn-53e9ea73-2c8",
-            "confidence": 0.908468,
-            "elapsedSeconds": 27.539,
+            "frameId": "tnt_demo_retail:cam_1b6866602503464d88488513fa00558e:51",
+            "trackId": "trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1",
+            "zoneId": "zn-79966a40-029",
+            "confidence": 0.896995,
+            "elapsedSeconds": 22.528,
             "evidence": [
               {
                 "kind": "event",
-                "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-                "id": "b7164191-cd5a-43ae-aa1e-5c75a5ff2a9d",
-                "startedAt": "2026-08-06T08:21:30.456Z",
-                "locator": "/events/events/b7164191-cd5a-43ae-aa1e-5c75a5ff2a9d",
+                "cameraId": "cam_1b6866602503464d88488513fa00558e",
+                "id": "7a7d39e6-f31c-42e3-af5e-5fc1cd42b910",
+                "startedAt": "2026-08-06T08:33:30.305Z",
+                "locator": "/events/events/7a7d39e6-f31c-42e3-af5e-5fc1cd42b910",
                 "label": "The event at this moment"
               },
               {
                 "kind": "frame",
-                "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-                "id": "tnt_demo_retail:cam_410f3357e92348d1a67f37a64a149316:61",
-                "startedAt": "2026-08-06T08:21:30.456Z",
-                "locator": "/playback?cameraId=cam_410f3357e92348d1a67f37a64a149316&at=2026-08-06T08:21:30.456Z",
-                "label": "Footage at 27.5s into the visit"
+                "cameraId": "cam_1b6866602503464d88488513fa00558e",
+                "id": "tnt_demo_retail:cam_1b6866602503464d88488513fa00558e:51",
+                "startedAt": "2026-08-06T08:33:30.305Z",
+                "locator": "/playback?cameraId=cam_1b6866602503464d88488513fa00558e&at=2026-08-06T08:33:30.305Z",
+                "label": "Footage at 22.5s into the visit"
               }
             ],
-            "summary": "still in the zone at 27.5s"
+            "summary": "still in the zone at 22.5s"
           },
           {
-            "at": "2026-08-06T08:21:30.456Z",
+            "at": "2026-08-06T08:33:30.305Z",
             "kind": "threshold-crossed",
-            "zoneId": "zn-53e9ea73-2c8",
-            "elapsedSeconds": 27.539,
+            "zoneId": "zn-79966a40-029",
+            "elapsedSeconds": 22.528,
             "evidence": [],
             "summary": "reached the 20s threshold"
           },
           {
-            "at": "2026-08-06T08:21:30.456Z",
+            "at": "2026-08-06T08:33:30.305Z",
             "kind": "raised",
-            "zoneId": "zn-53e9ea73-2c8",
-            "elapsedSeconds": 27.539,
+            "zoneId": "zn-79966a40-029",
+            "elapsedSeconds": 22.528,
             "evidence": [],
-            "summary": "candidate raised at 27.5s"
+            "summary": "candidate raised at 22.5s"
           },
           {
-            "at": "2026-08-06T08:21:40.452Z",
+            "at": "2026-08-06T08:33:40.304Z",
             "kind": "gap",
-            "zoneId": "zn-53e9ea73-2c8",
-            "elapsedSeconds": 37.535,
+            "zoneId": "zn-79966a40-029",
+            "elapsedSeconds": 32.527,
             "evidence": [],
             "summary": "not observed for 10s"
           },
           {
-            "at": "2026-08-06T08:21:40.452Z",
+            "at": "2026-08-06T08:33:40.304Z",
             "kind": "observed",
-            "eventId": "3705149d-5e52-4b18-9737-7419d21450d7",
+            "eventId": "0e37d0ae-b6b8-4f78-8c20-eb457a4a9a66",
             "eventType": "perception.person.detected",
-            "frameId": "tnt_demo_retail:cam_410f3357e92348d1a67f37a64a149316:81",
-            "trackId": "trk_cam_410f3357e92348d1a67f37a64a149316_live-tnt_demo_retail-cam_410f3357e92348d1a67f37a64a149316_1",
-            "zoneId": "zn-53e9ea73-2c8",
-            "confidence": 0.907161,
-            "elapsedSeconds": 37.535,
+            "frameId": "tnt_demo_retail:cam_1b6866602503464d88488513fa00558e:71",
+            "trackId": "trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1",
+            "zoneId": "zn-79966a40-029",
+            "confidence": 0.875911,
+            "elapsedSeconds": 32.527,
             "evidence": [
               {
                 "kind": "event",
-                "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-                "id": "3705149d-5e52-4b18-9737-7419d21450d7",
-                "startedAt": "2026-08-06T08:21:40.452Z",
-                "locator": "/events/events/3705149d-5e52-4b18-9737-7419d21450d7",
+                "cameraId": "cam_1b6866602503464d88488513fa00558e",
+                "id": "0e37d0ae-b6b8-4f78-8c20-eb457a4a9a66",
+                "startedAt": "2026-08-06T08:33:40.304Z",
+                "locator": "/events/events/0e37d0ae-b6b8-4f78-8c20-eb457a4a9a66",
                 "label": "The event at this moment"
               },
               {
                 "kind": "frame",
-                "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-                "id": "tnt_demo_retail:cam_410f3357e92348d1a67f37a64a149316:81",
-                "startedAt": "2026-08-06T08:21:40.452Z",
-                "locator": "/playback?cameraId=cam_410f3357e92348d1a67f37a64a149316&at=2026-08-06T08:21:40.452Z",
-                "label": "Footage at 37.5s into the visit"
+                "cameraId": "cam_1b6866602503464d88488513fa00558e",
+                "id": "tnt_demo_retail:cam_1b6866602503464d88488513fa00558e:71",
+                "startedAt": "2026-08-06T08:33:40.304Z",
+                "locator": "/playback?cameraId=cam_1b6866602503464d88488513fa00558e&at=2026-08-06T08:33:40.304Z",
+                "label": "Footage at 32.5s into the visit"
               }
             ],
-            "summary": "still in the zone at 37.5s"
+            "summary": "still in the zone at 32.5s"
           },
           {
-            "at": "2026-08-06T08:21:40.452Z",
+            "at": "2026-08-06T08:33:40.304Z",
             "kind": "raised",
-            "zoneId": "zn-53e9ea73-2c8",
-            "elapsedSeconds": 37.535,
+            "zoneId": "zn-79966a40-029",
+            "elapsedSeconds": 32.527,
             "evidence": [],
-            "summary": "candidate raised at 37.5s"
+            "summary": "candidate raised at 32.5s"
           },
           {
-            "at": "2026-08-06T08:21:50.455Z",
+            "at": "2026-08-06T08:33:50.304Z",
             "kind": "gap",
-            "zoneId": "zn-53e9ea73-2c8",
-            "elapsedSeconds": 47.538,
+            "zoneId": "zn-79966a40-029",
+            "elapsedSeconds": 42.527,
             "evidence": [],
             "summary": "not observed for 10s"
           },
           {
-            "at": "2026-08-06T08:21:50.455Z",
+            "at": "2026-08-06T08:33:50.304Z",
             "kind": "observed",
-            "eventId": "a7f5e6b5-2a2a-495c-9604-37cafb611979",
+            "eventId": "3adc3951-135f-45fe-9ba4-0ebbb7c189e6",
             "eventType": "perception.person.detected",
-            "frameId": "tnt_demo_retail:cam_410f3357e92348d1a67f37a64a149316:101",
-            "trackId": "trk_cam_410f3357e92348d1a67f37a64a149316_live-tnt_demo_retail-cam_410f3357e92348d1a67f37a64a149316_1",
-            "zoneId": "zn-53e9ea73-2c8",
-            "confidence": 0.885164,
-            "elapsedSeconds": 47.538,
+            "frameId": "tnt_demo_retail:cam_1b6866602503464d88488513fa00558e:91",
+            "trackId": "trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1",
+            "zoneId": "zn-79966a40-029",
+            "confidence": 0.891337,
+            "elapsedSeconds": 42.527,
             "evidence": [
               {
                 "kind": "event",
-                "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-                "id": "a7f5e6b5-2a2a-495c-9604-37cafb611979",
-                "startedAt": "2026-08-06T08:21:50.455Z",
-                "locator": "/events/events/a7f5e6b5-2a2a-495c-9604-37cafb611979",
+                "cameraId": "cam_1b6866602503464d88488513fa00558e",
+                "id": "3adc3951-135f-45fe-9ba4-0ebbb7c189e6",
+                "startedAt": "2026-08-06T08:33:50.304Z",
+                "locator": "/events/events/3adc3951-135f-45fe-9ba4-0ebbb7c189e6",
                 "label": "The event at this moment"
               },
               {
                 "kind": "frame",
-                "cameraId": "cam_410f3357e92348d1a67f37a64a149316",
-                "id": "tnt_demo_retail:cam_410f3357e92348d1a67f37a64a149316:101",
-                "startedAt": "2026-08-06T08:21:50.455Z",
-                "locator": "/playback?cameraId=cam_410f3357e92348d1a67f37a64a149316&at=2026-08-06T08:21:50.455Z",
-                "label": "Footage at 47.5s into the visit"
+                "cameraId": "cam_1b6866602503464d88488513fa00558e",
+                "id": "tnt_demo_retail:cam_1b6866602503464d88488513fa00558e:91",
+                "startedAt": "2026-08-06T08:33:50.304Z",
+                "locator": "/playback?cameraId=cam_1b6866602503464d88488513fa00558e&at=2026-08-06T08:33:50.304Z",
+                "label": "Footage at 42.5s into the visit"
               }
             ],
-            "summary": "still in the zone at 47.5s"
+            "summary": "still in the zone at 42.5s"
           },
           {
-            "at": "2026-08-06T08:21:50.455Z",
+            "at": "2026-08-06T08:33:50.304Z",
             "kind": "raised",
-            "zoneId": "zn-53e9ea73-2c8",
-            "elapsedSeconds": 47.538,
+            "zoneId": "zn-79966a40-029",
+            "elapsedSeconds": 42.527,
             "evidence": [],
-            "summary": "candidate raised at 47.5s"
+            "summary": "candidate raised at 42.5s"
+          },
+          {
+            "at": "2026-08-06T08:34:00.307Z",
+            "kind": "gap",
+            "zoneId": "zn-79966a40-029",
+            "elapsedSeconds": 52.53,
+            "evidence": [],
+            "summary": "not observed for 10s"
+          },
+          {
+            "at": "2026-08-06T08:34:00.307Z",
+            "kind": "observed",
+            "eventId": "29a5ea11-f7f1-4ef3-9afd-d0919f6ef630",
+            "eventType": "perception.person.detected",
+            "frameId": "tnt_demo_retail:cam_1b6866602503464d88488513fa00558e:111",
+            "trackId": "trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1",
+            "zoneId": "zn-79966a40-029",
+            "confidence": 0.907246,
+            "elapsedSeconds": 52.53,
+            "evidence": [
+              {
+                "kind": "event",
+                "cameraId": "cam_1b6866602503464d88488513fa00558e",
+                "id": "29a5ea11-f7f1-4ef3-9afd-d0919f6ef630",
+                "startedAt": "2026-08-06T08:34:00.307Z",
+                "locator": "/events/events/29a5ea11-f7f1-4ef3-9afd-d0919f6ef630",
+                "label": "The event at this moment"
+              },
+              {
+                "kind": "frame",
+                "cameraId": "cam_1b6866602503464d88488513fa00558e",
+                "id": "tnt_demo_retail:cam_1b6866602503464d88488513fa00558e:111",
+                "startedAt": "2026-08-06T08:34:00.307Z",
+                "locator": "/playback?cameraId=cam_1b6866602503464d88488513fa00558e&at=2026-08-06T08:34:00.307Z",
+                "label": "Footage at 52.5s into the visit"
+              }
+            ],
+            "summary": "still in the zone at 52.5s"
+          },
+          {
+            "at": "2026-08-06T08:34:00.307Z",
+            "kind": "raised",
+            "zoneId": "zn-79966a40-029",
+            "elapsedSeconds": 52.53,
+            "evidence": [],
+            "summary": "candidate raised at 52.5s"
           }
         ],
         "omitted": 0,
-        "total": 6
+        "total": 17
       },
-      "detectionConfidence": 0.8690824999999999
+      "detectionConfidence": 0.8709998571428571
     },
     "dryRun": {
-      "ruleId": "e6d94f4f-2479-40c7-b96f-0864eda1675b",
+      "ruleId": "58eb761a-f65e-4255-8261-59e76091e001",
       "ruleName": "p8-loiter dry run",
-      "withheld": 3,
-      "retained": 3,
-      "firstAt": "2026-08-06T08:21:30.545Z",
-      "lastAt": "2026-08-06T08:21:50.549Z",
-      "maxDurationSeconds": 47.538
+      "withheld": 4,
+      "retained": 4,
+      "firstAt": "2026-08-06T08:33:30.379Z",
+      "lastAt": "2026-08-06T08:34:00.388Z",
+      "maxDurationSeconds": 52.53
     },
     "liveAfter": {
       "tenantId": "tnt_demo_retail",
-      "node": "6e73964aecd8",
-      "uptimeSeconds": 273.457,
+      "node": "05c5d09b1b93",
+      "uptimeSeconds": 95.098,
       "activeRules": 6,
       "dwellRules": 2,
       "dryRunRules": 1,
@@ -666,47 +750,47 @@
       "activeDwellTimers": 2,
       "timers": [
         {
-          "ruleId": "291b3805-76e9-49d8-a28b-6db0bbfaaef4",
-          "ruleName": "p8-loiter live",
-          "subject": "trk_cam_410f3357e92348d1a67f37a64a149316_live-tnt_demo_retail-cam_410f3357e92348d1a67f37a64a149316_1",
-          "subjectKind": "identity",
-          "firstObservedAt": "2026-08-06T08:21:02.917Z",
-          "lastObservedAt": "2026-08-06T08:21:50.455Z",
-          "elapsedSeconds": 47.538,
-          "thresholdSeconds": 20,
-          "observations": 6,
-          "trackFragments": 1,
-          "longestGapSeconds": 10.004,
-          "state": "met",
-          "cooldownRemainingSeconds": null,
-          "dryRun": false,
-          "zoneId": "zn-53e9ea73-2c8",
-          "zoneName": "p8-loiter whole frame"
-        },
-        {
-          "ruleId": "e6d94f4f-2479-40c7-b96f-0864eda1675b",
+          "ruleId": "58eb761a-f65e-4255-8261-59e76091e001",
           "ruleName": "p8-loiter dry run",
-          "subject": "trk_cam_410f3357e92348d1a67f37a64a149316_live-tnt_demo_retail-cam_410f3357e92348d1a67f37a64a149316_1",
+          "subject": "trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1",
           "subjectKind": "identity",
-          "firstObservedAt": "2026-08-06T08:21:02.917Z",
-          "lastObservedAt": "2026-08-06T08:21:50.455Z",
-          "elapsedSeconds": 47.538,
+          "firstObservedAt": "2026-08-06T08:33:07.777Z",
+          "lastObservedAt": "2026-08-06T08:34:00.307Z",
+          "elapsedSeconds": 52.53,
           "thresholdSeconds": 20,
-          "observations": 6,
+          "observations": 7,
           "trackFragments": 1,
-          "longestGapSeconds": 10.004,
+          "longestGapSeconds": 10.003,
           "state": "met",
           "cooldownRemainingSeconds": null,
           "dryRun": true,
-          "zoneId": "zn-53e9ea73-2c8",
+          "zoneId": "zn-79966a40-029",
+          "zoneName": "p8-loiter whole frame"
+        },
+        {
+          "ruleId": "5e97a2b6-fdb5-4c31-8920-4791ce41912c",
+          "ruleName": "p8-loiter live",
+          "subject": "trk_cam_1b6866602503464d88488513fa00558e_live-tnt_demo_retail-cam_1b6866602503464d88488513fa00558e_1",
+          "subjectKind": "identity",
+          "firstObservedAt": "2026-08-06T08:33:07.777Z",
+          "lastObservedAt": "2026-08-06T08:34:00.307Z",
+          "elapsedSeconds": 52.53,
+          "thresholdSeconds": 20,
+          "observations": 7,
+          "trackFragments": 1,
+          "longestGapSeconds": 10.003,
+          "state": "met",
+          "cooldownRemainingSeconds": null,
+          "dryRun": false,
+          "zoneId": "zn-79966a40-029",
           "zoneName": "p8-loiter whole frame"
         }
       ],
       "dwellWithoutIdentity": 0,
-      "dwellStateEntries": 4,
+      "dwellStateEntries": 2,
       "dwellStateCapacity": 50000,
       "dwellStateEvicted": 0,
-      "at": "2026-08-06T08:22:20.786Z"
+      "at": "2026-08-06T08:34:25.482Z"
     }
   },
   "findings": []

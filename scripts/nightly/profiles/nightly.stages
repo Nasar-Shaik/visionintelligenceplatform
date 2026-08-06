@@ -35,14 +35,24 @@ event-browser        | Event bridge page in a browser    | events/browser.sh    
 assignment           | Camera assignment, end to end      | assignment/assignment.sh | RUN_ASSIGNMENT           | preflight | continue | TIMEOUT_ASSIGNMENT
 assignment-runtime   | Runtime health, capacity, failover | assignment/runtime.sh    | RUN_ASSIGNMENT_RUNTIME   | preflight | continue | TIMEOUT_ASSIGNMENT_RUNTIME
 assignment-browser   | Assignment pages in a browser      | assignment/browser.sh    | RUN_ASSIGNMENT_BROWSER   | preflight | continue | TIMEOUT_ASSIGNMENT_BROWSER
+# ── Retail Loitering (P-8 Phase 7) ───────────────────────────────────────────────────────
+# ⚠️ The first stage that proves a COMPLETE CUSTOMER FEATURE rather than a layer: a person
+# standing in a checkout queue becomes an incident an operator can act on. Its negative
+# halves run on the same deployment at the same moment — a camera with no zone never stamps
+# one, and a dry-run twin raises nothing while its clock advances.
+loitering            | Retail loitering, end to end       | loitering/loitering.sh   | RUN_LOITERING            | preflight | continue | TIMEOUT_LOITERING
+loitering-zones      | Zones on the plan, evaluated       | loitering/zones.sh       | RUN_LOITERING_ZONES      | preflight | continue | TIMEOUT_LOITERING_ZONES
+rule-browser         | Loitering pages in a browser       | loitering/rule-browser.sh| RUN_RULE_BROWSER         | preflight | continue | TIMEOUT_RULE_BROWSER
 stability            | Stability run                     | runtime/stability.sh    | RUN_SOAK                 | preflight | continue | TIMEOUT_SOAK
 benchmark            | Capacity ladder and benchmark     | runtime/benchmark.sh    | RUN_BENCHMARK            | preflight | continue | TIMEOUT_BENCHMARK
 tracking-benchmark   | Tracking capacity ladder          | tracking/benchmark.sh   | RUN_TRACKING_BENCHMARK   | preflight | continue | TIMEOUT_TRACKING_BENCHMARK
 assignment-benchmark | Assignment capacity ladder         | assignment/benchmark.sh  | RUN_ASSIGNMENT_BENCHMARK | preflight | continue | TIMEOUT_ASSIGNMENT_BENCHMARK
+rule-benchmark       | Loitering capacity ladder          | loitering/rule-benchmark.sh | RUN_RULE_BENCHMARK    | preflight | continue | TIMEOUT_RULE_BENCHMARK
 publisher-benchmark  | Publisher capacity ladder         | publisher/benchmark.sh  | RUN_PUBLISHER_BENCHMARK  | preflight | continue | TIMEOUT_PUBLISHER_BENCHMARK
 mutation             | Mutation verification             | runtime/mutation.sh     | RUN_MUTATION             | preflight | continue | TIMEOUT_MUTATION
 tracking-mutations   | Tracking mutation verification    | tracking/mutations.sh   | RUN_TRACKING_MUTATION    | preflight | continue | TIMEOUT_TRACKING_MUTATION
 assignment-mutations | Assignment mutation verification   | assignment/mutations.sh  | RUN_ASSIGNMENT_MUTATION  | preflight | continue | TIMEOUT_ASSIGNMENT_MUTATION
+rule-mutations       | Loitering mutation verification    | loitering/rule-mutations.sh | RUN_RULE_MUTATION     | preflight | continue | TIMEOUT_RULE_MUTATION
 bridge-mutations     | Bridge mutation verification      | publisher/mutations.sh  | RUN_BRIDGE_MUTATION      | preflight | continue | TIMEOUT_BRIDGE_MUTATION
 # ⚠️ LAST before the report, and not by accident: this is the only stage that stops the broker every
 # service on the platform shares. Anything scheduled after it would be measuring a stack that had

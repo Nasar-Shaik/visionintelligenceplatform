@@ -283,6 +283,8 @@ const track = summariseTracking(readJson(join(metricsDir, 'tracking-benchmark.js
 const truth = readJson(join(metricsDir, 'tracking-truth.json'));
 const pub = summarisePublisher(readJson(join(metricsDir, 'publisher-benchmark.json')));
 const assign = summariseAssignment(readJson(join(metricsDir, 'assignment-capacity.json')));
+const loiter = readJson(join(metricsDir, 'loitering.json'));
+const loiterLadder = readJson(join(metricsDir, 'loitering-capacity.json'));
 const assignmentRun = readJson(join(metricsDir, 'assignment.json'));
 const assignmentRuntime = readJson(join(metricsDir, 'assignment-runtime.json'));
 const bridge = readJson(join(metricsDir, 'event-bridge.json'));
@@ -737,6 +739,59 @@ ${assign.dropped} frame(s) dropped${
 > and a \`0\` here would mean "nothing was ever applied" rather than "instant".
 >
 > ⚠️ ${assign.sizingPolicy ?? 'Sizing policy unchanged: 2 supported, 4 provisional, three agreeing runs.'}
+`;
+}
+
+/* ── Retail Loitering (P-8 Phase 7) ────────────────────────────────────────────────────────────── */
+
+if (loiter?.samples?.incident) {
+  const inc = loiter.samples.incident;
+  const e = inc.explanation ?? {};
+  const z = loiter.samples.gate?.pipeline?.zones ?? {};
+  const dry = loiter.samples.dryRun ?? {};
+  summary += `
+## Retail loitering — the first complete customer workflow
+
+A person observed in **${e.zoneName ?? e.zoneId ?? 'a zone'}** for ${(inc.durationSeconds ?? 0).toFixed(1)}s
+became an incident: ${e.observations ?? '?'} observation(s) about every
+${(e.typicalGapSeconds ?? 0).toFixed(1)}s, across ${e.trackFragments ?? '?'} track fragment(s), longest
+unobserved gap ${(e.longestGapSeconds ?? 0).toFixed(1)}s.
+Zone geometry ran on ${z.detectionsTested ?? 0} detection(s) at
+${z.averageResolveMicros === null || z.averageResolveMicros === undefined ? '_not measured_' : `${z.averageResolveMicros.toFixed(1)} µs`} per frame.
+
+> ⚠️ **Read the longest gap against the typical one, never alone.** The platform observes a
+> continuously present subject about once per event-dedup bucket, so a longest gap near the typical
+> gap is regular sampling rather than a hole. Shipping the first without the second made every
+> incident claim a ten-second blind spot it did not have.
+>
+> ⚠️ The dry-run twin raised **nothing** and withheld ${dry.withheld ?? 0} candidate(s). Both halves
+> are needed: a rule that silently stopped evaluating would also raise nothing.
+`;
+}
+
+if (loiterLadder?.rungs?.length) {
+  const rungs = loiterLadder.rungs;
+  const top = rungs[rungs.length - 1];
+  const ms = (v) => (v === null || v === undefined ? '_not measured_' : `${v.toFixed(0)} ms`);
+  const skipped = rungs.reduce((a, r) => a + (r.dwellWithoutIdentity ?? 0), 0);
+  summary += `
+## Retail loitering — rule capacity
+
+At ${top.cameras} camera(s): event → rule ${ms(top.eventToRuleMs)}, rule → candidate
+${ms(top.ruleToCandidateMs)}, end to end ${ms(top.endToEndMs)}.
+${top.eventsPerSecond ?? '—'} event(s)/s, ${top.evaluationsPerSecond ?? '—'} evaluation(s)/s,
+${top.activeDwellTimers ?? '—'} dwell clock(s) running.
+Rules service peaked at ${top.rulesCpuPct ?? '?'}% CPU / ${top.rulesMemMb ?? '?'} MB.
+
+> ⚠️ **Three latencies, separated on purpose.** A rising end-to-end figure says look somewhere; the
+> three together say where. Subtracting rule → candidate from end to end gives the transport share.
+> Each is the platform's own histogram over **this window** — a window mean that fell back to a
+> lifetime mean would report the previous rung's number and make the ladder appear to speed up.
+>
+> ⚠️ ${skipped} dwell evaluation(s) skipped for want of an identity. Anything above zero means a rule
+> is receiving events it can never accumulate — it looks enabled and healthy and will never fire.
+>
+> ⚠️ ${loiterLadder.sizingPolicy ?? 'Sizing policy unchanged: 2 supported, 4 provisional.'}
 `;
 }
 

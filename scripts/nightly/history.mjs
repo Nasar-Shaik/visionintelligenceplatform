@@ -247,6 +247,53 @@ export function summarise(runDir) {
     });
   }
 
+  /*
+   * Retail Loitering (P-8 Phase 7).
+   *
+   * ⚠️ The ledger keeps **three separated latencies**, not one. A rising end-to-end figure tells an
+   * operator to look somewhere; the three together tell them where — transport, the rule set, or the
+   * whole path. A single number would have made every regression a search.
+   *
+   * ⚠️ `dwellWithoutIdentity` is carried on every line because it is the only field that
+   * distinguishes "nothing is happening" from "these rules can never fire". A night where it climbs
+   * off zero is a night the tracker stopped producing identities, and no latency figure would say so.
+   */
+  const loitering = readJson(join(metrics, 'loitering-capacity.json'));
+  if (loitering?.rungs?.length) {
+    const top = loitering.rungs[loitering.rungs.length - 1];
+    const worst = (key) => {
+      const values = loitering.rungs.map((r) => r[key]).filter((n) => typeof n === 'number');
+      return values.length ? Math.max(...values) : null;
+    };
+    out.push({
+      family: 'loitering',
+      row: {
+        v: HISTORY_VERSION,
+        runId,
+        at,
+        topCameras: top?.cameras ?? null,
+        /* ⚠️ `null` when nothing was observed in the window — never 0 (ADR-0039). */
+        eventToRuleMsMax: worst('eventToRuleMs'),
+        ruleToCandidateMsMax: worst('ruleToCandidateMs'),
+        endToEndMsMax: worst('endToEndMs'),
+        topEventsPerSecond: top?.eventsPerSecond ?? null,
+        topEvaluationsPerSecond: top?.evaluationsPerSecond ?? null,
+        zoneResolveMicrosMax: worst('zoneResolveMicros'),
+        topActiveDwellTimers: top?.activeDwellTimers ?? null,
+        /* ⚠️ See the header. Non-zero means a dwell rule received events it could not accumulate. */
+        totalDwellWithoutIdentity: loitering.rungs.reduce(
+          (a, r) => a + (r.dwellWithoutIdentity ?? 0),
+          0,
+        ),
+        topRulesCpuPeak: top?.rulesCpuPct ?? null,
+        topRulesMemMb: top?.rulesMemMb ?? null,
+        topMediaCpuPeak: top?.mediaCpuPct ?? null,
+        /* ⚠️ Carried on every line, forever — see the publisher family above. */
+        sizingPolicy: '2 supported / 4 provisional; no recommendation until three runs agree',
+      },
+    });
+  }
+
   return out;
 }
 
