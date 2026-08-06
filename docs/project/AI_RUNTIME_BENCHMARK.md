@@ -348,6 +348,65 @@ and this is run one.
 
 ---
 
+## 🎛 Camera assignment — what orchestration costs (P-8 Phase 6)
+
+Measured 2026-08-06 on the production deployment, `docs/review/p8/assignment-benchmark.mjs`, 20-second
+windows, Apple Silicon, CPU-only. ⚠️ **Every rung assigns the cameras it creates** — a ladder that
+started cameras without assigning them would measure the _skip_ path (one map lookup per frame) and
+report it as the cost of the subsystem.
+
+| cameras | assign latency | runtime probe | fps / camera | queue peak | utilisation | dropped | media CPU | media RSS | control plane CPU |
+| ------: | -------------: | ------------: | -----------: | ---------: | ----------: | ------: | --------: | --------: | ----------------: |
+|       1 |       3 521 ms |          4 ms |         1.99 |          0 |          4% |       0 |     3.4 % |    189 MB |             7.6 % |
+|       2 |       1 882 ms |          2 ms |         1.99 |          0 |          8% |       0 |     5.9 % |    192 MB |             4.2 % |
+|       4 |       2 086 ms |          2 ms |         2.01 |          0 |         17% |       0 |    10.4 % |    290 MB |             6.4 % |
+|       8 |       2 384 ms |          1 ms |         2.01 |          0 |         33% |       0 |    16.7 % |    440 MB |             4.9 % |
+|      16 |       2 700 ms |          4 ms |         1.82 |         28 |         67% |      96 |    35.4 % |    673 MB |             0.7 % |
+
+**Nothing was shed up to 8 cameras. Shedding begins at 16**, where per-camera frame rate falls from
+2.01 to 1.82 and 96 frames are dropped — the perception queue doing exactly what it is bounded to do.
+No assignment was refused and no assignment failed at any rung.
+
+### ⚠️ Assignment latency rises with load, and two earlier versions of this metric fell
+
+`assignmentLatencyMs` is the **control plane's own** measurement of _accepted change → enforcement
+point reports it applied_. At a 5-second poll interval a correct value sits near half that plus a
+report cycle, and it should get _worse_ under load. It does: 1.9 s → 2.7 s.
+
+Two wrong versions shipped before this one, and the ladder caught both — each produced a plausible
+number that **fell as load rose**, which is the signature of a metric measuring the wrong quantity:
+
+| version                               |     1 camera |   16 cameras | what it actually measured                          |
+| ------------------------------------- | -----------: | -----------: | -------------------------------------------------- |
+| sampled on every up-to-date report    |   588 859 ms |   196 104 ms | time since the last change, not time to apply one  |
+| sampled once per version, from the DB |    89 588 ms |    17 832 ms | after a restart: the age of the last change _ever_ |
+| **sampled once per accepted change**  | **3 521 ms** | **2 700 ms** | accepted → confirmed applied                       |
+
+> ⚠️ **A plausible number moving in the wrong direction is more dangerous than an absent one.** Nobody
+> questions a latency until it is impossible — 588 seconds was, 89 was not. The second version would
+> have shipped. A restarted control plane now reports `null` until it accepts a change, because a
+> change made by a previous process is one this process cannot honestly time (ADR-0039).
+
+### The runtime probe is not the frame path
+
+`runtimeLatencyMs` (1–4 ms) is the health probe media sends to the runtime, not the time to analyse a
+frame. It stays flat because it is a `/health` round trip on a local network; frame cost is the
+tracking ladder above. ⚠️ It is `null`, never a number, when the runtime cannot be reached — a timeout
+is not a slow round trip.
+
+### ⚠️ Sizing is unchanged: 2 supported, 4 provisional
+
+This ladder measures the **orchestration** cost, which is small: the control plane stayed under 8 %
+CPU at every rung and the enforcement point's poll-and-report cycle runs about five times a minute
+regardless of estate size. It does **not** raise the camera ceiling — the 16-camera rung sheds frames
+for the same reason the tracking and publisher ladders do, and one run recommends nothing.
+
+The seeded runtime declares **4** cameras, which is the provisional figure. ⚠️ The ladder raises that
+declared capacity for the run and restores it afterwards; a ladder that stopped at 4 would have
+measured the refusal path instead of the cost of sixteen cameras.
+
+---
+
 ## Model warm-up — measured, and it earns less than expected
 
 |                          | Unwarmed (`INFERENCE_ONNX_WARMUP=0`) | Warmed (committed default) |

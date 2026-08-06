@@ -199,6 +199,13 @@ export class AssignmentService {
   readonly #limits: AssignmentLimits;
   readonly #publisher: EventPublisher;
   readonly #counters: Counters = { changes: 0, failures: 0, failovers: 0, latencySamples: [] };
+  /**
+   * The change this process is waiting to see applied, and when it was accepted.
+   *
+   * ⚠️ In-process and deliberately not persisted: a restart must forget it, because a change made by
+   * the previous process is one this one cannot honestly time. See `report()`.
+   */
+  #pending: { version: number; at: number } | null = null;
   /** Tenants whose built-in profiles have been seeded in this process. Purely an optimisation. */
   readonly #seeded = new Set<string>();
 
@@ -982,9 +989,30 @@ export class AssignmentService {
     }
 
     /* --- assignment latency ------------------------------------------------------------------- */
-    const meta = await this.#metaDoc();
-    if (report.planVersion !== null && report.planVersion >= meta.version) {
-      const ms = now.getTime() - Date.parse(meta.versionAt);
+    /*
+     * ⚠️ **Measured only for changes THIS process made, and only once each.**
+     *
+     * Two wrong versions preceded this one, and the benchmark ladder caught both because each
+     * produced a number that fell as load rose — the signature of a metric measuring the wrong
+     * quantity, since more changes means a more recent baseline.
+     *
+     *   1. Sampling on *every* report where the enforcement point was up to date measured "time
+     *      since the last change", not "time to apply one". 588 s at one camera → 196 s at sixteen.
+     *   2. Sampling once per version, but from the meta document's `versionAt`, meant the first
+     *      report after a **restart** measured the age of the last change ever made — one poisoned
+     *      sample dominating a rolling mean of a hundred. 89 s at one camera → 17 s at sixteen.
+     *
+     * The pending mark is set when this process accepts a change and cleared by the first report
+     * that confirms it. A control plane that has just restarted therefore reports `null` until it
+     * accepts one — which is correct, and is what ADR-0039 asks for.
+     */
+    if (
+      this.#pending !== null &&
+      report.planVersion !== null &&
+      report.planVersion >= this.#pending.version
+    ) {
+      const ms = now.getTime() - this.#pending.at;
+      this.#pending = null;
       if (Number.isFinite(ms) && ms >= 0) {
         this.#counters.latencySamples.push(ms);
         if (this.#counters.latencySamples.length > 100) this.#counters.latencySamples.shift();
@@ -1115,13 +1143,20 @@ export class AssignmentService {
 
   /** Bump the plan version. One increment per accepted operation, not per document written. */
   async #bumpPlan(): Promise<number> {
-    const at = this.#clock.now().toISOString();
+    const now = this.#clock.now();
     await this.#meta.updateOne(
       { _id: PLAN_META_ID } as never,
-      { $inc: { version: 1 } as never, $set: { versionAt: at } as never },
+      { $inc: { version: 1 } as never, $set: { versionAt: now.toISOString() } as never },
       { upsert: true },
     );
-    return this.#planVersion();
+    const version = await this.#planVersion();
+    /*
+     * ⚠️ The oldest unconfirmed change wins. A burst of changes should be timed from the FIRST one
+     * an operator made to the moment the data plane caught up — overwriting the mark on every bump
+     * would time only the last change in a bulk operation and report a bulk apply as instant.
+     */
+    if (this.#pending === null) this.#pending = { version, at: now.getTime() };
+    return version;
   }
 
   async #commit(writes: readonly PendingWrite[]): Promise<void> {

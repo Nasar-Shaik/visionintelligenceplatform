@@ -961,6 +961,64 @@ describe('P-8.6 · the control plane', () => {
     expect(cold.assignedCameras).toBe(0);
   });
 
+  /**
+   * ⚠️ **The benchmark ladder found this; nothing else could have.**
+   *
+   * The first version sampled latency on *every* report where the enforcement point was up to date,
+   * which measures "time since the last change" rather than "time to apply one". On a quiet
+   * deployment that grows without bound — and the tell is that it *falls* as load rises, because
+   * more changes means a more recent baseline. The ladder reported 588 s at one camera falling to
+   * 196 s at sixteen.
+   */
+  /**
+   * ⚠️ **The second wrong version, also found by the ladder.** Sampling from the meta document's
+   * `versionAt` meant the first report after a RESTART measured the age of the last change ever
+   * made. One poisoned sample dominated a rolling mean of a hundred: 89 s at one camera.
+   */
+  it('⚠️ a restarted control plane reports NO latency until it accepts a change', async () => {
+    await withRuntime(h);
+    await h.service.enable(scope, 'cam1', { profileId: 'person-tracking', actor: 'op' });
+    const version = (await h.service.plan()).version;
+
+    /* A fresh process over the SAME database — the plan version is old, and it is not ours. */
+    const restarted = harness();
+    (restarted.clock as { advance: (ms: number) => void }).advance(3_600_000);
+    await restarted.service.report({
+      reportedBy: 'media',
+      at: NOW.toISOString(),
+      planVersion: version + 100,
+      runtimes: [],
+      cameras: [],
+    });
+    expect((await restarted.service.metrics()).assignmentLatencyMs).toBeNull();
+  });
+
+  it('⚠️ samples assignment latency ONCE per plan version, not once per report', async () => {
+    await withRuntime(h);
+    await h.service.enable(scope, 'cam1', { profileId: 'person-tracking', actor: 'op' });
+    const version = (await h.service.plan()).version;
+
+    const report = async () =>
+      h.service.report({
+        reportedBy: 'media',
+        at: NOW.toISOString(),
+        planVersion: version,
+        runtimes: [],
+        cameras: [{ tenantId: TENANT, cameraId: 'cam1', state: 'active', runtimeId: 'rt1' }],
+      });
+
+    (h.clock as { advance: (ms: number) => void }).advance(1_000);
+    await report();
+    const first = (await h.service.metrics()).assignmentLatencyMs;
+    expect(first).not.toBeNull();
+
+    /* Time passes with nothing changing. A per-report sample would climb; a per-version one holds. */
+    (h.clock as { advance: (ms: number) => void }).advance(600_000);
+    await report();
+    await report();
+    expect((await h.service.metrics()).assignmentLatencyMs).toBe(first);
+  });
+
   it('refuses to delete a built-in profile, or one a camera is bound to', async () => {
     await withRuntime(h);
     await expect(h.service.deleteProfile(scope, 'person-tracking')).rejects.toThrow(/built-in/);
