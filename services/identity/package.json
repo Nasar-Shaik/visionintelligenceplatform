@@ -10,7 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "test": "vitest run --exclude '**/*integration.test.ts'",
+    "test": "vitest run --exclude '**/*integration.test.ts' --exclude '**/*.nightly.test.ts'",
     "test:watch": "vitest",
     "lint": "eslint src",
     "clean": "rm -rf dist",

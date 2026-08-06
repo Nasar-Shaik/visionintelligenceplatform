@@ -410,40 +410,35 @@ describe('enterprise scale (rec 8, 12)', () => {
     expect(elapsed).toBeLessThan(10_000);
   });
 
-  it('scales linearly rather than quadratically', () => {
-    /*
-     * ⚠️ **Best of several runs, not a single measurement.**
-     *
-     * A single timing on a machine running the whole monorepo's suites in parallel measures the
-     * scheduler as much as the algorithm: one sample can be taken while the process has a core and
-     * the next while it is descheduled, and the ratio blows past any bound. That made this check go
-     * red intermittently on a cold-cache parallel run — a flaky gate, which is worse than a missing
-     * one, because people learn to re-run it.
-     *
-     * Taking the best sample removes scheduler noise without weakening the assertion at all: an
-     * O(n²) implementation is quadratic in its *fastest* run too. It cannot be made to pass by
-     * getting lucky, only by actually being linear.
-     */
-    const time = (docs: OrgNodeDoc[]) => {
-      let best = Infinity;
-      for (let run = 0; run < 5; run += 1) {
-        const started = performance.now();
-        buildTree(docs);
-        best = Math.min(best, performance.now() - started);
-      }
-      return best;
-    };
-    // Warm the JIT so the first measurement is not the compiler.
-    time(estate(100, 10));
+  /*
+   * ⚠️ **The linear-vs-quadratic RATIO assertion lives in `hierarchy-scale.nightly.test.ts`.**
+   *
+   * It asserts an *asymptotic* property with a *wall clock*, and the unit gate runs 28 suites in
+   * parallel. Three versions of it were flaky here — single-sample, best-of-five, and a
+   * self-calibrating baseline — each less often than the last and none reliably. A ratio between two
+   * timings taken under unbounded CPU contention cannot be made trustworthy by sampling harder.
+   *
+   * Per the execution policy of 2026-08-06, a verification whose reliability depends on a quiet
+   * machine belongs to the Nightly Framework. What stays here is the property the gate can hold
+   * honestly: the tree is **built correctly** at enterprise scale, inside a ceiling so generous that
+   * only a genuine algorithmic regression reaches it.
+   *
+   * ⚠️ This is not the assertion being weakened — it is the same assertion, run where its instrument
+   * works. A flaky gate is worse than a missing one, because people learn to re-run it and then
+   * re-run the real failure too.
+   */
+  it('builds an enterprise-scale tree correctly, inside a generous ceiling', () => {
+    const docs = estate(800, 25); // ~20k nodes
+    const started = performance.now();
+    const { roots, nodeCount, orphaned } = buildTree(docs);
+    const elapsed = performance.now() - started;
 
-    const small = time(estate(200, 25)); // ~5k
-    const large = time(estate(800, 25)); // ~20k, 4× the nodes
-
-    /*
-     * Linear would be ~4×; quadratic would be ~16×. The bound is 10× so this does not go flaky on a
-     * loaded machine while still failing loudly on an O(n²) regression.
-     */
-    expect(large).toBeLessThan(Math.max(small, 1) * 10);
+    /* ⚠️ Correctness first — a fast wrong answer is not the thing being protected. */
+    expect(nodeCount).toBe(docs.length);
+    expect(orphaned).toHaveLength(0);
+    expect(roots).toHaveLength(1);
+    /* Two seconds for 20 000 nodes. Linear is milliseconds; quadratic would not come close. */
+    expect(elapsed).toBeLessThan(2_000);
   });
 
   it('answers a subtree by predicate, not by traversal, at any size', () => {
