@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { BulkAssignmentRequest } from '@vip/contracts';
 import { assignmentApi, assignmentRuntimeApi } from '@/lib/api/assignment';
 import { queryKeys } from '@/lib/queryKeys';
 
@@ -128,6 +129,18 @@ export function useAssignCameraRuntime() {
   return useAssignmentMutation((args: { cameraId: string; runtimeId: string }) =>
     assignmentApi.assignRuntime(args.cameraId, { runtimeId: args.runtimeId }),
   );
+}
+
+/**
+ * A bulk operation over many cameras (§7).
+ *
+ * ⚠️ The result is **returned**, not swallowed into a toast. A bulk operation can be `partial` — the
+ * deployment runs a standalone MongoDB with no multi-document transactions, so a fault during the
+ * write phase can leave some items applied — and the caller has to be able to show which. A hook
+ * that reported only success/failure would erase the one thing the contract exists to carry.
+ */
+export function useBulkAssignment() {
+  return useAssignmentMutation((request: BulkAssignmentRequest) => assignmentApi.bulk(request));
 }
 
 export function useUpdateRuntime() {

@@ -10,12 +10,15 @@
  *    three descriptions of one. `applyAction` refuses anything not in it, and returns the refusal
  *    rather than throwing — a bulk operation has to report per item which cameras it could not move.
  *
- * 2. **Observed states need an observation.** `running`, `stopped`, `error` and `recovering` are
- *    claims about what the enforcement point is *actually doing*. They may only be entered by an
- *    `observe-*` action, which only arrives on the internal reporting route. The control plane can
- *    never mark a camera `running` because it published a plan — that is the camera-lifecycle
- *    evidence rule (CONSTRAINTS §25) applied to orchestration, and it is enforced here rather than
- *    described in a comment.
+ * 2. **`running` and `stopped` need an observation.** They are the two claims that would be *lies*
+ *    if the control plane set them itself: it only ever knows that it published a plan. They may
+ *    only be entered by an `observe-*` action, which arrives on the internal reporting route alone.
+ *    That is the camera-lifecycle evidence rule (CONSTRAINTS §25) applied to orchestration, and it
+ *    is enforced by the transition table rather than described in a comment.
+ *
+ *    ⚠️ This said five states until a test walked all 108 cells of the table and cut it to two —
+ *    `starting` is reached by `start`, `resume` and `restart`, all operator actions. The wider claim
+ *    read better and was false. See `OBSERVED_ASSIGNMENT_STATES`.
  *
  * ### ⚠️ `sessionEpoch`, and the defect it exists to prevent
  *

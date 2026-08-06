@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { Cpu, ShieldAlert } from 'lucide-react';
-import type { CameraAssignment } from '@vip/contracts';
+import type {
+  BulkAssignmentOperation,
+  BulkAssignmentResult,
+  CameraAssignment,
+} from '@vip/contracts';
 import { ApiRequestError } from '@/lib/api/http';
 import { usePermission } from '@/app/hooks';
 import { timeAgo } from '@/lib/format';
@@ -34,6 +38,7 @@ import {
 import {
   useAssignmentAction,
   useAssignments,
+  useBulkAssignment,
   useEnableAssignment,
   useProcessingMetrics,
   useProcessingProfiles,
@@ -68,12 +73,16 @@ export function CameraAssignmentPage() {
   const canWrite = usePermission('assignment:write');
   const canControl = usePermission('assignment:control');
   const [stateFilter, setStateFilter] = useState<string>('all');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  /* ⚠️ Held, not toasted. A partial result names which cameras landed — see `BulkResultNotice`. */
+  const [bulkResult, setBulkResult] = useState<BulkAssignmentResult | null>(null);
 
   const assignments = useAssignments(stateFilter === 'all' ? {} : { state: stateFilter });
   const profiles = useProcessingProfiles();
   const metrics = useProcessingMetrics();
   const enable = useEnableAssignment();
   const act = useAssignmentAction();
+  const bulk = useBulkAssignment();
 
   const forbidden =
     assignments.error instanceof ApiRequestError && assignments.error.status === 403;
@@ -112,6 +121,40 @@ export function CameraAssignmentPage() {
   const supportedProfiles = (profiles.data ?? []).filter((p) => p.supported !== false);
   const defaultProfile = supportedProfiles[0]?.id ?? 'person-tracking';
 
+  const toggle = (cameraId: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(cameraId)) next.delete(cameraId);
+      else next.add(cameraId);
+      return next;
+    });
+  };
+
+  /**
+   * Apply one operation to every selected camera.
+   *
+   * ⚠️ The result is kept on screen rather than announced and discarded. A bulk operation may come
+   * back `partial`, and "30 of 50 applied, here are the 20 that did not" is not something a toast can
+   * carry — it is the outcome an operator has to act on.
+   */
+  const runBulk = async (operation: BulkAssignmentOperation) => {
+    if (selected.size === 0) return;
+    try {
+      const result = await bulk.mutateAsync({
+        operation,
+        cameraIds: [...selected],
+        ...(operation === 'enable' ? { profileId: defaultProfile } : {}),
+      } as never);
+      setBulkResult(result);
+      setSelected(new Set());
+      if (result.partial) toast.error(`${result.applied} of ${result.requested} applied`);
+      else if (result.applied > 0) toast.success(`${result.applied} camera(s) updated`);
+      else toast.error('nothing was applied');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'the bulk operation failed');
+    }
+  };
+
   const run = async (label: string, fn: () => Promise<unknown>) => {
     try {
       await fn();
@@ -145,6 +188,38 @@ export function CameraAssignmentPage() {
           Live processing measurements are unavailable — the enforcement point could not be reached.
           Assignments below are the control plane&apos;s record and remain accurate.
         </Alert>
+      ) : null}
+
+      {bulkResult ? (
+        <BulkResultNotice result={bulkResult} onDismiss={() => setBulkResult(null)} />
+      ) : null}
+
+      {canWrite && selected.size > 0 ? (
+        /*
+         * ⚠️ Named. "Enable AI" exists twice on this page — once per row and once here — and without
+         * a name on the region a screen reader announces two identical buttons with different blast
+         * radii. The console test found it as an ambiguous query, which is the same defect.
+         */
+        <Card role="region" aria-label="Bulk actions">
+          <CardContent className="flex flex-wrap items-center gap-3 py-4">
+            <span className="text-sm font-medium">{selected.size} selected</span>
+            <Button size="sm" variant="outline" onClick={() => void runBulk('enable')}>
+              Enable AI
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => void runBulk('disable')}>
+              Disable AI
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => void runBulk('restart')}>
+              Restart
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => void runBulk('remove')}>
+              Remove assignment
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+              Clear
+            </Button>
+          </CardContent>
+        </Card>
       ) : null}
 
       <Card>
@@ -186,6 +261,7 @@ export function CameraAssignmentPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {canWrite ? <TableHead className="w-10" aria-label="Select" /> : null}
                     <TableHead>Camera</TableHead>
                     <TableHead>State</TableHead>
                     <TableHead>Profile</TableHead>
@@ -204,6 +280,8 @@ export function CameraAssignmentPage() {
                       measured={measured.get(row.cameraId)}
                       canWrite={canWrite}
                       canControl={canControl}
+                      selected={selected.has(row.cameraId)}
+                      onToggle={() => toggle(row.cameraId)}
                       onEnable={() =>
                         void run('AI enabled', () =>
                           enable.mutateAsync({ cameraId: row.cameraId, profileId: defaultProfile }),
@@ -231,6 +309,8 @@ function AssignmentRow({
   measured,
   canWrite,
   canControl,
+  selected,
+  onToggle,
   onEnable,
   onAct,
 }: {
@@ -238,11 +318,27 @@ function AssignmentRow({
   measured: CameraProcessingRow | undefined;
   canWrite: boolean;
   canControl: boolean;
+  selected: boolean;
+  onToggle: () => void;
   onEnable: () => void;
   onAct: (action: 'disable' | 'pause' | 'resume' | 'restart') => void;
 }) {
   return (
     <TableRow>
+      {canWrite ? (
+        <TableCell>
+          {/* ⚠️ A native checkbox. The design system has no checkbox primitive, and inventing one
+              inside a feature is how a design system quietly forks — the `focus-ring` class is the
+              system's, so this still matches every other focusable control on the page. */}
+          <input
+            type="checkbox"
+            className="focus-ring size-4 cursor-pointer accent-brand"
+            checked={selected}
+            onChange={onToggle}
+            aria-label={`Select ${row.cameraId}`}
+          />
+        </TableCell>
+      ) : null}
       <TableCell className="font-mono text-xs">{row.cameraId}</TableCell>
       <TableCell>
         <div className="flex flex-col gap-1">
@@ -290,5 +386,58 @@ function AssignmentRow({
         </div>
       </TableCell>
     </TableRow>
+  );
+}
+
+/**
+ * The outcome of a bulk operation, kept on screen until dismissed.
+ *
+ * ### ⚠️ `partial` is the state this component exists for
+ *
+ * The deployment runs a standalone MongoDB with no multi-document transactions, so the guarantee is
+ * validate-all-then-apply: a bad request writes nothing, and a fault *during* the write phase can
+ * leave some items applied. That second case is rare and is the one an operator must be able to act
+ * on — so every refused camera is listed with its reason rather than summarised into a count.
+ *
+ * ⚠️ A wholly refused batch says so plainly, including for the cameras that were individually valid:
+ * they were not applied because another camera in the operation was refused, and the server says
+ * exactly that per item.
+ */
+function BulkResultNotice({
+  result,
+  onDismiss,
+}: {
+  result: BulkAssignmentResult;
+  onDismiss: () => void;
+}) {
+  const refused = result.items.filter((i) => !i.applied);
+  return (
+    <Alert>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <p className="font-medium">
+            {result.partial
+              ? `Partially applied — ${result.applied} of ${result.requested} cameras`
+              : result.applied === result.requested
+                ? `${result.applied} camera(s) updated`
+                : `Nothing was applied — ${result.failed} of ${result.requested} refused`}
+          </p>
+          {refused.length > 0 ? (
+            <ul className="space-y-0.5 text-xs text-muted-foreground">
+              {refused.slice(0, 10).map((item) => (
+                <li key={item.cameraId}>
+                  <span className="font-mono">{item.cameraId}</span> —{' '}
+                  {item.error?.message ?? 'refused'}
+                </li>
+              ))}
+              {refused.length > 10 ? <li>…and {refused.length - 10} more</li> : null}
+            </ul>
+          ) : null}
+        </div>
+        <Button size="sm" variant="ghost" onClick={onDismiss}>
+          Dismiss
+        </Button>
+      </div>
+    </Alert>
   );
 }

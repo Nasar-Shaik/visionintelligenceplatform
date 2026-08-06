@@ -12,7 +12,7 @@
  * - a media outage must degrade the measurement columns without hiding the controls;
  * - pause/resume must follow `assignment:control` and enable/disable `assignment:write`.
  */
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { http as mswHttp, HttpResponse } from 'msw';
 import { permissionsForRoles } from '@vip/permissions';
@@ -216,6 +216,115 @@ describe('P-8.6 · Camera Assignment page', () => {
 
     expect(await screen.findByText('Error')).toBeInTheDocument();
     expect(screen.getByText(/every eligible runtime is at capacity/i)).toBeInTheDocument();
+  });
+});
+
+describe('P-8.6 · bulk operations (§7)', () => {
+  it('⚠️ a wholly refused batch names every camera, including the valid ones', async () => {
+    stubApi({
+      '/camera/assignments': [
+        assignment(),
+        assignment({ cameraId: 'cam2', state: 'unassigned', aiEnabled: false }),
+      ],
+      '/camera/processing-profiles': [profile()],
+      '/media/perception/assignment/cameras': [],
+    });
+    server.use(
+      mswHttp.post('/api/camera/assignments/bulk', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            operation: 'enable',
+            requested: 2,
+            applied: 0,
+            failed: 2,
+            partial: false,
+            planVersion: 7,
+            items: [
+              {
+                cameraId: 'cam1',
+                applied: false,
+                error: {
+                  code: 'batch_refused',
+                  message: 'not applied — another camera in this operation was refused',
+                },
+              },
+              {
+                cameraId: 'cam2',
+                applied: false,
+                error: { code: 'refused', message: 'every eligible runtime is at capacity' },
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    authAs(['admin']);
+    renderWithProviders(<CameraAssignmentPage />, { store });
+
+    const select = await screen.findByLabelText('Select cam1');
+    fireEvent.click(select);
+    fireEvent.click(screen.getByLabelText('Select cam2'));
+    const bar = await screen.findByRole('region', { name: /bulk actions/i });
+    fireEvent.click(within(bar).getByRole('button', { name: /^enable ai$/i }));
+
+    expect(await screen.findByText(/nothing was applied/i)).toBeInTheDocument();
+    /* ⚠️ The valid camera is listed too, with the reason it was held back. */
+    expect(screen.getByText(/another camera in this operation was refused/i)).toBeInTheDocument();
+    expect(screen.getByText(/every eligible runtime is at capacity/i)).toBeInTheDocument();
+  });
+
+  it('⚠️ a PARTIAL result says so — the state a standalone MongoDB makes possible', async () => {
+    stubApi({
+      '/camera/assignments': [assignment()],
+      '/camera/processing-profiles': [profile()],
+      '/media/perception/assignment/cameras': [],
+    });
+    server.use(
+      mswHttp.post('/api/camera/assignments/bulk', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            operation: 'disable',
+            requested: 2,
+            applied: 1,
+            failed: 1,
+            partial: true,
+            planVersion: 8,
+            items: [
+              { cameraId: 'cam1', applied: true, state: 'stopping' },
+              {
+                cameraId: 'cam9',
+                applied: false,
+                error: { code: 'write_failed', message: 'connection reset' },
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    authAs(['admin']);
+    renderWithProviders(<CameraAssignmentPage />, { store });
+
+    fireEvent.click(await screen.findByLabelText('Select cam1'));
+    const bar = await screen.findByRole('region', { name: /bulk actions/i });
+    fireEvent.click(within(bar).getByRole('button', { name: /^disable ai$/i }));
+
+    expect(await screen.findByText(/partially applied — 1 of 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/connection reset/i)).toBeInTheDocument();
+  });
+
+  it('⚠️ an operator is offered no selection at all — bulk is assignment:write', async () => {
+    stubApi({
+      '/camera/assignments': [assignment()],
+      '/camera/processing-profiles': [profile()],
+      '/media/perception/assignment/cameras': [],
+    });
+    authAs(['operator']);
+    renderWithProviders(<CameraAssignmentPage />, { store });
+
+    await screen.findByRole('button', { name: /pause/i });
+    expect(screen.queryByLabelText('Select cam1')).not.toBeInTheDocument();
   });
 });
 

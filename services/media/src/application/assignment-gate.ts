@@ -160,7 +160,7 @@ export class AssignmentGate {
   decide(tenantId: string, cameraId: string): GateDecision {
     const held = this.#held.get(KEY(tenantId, cameraId));
     if (held === undefined) return { deliver: false, reason: 'unassigned' };
-    /* mutation: intent ignored */
+    if (held.entry.intent === 'hold') return { deliver: false, reason: 'held' };
     return {
       deliver: true,
       runtimeUrl: held.entry.runtimeUrl,
