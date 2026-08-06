@@ -132,6 +132,14 @@ say inference **runs** and must not say **how well it works**.
 
 ---
 
+> ⚠️ **Audited end to end at the P-8 Phase 7 freeze (2026-08-07).** Every stage and script in this
+> file was read against eight questions — can it produce a false green, a false red, silently measure
+> the wrong thing, mutate tracked files, or depend on a previous stage, a warm cache, execution order,
+> or one camera while reporting sixteen. Nine findings, four fixed, five recorded:
+> [VERIFICATION_AUDIT](../../project/VERIFICATION_AUDIT.md). ⚠️ **One ladder in six asserts an
+> invariant that would notice if its rungs stopped scaling**, and that is the one that caught the
+> defect. Read F-1 before trusting any capacity table in this repository.
+
 > ⚠️ **This inventory is incomplete, and saying so is the point.** The **P-8 Phase 5** (event bridge:
 > `event-bridge.mjs`, `event-bridge-replay.mjs`, `event-bridge-benchmark.mjs`,
 > `event-bridge-mutations.mjs`, `event-bridge-resilience.mjs`, `event-bridge-ui.mjs`) and **Phase 6**

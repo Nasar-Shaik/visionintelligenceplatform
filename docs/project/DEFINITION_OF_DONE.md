@@ -186,3 +186,50 @@ wrote down.
 ⚠️ **A green run is the beginning of the reading, not the end of it.** Every verification in this
 repository writes a samples file for exactly this reason. Open it. See
 [ED-0075](ENGINEERING_DECISION_LOG.md) and [[absence-hides-defects]].
+
+---
+
+## Verification is production code (permanent, from the P-8 Phase 7 freeze · 2026-08-07)
+
+Two consecutive full nightly runs found **nine and then six** failing stages, and **not one of them
+was in the runtime**. Every defect was in the verification framework: a ladder measuring one camera
+and labelling it sixteen, three ladders refused by a capacity gate, a stage that had never run, a gate
+that went red because a verification had been run, and one unhandled throw that leaked state into four
+later stages.
+
+⚠️ **A benchmark that measures the wrong thing is a product defect.** It is the number a customer is
+sized against. It is not tooling.
+
+### The eight rules
+
+| #   | Rule                                                                                                                                                        |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **A ladder asserts its rungs differ before publishing a number.** `offered == delivered + dropped + failed`, or an equivalent scaling signal, per rung      |
+| 2   | **A refusal is a measurement, not an error.** Truncate, publish what was measured, record `refusedAt`                                                       |
+| 3   | **Assert invariants, not expected values.** The invariant caught a defect it was not written for; an expected value could not have                          |
+| 4   | **`array.every(...)` needs a non-empty guard.** `[].every()` is `true`                                                                                      |
+| 5   | **A mutation harness re-verifies the deployment after restore**, not only the source tree — otherwise a failed restore is indistinguishable from a mutation |
+| 6   | **A verification's report of what it SENT is not evidence of delivery.** Measure at the receiver                                                            |
+| 7   | **No stage writes a tracked file. No generated artifact carries a timestamp. No evidence file is formatted**                                                |
+| 8   | **A repair to a verification belongs in the shared helper, not in the script where it was found**                                                           |
+
+### ⚠️ Rule 8 is the one that would have prevented most of the others
+
+Every finding in [VERIFICATION_AUDIT](VERIFICATION_AUDIT.md) has the same shape: **an instance was
+fixed and the class was left.**
+
+- The `[].every()` vacuity trap was found in P-8 Phase 3, fixed in one file, and is still live in two
+  others.
+- The capacity refusal was hit by the loitering ladder on 2026-08-06, fixed inside that one script,
+  and took out three more ladders the following night.
+- The assignment gate shipped in P-8 Phase 6 with `_assign.mjs` written specifically so older
+  verifications could catch up — and four of them were never updated.
+
+When a verification needs a repair, ask what else has the same shape **before** committing the repair.
+
+### The freeze gate gains two lines
+
+A milestone is frozen only when the platform is green **and the verification framework is green** and
+**the benchmark can be trusted**. A red stage that belongs to another milestone does not block a
+freeze — but it must be recorded in [KNOWN_ISSUES](KNOWN_ISSUES.md) with its evidence, its impact and
+its owner, and "unknown" must stay unknown until it is measured.

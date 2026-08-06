@@ -538,3 +538,71 @@ ladder rung plus the warm-up and reproducibility measurements.
 writes it only on completion, and this run was stopped at 53 minutes under the policy change. Its
 per-sample evidence is the console log, [`soak-53min.txt`](../review/p8/soak-53min.txt), which is why
 that file is committed rather than left in a temp directory.
+
+---
+
+## P-8 Phase 7 freeze — the ladder as it stands at the freeze commit (2026-08-07)
+
+Re-run on the freeze candidate after the verification repairs of 2026-08-06/07, not carried over from
+development. `LADDER=1,2,4`, 45-second steady-state window per rung, 20-second dwell threshold. Every
+latency is the **platform's own** measurement read from `/metrics`, never timed by the harness.
+
+| cameras | event → rule | rule → candidate | end to end | zones | dwell timers | rules CPU / RSS | zone geometry |
+| ------: | -----------: | ---------------: | ---------: | ----: | -----------: | --------------- | ------------: |
+|       1 |       111 ms |           9.0 ms |     117 ms |     1 |            1 | 0.5 % / 113 MB  |       12.9 µs |
+|       2 |        85 ms |           3.0 ms |      88 ms |     2 |            4 | 0.5 % / 111 MB  |       13.0 µs |
+|       4 |       147 ms |           3.4 ms |     150 ms |     4 |            4 | 0.5 % / 113 MB  |        9.7 µs |
+
+**`refusedAt: null`** — the ladder ran to its configured top and was not truncated by the control
+plane. (A truncated ladder now records the rung it was refused at and why; see below.)
+
+### What this says, and what it does not
+
+- **The rule engine is not the bottleneck and is not close to being one.** Rule → candidate is 3–9 ms
+  against an end-to-end of 88–150 ms, and rules CPU sits at **0.5 %** across every rung. Nearly all of
+  the end-to-end figure is transport: media, the broker and the events service.
+- **Zone geometry is free** — ~10–13 µs per frame, and it does not grow with camera count.
+- ⚠️ **Rung 2 is faster than rung 1.** 88 ms against 117 ms is host noise, not a scaling result. It is
+  printed rather than smoothed because a ladder that hides its own variance invites a reader to
+  believe a 30 ms difference at the bottom of the range.
+- ⚠️ **Three rungs is not a scaling curve.** An earlier development run climbed to 16 cameras and
+  showed end-to-end rising to ~866 ms; that number is **not** republished here, because it was
+  measured on a different day under a different load and the two cannot be put in one table.
+
+### Assumptions, stated because a capacity table is unreadable without them
+
+|                          |                                                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| **Hardware**             | the reference development host — Apple Silicon, CPU inference (`CPUExecutionProvider`), no GPU                |
+| **Runtime limits**       | one registered runtime, `ASSIGNMENT_RUNTIME_MAX_CAMERAS=4`, **raised for the ladder and restored afterwards** |
+| **Camera assignment**    | every camera in every rung is explicitly assigned; from P-8 Phase 6 an unassigned camera is never analysed    |
+| **Fixture**              | synthetic RTSP walkers, one per camera. **Not real CCTV** — L-1 and L-58 stand                                |
+| **Observation interval** | ~10 s, set by the event dedup window, not by the frame rate (L-57)                                            |
+| **Confidence**           | ⚠️ **one run.** Nothing here is a sizing recommendation                                                       |
+| **Sizing**               | **unchanged: 2 supported, 4 provisional.** No figure is published until three independent runs agree          |
+
+### ⚠️ What the freeze night changed about how every ladder reports
+
+Two repairs, both from defects found by the nightly rather than by review:
+
+1. **A ladder no longer throws when the control plane refuses a camera.** It stops, publishes the
+   rungs it measured, and records `refusedAt` beside the table. On 2026-08-06 a throw here discarded
+   five measured rungs _and_, in a script with no top-level `finally`, leaked a raised capacity
+   declaration and a dozen assigned cameras into the next three ladders — which then failed at their
+   first rung. One unhandled throw cost four stages.
+2. **The runtime ladder was measuring one camera and labelling it sixteen.** `inference.mjs` started
+   sixteen streams and assigned none of them, so every rung above the first reported a single stream's
+   throughput. ⚠️ It was caught by the **frame-accounting invariant** (`offered == delivered + dropped
+   - failed`), not by anyone reading the numbers — they looked entirely reasonable. That invariant is
+     currently asserted by one ladder out of six; see [VERIFICATION_AUDIT](VERIFICATION_AUDIT.md) F-1.
+
+### The other ladders on the same night, for context
+
+| Ladder                | Result                                                                                              |
+| --------------------- | --------------------------------------------------------------------------------------------------- |
+| `benchmark` (runtime) | 16 cameras, 27.3 % dropped at the top rung; computed sizing **4 cameras** at p95 126 ms / 192 % CPU |
+| `tracking-benchmark`  | 16 cameras, 25.8 % dropped, 6 extra identities, tracking 0.51 ms/frame                              |
+| `publisher-benchmark` | 16 cameras, 19.93 published/s, 1.65 persisted/s, publish ≤1.67 ms, no shedding                      |
+
+⚠️ **The runtime ladder's computed "4 cameras" does not change the sizing policy.** It is one run, and
+the standing rule is three agreeing runs before a recommendation moves. **2 supported, 4 provisional.**

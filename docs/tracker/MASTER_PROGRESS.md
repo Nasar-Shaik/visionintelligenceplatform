@@ -254,8 +254,59 @@ _Last updated: 2026-08-05 · Claude_
   **1032** · contracts · import graph 0 violations.
   [ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md).
 
-- **P-8 Phase 7 · Retail Loitering — the first complete customer workflow ✅ complete, 🟡 PENDING
-  FREEZE (2026-08-06)** — implemented, correct, deployment-verified, browser-verified and
+- **P-8 Phase 7 FREEZE 🔒 (2026-08-07) — and the two nightlies that found nine defects, none of them
+  in the runtime.** The milestone was implemented, deployment-verified, browser-verified and
+  mutation-verified on 2026-08-06 and sat at Pending Freeze awaiting the nightly ladder. Two full
+  nightly runs followed. **The first found 9 failing stages, the second 6, and every single one was in
+  the VERIFICATION FRAMEWORK.** The product under test never failed.
+  ⛔ **The Phase 3 capacity ladder had been measuring one camera and labelling it sixteen.**
+  `inference.mjs` started sixteen streams and assigned none of them; from P-8 Phase 6 an unassigned
+  camera is never analysed, so it measured the one camera an earlier section had assigned and printed
+  `16 cameras · 44 analysed · 65.2ms inference`. Every figure above rung 1 was a single stream, and it
+  read perfectly plausibly. ⚠️ **What caught it was the frame-accounting INVARIANT** (`offered ==
+delivered + dropped + failed`), which stopped balancing because `offered` scaled with cameras and
+  `delivered` did not — and reported it as "frames lost silently", which is what it looked like from
+  inside. A check written against an invariant caught a defect it was not written for; one written
+  against an expected number could not have.
+  ⛔ **One unhandled throw took out four ladders.** `hardening.mjs` threw when the control plane
+  refused a camera — at 12 cameras the runtime hit 23.9 % drop and 556 % CPU, so the assignment engine
+  correctly declined a 13th. Two costs: five measured rungs were discarded, and with no top-level
+  `finally` the throw skipped cleanup, leaving `maxCameras: 24` and a dozen assigned cameras behind.
+  The next three ladders — **including this milestone's own** — failed with 409 at their first rung.
+  Fixed with `tryAssignCameras`: a refusal is a measurement, so a ladder truncates, publishes what it
+  measured, and records `refusedAt` beside the table.
+  ⚠️ **Two were mine from P-8.7 and are recorded as such.** `nightly-tests` had never run — `pnpm
+vitest` at the repo root fails because vitest is a per-package dependency, so the stage written to
+  stop a convention going stale had a runner that did not run. And the gate went red on **format**
+  because a verification had been run: machine-written evidence JSON does not match prettier's array
+  wrapping, which also means the "gate green at 978bb87" reported earlier was true of a tree that no
+  longer existed by the time it was committed.
+  **The audit:** [VERIFICATION_AUDIT](../project/VERIFICATION_AUDIT.md) reads all 34 stages and 31
+  scripts against eight questions. Nine findings, four fixed, five recorded. ⚠️ **The headline: one
+  ladder in six asserts an invariant that would notice if its rungs stopped scaling** — and it is the
+  one that caught the defect. The P-8.7 ladder's own numbers were checked rather than assumed (events/s
+  0.03→1.37, zones 1→16, timers 1→32, detections 1716→7538 across 1→16 cameras) and they stand, but
+  nothing in it would have said so if they had not.
+  ⚠️ **The recurring shape across every finding: an instance was fixed and the class was left.** The
+  `[].every()` vacuity trap, the capacity refusal, the assignment gate — each found, repaired in one
+  file, and met again elsewhere within days. Now rule 8 of the Definition of Done.
+  **Freeze evidence, on the freeze commit:** gate green (format · typecheck 28 · lint 20 · test 28 ·
+  build 19 · python 1036 · contracts · imports 0 violations) · deployment integrity green · loitering
+  end to end · rule-replay 208 fields byte-identical · loitering-zones · rule-browser · rule-benchmark
+  3 rungs · rule-mutations 7 red at the naming check + 1 recorded tolerance. Ladders re-run green:
+  runtime 16 cams, tracking 16 cams, publisher 16 cams. **Sizing unchanged: 2 supported, 4
+  provisional** — the runtime ladder computed 4 and one run moves nothing.
+  ⚠️ **Two stages remain red and neither belongs to this milestone:** `dashboard` (KI-01, failing since
+  2026-08-05) and `broker-resilience` (KI-03). Both recorded with evidence; KI-03's counters point to a
+  settling-time defect in the check rather than a gate leak, and it stays **open** because an inference
+  from five counters is not a measurement.
+  **Governance:** ADR-0044 · ADR-0045 · ED-0075 · ED-0076 · VERIFICATION_AUDIT · C-14f/C-14g/C-29/C-29a
+  · L-56–L-60 · KI-01–KI-04 · DEFINITION_OF_DONE (verification is production code, eight rules) ·
+  benchmark · verification matrix · customer-workflows · PHASE_8_PLAN.
+
+- **P-8 Phase 7 FREEZE · Retail Loitering — the first complete customer workflow 🔒 frozen
+  (2026-08-07)** — the freeze entry is at the top of this section; what follows is the milestone as
+  built. — implemented, correct, deployment-verified, browser-verified and
   mutation-verified. ⚠️ **Freeze awaits the nightly capacity ladder**, per the execution policy set
   the same day: a verification expected to exceed ~10–15 minutes is registered as a Nightly Framework
   stage and does not block the working day. A local full ladder was run and is recorded in the
