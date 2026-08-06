@@ -362,6 +362,47 @@ const listOf = (payload) =>
   payload?.items ?? payload?.incidents ?? payload?.cameras ?? payload ?? [];
 
 /**
+ * Collect the items created since `sinceIso`, walking keyset pages newest-first.
+ *
+ * ⚠️ **This exists because the obvious thing is wrong, and the smoke test proved it twice.** Both
+ * `/workflow/incidents` and `/media/recordings` are keyset-paginated with a `nextCursor` and **no
+ * total**. Asking for `?limit=N` and taking `.length` measures the page cap, not the collection: the
+ * smoke run reported "200 incidents before, 200 after (+0)" because 200 *was* the limit, and
+ * "1/5 samples produced new segments" because the 50-item page saturated after the first sample.
+ * Both numbers were plausible and both were describing the query rather than the platform.
+ *
+ * The same defect in two places is the shape rule 8 of the Definition of Done is about, so the repair
+ * is a shared helper rather than two local patches. Both callers now measure **time**, which is what
+ * they actually mean, and no page cap can silently bound it.
+ */
+async function collectSince(path, sinceIso, opts = {}) {
+  const { pageSize = 50, maxPages = 20, timeField = 'createdAt' } = opts;
+  const since = Date.parse(sinceIso);
+  const out = [];
+  let cursor;
+  for (let page = 0; page < maxPages; page += 1) {
+    const sep = path.includes('?') ? '&' : '?';
+    const q = `${path}${sep}limit=${pageSize}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+    const res = await api(q, { headers: H });
+    const items = listOf(res.json?.data);
+    if (items.length === 0) break;
+    let sawOlder = false;
+    for (const it of items) {
+      const t = Date.parse(it[timeField] ?? '');
+      if (Number.isFinite(t) && t <= since) {
+        sawOlder = true;
+        continue;
+      }
+      out.push(it);
+    }
+    cursor = res.json?.data?.nextCursor;
+    /* Newest-first: the first page carrying anything older than the cut-off is the last one needed. */
+    if (sawOlder || cursor === undefined || cursor === null) break;
+  }
+  return out;
+}
+
+/**
  * Remove everything this run created.
  *
  * ⚠️ Incidents are **acknowledged and resolved with a note, never deleted**. They are audit records,
@@ -601,18 +642,19 @@ try {
   const baselineImages = Object.fromEntries(
     Object.entries(baselineHealth).map(([k, v]) => [k, v.image]),
   );
-  incidentsAtStart = listOf(
-    (await api('/workflow/incidents?limit=200', { headers: H })).json?.data,
-  ).length;
-  const baselineRecordings = listOf(
-    (await api('/media/recordings?limit=1', { headers: H })).json?.data,
-  );
+  /*
+   * ⚠️ `incidentsAtStart` is a MARK IN TIME, not a count. The incidents list has no total and is
+   * keyset-paginated, so "how many exist" is not a question one request answers — but "how many
+   * appeared since this instant" is, and it is the one this run actually means.
+   */
+  const runBeganIso = new Date().toISOString();
+  incidentsAtStart = 0;
 
   let prev = {
     node: Object.fromEntries(Object.entries(NODE_SERVICES).map(([s, p]) => [s, scrapeNode(s, p)])),
     runtime: scrapeRuntime(),
     at: Date.now(),
-    recordingsSeen: baselineRecordings.length,
+    atIso: runBeganIso,
   };
 
   const totalSamples = Math.floor((MINUTES * 60) / SAMPLE_SECONDS);
@@ -636,25 +678,38 @@ try {
     const m = node.media ?? {};
     const c = node.camera ?? {};
 
-    /* camera health and recording continuity come from the API, not from a metric */
+    /*
+     * Camera health, reconnects and recording continuity — per camera, from the supervisor.
+     *
+     * ⚠️ **Scoped to the cameras this run created.** The smoke run asserted across the whole tenant
+     * and went red on two demo cameras that were stopped before it started — the instrument failing
+     * the platform for streams it does not own. `reconnectAttempts` and `recording` come from the
+     * same entry, which makes reconnect count and recording continuity direct readings rather than
+     * things inferred from a paginated list.
+     */
     const streamHealth = (await api('/media/streams/health', { headers: H })).json?.data ?? {};
-    const recentRecordings = listOf(
-      (await api('/media/recordings?limit=50', { headers: H })).json?.data,
-    );
-    const mine = recentRecordings.filter((r) => cameraIds.includes(r.cameraId));
-    const recDurations = mine.map((r) => num(r.durationSeconds)).filter((v) => v > 0);
+    const allStreams = streamHealth.streams ?? [];
+    const myStreams = allStreams.filter((s) => cameraIds.includes(s.cameraId));
+    const byHealth = (v) => myStreams.filter((s) => s.health === v).length;
 
-    /* incident latency: created minus the event that triggered it. null, never 0, when unobserved. */
-    const recentIncidents = listOf(
-      (await api('/workflow/incidents?limit=50', { headers: H })).json?.data,
+    /* New segments and new incidents SINCE THE LAST SAMPLE — time-based, immune to the page cap. */
+    const newRecordings = (
+      await collectSince('/media/recordings', prev.atIso, { timeField: 'createdAt' })
+    ).filter((r) => cameraIds.includes(r.cameraId));
+    const recDurations = newRecordings.map((r) => num(r.durationSeconds)).filter((v) => v > 0);
+
+    const newIncidents = (
+      await collectSince('/workflow/incidents', prev.atIso, { timeField: 'createdAt' })
     ).filter((i) => `${i.title ?? ''} ${i.source?.ruleName ?? ''}`.includes(TAG));
-    const incidentLatencies = recentIncidents
+    /* Incident latency: raised minus the event that triggered it. null, never 0, when unobserved. */
+    const incidentLatencies = newIncidents
       .map((i) => {
         const occurred = Date.parse(i.triggeredBy?.occurredAt ?? '');
         const created = Date.parse(i.createdAt ?? '');
         return Number.isFinite(occurred) && Number.isFinite(created) ? created - occurred : null;
       })
       .filter((v) => v !== null && v >= 0);
+    incidentsAtStart += newIncidents.length;
 
     const ratio = (cKey, sKey) => {
       const cnt = d('rules', cKey);
@@ -759,8 +814,8 @@ try {
         'rules_candidate_latency_seconds_sum',
       ),
 
-      /* incidents */
-      incidentCount: recentIncidents.length,
+      /* incidents — NEW since the previous sample, so this is throughput rather than a page size */
+      incidentCount: newIncidents.length,
       incidentLatencyMsAvg: incidentLatencies.length > 0 ? mean(incidentLatencies) : null,
       incidentLatencyMsMax: incidentLatencies.length > 0 ? Math.max(...incidentLatencies) : null,
 
@@ -773,13 +828,18 @@ try {
       assignmentActive: num(c.camera_assignment_active_cameras),
       mediaCycleFailures: d('media', 'media_assignment_cycle_failures_total'),
 
-      /* camera health and recording continuity */
-      streamsTotal: num(streamHealth.total),
-      streamsHealthy: num(streamHealth.healthy),
-      streamsDegraded: num(streamHealth.degraded),
-      streamsDown: num(streamHealth.down),
-      recordingsSeen: mine.length,
-      recordingNewSince: mine.length - prev.recordingsSeen,
+      /* camera health, reconnects and recording continuity — MY cameras only */
+      streamsTotal: myStreams.length,
+      streamsHealthy: byHealth('healthy'),
+      streamsDegraded: byHealth('degraded'),
+      streamsDown: byHealth('down'),
+      streamsRecording: myStreams.filter((s) => s.recording === true).length,
+      reconnectAttempts: myStreams.reduce((a, s) => a + num(s.reconnectAttempts), 0),
+      framesReceived: myStreams.reduce((a, s) => a + num(s.framesReceived), 0),
+      /* ⚠️ Tenant-wide, recorded but never asserted: this run does not own those streams. */
+      tenantStreamsTotal: num(streamHealth.total),
+      tenantStreamsDown: num(streamHealth.down),
+      recordingNewSince: newRecordings.length,
       recordingMedianDurationS:
         recDurations.length > 0
           ? recDurations.sort((a, b) => a - b)[Math.floor(recDurations.length / 2)]
@@ -812,7 +872,7 @@ try {
     };
 
     samples.push(sample);
-    prev = { node, runtime, at: Date.now(), recordingsSeen: mine.length };
+    prev = { node, runtime, at: Date.now(), atIso: new Date().toISOString() };
     flush();
 
     console.log(
@@ -855,10 +915,16 @@ try {
     }
   }
 
-  incidentsAtEnd = listOf(
-    (await api('/workflow/incidents?limit=200', { headers: H })).json?.data,
-  ).length;
-  flush({ incidentsAtStart, incidentsAtEnd });
+  /*
+   * ⚠️ Every incident this run raised, counted by TIME rather than by page. `incidentsAtStart` has
+   * been accumulating per sample; this catches anything raised after the final sample.
+   */
+  incidentsAtEnd =
+    incidentsAtStart +
+    (await collectSince('/workflow/incidents', prev.atIso, { timeField: 'createdAt' })).filter(
+      (i) => `${i.title ?? ''} ${i.source?.ruleName ?? ''}`.includes(TAG),
+    ).length;
+  flush({ incidentsRaised: incidentsAtEnd });
 
   /* ── what the run has to prove ──────────────────────────────────────────────────────────────── */
 
@@ -1064,21 +1130,41 @@ try {
     `${divergent} divergent sample(s)`,
   );
 
-  console.log('\n  cameras and recording');
+  console.log('\n  cameras, reconnects and recording');
   const down = samples.filter((s) => s.streamsDown > 0).length;
   check(
     down === 0,
-    'no stream was reported down at any sample',
+    "no stream of this run's own cameras was ever reported down",
     `${down} sample(s) with a stream down`,
   );
   const degraded = samples.filter((s) => s.streamsDegraded > 0).length;
   if (degraded > 0) finding('a stream was reported degraded', `${degraded} sample(s)`);
+  const reconnects = samples[samples.length - 1]?.reconnectAttempts ?? 0;
+  check(
+    reconnects === 0,
+    'no camera reconnected during the run',
+    `${reconnects} reconnect attempt(s) across ${profile.cameras} cameras`,
+  );
   const recGrowth = samples.filter((s) => s.recordingNewSince > 0).length;
   check(
     recGrowth > samples.length * 0.5,
     '⚠️ recording continued throughout — segments kept being written',
-    `${recGrowth}/${samples.length} samples produced new segments`,
+    `${recGrowth}/${samples.length} samples produced new segments, ${sum('recordingNewSince')} in total`,
   );
+  const everyRecording = samples.filter((s) => s.streamsRecording === profile.cameras).length;
+  check(
+    everyRecording === samples.length,
+    'every camera was recording at every sample',
+    `${everyRecording}/${samples.length} samples had all ${profile.cameras} recording`,
+  );
+  /* ⚠️ Recorded, never asserted: other tenants' streams are not this run's to judge. */
+  const tenantDown = samples[samples.length - 1]?.tenantStreamsDown ?? 0;
+  if (tenantDown > 0) {
+    finding(
+      'streams outside this run were down (not asserted)',
+      `${tenantDown} of ${samples[samples.length - 1]?.tenantStreamsTotal ?? 0} tenant streams — pre-existing, not created by this run`,
+    );
+  }
 
   console.log('\n  containers, integrity and environment');
   const restartDelta =
@@ -1133,9 +1219,29 @@ try {
   );
 
   console.log('\n  incidents');
+  const incLat = pick((s) => s.incidentLatencyMsAvg);
   console.log(
-    `  · ${incidentsAtStart} incidents before, ${incidentsAtEnd} after (+${incidentsAtEnd - incidentsAtStart})`,
+    `  · ${incidentsAtEnd} incident(s) raised by this run's rule(s) over ${samples.length} samples`,
   );
+  if (ruleIds.length > 0) {
+    /*
+     * ⚠️ Asserted only when the profile HAS a live rule that raises. A profile with no rules (the
+     * baseline control) legitimately raises nothing, and a check that went red on that would be
+     * measuring the profile rather than the platform.
+     */
+    check(
+      incidentsAtEnd > 0,
+      '⚠️ the capability produced incidents — the rule path is live, not merely enabled',
+      `${incidentsAtEnd} raised`,
+    );
+    if (incLat.length > 0) {
+      console.log(
+        `  · incident latency ${Math.min(...incLat).toFixed(0)}–${Math.max(...incLat).toFixed(0)}ms (event occurred → incident raised)`,
+      );
+    } else {
+      finding('incident latency was not measured', 'no incident carried both timestamps');
+    }
+  }
 
   integrityAfter = fullIntegrity('after the run');
   check(
@@ -1144,7 +1250,7 @@ try {
     integrityAfter.line,
   );
 
-  flush({ incidentsAtStart, incidentsAtEnd, failures, findings });
+  flush({ incidentsRaised: incidentsAtEnd, failures, findings });
   console.log(`\n  samples written to ${OUT}`);
 } catch (err) {
   aborted = aborted ?? `the run threw: ${err instanceof Error ? err.message : String(err)}`;

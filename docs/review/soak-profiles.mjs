@@ -84,6 +84,20 @@ const HAS_IDENTITY = { field: 'subjects.0.identityId', op: 'exists' };
  * stopped seeing a person, and no operational metric in this harness would notice.
  */
 const PER_CAMERA_PATH = (i) => `soak${String(i).padStart(2, '0')}`;
+/**
+ * ⚠️ **Two cameras, because two is the SUPPORTED sizing — not four.**
+ *
+ * The frozen sizing policy is `2 supported · 4 provisional · above 4 measured but never recommended`
+ * (AI_RUNTIME_BENCHMARK). This harness's own smoke test measured **11.4 % dropped frames at four
+ * cameras** on this host, against the 0.4 % the clean-host ladder recorded — because the host also
+ * runs several unrelated stacks, which the benchmark table explicitly assumes it does not.
+ *
+ * A soak is not a ladder. Its question is *does the platform stay correct*, not *where is the
+ * ceiling* — so it runs at the sizing the platform is certified at, where any drop at all is a real
+ * signal rather than host contention. Raising this to measure a provisional rung is a deliberate act
+ * and takes `CAMERAS=`; it should carry a stated reason, exactly as a long soak does.
+ */
+const SOAK_CAMERAS = Number(process.env.CAMERAS ?? 2);
 
 export const PROFILES = [
   {
@@ -91,7 +105,7 @@ export const PROFILES = [
     title: 'Retail Loitering',
     status: 'available',
     requires: ['detection-zone', 'scope', 'condition', 'dwell', 'identity'],
-    cameras: 4,
+    cameras: SOAK_CAMERAS,
     fixture: PER_CAMERA_PATH,
     zones: () => [{ name: 'whole frame', kind: 'area', shape: 'polygon', geometry: WHOLE_FRAME }],
     rules: ({ cameraIds, zoneIds }) => [
@@ -124,7 +138,7 @@ export const PROFILES = [
      * (VERTICALS.md §1) and running it as its own soak profile is what keeps the claim falsifiable —
      * if restricted-zone ever needs a ninth hop, this profile is where it shows up.
      */
-    cameras: 4,
+    cameras: SOAK_CAMERAS,
     fixture: PER_CAMERA_PATH,
     zones: () => [
       { name: 'restricted area', kind: 'area', shape: 'polygon', geometry: WHOLE_FRAME },
@@ -159,7 +173,7 @@ export const PROFILES = [
      * involvement at all — so a drift seen here and in a capability profile is a perception drift,
      * and one seen only in the capability profile belongs to the rule.
      */
-    cameras: 4,
+    cameras: SOAK_CAMERAS,
     fixture: PER_CAMERA_PATH,
     zones: () => [],
     rules: () => [],
@@ -176,7 +190,7 @@ export const PROFILES = [
       'count aggregation — distinct subjects in a zone at an instant. `window` counts EVENTS, so two ' +
       'events from one person read as two people. See PHASE_8_PLAN §4.2 and VERTICALS §4 gap 1.',
     requires: ['detection-zone', 'count-aggregation'],
-    cameras: 4,
+    cameras: SOAK_CAMERAS,
     fixture: PER_CAMERA_PATH,
     zones: () => [{ name: 'counted area', kind: 'area', shape: 'polygon', geometry: WHOLE_FRAME }],
     rules: () => [],
@@ -193,7 +207,7 @@ export const PROFILES = [
       'present" — the two diverge exactly when a customer cares. The primitive must state which it ' +
       'reports before this profile can assert anything.',
     requires: ['detection-zone', 'count-aggregation'],
-    cameras: 4,
+    cameras: SOAK_CAMERAS,
     fixture: PER_CAMERA_PATH,
     zones: () => [{ name: 'occupied area', kind: 'area', shape: 'polygon', geometry: WHOLE_FRAME }],
     rules: () => [],
@@ -209,7 +223,7 @@ export const PROFILES = [
       'Theft is an inference about intent assembled from weak signals; the platform can supply the ' +
       "signals and the accusation is not the platform's to make (VERTICALS §5).",
     requires: ['cross-rule-correlation', 'cross-camera-identity'],
-    cameras: 4,
+    cameras: SOAK_CAMERAS,
     fixture: PER_CAMERA_PATH,
     zones: () => [],
     rules: () => [],
@@ -227,7 +241,7 @@ export const PROFILES = [
       'needs cross-camera identity, which is research. ⚠️ Clinical-safety and consent duties are ' +
       "the customer's and are not addressed by the platform.",
     requires: ['absence', 'count-aggregation', 'cross-camera-identity'],
-    cameras: 4,
+    cameras: SOAK_CAMERAS,
     fixture: PER_CAMERA_PATH,
     zones: () => [],
     rules: () => [],
@@ -243,7 +257,7 @@ export const PROFILES = [
       'different numbers — running them again measures nothing new. Dock occupancy needs count; ' +
       'abandoned object and vehicle movement need a model emitting a non-person class.',
     requires: ['count-aggregation', 'non-person-classes'],
-    cameras: 4,
+    cameras: SOAK_CAMERAS,
     fixture: PER_CAMERA_PATH,
     zones: () => [],
     rules: () => [],
@@ -261,7 +275,7 @@ export const PROFILES = [
       'never be the only thing between a person and a machine, and a green soak would read as ' +
       'evidence that it can be.',
     requires: ['non-person-classes', 'attributes'],
-    cameras: 4,
+    cameras: SOAK_CAMERAS,
     fixture: PER_CAMERA_PATH,
     zones: () => [],
     rules: () => [],
