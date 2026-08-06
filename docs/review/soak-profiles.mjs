@@ -66,6 +66,25 @@ const COOLDOWN_SECONDS = 300;
 /** Present in every rule: a dwell rule with no identity to accumulate against can never fire. */
 const HAS_IDENTITY = { field: 'subjects.0.identityId', op: 'exists' };
 
+/**
+ * ⚠️ **A distinct RTSP path per camera, and this is load-bearing.**
+ *
+ * Two independent reasons, and the first one bit during this harness's own smoke test:
+ *
+ * 1. **The camera service refuses a duplicate stream URL within a tenant**, correctly. An earlier
+ *    version of this file cycled `walk1, walk2, walk1, walk2` and the third camera was refused with
+ *    a 409 — while the comment above it claimed the paths were distinct. The comment was the bug.
+ * 2. **Each path starts its own encoder on first read** (`rtsp-fixture.yml`). Pointing several
+ *    cameras at one path means one stream, and the soak would measure a single camera while
+ *    reporting four — which is exactly the defect the P-8 Phase 3 capacity ladder shipped with.
+ *
+ * The fixture's default source is a **photograph of two people**, so every path yields the same
+ * scene and `detections / analysed frame` should sit at ~2.0 for the whole run. That is what makes
+ * `minDetectionsPerFrame` a real assertion rather than a formality: a runtime that drifts to 1.0 has
+ * stopped seeing a person, and no operational metric in this harness would notice.
+ */
+const PER_CAMERA_PATH = (i) => `soak${String(i).padStart(2, '0')}`;
+
 export const PROFILES = [
   {
     id: 'retail-loitering',
@@ -73,7 +92,7 @@ export const PROFILES = [
     status: 'available',
     requires: ['detection-zone', 'scope', 'condition', 'dwell', 'identity'],
     cameras: 4,
-    fixture: (i) => `walk${((i - 1) % 2) + 1}`,
+    fixture: PER_CAMERA_PATH,
     zones: () => [{ name: 'whole frame', kind: 'area', shape: 'polygon', geometry: WHOLE_FRAME }],
     rules: ({ cameraIds, zoneIds }) => [
       {
@@ -92,7 +111,7 @@ export const PROFILES = [
         scope: { nodeIds: [], cameraIds: [cameraIds[0]], groupIds: [], zoneIds },
       },
     ],
-    expect: { minDetectionsPerFrame: 0.5, maxDropRatePercent: 5 },
+    expect: { minDetectionsPerFrame: 1.5, maxDropRatePercent: 5 },
   },
 
   {
@@ -106,7 +125,7 @@ export const PROFILES = [
      * if restricted-zone ever needs a ninth hop, this profile is where it shows up.
      */
     cameras: 4,
-    fixture: (i) => `walk${((i - 1) % 2) + 1}`,
+    fixture: PER_CAMERA_PATH,
     zones: () => [
       { name: 'restricted area', kind: 'area', shape: 'polygon', geometry: WHOLE_FRAME },
     ],
@@ -127,7 +146,7 @@ export const PROFILES = [
         scope: { nodeIds: [], cameraIds: [cameraIds[0]], groupIds: [], zoneIds },
       },
     ],
-    expect: { minDetectionsPerFrame: 0.5, maxDropRatePercent: 5 },
+    expect: { minDetectionsPerFrame: 1.5, maxDropRatePercent: 5 },
   },
 
   {
@@ -141,10 +160,10 @@ export const PROFILES = [
      * and one seen only in the capability profile belongs to the rule.
      */
     cameras: 4,
-    fixture: (i) => `walk${((i - 1) % 2) + 1}`,
+    fixture: PER_CAMERA_PATH,
     zones: () => [],
     rules: () => [],
-    expect: { minDetectionsPerFrame: 0.5, maxDropRatePercent: 5 },
+    expect: { minDetectionsPerFrame: 1.5, maxDropRatePercent: 5 },
   },
 
   /* ── Blocked. Each names the primitive it is waiting for, and refuses to run until it exists. ── */
@@ -158,10 +177,10 @@ export const PROFILES = [
       'events from one person read as two people. See PHASE_8_PLAN §4.2 and VERTICALS §4 gap 1.',
     requires: ['detection-zone', 'count-aggregation'],
     cameras: 4,
-    fixture: (i) => `walk${((i - 1) % 2) + 1}`,
+    fixture: PER_CAMERA_PATH,
     zones: () => [{ name: 'counted area', kind: 'area', shape: 'polygon', geometry: WHOLE_FRAME }],
     rules: () => [],
-    expect: { minDetectionsPerFrame: 0.5, maxDropRatePercent: 5 },
+    expect: { minDetectionsPerFrame: 1.5, maxDropRatePercent: 5 },
   },
 
   {
@@ -175,10 +194,10 @@ export const PROFILES = [
       'reports before this profile can assert anything.',
     requires: ['detection-zone', 'count-aggregation'],
     cameras: 4,
-    fixture: (i) => `walk${((i - 1) % 2) + 1}`,
+    fixture: PER_CAMERA_PATH,
     zones: () => [{ name: 'occupied area', kind: 'area', shape: 'polygon', geometry: WHOLE_FRAME }],
     rules: () => [],
-    expect: { minDetectionsPerFrame: 0.5, maxDropRatePercent: 5 },
+    expect: { minDetectionsPerFrame: 1.5, maxDropRatePercent: 5 },
   },
 
   {
@@ -191,7 +210,7 @@ export const PROFILES = [
       "signals and the accusation is not the platform's to make (VERTICALS §5).",
     requires: ['cross-rule-correlation', 'cross-camera-identity'],
     cameras: 4,
-    fixture: (i) => `walk${((i - 1) % 2) + 1}`,
+    fixture: PER_CAMERA_PATH,
     zones: () => [],
     rules: () => [],
     expect: {},
@@ -209,7 +228,7 @@ export const PROFILES = [
       "the customer's and are not addressed by the platform.",
     requires: ['absence', 'count-aggregation', 'cross-camera-identity'],
     cameras: 4,
-    fixture: (i) => `walk${((i - 1) % 2) + 1}`,
+    fixture: PER_CAMERA_PATH,
     zones: () => [],
     rules: () => [],
     expect: {},
@@ -225,7 +244,7 @@ export const PROFILES = [
       'abandoned object and vehicle movement need a model emitting a non-person class.',
     requires: ['count-aggregation', 'non-person-classes'],
     cameras: 4,
-    fixture: (i) => `walk${((i - 1) % 2) + 1}`,
+    fixture: PER_CAMERA_PATH,
     zones: () => [],
     rules: () => [],
     expect: {},
@@ -243,7 +262,7 @@ export const PROFILES = [
       'evidence that it can be.',
     requires: ['non-person-classes', 'attributes'],
     cameras: 4,
-    fixture: (i) => `walk${((i - 1) % 2) + 1}`,
+    fixture: PER_CAMERA_PATH,
     zones: () => [],
     rules: () => [],
     expect: {},
