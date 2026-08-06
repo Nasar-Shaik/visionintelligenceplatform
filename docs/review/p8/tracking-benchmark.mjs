@@ -29,7 +29,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { assignCameras, raiseRuntimeCapacity } from './_assign.mjs';
+import { assignCameras, raiseRuntimeCapacity, tryAssignCameras } from './_assign.mjs';
 
 const ROOT = resolve(new URL('../../..', import.meta.url).pathname);
 const B = process.env.BASE ?? 'https://localhost';
@@ -169,6 +169,9 @@ await cleanup(true);
  * drops frames still reports dropped frames.
  */
 const restoreCapacity = await raiseRuntimeCapacity(api, H, Math.max(...LADDER) + 8);
+/** The rung the control plane refused, if any — published beside the table, never thrown. */
+let refusedAt = null;
+
 
 if (!existsSync(join(ROOT, 'infra/docker/fixtures/media/tracking/walk.mp4'))) {
   console.log('\ntracking fixtures are missing — generating them first\n');
@@ -224,8 +227,18 @@ try {
       made.push(cam.json?.data?.id);
       await api(`/media/streams/${made[i]}/start`, { method: 'POST', headers: H, body: '{}' });
     }
-    /* ⚠️ P-8 Phase 6: a camera with no assignment is never analysed. See `_assign.mjs`. */
-    await assignCameras(api, H, made);
+    /*
+     * ⚠️ A control-plane refusal ends the ladder; it does not fail it. See `tryAssignCameras` — the
+     * 2026-08-06 run threw here and discarded every rung it had already measured, then leaked its
+     * assignments into the next three stages.
+     */
+    const placed = await tryAssignCameras(api, H, made);
+    if (!placed.ok) {
+      refusedAt = { cameras: made.length, reason: placed.reason };
+      console.log(`\n  ⚠️ refused at ${made.length} camera(s) — ${placed.reason.replace(/^could not assign \S+ for AI processing \(HTTP 409\): /, '')}`);
+      console.log('     the rungs below stand; the ladder is truncated, not failed.');
+      break;
+    }
 
     await sleep(WARMUP * 1000);
     const m0 = scrape(MEDIA, 8083);
@@ -367,6 +380,13 @@ writeFileSync(
     {
       at: new Date().toISOString(),
       windowSeconds: WINDOW,
+      /*
+       * ⚠️ The rung the control plane refused, beside the numbers. A ladder that stopped because a
+       * runtime degraded under the previous rung's load found its edge; one that stopped because it
+       * was configured to is a different statement, and a table that cannot tell you which is
+       * unreadable a month later. `null` means the ladder ran to its configured top.
+       */
+      refusedAt,
       /*
        * ⚠️ The sizing policy travels WITH the measurements, because the two get separated. A table
        * of camera counts read on its own invites "it did 16, so sell 16" — and this ladder's rungs

@@ -139,3 +139,35 @@ export async function raiseRuntimeCapacity(api, headers, needed) {
     }
   };
 }
+
+/**
+ * **Assign, and report a refusal instead of throwing.** For **ladders only**.
+ *
+ * ### ⚠️ A refusal is a measurement, not an error
+ *
+ * `assignCameras` throws, and for an end-to-end run that is right: a verification that proceeds with
+ * unassigned cameras measures a correctly-behaving deployment declining to analyse them and calls the
+ * bridge broken. A **ladder** is different. It climbs until something gives, and the rung where the
+ * control plane says *no* is a result — the two refusals seen in practice are
+ * `every eligible runtime is at capacity` (the declaration is full) and
+ * `no registered runtime is healthy enough to accept a camera` (the runtime degraded under the load
+ * the previous rung applied, which is the ladder finding the edge it exists to find).
+ *
+ * ⚠️ **Throwing there costs two things, and the second is worse than the first.** The rungs already
+ * measured are discarded — the 2026-08-06 run threw away 1, 2, 4, 8 and 12 cameras of real data and
+ * reported `no capacity samples were written`. And in a script without a top-level `finally`, the
+ * throw skips cleanup, so **every camera the ladder assigned and every raised capacity declaration
+ * leaks into the next stage**. That is precisely what happened: `hardening` left `maxCameras: 24` and
+ * a dozen assigned cameras behind, and the next three ladders — including the milestone's own —
+ * failed with 409 at their *first* rung. One unhandled throw took out four stages.
+ *
+ * @returns `{ ok: true, assigned }` or `{ ok: false, reason }`. Callers `break` and publish what they
+ *   measured, naming the rung that was refused.
+ */
+export async function tryAssignCameras(api, headers, cameraIds, opts = {}) {
+  try {
+    return { ok: true, assigned: await assignCameras(api, headers, cameraIds, opts) };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}

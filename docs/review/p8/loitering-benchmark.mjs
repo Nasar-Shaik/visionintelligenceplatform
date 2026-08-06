@@ -35,7 +35,7 @@
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { assignCameras, releaseCameras } from './_assign.mjs';
+import { assignCameras, releaseCameras, tryAssignCameras } from './_assign.mjs';
 
 const ROOT = resolve(new URL('../../..', import.meta.url).pathname);
 const B = process.env.BASE ?? 'https://localhost';
@@ -224,6 +224,12 @@ console.log(
 );
 
 const rungs = [];
+/**
+ * The rung the control plane refused, if any. ⚠️ Declared OUT here, not inside the `try`, because the
+ * samples file is written in the `finally` — a scope this lived one block too deep in would have been
+ * a ReferenceError on the one path that matters, the failing one.
+ */
+let refusedAt = null;
 
 try {
   shq('docker', ['rm', '-f', FIXTURE]);
@@ -237,6 +243,7 @@ try {
   const hierarchyZone = (await api('/camera/cameras?limit=1', { headers: H })).json.data.cameras[0].zoneId;
 
   for (const n of LADDER) {
+    if (refusedAt !== null) break;
     console.log(`  ── ${n} camera${n === 1 ? '' : 's'} ──────────────────────────────────────────`);
     const cameraIds = [];
     const zoneIds = [];
@@ -297,7 +304,18 @@ try {
     for (const id of cameraIds) {
       await api(`/media/streams/${id}/start`, { method: 'POST', headers: H, body: '{}' });
     }
-    await assignCameras(api, H, cameraIds, { settleMs: CONVERGE_MS });
+    /*
+     * ⚠️ A control-plane refusal ends the ladder; it does not fail it. See `tryAssignCameras` — the
+     * 2026-08-06 run threw here and discarded every rung it had already measured, then leaked its
+     * assignments into the next three stages.
+     */
+    const placed = await tryAssignCameras(api, H, cameraIds, { settleMs: CONVERGE_MS });
+    if (!placed.ok) {
+      refusedAt = { cameras: cameraIds.length, reason: placed.reason };
+      console.log(`\n  ⚠️ refused at ${cameraIds.length} camera(s) — ${placed.reason.replace(/^could not assign \S+ for AI processing \(HTTP 409\): /, '')}`);
+      console.log('     the rungs below stand; the ladder is truncated, not failed.');
+      break;
+    }
     await sleep(WARMUP * 1000);
 
     /* ── the window ────────────────────────────────────────────────────────────────────────── */
@@ -432,6 +450,13 @@ try {
          */
         sizingPolicy: '2 cameras supported, 4 provisional; no change from one run',
         rungs,
+        /*
+         * ⚠️ The rung the control plane refused, beside the numbers. A ladder that stopped because a
+         * runtime degraded under the previous rung's load found its edge; one that stopped because it
+         * was configured to is a different statement, and a table that cannot tell you which is
+         * unreadable a month later. `null` means the ladder ran to its configured top.
+         */
+        refusedAt,
       },
       null,
       2,

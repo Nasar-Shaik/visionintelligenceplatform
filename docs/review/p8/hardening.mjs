@@ -24,7 +24,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { assignCameras, raiseRuntimeCapacity } from './_assign.mjs';
+import { assignCameras, raiseRuntimeCapacity, tryAssignCameras } from './_assign.mjs';
 
 const ROOT = resolve(new URL('../../..', import.meta.url).pathname);
 const B = process.env.BASE ?? 'https://localhost';
@@ -369,6 +369,8 @@ const rows = [];
  * still reports dropped frames. What is removed is a refusal standing in front of a measurement.
  */
 let restoreCapacity = async () => {};
+/** The rung the control plane refused, if any — published beside the table rather than thrown. */
+let refusedAt = null;
 if (want(3)) {
   console.log(`\n3 · capacity at ${LADDER.join(', ')} cameras (${WINDOW}s windows)`);
   restoreCapacity = await raiseRuntimeCapacity(api, H, Math.max(...LADDER) + 8);
@@ -398,9 +400,19 @@ if (want(3)) {
         }),
       });
       await api(`/media/streams/${made.json.data.id}/start`, { method: 'POST', headers: H, body: '{}' });
-      /* ⚠️ P-8 Phase 6: a camera with no assignment is never analysed. See `_assign.mjs`. */
-      await assignCameras(api, H, [made.json.data.id]);
+      /*
+       * ⚠️ P-8 Phase 6: a camera with no assignment is never analysed. A REFUSAL here is the ladder
+       * finding its edge — see `tryAssignCameras`. Recording it and publishing the rungs already
+       * measured is the honest outcome; throwing discards them and, in this script, skips the
+       * restore below.
+       */
+      const placed = await tryAssignCameras(api, H, [made.json.data.id]);
+      if (!placed.ok) {
+        refusedAt = { cameras: created, reason: placed.reason };
+        break;
+      }
     }
+    if (refusedAt !== null) break;
     await sleep(WARMUP * 1000);
     const m0 = scrape(MEDIA, 8083);
 
@@ -460,7 +472,23 @@ if (want(3)) {
         `drop ${row.dropPercent.toFixed(1)}% · cpu ${row.runtimeCpu.toFixed(0)}% · mem ${row.runtimeMem.toFixed(0)}MB`,
     );
   }
-  writeFileSync(OUT, JSON.stringify({ window: WINDOW, rows, warmup, reproducibility: repro }, null, 2));
+  /*
+   * ⚠️ `refusedAt` travels WITH the table. A ladder that stopped at 12 because the control plane
+   * refused a 13th camera measured five real rungs and found its edge; a ladder that stopped at 12
+   * because it was configured to is a different statement. Publishing the rows without saying which
+   * is what makes a capacity table unreadable a month later.
+   */
+  if (refusedAt !== null) {
+    console.log(
+      `\n  ⚠️ the control plane refused the rung after ${refusedAt.cameras} camera(s) — ` +
+        `${refusedAt.reason.replace(/^could not assign \S+ for AI processing \(HTTP 409\): /, '')}`,
+    );
+    console.log('     the rungs below were measured before that and stand; the ladder is truncated, not failed.');
+  }
+  writeFileSync(
+    OUT,
+    JSON.stringify({ window: WINDOW, rows, warmup, reproducibility: repro, refusedAt }, null, 2),
+  );
 }
 
 /* ── 4 · what capacity actually is ───────────────────────────────────────────────────────────── */
