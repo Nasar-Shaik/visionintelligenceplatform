@@ -33,6 +33,7 @@ import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { assignCameras } from './_assign.mjs';
 
 const ROOT = resolve(new URL('../../..', import.meta.url).pathname);
 const B = process.env.BASE ?? 'https://localhost';
@@ -514,6 +515,8 @@ await sleep(3000);
   const camId = await createCamera(1);
   check(camId !== null, 'a fixture camera exists');
   await api(`/media/streams/${camId}/start`, { method: 'POST', headers: H, body: '{}' });
+  /* ⚠️ P-8 Phase 6: a camera with no assignment is never analysed. See `_assign.mjs`. */
+  await assignCameras(api, H, [camId]);
   await sleep(18000);
 
   const after = scrape(MEDIA, 8083);
@@ -547,6 +550,7 @@ await sleep(3000);
 
   const blankCam = await createCamera(2, 'blank');
   await api(`/media/streams/${blankCam}/start`, { method: 'POST', headers: H, body: '{}' });
+  await assignCameras(api, H, [blankCam]);
   await sleep(6000);
   const beforeBlank = scrape(MEDIA, 8083);
   await sleep(14000);

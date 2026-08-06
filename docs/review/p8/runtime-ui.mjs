@@ -17,6 +17,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright';
+import { assignCameras } from './_assign.mjs';
 
 const B = process.env.BASE ?? 'https://localhost';
 const OUT = process.env.OUT ?? '.';
@@ -97,6 +98,8 @@ const made = await api('/camera/cameras', {
 });
 const camId = made.json?.data?.id;
 await api(`/media/streams/${camId}/start`, { method: 'POST', headers: H, body: '{}' });
+/* ⚠️ P-8 Phase 6: a camera with no assignment is never analysed. See `_assign.mjs`. */
+await assignCameras(api, H, [camId]);
 await sleep(15000);
 
 /* ── the browser ─────────────────────────────────────────────────────────────────────────────── */

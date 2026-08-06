@@ -73,6 +73,8 @@ function matches(doc: Record<string, unknown>, filter: Record<string, unknown>):
         switch (op) {
           case '$in':
             return (operand as unknown[]).includes(actual);
+          case '$nin_unused':
+            return false;
           case '$nin':
             return !(operand as unknown[]).includes(actual);
           case '$ne':
@@ -97,6 +99,8 @@ function memoryCollection<T extends Record<string, unknown>>(seed: T[] = []): Co
     async findOne(filter: Record<string, unknown>) {
       return store.find((d) => matches(d, filter)) ?? null;
     },
+    /* ⚠️ A second argument (projection) is accepted and ignored — the service passes one, and a fake
+       that threw on it would fail for a reason that has nothing to do with the behaviour. */
     find(filter: Record<string, unknown>) {
       let rows = store.filter((d) => matches(d, filter));
       const cursor = {
@@ -576,6 +580,7 @@ interface Harness {
   assignments: Collection<AssignmentDoc>;
   history: Collection<HistoryDoc>;
   facts: Collection<ProcessingFactsDoc>;
+  cameras: Collection<CameraDoc>;
   clock: { now: () => Date };
 }
 
@@ -625,7 +630,7 @@ function harness(cameraIds: string[] = ['cam1', 'cam2', 'cam3']): Harness {
     clock,
     ids: { historyId: () => `h${(n += 1)}` },
   });
-  return { service, runtimes, assignments, history, facts, clock };
+  return { service, runtimes, assignments, history, facts, cameras, clock };
 }
 
 async function withRuntime(h: Harness, id = 'rt1', maxCameras = 4): Promise<void> {
@@ -1029,6 +1034,30 @@ describe('P-8.6 · the control plane', () => {
     );
     await h.service.enable(scope, 'cam1', { profileId: 'mine', actor: 'op' });
     await expect(h.service.deleteProfile(scope, 'mine')).rejects.toThrow(/assigned to 1 camera/);
+  });
+
+  /**
+   * ⚠️ A deleted camera's assignment keeps counting against its runtime's capacity for ever. An
+   * estate that churns cameras slowly loses the ability to place new ones, with a capacity page that
+   * looks full and a camera list that does not explain it.
+   */
+  it('⚠️ drops assignments whose camera no longer exists', async () => {
+    await withRuntime(h);
+    await h.service.enable(scope, 'cam1', { profileId: 'person-tracking', actor: 'op' });
+    expect((await h.service.capacity(scope)).assignedCameras).toBe(1);
+
+    /* The camera is deleted out from under the assignment, as `DELETE /cameras/:id` does. */
+    await h.cameras.deleteOne({ _id: 'cam1' } as never);
+    await h.service.report({
+      reportedBy: 'media',
+      at: NOW.toISOString(),
+      planVersion: null,
+      runtimes: [],
+      cameras: [],
+    });
+
+    expect((await h.service.capacity(scope)).assignedCameras).toBe(0);
+    expect((await h.service.plan()).entries).toHaveLength(0);
   });
 
   it('re-places cameras when their runtime is deregistered rather than dropping them', async () => {

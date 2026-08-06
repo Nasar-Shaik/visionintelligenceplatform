@@ -7,42 +7,42 @@
     "maxCameras": 4,
     "enabled": true,
     "health": "offline",
-    "observedAt": "2026-08-06T04:06:26.620Z",
+    "observedAt": "2026-08-06T05:46:23.008Z",
     "observedBy": "media",
     "latencyMs": null,
     "detail": "fetch failed",
     "capabilities": null,
-    "createdAt": "2026-08-06T04:06:07.486Z",
-    "updatedAt": "2026-08-06T04:06:07.486Z",
+    "createdAt": "2026-08-06T05:46:05.731Z",
+    "updatedAt": "2026-08-06T05:46:05.731Z",
     "updatedBy": "usr_demo_retail_mgr"
   },
   "beforeFailover": [
     {
       "tenantId": "tnt_demo_retail",
-      "cameraId": "cam_bb671603b0cf4db49b232c71a7811627",
+      "cameraId": "cam_2b2e3c667255441da702d34581061d62",
       "state": "running",
       "aiEnabled": true,
       "profileId": "person-tracking",
       "runtimeId": "p8-small-runtime",
-      "version": 6,
+      "version": 5,
       "sessionEpoch": 1,
       "reason": "observation",
       "placementFailure": null,
       "lastError": null,
       "observed": {
         "state": "active",
-        "at": "2026-08-06T04:07:11.638Z",
+        "at": "2026-08-06T05:47:08.014Z",
         "runtimeId": "p8-small-runtime",
-        "planVersion": 36,
+        "planVersion": 363,
         "stale": false
       },
-      "updatedAt": "2026-08-06T04:07:11.638Z",
+      "updatedAt": "2026-08-06T05:47:08.014Z",
       "updatedBy": "system",
-      "createdAt": "2026-08-06T04:06:51.608Z"
+      "createdAt": "2026-08-06T05:46:49.833Z"
     },
     {
       "tenantId": "tnt_demo_retail",
-      "cameraId": "cam_c69c8407ac944e8f89f314b8e9018cff",
+      "cameraId": "cam_a1237a583664452ca78de5847ec48f61",
       "state": "running",
       "aiEnabled": true,
       "profileId": "person-tracking",
@@ -54,20 +54,20 @@
       "lastError": null,
       "observed": {
         "state": "active",
-        "at": "2026-08-06T04:07:11.638Z",
+        "at": "2026-08-06T05:47:08.014Z",
         "runtimeId": "inference",
-        "planVersion": 36,
+        "planVersion": 363,
         "stale": false
       },
-      "updatedAt": "2026-08-06T04:07:11.638Z",
+      "updatedAt": "2026-08-06T05:47:08.014Z",
       "updatedBy": "system",
-      "createdAt": "2026-08-06T04:06:51.640Z"
+      "createdAt": "2026-08-06T05:46:49.864Z"
     }
   ],
   "afterFailover": [
     {
       "tenantId": "tnt_demo_retail",
-      "cameraId": "cam_bb671603b0cf4db49b232c71a7811627",
+      "cameraId": "cam_2b2e3c667255441da702d34581061d62",
       "state": "running",
       "aiEnabled": true,
       "profileId": "person-tracking",
@@ -79,44 +79,44 @@
       "lastError": null,
       "observed": {
         "state": "active",
-        "at": "2026-08-06T04:07:31.647Z",
+        "at": "2026-08-06T05:47:33.014Z",
         "runtimeId": "inference",
-        "planVersion": 38,
+        "planVersion": 365,
         "stale": false
       },
-      "updatedAt": "2026-08-06T04:07:31.647Z",
+      "updatedAt": "2026-08-06T05:47:33.014Z",
       "updatedBy": "system",
-      "createdAt": "2026-08-06T04:06:51.608Z"
+      "createdAt": "2026-08-06T05:46:49.833Z"
     },
     {
       "tenantId": "tnt_demo_retail",
-      "cameraId": "cam_c69c8407ac944e8f89f314b8e9018cff",
+      "cameraId": "cam_a1237a583664452ca78de5847ec48f61",
       "state": "running",
       "aiEnabled": true,
       "profileId": "person-tracking",
       "runtimeId": "inference",
-      "version": 9,
+      "version": 10,
       "sessionEpoch": 1,
       "reason": "observation",
       "placementFailure": null,
       "lastError": null,
       "observed": {
         "state": "active",
-        "at": "2026-08-06T04:07:31.647Z",
+        "at": "2026-08-06T05:47:33.014Z",
         "runtimeId": "inference",
-        "planVersion": 38,
+        "planVersion": 365,
         "stale": false
       },
-      "updatedAt": "2026-08-06T04:07:31.647Z",
+      "updatedAt": "2026-08-06T05:47:33.014Z",
       "updatedBy": "system",
-      "createdAt": "2026-08-06T04:06:51.640Z"
+      "createdAt": "2026-08-06T05:46:49.864Z"
     }
   ],
   "failoverEntry": {
-    "id": "ash_82a72303f6e142e59709ff14e58ed2e5",
+    "id": "ash_f67df4c6fb974a6ea11b174f02e5b60f",
     "tenantId": "tnt_demo_retail",
-    "cameraId": "cam_bb671603b0cf4db49b232c71a7811627",
-    "at": "2026-08-06T04:07:16.649Z",
+    "cameraId": "cam_2b2e3c667255441da702d34581061d62",
+    "at": "2026-08-06T05:47:13.047Z",
     "action": "failover",
     "reason": "failover",
     "actor": "system",
@@ -124,44 +124,44 @@
       "state": "running",
       "profileId": "person-tracking",
       "runtimeId": "p8-small-runtime",
-      "version": 7,
+      "version": 6,
       "sessionEpoch": 1
     },
     "after": {
       "state": "recovering",
       "profileId": "person-tracking",
       "runtimeId": "inference",
-      "version": 8,
+      "version": 7,
       "sessionEpoch": 2
     }
   },
   "stranded": [
     {
       "tenantId": "tnt_demo_retail",
-      "cameraId": "cam_bb671603b0cf4db49b232c71a7811627",
+      "cameraId": "cam_2b2e3c667255441da702d34581061d62",
       "state": "error",
       "aiEnabled": true,
       "profileId": "person-tracking",
       "runtimeId": "inference",
-      "version": 16,
+      "version": 15,
       "sessionEpoch": 2,
       "reason": "failover",
       "placementFailure": "no-healthy-runtime",
       "lastError": "no registered runtime is healthy enough to accept a camera",
       "observed": {
         "state": "idle",
-        "at": "2026-08-06T04:07:56.654Z",
+        "at": "2026-08-06T05:47:53.021Z",
         "runtimeId": null,
-        "planVersion": 43,
+        "planVersion": 369,
         "stale": false
       },
-      "updatedAt": "2026-08-06T04:07:56.661Z",
+      "updatedAt": "2026-08-06T05:47:53.033Z",
       "updatedBy": "system",
-      "createdAt": "2026-08-06T04:06:51.608Z"
+      "createdAt": "2026-08-06T05:46:49.833Z"
     },
     {
       "tenantId": "tnt_demo_retail",
-      "cameraId": "cam_c69c8407ac944e8f89f314b8e9018cff",
+      "cameraId": "cam_a1237a583664452ca78de5847ec48f61",
       "state": "error",
       "aiEnabled": true,
       "profileId": "person-tracking",
@@ -173,20 +173,20 @@
       "lastError": "no registered runtime is healthy enough to accept a camera",
       "observed": {
         "state": "idle",
-        "at": "2026-08-06T04:07:56.654Z",
+        "at": "2026-08-06T05:47:53.021Z",
         "runtimeId": null,
-        "planVersion": 43,
+        "planVersion": 369,
         "stale": false
       },
-      "updatedAt": "2026-08-06T04:07:56.663Z",
+      "updatedAt": "2026-08-06T05:47:53.036Z",
       "updatedBy": "system",
-      "createdAt": "2026-08-06T04:06:51.640Z"
+      "createdAt": "2026-08-06T05:46:49.864Z"
     }
   ],
   "recovered": [
     {
       "tenantId": "tnt_demo_retail",
-      "cameraId": "cam_bb671603b0cf4db49b232c71a7811627",
+      "cameraId": "cam_2b2e3c667255441da702d34581061d62",
       "state": "running",
       "aiEnabled": true,
       "profileId": "person-tracking",
@@ -198,43 +198,43 @@
       "lastError": null,
       "observed": {
         "state": "active",
-        "at": "2026-08-06T04:08:16.657Z",
+        "at": "2026-08-06T05:48:18.024Z",
         "runtimeId": "inference",
-        "planVersion": 46,
+        "planVersion": 372,
         "stale": false
       },
-      "updatedAt": "2026-08-06T04:08:16.657Z",
+      "updatedAt": "2026-08-06T05:48:18.024Z",
       "updatedBy": "system",
-      "createdAt": "2026-08-06T04:06:51.608Z"
+      "createdAt": "2026-08-06T05:46:49.833Z"
     },
     {
       "tenantId": "tnt_demo_retail",
-      "cameraId": "cam_c69c8407ac944e8f89f314b8e9018cff",
+      "cameraId": "cam_a1237a583664452ca78de5847ec48f61",
       "state": "running",
       "aiEnabled": true,
       "profileId": "person-tracking",
       "runtimeId": "inference",
-      "version": 18,
+      "version": 19,
       "sessionEpoch": 1,
       "reason": "observation",
       "placementFailure": null,
       "lastError": null,
       "observed": {
         "state": "active",
-        "at": "2026-08-06T04:08:16.657Z",
+        "at": "2026-08-06T05:48:18.024Z",
         "runtimeId": "inference",
-        "planVersion": 46,
+        "planVersion": 372,
         "stale": false
       },
-      "updatedAt": "2026-08-06T04:08:16.657Z",
+      "updatedAt": "2026-08-06T05:48:18.024Z",
       "updatedBy": "system",
-      "createdAt": "2026-08-06T04:06:51.640Z"
+      "createdAt": "2026-08-06T05:46:49.864Z"
     }
   ],
   "beforeRestart": [
     {
       "tenantId": "tnt_demo_retail",
-      "cameraId": "cam_bb671603b0cf4db49b232c71a7811627",
+      "cameraId": "cam_2b2e3c667255441da702d34581061d62",
       "state": "running",
       "aiEnabled": true,
       "profileId": "person-tracking",
@@ -246,43 +246,43 @@
       "lastError": null,
       "observed": {
         "state": "active",
-        "at": "2026-08-06T04:08:16.657Z",
+        "at": "2026-08-06T05:48:18.024Z",
         "runtimeId": "inference",
-        "planVersion": 46,
+        "planVersion": 372,
         "stale": false
       },
-      "updatedAt": "2026-08-06T04:08:16.657Z",
+      "updatedAt": "2026-08-06T05:48:18.024Z",
       "updatedBy": "system",
-      "createdAt": "2026-08-06T04:06:51.608Z"
+      "createdAt": "2026-08-06T05:46:49.833Z"
     },
     {
       "tenantId": "tnt_demo_retail",
-      "cameraId": "cam_c69c8407ac944e8f89f314b8e9018cff",
+      "cameraId": "cam_a1237a583664452ca78de5847ec48f61",
       "state": "running",
       "aiEnabled": true,
       "profileId": "person-tracking",
       "runtimeId": "inference",
-      "version": 18,
+      "version": 19,
       "sessionEpoch": 1,
       "reason": "observation",
       "placementFailure": null,
       "lastError": null,
       "observed": {
         "state": "active",
-        "at": "2026-08-06T04:08:16.657Z",
+        "at": "2026-08-06T05:48:18.024Z",
         "runtimeId": "inference",
-        "planVersion": 46,
+        "planVersion": 372,
         "stale": false
       },
-      "updatedAt": "2026-08-06T04:08:16.657Z",
+      "updatedAt": "2026-08-06T05:48:18.024Z",
       "updatedBy": "system",
-      "createdAt": "2026-08-06T04:06:51.640Z"
+      "createdAt": "2026-08-06T05:46:49.864Z"
     }
   ],
   "afterRestart": [
     {
       "tenantId": "tnt_demo_retail",
-      "cameraId": "cam_bb671603b0cf4db49b232c71a7811627",
+      "cameraId": "cam_2b2e3c667255441da702d34581061d62",
       "state": "running",
       "aiEnabled": true,
       "profileId": "person-tracking",
@@ -294,47 +294,47 @@
       "lastError": null,
       "observed": {
         "state": "idle",
-        "at": "2026-08-06T04:08:56.438Z",
+        "at": "2026-08-06T05:48:54.468Z",
         "runtimeId": "inference",
-        "planVersion": 46,
+        "planVersion": 372,
         "stale": false
       },
-      "updatedAt": "2026-08-06T04:08:16.657Z",
+      "updatedAt": "2026-08-06T05:48:18.024Z",
       "updatedBy": "system",
-      "createdAt": "2026-08-06T04:06:51.608Z"
+      "createdAt": "2026-08-06T05:46:49.833Z"
     },
     {
       "tenantId": "tnt_demo_retail",
-      "cameraId": "cam_c69c8407ac944e8f89f314b8e9018cff",
+      "cameraId": "cam_a1237a583664452ca78de5847ec48f61",
       "state": "running",
       "aiEnabled": true,
       "profileId": "person-tracking",
       "runtimeId": "inference",
-      "version": 18,
+      "version": 19,
       "sessionEpoch": 1,
       "reason": "observation",
       "placementFailure": null,
       "lastError": null,
       "observed": {
         "state": "idle",
-        "at": "2026-08-06T04:08:56.438Z",
+        "at": "2026-08-06T05:48:54.468Z",
         "runtimeId": "inference",
-        "planVersion": 46,
+        "planVersion": 372,
         "stale": false
       },
-      "updatedAt": "2026-08-06T04:08:16.657Z",
+      "updatedAt": "2026-08-06T05:48:18.024Z",
       "updatedBy": "system",
-      "createdAt": "2026-08-06T04:06:51.640Z"
+      "createdAt": "2026-08-06T05:46:49.864Z"
     }
   ],
   "gateAfterRestart": {
     "enabled": true,
-    "planVersion": 46,
+    "planVersion": 372,
     "plannedCameras": 2,
     "cycles": 8,
     "failures": 0,
     "releases": 0,
-    "lastPlanAt": "2026-08-06T04:08:56.429Z",
+    "lastPlanAt": "2026-08-06T05:48:54.458Z",
     "lastError": null,
     "lastErrorAt": null,
     "runtimes": [
@@ -346,7 +346,7 @@
       {
         "runtimeId": "inference",
         "health": "healthy",
-        "latencyMs": 1
+        "latencyMs": 4
       },
       {
         "runtimeId": "p8-small-runtime",

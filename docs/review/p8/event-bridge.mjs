@@ -36,6 +36,7 @@
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import { assignCameras } from './_assign.mjs';
 
 const ROOT = resolve(new URL('../../..', import.meta.url).pathname);
 const B = process.env.BASE ?? 'https://localhost';
@@ -221,6 +222,8 @@ try {
   cameraId = cam.json?.data?.id;
   check(cameraId !== undefined, 'a camera was created on the fixture stream');
   await api(`/media/streams/${cameraId}/start`, { method: 'POST', headers: H, body: '{}' });
+  /* ⚠️ P-8 Phase 6: a camera with no assignment is never analysed. See `_assign.mjs`. */
+  await assignCameras(api, H, [cameraId]);
 
   const startedAt = new Date().toISOString();
   await sleep(OBSERVE * 1000);

@@ -1,5 +1,5 @@
 {
-  "at": "2026-08-05T18:39:31.612Z",
+  "at": "2026-08-06T06:09:11.361Z",
   "scenariosRun": ["walk", "occlusion", "reentry", "crossing"],
   "caveat": "measured against authored synthetic clips, not real CCTV. These certify the tracking logic against known trajectories — never the platform against real footage (L-1).",
   "metrics": {
@@ -26,7 +26,7 @@
     },
     "reidentificationSuccess": {
       "scenario": "reentry",
-      "detail": "identityId=trk_cam_d467f4fe424d43049af586329a2e6867_live-tnt_demo_retail-cam_d467f4fe424d43049af586329a2e6867_1 against predecessor trk_cam_d467f4fe424d43049af586329a2e6867_live-tnt_demo_retail-cam_d467f4fe424d43049af586329a2e6867_1"
+      "detail": "identityId=trk_cam_9f9070a5a7d54c40b65e363df04e63ca_live-tnt_demo_retail-cam_9f9070a5a7d54c40b65e363df04e63ca_1 against predecessor trk_cam_9f9070a5a7d54c40b65e363df04e63ca_live-tnt_demo_retail-cam_9f9070a5a7d54c40b65e363df04e63ca_1"
     },
     "identitySwitches": {
       "scenario": "crossing",

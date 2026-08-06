@@ -1412,10 +1412,38 @@ export class AssignmentService {
       } as never)
       .toArray();
 
+    /*
+     * ⚠️ **Assignments whose camera no longer exists are dropped here**, and this is not tidiness:
+     * a deleted camera's assignment keeps counting against its runtime's capacity for ever, so an
+     * estate that churns cameras slowly loses the ability to place new ones — with a capacity page
+     * that looks full and a camera list that does not explain it.
+     *
+     * ⚠️ One query for the whole sweep, not one per camera. Reaching the collection directly rather
+     * than through the tenant repository is deliberate and safe: this is a cross-tenant reconcile on
+     * an internal path, the projection returns only ids, and pruning is keyed on the (tenant, camera)
+     * PAIR — an id from another tenant cannot keep an assignment alive.
+     */
+    let alive = new Set<string>();
+    if (docs.length > 0) {
+      const rows = await this.#cameras.collection
+        .find({ _id: { $in: docs.map((d) => d.cameraId) } } as never, {
+          projection: { _id: 1, tenantId: 1 },
+        })
+        .toArray();
+      alive = new Set(rows.map((r) => `${(r as { tenantId: string }).tenantId}:${String(r._id)}`));
+    }
+
     let failover = 0;
     let failed = 0;
     let changed = false;
+    let orphaned = 0;
     for (const doc of docs) {
+      if (!alive.has(assignmentId(doc.tenantId, doc.cameraId))) {
+        await this.#assignments.deleteOne({ _id: doc._id } as never);
+        orphaned += 1;
+        changed = true;
+        continue;
+      }
       const strandedInError = doc.state === 'error';
       const runtimeGone = doc.runtimeId === null || !usable.has(doc.runtimeId);
       if (!strandedInError && !runtimeGone) continue;
@@ -1435,6 +1463,9 @@ export class AssignmentService {
     }
     this.#counters.failovers += failover;
     this.#counters.failures += failed;
+    if (orphaned > 0) {
+      this.#counters.changes += orphaned;
+    }
     if (changed) await this.#bumpPlan();
     return { failover, failed };
   }

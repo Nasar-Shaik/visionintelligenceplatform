@@ -53,6 +53,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import { assignCameras } from './_assign.mjs';
 
 const ROOT = resolve(new URL('../../..', import.meta.url).pathname);
 const B = process.env.BASE ?? 'https://localhost';
@@ -192,6 +193,8 @@ async function watch(path, zoneId, seconds = OBSERVE) {
   const cameraId = made.json?.data?.id;
   if (cameraId === undefined) throw new Error(`could not create a camera for ${path}`);
   await api(`/media/streams/${cameraId}/start`, { method: 'POST', headers: H, body: '{}' });
+  /* ⚠️ P-8 Phase 6: a camera with no assignment is never analysed. See `_assign.mjs`. */
+  await assignCameras(api, H, [cameraId]);
 
   const observations = [];
   const started = Date.now();

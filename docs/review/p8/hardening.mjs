@@ -24,6 +24,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { assignCameras } from './_assign.mjs';
 
 const ROOT = resolve(new URL('../../..', import.meta.url).pathname);
 const B = process.env.BASE ?? 'https://localhost';
@@ -383,6 +384,8 @@ if (want(3)) {
         }),
       });
       await api(`/media/streams/${made.json.data.id}/start`, { method: 'POST', headers: H, body: '{}' });
+      /* ⚠️ P-8 Phase 6: a camera with no assignment is never analysed. See `_assign.mjs`. */
+      await assignCameras(api, H, [made.json.data.id]);
     }
     await sleep(WARMUP * 1000);
     const m0 = scrape(MEDIA, 8083);

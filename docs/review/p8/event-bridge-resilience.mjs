@@ -39,6 +39,7 @@
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import { assignCameras } from './_assign.mjs';
 
 const ROOT = resolve(new URL('../../..', import.meta.url).pathname);
 const B = process.env.BASE ?? 'https://localhost';
@@ -173,6 +174,8 @@ try {
   /* ── 1 · a healthy baseline ────────────────────────────────────────────────────────────────── */
   console.log(`1 · baseline — the bridge publishing normally (${PHASE}s)`);
   await api(`/media/streams/${cameraId}/start`, { method: 'POST', headers: H, body: '{}' });
+  /* ⚠️ P-8 Phase 6: a camera with no assignment is never analysed. See `_assign.mjs`. */
+  await assignCameras(api, H, [cameraId]);
   await sleep(PHASE * 1000);
 
   const healthy = await bridge();

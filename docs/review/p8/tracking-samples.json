@@ -1,5 +1,5 @@
 {
-  "at": "2026-08-05T18:39:31.610Z",
+  "at": "2026-08-06T06:09:11.359Z",
   "observeSeconds": 26,
   "groundTruth": [
     {
@@ -50,71 +50,71 @@
   "results": {
     "walk": {
       "ids": [
-        "trk_cam_8de6767b973442d2a07545725e874402_live-tnt_demo_retail-cam_8de6767b973442d2a07545725e874402_1"
+        "trk_cam_daff1c9b74c84f1eb4e9e9418c80df9c_live-tnt_demo_retail-cam_daff1c9b74c84f1eb4e9e9418c80df9c_1"
       ],
-      "observations": 24,
-      "tracked": 21
+      "observations": 25,
+      "tracked": 25
     },
     "occlusion": {
       "ids": [
-        "trk_cam_049492508d97423b80a52a7a400fb141_live-tnt_demo_retail-cam_049492508d97423b80a52a7a400fb141_1"
+        "trk_cam_7387a6a24b00497aab24a2dc37610636_live-tnt_demo_retail-cam_7387a6a24b00497aab24a2dc37610636_1"
       ],
       "everLost": true,
       "observations": 24,
-      "tracked": 20
+      "tracked": 11
     },
     "reentry": {
       "ids": [
-        "trk_cam_d467f4fe424d43049af586329a2e6867_live-tnt_demo_retail-cam_d467f4fe424d43049af586329a2e6867_1",
-        "trk_cam_d467f4fe424d43049af586329a2e6867_live-tnt_demo_retail-cam_d467f4fe424d43049af586329a2e6867_2"
+        "trk_cam_9f9070a5a7d54c40b65e363df04e63ca_live-tnt_demo_retail-cam_9f9070a5a7d54c40b65e363df04e63ca_1",
+        "trk_cam_9f9070a5a7d54c40b65e363df04e63ca_live-tnt_demo_retail-cam_9f9070a5a7d54c40b65e363df04e63ca_2"
       ],
       "firstGone": true,
       "linked": true,
-      "precededBy": "trk_cam_d467f4fe424d43049af586329a2e6867_live-tnt_demo_retail-cam_d467f4fe424d43049af586329a2e6867_1",
+      "precededBy": "trk_cam_9f9070a5a7d54c40b65e363df04e63ca_live-tnt_demo_retail-cam_9f9070a5a7d54c40b65e363df04e63ca_1",
       "observations": 43,
-      "gapSeconds": 6.5
+      "gapSeconds": 6.499999999999998
     },
     "crossing": {
       "ids": [
-        "trk_cam_0b1c29c052644725bd60b3c051ffcf54_live-tnt_demo_retail-cam_0b1c29c052644725bd60b3c051ffcf54_1",
-        "trk_cam_0b1c29c052644725bd60b3c051ffcf54_live-tnt_demo_retail-cam_0b1c29c052644725bd60b3c051ffcf54_2"
+        "trk_cam_284095544ce34150bbd302a801a1e848_live-tnt_demo_retail-cam_284095544ce34150bbd302a801a1e848_1",
+        "trk_cam_284095544ce34150bbd302a801a1e848_live-tnt_demo_retail-cam_284095544ce34150bbd302a801a1e848_2"
       ],
       "observations": 24,
-      "tracked": 23,
+      "tracked": 24,
       "lanes": [
         {
-          "id": "trk_cam_0b1c29c052644725bd60b3c051ffcf54_live-tnt_demo_retail-cam_0b1c29c052644725bd60b3c051ffcf54_1",
-          "span": 0.004,
-          "samples": 23
+          "id": "trk_cam_284095544ce34150bbd302a801a1e848_live-tnt_demo_retail-cam_284095544ce34150bbd302a801a1e848_1",
+          "span": 0.107,
+          "samples": 24
         },
         {
-          "id": "trk_cam_0b1c29c052644725bd60b3c051ffcf54_live-tnt_demo_retail-cam_0b1c29c052644725bd60b3c051ffcf54_2",
-          "span": 0.006,
-          "samples": 23
+          "id": "trk_cam_284095544ce34150bbd302a801a1e848_live-tnt_demo_retail-cam_284095544ce34150bbd302a801a1e848_2",
+          "span": 0.013,
+          "samples": 24
         }
       ]
     },
     "stats": {
       "schemaVersion": "1.0",
       "camerasTracked": 5,
-      "activeTracks": 6,
-      "confirmedTracks": 6,
+      "activeTracks": 5,
+      "confirmedTracks": 5,
       "tentativeTracks": 0,
       "lostTracks": 0,
-      "removedTracks": 2,
-      "createdTracks": 8,
+      "removedTracks": 9,
+      "createdTracks": 18,
       "recoveredTracks": 1,
-      "framesTracked": 297,
+      "framesTracked": 1198,
       "outOfOrderFrames": 6,
-      "averageTrackingMs": 0.1254,
-      "averageTrackLifetimeSeconds": 22.8865,
-      "averageTrackAgeFrames": 46.8333,
-      "averageTrackHits": 47.8333,
-      "fragmentation": 1.3333,
+      "averageTrackingMs": 0.1281,
+      "averageTrackLifetimeSeconds": 34.0262,
+      "averageTrackAgeFrames": 69.6,
+      "averageTrackHits": 70.6,
+      "fragmentation": 3.6,
       "camerasEvicted": 0,
       "occlusionsSurvived": 1,
-      "crossings": 0,
-      "reentryOpportunities": 1,
+      "crossings": 1,
+      "reentryOpportunities": 8,
       "identitySwitches": null,
       "reidentificationSuccessRate": null,
       "falseRecoveries": null,
