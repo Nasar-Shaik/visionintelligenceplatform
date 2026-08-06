@@ -20,6 +20,7 @@ assignment   | Camera assignment, end to end     | assignment/assignment.sh| RUN
 # ⚠️ The customer-facing one. A pilot is judged on whether the feature works, not on whether
 # the harness does — so the workflow runs here and the mutation suite does not.
 loitering    | Retail loitering, end to end      | loitering/loitering.sh  | RUN_LOITERING    | preflight | continue | TIMEOUT_LOITERING
+rule-replay  | Rule replay determinism           | events/rule-replay.sh   | RUN_RULE_REPLAY  | preflight | continue | TIMEOUT_RULE_REPLAY
 event-replay | Duplicates, correlation, replay   | events/replay.sh        | RUN_EVENT_REPLAY | preflight | continue | TIMEOUT_EVENT_REPLAY
 stability    | Long stability run                | runtime/stability.sh    | RUN_SOAK        | preflight | continue | TIMEOUT_SOAK
 benchmark    | Capacity ladder and benchmark     | runtime/benchmark.sh    | RUN_BENCHMARK   | preflight | continue | TIMEOUT_BENCHMARK

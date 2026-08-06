@@ -18,5 +18,6 @@ benchmark | Capacity ladder on real streams | runtime/benchmark.sh    | RUN_BENC
 assignment           | Camera assignment, end to end | assignment/assignment.sh | RUN_ASSIGNMENT | preflight | continue | TIMEOUT_ASSIGNMENT
 assignment-benchmark | Assignment capacity ladder    | assignment/benchmark.sh  | RUN_ASSIGNMENT_BENCHMARK | preflight | continue | TIMEOUT_ASSIGNMENT_BENCHMARK
 loitering            | Retail loitering, end to end  | loitering/loitering.sh      | RUN_LOITERING      | preflight | continue | TIMEOUT_LOITERING
+rule-replay          | Rule replay determinism       | events/rule-replay.sh       | RUN_RULE_REPLAY    | preflight | continue | TIMEOUT_RULE_REPLAY
 rule-benchmark       | Loitering capacity ladder     | loitering/rule-benchmark.sh | RUN_RULE_BENCHMARK | preflight | continue | TIMEOUT_RULE_BENCHMARK
 report    | Morning summary                 | platform/report.sh      | RUN_REPORT    | always   | continue | TIMEOUT_REPORT
