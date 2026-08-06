@@ -37,13 +37,30 @@
  * `ctx` carries `{ cameraIds, zoneIds, tag }` so a rule can name what setup produced.
  */
 
-/** The whole frame. Geometry is not what a soak measures — `zone-geometry.test.ts` does that. */
+/**
+ * The whole frame — **the entire unit square, with no inset**.
+ *
+ * Geometry is not what a soak measures; `zone-geometry.test.ts` does that exhaustively. What this
+ * constant has to do is never be the reason a capability looks dead.
+ *
+ * ⚠️ **It was, once, and the failure was silent.** An earlier version inset the polygon to
+ * `0.02–0.98`, copied from `loitering.mjs` where the fixture is a walking figure in mid-frame. Zone
+ * membership is a point-in-polygon test on the subject's **feet** — the bottom centre of the
+ * bounding box (L-58) — and in a photograph where people reach the bottom edge that point sits at
+ * y ≈ 1.0, outside a polygon that stops at 0.98. The rule loaded, the zone registered, the engine
+ * reported one active zone, and the dwell stage never evaluated a single event: `dwellStateEntries`
+ * and `dwellWithoutIdentity` were both zero, which is what "no event ever reached this stage" looks
+ * like from the outside.
+ *
+ * A two-percent inset that costs nothing on one scene silently disables the capability on another.
+ * The full square has no such interaction with any fixture.
+ */
 export const WHOLE_FRAME = {
   points: [
-    [0.02, 0.02],
-    [0.98, 0.02],
-    [0.98, 0.98],
-    [0.02, 0.98],
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [0, 1],
   ],
 };
 
