@@ -166,6 +166,8 @@ interface Queued {
   seq: number;
   result: unknown;
   detections: number;
+  /** Whether any detection in this result carries a track id — computed where the result is typed. */
+  tracked: boolean;
   queuedAt: number;
 }
 
@@ -219,6 +221,16 @@ export class BufferedEventPublisher {
 
   #offered = 0;
   #published = 0;
+  /** Per-camera published counts (P-8 Phase 6 §8). Bounded by the estate, like every other map here. */
+  readonly #publishedByCamera = new Map<string, number>();
+  /**
+   * Cameras for which a detection carrying a **track id** has been published (P-8 Phase 6 §10).
+   *
+   * ⚠️ Distinct from having published anything at all: a runtime that detects but does not track
+   * produces events with no identity, and a capability matrix that reported "tracking: yes" for it
+   * would be exactly the inference-from-configuration the matrix exists to replace.
+   */
+  readonly #trackingByCamera = new Set<string>();
   #rejected = 0;
   #suppressed = 0;
   #droppedQueueFull = 0;
@@ -348,6 +360,12 @@ export class BufferedEventPublisher {
       seq: result.frame.seq,
       result: correlated,
       detections: result.detections.length,
+      /*
+       * ⚠️ Computed HERE, where `result` is a parsed `DetectionResult`, rather than at the publish
+       * site where the queue item has widened to `unknown`. Casting it back would have re-asserted a
+       * type the contract already guaranteed once.
+       */
+      tracked: result.detections.some((d) => d.trackingId !== undefined),
       queuedAt: this.#now(),
     });
     /*
@@ -361,6 +379,22 @@ export class BufferedEventPublisher {
       this.#droppedQueueFull += 1;
     }
     void this.#pump();
+  }
+
+  /**
+   * Events published for one camera (P-8 Phase 6 §8).
+   *
+   * ⚠️ `null` — not 0 — when this publisher has never seen the camera. "The bridge published nothing
+   * for this camera" and "this camera is not on a bridge that publishes" are different facts, and the
+   * per-camera metrics view has to be able to say which.
+   */
+  publishedFor(tenantId: string, cameraId: string): number | null {
+    return this.#publishedByCamera.get(`${tenantId} ${cameraId}`) ?? null;
+  }
+
+  /** Whether a tracked detection has ever been published for this camera. */
+  trackingFor(tenantId: string, cameraId: string): boolean {
+    return this.#trackingByCamera.has(`${tenantId} ${cameraId}`);
   }
 
   /** Cameras this publisher is holding state for. Used by the camera-assignment verification. */
@@ -495,6 +529,9 @@ export class BufferedEventPublisher {
           msgId: `${item.tenantId}:${item.cameraId}:${item.seq}`,
         });
         this.#published += 1;
+        const cameraKey = `${item.tenantId} ${item.cameraId}`;
+        this.#publishedByCamera.set(cameraKey, (this.#publishedByCamera.get(cameraKey) ?? 0) + 1);
+        if (item.tracked) this.#trackingByCamera.add(cameraKey);
         this.#detectionsPublished += item.detections;
         this.#publishMs.add(this.#now() - started);
         this.#throughput.push(this.#now());

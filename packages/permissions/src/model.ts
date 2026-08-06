@@ -65,6 +65,17 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
      * movement analytics from a role must be able to, without also withholding the camera list.
      */
     'track:read',
+    /*
+     * ⚠️ P-8 Phase 6 — Camera Processing Assignment. `assignment:read` is listed explicitly for the
+     * reason this file has now recorded three times: `admin` holds no `*:read`, so a new resource
+     * that only reaches operators and viewers through the wildcard leaves the tenant's own
+     * administrator refused a page their staff can see.
+     *
+     * `assignment:*` rather than folding it into `camera:*`: deciding which cameras consume AI
+     * compute is a spending decision, and a tenant must be able to grant camera administration
+     * without also granting it.
+     */
+    'assignment:*',
   ],
   operator: [
     '*:read',
@@ -104,6 +115,16 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
      * deployment's internal topology.
      */
     'system:inspect',
+    /*
+     * ⚠️ P-8 Phase 6 — the operator on shift may **suspend** AI on a camera and resume it, and may
+     * do neither of the two things that change what the deployment costs or how it is shaped.
+     *
+     * Pausing the analytics on a till while an engineer works under it is shift work, and routing it
+     * through an administrator means it does not happen. Binding a camera to a profile, moving it
+     * between runtimes, or enabling AI on a camera that had none are configuration decisions with a
+     * compute bill attached — those stay with `admin` via `assignment:*`.
+     */
+    'assignment:control',
   ],
   /*
    * ⚠️ `*:read` includes `track:read`, and that is correct rather than an oversight: a viewer can
@@ -239,6 +260,52 @@ export const REFUSED_WORKSPACE_PERMISSIONS = [
   'playback:read',
   'audit:write',
   'audit:delete',
+] as const;
+
+/**
+ * The Camera Processing Assignment catalog (P-8 Phase 6), stated as data like the two above.
+ *
+ * ### ⚠️ `assignment:read` rides `*:read`, and that is the correct answer here
+ *
+ * TD-26's hazard is that every new `<resource>:read` is handed to `viewer` the moment it is named.
+ * The question is always whether that is wrong, not whether it happens. Here it is right: which
+ * cameras are being analysed, on which runtime, is **device configuration**, not a record of a
+ * person — a viewer can already watch the footage. Withholding "is AI on for this camera" from
+ * someone who can watch the camera would protect nothing and would leave the console's assignment
+ * page blank for most of its users.
+ *
+ * `assignment:control` and `assignment:write` are the ones that do not ride a wildcard, and the split
+ * between them is the point: suspending analytics is shift work, deciding what the deployment
+ * analyses is not.
+ */
+export const ASSIGNMENT_PERMISSIONS = [
+  /** The assignment, runtime, profile, capacity and history views. */
+  'assignment:read',
+  /** Pause and resume an existing assignment. Granted to `operator`. */
+  'assignment:control',
+  /** Enable/disable AI, bind profiles, move runtimes, bulk operations, groups. `admin` and above. */
+  'assignment:write',
+  /** Register, update and remove AI runtimes — deployment infrastructure. `admin` and above. */
+  'assignment:runtime',
+] as const;
+
+/**
+ * ⚠️ **Permissions deliberately NOT created for assignment.**
+ *
+ * - `assignment:balance` — there is no auto-balancer, by explicit architectural decision. A
+ *   permission that exists can be granted, and granting authority over a mechanism that does not
+ *   exist is how a future scheduler arrives already authorised and unreviewed.
+ * - `assignment:license` — licensing is an extension point with no implementation. The limits are
+ *   read from configuration and enforced by the same code path for everyone; there is nothing a
+ *   tenant principal could be permitted to do to them.
+ * - `runtime:read` — a second spelling of `assignment:read` over the same documents. Two gates on
+ *   one resource disagree eventually, and the disagreement resolves in whichever direction the code
+ *   happens to check (the reasoning that refused `incident:admin` and `search:query`).
+ */
+export const REFUSED_ASSIGNMENT_PERMISSIONS = [
+  'assignment:balance',
+  'assignment:license',
+  'runtime:read',
 ] as const;
 
 export const ROLES = Object.keys(ROLE_PERMISSIONS) as Role[];

@@ -19,6 +19,8 @@ import { FfmpegDecoder } from './adapters/ffmpeg-decoder.js';
 import { NullFrameSink } from './adapters/null-frame-sink.js';
 import { HttpFrameSink } from './adapters/http-frame-sink.js';
 import { BufferedEventPublisher } from './adapters/event-publisher.js';
+import { AssignmentGate } from './application/assignment-gate.js';
+import { AssignmentClient } from './adapters/assignment-client.js';
 import { NatsEventBus } from '@vip/messaging';
 import { buildServer } from './transport/server.js';
 
@@ -96,6 +98,13 @@ async function main(): Promise<void> {
     });
   }
 
+  /*
+   * ⚠️ Camera Processing Assignment (P-8 Phase 6). The gate is created before the sink because the
+   * sink consults it on the frame path; the client is created after, because it needs the sink to
+   * release queues. That ordering is the only coupling between the two.
+   */
+  const gate = config.assignment.enabled ? new AssignmentGate() : undefined;
+
   const frameSink =
     config.perception.url === ''
       ? new NullFrameSink()
@@ -108,6 +117,67 @@ async function main(): Promise<void> {
           timeoutMs: config.perception.timeoutMs,
           onLog: (level, msg, fields) => loggerRef.current?.[level]({ ...fields }, msg),
           ...(eventPublisher === undefined ? {} : { publisher: eventPublisher }),
+          ...(gate === undefined ? {} : { gate }),
+        });
+
+  /*
+   * ⚠️ **The release wiring — this is what closes the defect P-8 Phase 5 measured.**
+   *
+   * A camera switched off and back on begins its frame sequence again at 1. A publisher still
+   * holding `lastSeq` from the previous session treats every new frame as stale and drops it, for
+   * ever, silently: Phase 5 measured a re-enabled camera publishing 0 and dropping 32. Releasing both
+   * the sink's queue and the publisher's ordering gate whenever the control plane says the session
+   * has changed is the fix, and it is driven by a version number rather than by timing.
+   *
+   * `BufferedEventPublisher.release()` was written in Phase 5 and deliberately left uncalled, so that
+   * this milestone would plug in without a redesign. This is the call.
+   */
+  const assignmentClient =
+    gate === undefined
+      ? undefined
+      : new AssignmentClient({
+          controlPlaneUrl: config.ingestion.cameraUrl,
+          internalKey: config.internal.apiKey,
+          gate,
+          intervalMs: config.assignment.intervalMs,
+          degradedMs: config.assignment.degradedMs,
+          onRelease: (tenantId, cameraId) => {
+            if (frameSink instanceof HttpFrameSink) frameSink.release(tenantId, cameraId);
+            eventPublisher?.release(tenantId, cameraId);
+          },
+          ...(frameSink instanceof HttpFrameSink
+            ? { runtimeFailures: () => frameSink.drainRuntimeFailures() }
+            : {}),
+          /*
+           * ⚠️ Facts for **every supervised camera**, not just the assigned ones. A camera
+           * deliberately excluded from AI still records, and the capability matrix has to be able to
+           * say so — reporting only assigned cameras would leave every recording-only camera
+           * answering "unknown" for ever. `idle` moves no state machine on the control plane, so a
+           * recording-only camera appearing here cannot disturb its assignment.
+           */
+          cameraFacts: () =>
+            supervisor.allHealth().map((stream) => ({
+              tenantId: stream.tenantId,
+              cameraId: stream.cameraId,
+              state: 'idle' as const,
+              runtimeId: null,
+              recording: stream.recording,
+              /*
+               * ⚠️ OMITTED when the supervisor's health is `unknown`, rather than mapped onto
+               * `degraded`. An idle worker has not demonstrated a recording problem, and reporting
+               * one would put a red badge on a camera nobody has measured — the exact failure
+               * ADR-0039 exists to prevent. Absent here becomes `unknown` in the matrix.
+               */
+              ...(stream.health === 'unknown' ? {} : { recordingHealth: stream.health }),
+              ...(eventPublisher === undefined
+                ? {}
+                : {
+                    tracking: eventPublisher.trackingFor(stream.tenantId, stream.cameraId),
+                    eventsPublished:
+                      eventPublisher.publishedFor(stream.tenantId, stream.cameraId) ?? 0,
+                  }),
+            })),
+          onLog: (level, msg, fields) => loggerRef.current?.[level]({ ...fields }, msg),
         });
 
   const supervisor = new StreamSupervisor({
@@ -136,6 +206,16 @@ async function main(): Promise<void> {
     readiness,
     ...(frameSink instanceof HttpFrameSink ? { perception: frameSink } : {}),
     ...(eventPublisher === undefined ? {} : { eventPublisher }),
+    ...(gate !== undefined && assignmentClient !== undefined && frameSink instanceof HttpFrameSink
+      ? {
+          assignment: {
+            gate,
+            client: assignmentClient,
+            perception: frameSink,
+            ...(eventPublisher === undefined ? {} : { publisher: eventPublisher }),
+          },
+        }
+      : {}),
   });
   loggerRef.current = app.log;
   app.log.info(
@@ -150,9 +230,26 @@ async function main(): Promise<void> {
     },
     'perception sink configured',
   );
+  /*
+   * ⚠️ Logged at boot either way. "Is this deployment governed by assignment?" must be answerable
+   * from the log rather than inferred from a counter that reads zero — the two possible zeroes
+   * ("nothing assigned" and "the gate is off, everything is analysed") mean opposite things.
+   */
+  app.log.info(
+    {
+      enabled: config.assignment.enabled,
+      controlPlane: config.assignment.enabled ? config.ingestion.cameraUrl : null,
+      intervalMs: config.assignment.intervalMs,
+    },
+    config.assignment.enabled
+      ? 'camera processing assignment ENABLED — only assigned cameras are analysed'
+      : 'camera processing assignment disabled — every camera is analysed',
+  );
+  assignmentClient?.start();
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     app.log.info({ signal }, 'shutdown signal received, draining');
+    assignmentClient?.stop();
     await supervisor.stopAll();
     await app.close();
     await mongo.close();

@@ -31,6 +31,11 @@ export interface ServiceConfig extends AppConfig {
    * unavailable rather than failing to start.
    */
   discoveryUrl?: string;
+  /**
+   * Rules service base URL, read ONLY for the capability matrix's `rules` fact (P-8 Phase 6 rec 1).
+   * ⚠️ Empty is a valid deployment: the fact reads `unknown` rather than `false`.
+   */
+  rulesUrl: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
@@ -44,6 +49,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
   // service, and a shared group would imply a platform-wide convention that does not exist yet. If a
   // second service needs it, that is the moment to promote it (ADR-0018 governs secrets, not URLs).
   const discoveryUrl = env.CAMERA_DISCOVERY_URL?.trim();
+  const rulesUrl = env.RULES_URL?.trim() ?? '';
   return {
     ...app,
     serviceVersion,
@@ -52,5 +58,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
     crypto,
     internal,
     ...(discoveryUrl ? { discoveryUrl } : {}),
+    rulesUrl,
   };
 }

@@ -7,7 +7,19 @@
 import { MongoClient, type Collection, type Db, type IndexSpecification } from 'mongodb';
 import type { CameraDoc } from '../domain/camera.js';
 import type { ProbeRecordDoc } from '../domain/probe-archive.js';
-import { CAMERA_INDEXES, PROBE_INDEXES } from './indexes.js';
+import type { AssignmentDoc } from '../domain/assignment.js';
+import type { ProfileDoc } from '../domain/processing-profile.js';
+import type { RuntimeDoc } from '../domain/runtime-registry.js';
+import type { GroupDoc, HistoryDoc, MetaDoc } from '../application/assignment-service.js';
+import type { ProcessingFactsDoc } from '../application/capability-matrix.js';
+import {
+  ASSIGNMENT_HISTORY_INDEXES,
+  ASSIGNMENT_INDEXES,
+  CAMERA_INDEXES,
+  GROUP_INDEXES,
+  PROBE_INDEXES,
+  PROFILE_INDEXES,
+} from './indexes.js';
 
 export interface MongoAdapter {
   client: MongoClient;
@@ -15,6 +27,18 @@ export interface MongoAdapter {
   cameras: Collection<CameraDoc>;
   /** The immutable probe archive (P-2.2). Append-only: nothing in the service ever updates it. */
   probes: Collection<ProbeRecordDoc>;
+  /* --- Camera Processing Assignment (P-8 Phase 6) ------------------------------------------- */
+  assignments: Collection<AssignmentDoc>;
+  processingProfiles: Collection<ProfileDoc>;
+  /** ⚠️ Platform infrastructure, not tenant data — see `RuntimeDoc`. */
+  processingRuntimes: Collection<RuntimeDoc>;
+  /** Append-only. Nothing in the service ever updates or deletes an entry. */
+  assignmentHistory: Collection<HistoryDoc>;
+  cameraGroups: Collection<GroupDoc>;
+  /** What enforcement points measured, per camera — the capability matrix's evidence. */
+  processingFacts: Collection<ProcessingFactsDoc>;
+  /** The monotonic plan-version counter. One document. */
+  assignmentMeta: Collection<MetaDoc>;
   ping(): Promise<void>;
   close(): Promise<void>;
 }
@@ -35,12 +59,31 @@ export async function connectMongo(opts: ConnectMongoOptions): Promise<MongoAdap
   const db = opts.dbName ? client.db(opts.dbName) : client.db();
   const cameras = db.collection<CameraDoc>('cameras');
   const probes = db.collection<ProbeRecordDoc>('camera_probes');
-  await ensureIndexes(cameras, probes);
+  const assignments = db.collection<AssignmentDoc>('camera_assignments');
+  const processingProfiles = db.collection<ProfileDoc>('processing_profiles');
+  const processingRuntimes = db.collection<RuntimeDoc>('processing_runtimes');
+  const assignmentHistory = db.collection<HistoryDoc>('assignment_history');
+  const cameraGroups = db.collection<GroupDoc>('camera_groups');
+  const assignmentMeta = db.collection<MetaDoc>('assignment_meta');
+  const processingFacts = db.collection<ProcessingFactsDoc>('camera_processing_facts');
+  await ensureIndexes(cameras, probes, {
+    assignments,
+    processingProfiles,
+    assignmentHistory,
+    cameraGroups,
+  });
   return {
     client,
     db,
     cameras,
     probes,
+    assignments,
+    processingProfiles,
+    processingRuntimes,
+    assignmentHistory,
+    cameraGroups,
+    processingFacts,
+    assignmentMeta,
     async ping() {
       await db.command({ ping: 1 });
     },
@@ -50,9 +93,17 @@ export async function connectMongo(opts: ConnectMongoOptions): Promise<MongoAdap
   };
 }
 
+interface AssignmentCollections {
+  assignments: Collection<AssignmentDoc>;
+  processingProfiles: Collection<ProfileDoc>;
+  assignmentHistory: Collection<HistoryDoc>;
+  cameraGroups: Collection<GroupDoc>;
+}
+
 async function ensureIndexes(
   cameras: Collection<CameraDoc>,
   probes: Collection<ProbeRecordDoc>,
+  assignment: AssignmentCollections,
 ): Promise<void> {
   /*
    * Created from the declared specs so the code and the coverage test cannot disagree. Every index
@@ -110,5 +161,25 @@ async function ensureIndexes(
       1 | -1
     >;
     await reconcile(probes as unknown as Collection<never>, spec.name, keys, probeIndexes);
+  }
+
+  /*
+   * P-8 Phase 6. `at` descends for the same reason it does on the probe archive: history is read
+   * newest-first, and an ascending index makes the most common read walk the whole range backwards.
+   */
+  const sets: readonly [Collection<never>, readonly (typeof ASSIGNMENT_INDEXES)[number][]][] = [
+    [assignment.assignments as unknown as Collection<never>, ASSIGNMENT_INDEXES],
+    [assignment.assignmentHistory as unknown as Collection<never>, ASSIGNMENT_HISTORY_INDEXES],
+    [assignment.processingProfiles as unknown as Collection<never>, PROFILE_INDEXES],
+    [assignment.cameraGroups as unknown as Collection<never>, GROUP_INDEXES],
+  ];
+  for (const [collection, specs] of sets) {
+    const existing = await collection.indexes().catch(() => []);
+    for (const spec of specs) {
+      const keys = Object.fromEntries(
+        spec.keys.map((key) => [key, key === 'at' ? -1 : 1]),
+      ) as Record<string, 1 | -1>;
+      await reconcile(collection, spec.name, keys, existing, spec.unique ? { unique: true } : {});
+    }
   }
 }

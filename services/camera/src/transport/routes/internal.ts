@@ -6,15 +6,19 @@
  * caller names the tenant via `x-tenant-id` (trusted, since it holds the internal key).
  */
 import type { FastifyInstance } from 'fastify';
+import { AssignmentObservationReport } from '@vip/contracts';
 import { TenantScope } from '@vip/tenancy';
 import type { CameraService } from '../../application/camera-service.js';
+import type { AssignmentService } from '../../application/assignment-service.js';
 import { requireInternalKey } from '../plugins/internal-auth.js';
 import { badRequest } from '../../application/errors.js';
-import { success } from '../http.js';
+import { parseBody, success } from '../http.js';
 
 export interface InternalRoutesDeps {
   service: CameraService;
   internalKey: string;
+  /** Absent in deployments built before P-8 Phase 6 wiring; the routes are then not mounted. */
+  assignments?: AssignmentService;
 }
 
 interface CameraParams {
@@ -36,4 +40,29 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
       return reply.send(success(await deps.service.resolveConnection(scope, request.params.id)));
     },
   );
+
+  /*
+   * ═══ Camera Processing Assignment (P-8 Phase 6) ═══════════════════════════════════════════════
+   *
+   * ⚠️ **Cross-tenant, and behind the internal key for exactly that reason.** One media deployment
+   * ingests every tenant's cameras, so a per-tenant plan would mean media polling N endpoints and
+   * discovering a new tenant by accident. The gateway strips `x-internal-key`, so neither of these
+   * is reachable from a browser however the URL is spelled.
+   */
+  const assignments = deps.assignments;
+  if (assignments === undefined) return;
+
+  app.get('/internal/assignment/plan', { preHandler }, async (_request, reply) =>
+    reply.send(success(await assignments.plan())),
+  );
+
+  /*
+   * ⚠️ The only route in the platform that can move an assignment into an *observed* state. The
+   * control plane believes nothing about what is running until this is called — see
+   * `domain/assignment.ts`.
+   */
+  app.post('/internal/assignment/report', { preHandler }, async (request, reply) => {
+    const report = parseBody(AssignmentObservationReport, request.body);
+    return reply.send(success(await assignments.report(report)));
+  });
 }

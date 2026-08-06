@@ -14,6 +14,8 @@ import { connectMongo } from './adapters/mongo.js';
 import { ReadinessRegistry } from './application/readiness.js';
 import { LoggingEventPublisher } from './application/events.js';
 import { CameraService } from './application/camera-service.js';
+import { AssignmentService } from './application/assignment-service.js';
+import { HttpRuleAvailability } from './application/capability-matrix.js';
 import { HttpDiscoveryProvider, UnavailableDiscoveryProvider } from './application/discovery.js';
 import { HttpStreamProbe, UnavailableStreamProbe } from './application/stream-probe.js';
 import { buildServer } from './transport/server.js';
@@ -23,6 +25,9 @@ const ids = {
   cameraId: () => `cam_${randomUUID().replace(/-/g, '')}`,
   probeId: () => `prb_${randomUUID().replace(/-/g, '')}`,
 };
+
+/** Audit-entry ids. Injected so the domain stays deterministic under test. */
+const assignmentIds = { historyId: () => `ash_${randomUUID().replace(/-/g, '')}` };
 
 async function main(): Promise<void> {
   loadDotEnv(); // load .env into process.env once (no-op in prod / tests)
@@ -80,7 +85,35 @@ async function main(): Promise<void> {
     probe,
   });
 
-  const { app } = await buildServer({ config, service, readiness });
+  /*
+   * Camera Processing Assignment (P-8 Phase 6) — the control plane.
+   *
+   * ⚠️ Always constructed. Unlike perception and the event bridge, this has no "off" switch and
+   * needs none: with no runtime registered, every camera is `unassigned`, the plan is empty, and the
+   * deployment behaves exactly as it did before this milestone. Making it optional would have added
+   * a flag whose only effect is to hide the reason nothing is being analysed.
+   */
+  const assignments = new AssignmentService({
+    assignments: mongo.assignments,
+    profiles: mongo.processingProfiles,
+    runtimes: mongo.processingRuntimes,
+    history: mongo.assignmentHistory,
+    groups: mongo.cameraGroups,
+    facts: mongo.processingFacts,
+    meta: mongo.assignmentMeta,
+    /*
+     * ⚠️ The rule catalogue, for the capability matrix's `rules` fact only. Unconfigured is a valid
+     * deployment: the fact reads `unknown`, which is the truth, rather than `false`, which would
+     * tell an operator their rules are missing when nobody has looked.
+     */
+    ...(config.rulesUrl === '' ? {} : { rules: new HttpRuleAvailability(config.rulesUrl) }),
+    cameras: new TenantRepository(mongo.cameras),
+    clock,
+    ids: assignmentIds,
+    publisher,
+  });
+
+  const { app } = await buildServer({ config, service, readiness, assignments });
   loggerRef.current = app.log;
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {

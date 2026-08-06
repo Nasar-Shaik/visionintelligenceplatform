@@ -160,8 +160,33 @@ export const CameraMetadata = z.object({
   /** Free-form operator tags for grouping/filtering. */
   tags: z.array(z.string().min(1).max(50)).max(50).default([]),
   notes: z.string().max(2000).optional(),
+  /**
+   * Organisational owner of the camera (P-8 Phase 6, Architect rec 4). Cuts **across** locations —
+   * a department can span floors and buildings, which is exactly why it is not a hierarchy node.
+   */
+  department: z.string().max(200).optional(),
+  /**
+   * Operational importance, for future bulk assignment and targeting (P-8 Phase 6, Architect rec 4).
+   *
+   * ⚠️ Descriptive only. Nothing in the platform reads this to make a decision today — placement is
+   * capacity- and health-driven, and a priority that silently changed which camera got AI would be a
+   * scheduling policy nobody reviewed.
+   */
+  priority: z.enum(['critical', 'high', 'normal', 'low']).optional(),
 });
 export type CameraMetadata = z.infer<typeof CameraMetadata>;
+
+/*
+ * ⚠️ **Building · Floor · Zone · Store are deliberately NOT metadata fields**, though the Architect's
+ * recommendation listed them beside `department` and `priority`.
+ *
+ * They are already modelled — with ancestry, archival and referential permanence — by the Location
+ * Hierarchy (`OrgNodeType`: `org · region · country · branch · site · building · floor · zone`), and
+ * a camera already names its `zoneId`. Copying them here would give the platform two answers to
+ * "where is this camera", and the copy is the one that goes stale after a site is reorganised.
+ * `department` and `priority` are added because they are the two the hierarchy genuinely does not
+ * express: one cuts across locations, the other is a property of the device's job.
+ */
 
 // ---------------------------------------------------------------------------------------------
 // Camera lifecycle, identity and operational health (P-2)

@@ -66,6 +66,64 @@ export const CAMERA_INDEXES: readonly IndexSpec[] = [
   },
 ] as const;
 
+/**
+ * Camera Processing Assignment (P-8 Phase 6).
+ *
+ * ⚠️ `plan_state` is the one that carries production: the enforcement point polls the plan on an
+ * interval, across every tenant, and that read filters on `state` alone. Without a `state`-leading
+ * index it is a collection scan every few seconds for ever — the cost of which is invisible against
+ * a fixture and grows linearly with the estate.
+ */
+export const ASSIGNMENT_INDEXES: readonly IndexSpec[] = [
+  {
+    name: 'tenant_camera',
+    keys: ['tenantId', 'cameraId'],
+    serves: 'one camera’s assignment; the tenant-scoped listing',
+    unique: true,
+  },
+  {
+    name: 'tenant_state',
+    keys: ['tenantId', 'state', 'cameraId'],
+    serves: 'the assignment page filtered by state',
+  },
+  {
+    name: 'runtime_state',
+    keys: ['runtimeId', 'state'],
+    serves: 'per-runtime load and the failover sweep',
+  },
+  {
+    name: 'plan_state',
+    keys: ['state', 'tenantId', 'cameraId'],
+    serves: '⚠️ the cross-tenant plan read, polled by the enforcement point',
+  },
+] as const;
+
+export const ASSIGNMENT_HISTORY_INDEXES: readonly IndexSpec[] = [
+  {
+    name: 'tenant_camera_at',
+    keys: ['tenantId', 'cameraId', 'at'],
+    serves: 'one camera’s audit trail, newest first',
+  },
+  {
+    name: 'tenant_at',
+    keys: ['tenantId', 'at'],
+    serves: 'the tenant-wide assignment history page',
+  },
+] as const;
+
+export const PROFILE_INDEXES: readonly IndexSpec[] = [
+  {
+    name: 'tenant_profile',
+    keys: ['tenantId', 'profileId'],
+    serves: 'profile lookup',
+    unique: true,
+  },
+] as const;
+
+export const GROUP_INDEXES: readonly IndexSpec[] = [
+  { name: 'tenant_group', keys: ['tenantId', 'groupId'], serves: 'group lookup', unique: true },
+] as const;
+
 export const PROBE_INDEXES: readonly IndexSpec[] = [
   {
     name: 'tenant_camera_at',

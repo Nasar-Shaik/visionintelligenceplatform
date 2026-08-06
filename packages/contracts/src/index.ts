@@ -27,6 +27,10 @@ export * from './camera/camera.js';
 // P-5.4 rec 5 — camera placement and the camera map. Additive; camera.ts is untouched.
 export * from './camera/placement.js';
 
+// camera processing assignment — the platform control plane (P-8 Phase 6). Decides which cameras
+// consume AI, on which runtime, under which profile. Additive: no frozen contract is touched.
+export * from './assignment/assignment.js';
+
 // media / ingestion (P1-4)
 export * from './media/media.js';
 

@@ -64,6 +64,22 @@ export interface EventBridgeConfig {
   maxAttempts: number;
 }
 
+/**
+ * Camera Processing Assignment (P-8 Phase 6) — the enforcement point's link to the control plane.
+ *
+ * ⚠️ **Off by default**, like perception and the event bridge before it. When off, media analyses
+ * every camera exactly as it did before this milestone; when on, the plan governs. An upgrade that
+ * silently switched AI off across a customer's estate until somebody discovered a new control plane
+ * would be a worse failure than the one the gate prevents. The choice is logged at boot.
+ */
+export interface AssignmentConfig {
+  enabled: boolean;
+  /** How often the plan is polled and the observation reported, ms. */
+  intervalMs: number;
+  /** A runtime whose health probe takes longer than this is reported `degraded`. */
+  degradedMs: number;
+}
+
 export interface ServiceConfig extends AppConfig {
   serviceVersion: string;
   jwt: JwtConfig;
@@ -73,6 +89,7 @@ export interface ServiceConfig extends AppConfig {
   ingestion: IngestionConfig;
   perception: PerceptionConfig;
   eventBridge: EventBridgeConfig;
+  assignment: AssignmentConfig;
   /** The backbone. ⚠️ Only read when the bridge is enabled — see `loadConfig`. */
   nats?: NatsConfig;
   /** Signed playback-URL lifetime (seconds). */
@@ -106,6 +123,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       MEDIA_EVENT_QUEUE_PER_CAMERA: z.coerce.number().int().min(1).max(256).default(16),
       MEDIA_EVENT_MAX_INFLIGHT: z.coerce.number().int().min(1).max(64).default(4),
       MEDIA_EVENT_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(2),
+      // ⚠️ Off by default. See AssignmentConfig.
+      MEDIA_ASSIGNMENT_ENABLED: z
+        .enum(['0', '1', 'true', 'false'])
+        .default('0')
+        .transform((v) => v === '1' || v === 'true'),
+      MEDIA_ASSIGNMENT_INTERVAL_MS: z.coerce.number().int().min(1000).max(120_000).default(5_000),
+      MEDIA_ASSIGNMENT_DEGRADED_MS: z.coerce.number().int().min(50).max(30_000).default(1_500),
     }),
     env,
     'ingestion',
@@ -130,6 +154,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       queuePerCamera: ing.MEDIA_FRAME_QUEUE_PER_CAMERA,
       maxInflight: ing.MEDIA_FRAME_MAX_INFLIGHT,
       timeoutMs: ing.MEDIA_FRAME_TIMEOUT_MS,
+    },
+    assignment: {
+      enabled: ing.MEDIA_ASSIGNMENT_ENABLED,
+      intervalMs: ing.MEDIA_ASSIGNMENT_INTERVAL_MS,
+      degradedMs: ing.MEDIA_ASSIGNMENT_DEGRADED_MS,
     },
     eventBridge: {
       enabled: ing.MEDIA_EVENT_BRIDGE_ENABLED,

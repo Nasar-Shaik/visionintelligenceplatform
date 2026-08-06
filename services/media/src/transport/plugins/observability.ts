@@ -7,6 +7,7 @@
 import type { FastifyInstance } from 'fastify';
 import { collectDefaultMetrics, Gauge, Histogram, Registry } from 'prom-client';
 import type { FrameSinkStats } from '../../adapters/http-frame-sink.js';
+import type { AssignmentClientStats } from '../../adapters/assignment-client.js';
 import type { EventPublisherStats } from '../../adapters/event-publisher.js';
 
 const METRICS_ROUTE = '/metrics';
@@ -293,4 +294,146 @@ export function registerEventPublisherMetrics(
       );
     },
   });
+}
+
+/**
+ * Camera Processing Assignment, made measurable (P-8 Phase 6 §9).
+ *
+ * ### ⚠️ Aggregate only — no tenant label, no camera label
+ *
+ * Prometheus has no tenant isolation, so a `camera_id` label here would publish one customer's
+ * inventory to anything that can reach the scrape endpoint, and its cardinality would grow with the
+ * estate. Per-camera figures are served by `GET /perception/assignment/cameras`, behind
+ * `assignment:read` and a verified tenant. The two are different surfaces on purpose.
+ *
+ * ### ⚠️ Runtime health is a labelled series, and it is the exception that earns it
+ *
+ * `media_assignment_runtime_health{runtime_id}` names infrastructure, not a customer — a runtime is
+ * a container the operator deployed. Cardinality is bounded by the number of registered runtimes,
+ * which is single digits. Without the label, "one of the runtimes is offline" is unactionable.
+ *
+ * ⚠️ The encoding distinguishes every state rather than collapsing to healthy/unhealthy, because
+ * `busy` (answers a probe, cannot do work) and `offline` (does not answer) need different responses,
+ * and `recovering` must not page anybody at all.
+ */
+export function registerAssignmentMetrics(
+  registry: Registry,
+  provider: { stats(): AssignmentClientStats },
+): void {
+  const series: Array<[string, string, (s: AssignmentClientStats) => number | null]> = [
+    [
+      'media_assignment_enabled',
+      'Whether the assignment gate governs this deployment',
+      (s) => (s.enabled ? 1 : 0),
+    ],
+    [
+      /* ⚠️ `null` before the first successful poll — omitted, never 0. Plan version 0 is a real
+       * version (a deployment where nothing has ever been assigned), so a 0 here would be a lie
+       * that is indistinguishable from the truth. */
+      'media_assignment_plan_version',
+      'Plan version currently applied by the enforcement point',
+      (s) => s.planVersion,
+    ],
+    [
+      'media_assignment_planned_cameras',
+      'Cameras the plan authorises for processing or holding',
+      (s) => s.plannedCameras,
+    ],
+    ['media_assignment_cycles_total', 'Completed poll-and-report cycles', (s) => s.cycles],
+    [
+      'media_assignment_cycle_failures_total',
+      'Cycles that could not reach the control plane',
+      (s) => s.failures,
+    ],
+    [
+      'media_assignment_releases_total',
+      'Cameras whose per-camera state was released — a stop, a restart, or a runtime move',
+      (s) => s.releases,
+    ],
+  ];
+  for (const [name, help, read] of series) {
+    new Gauge({
+      name,
+      help,
+      registers: [registry],
+      collect() {
+        const value = read(provider.stats());
+        /* ⚠️ ADR-0039: an unavailable reading is omitted, never written as a zero. */
+        if (value === null || !Number.isFinite(value)) {
+          this.remove();
+          return;
+        }
+        this.set(value);
+      },
+    });
+  }
+
+  const HEALTH: Record<string, number> = {
+    healthy: 1,
+    recovering: 2,
+    degraded: 3,
+    busy: 4,
+    offline: 5,
+    unknown: 0,
+  };
+  new Gauge({
+    name: 'media_assignment_runtime_health',
+    help: 'Runtime health as this enforcement point measured it: 1 healthy, 2 recovering, 3 degraded, 4 busy, 5 offline, 0 unknown',
+    labelNames: ['runtime_id'],
+    registers: [registry],
+    collect() {
+      for (const runtime of provider.stats().runtimes) {
+        this.set({ runtime_id: runtime.runtimeId }, HEALTH[runtime.health] ?? 0);
+      }
+    },
+  });
+
+  new Gauge({
+    name: 'media_assignment_runtime_latency_ms',
+    help: 'Health-probe round trip per runtime (ms). Absent when the runtime could not be reached.',
+    labelNames: ['runtime_id'],
+    registers: [registry],
+    collect() {
+      for (const runtime of provider.stats().runtimes) {
+        /* ⚠️ Unreachable ⇒ no sample. A timeout is not a slow round trip; it is no round trip. */
+        if (runtime.latencyMs === null) continue;
+        this.set({ runtime_id: runtime.runtimeId }, runtime.latencyMs);
+      }
+    },
+  });
+}
+
+/**
+ * The two skip counters (P-8 Phase 6). Registered beside the perception series they belong with.
+ *
+ * ⚠️ Separate from `frames_dropped`, and that separation is the point: a skipped frame is a decision
+ * an operator made, a dropped frame is a symptom of load. One series covering both would make a
+ * correctly configured deployment and an overloaded one produce the same graph.
+ */
+export function registerAssignmentSkipMetrics(
+  registry: Registry,
+  provider: { stats(): FrameSinkStats },
+): void {
+  const series: Array<[string, string, (s: FrameSinkStats) => number]> = [
+    [
+      'media_perception_frames_skipped_unassigned_total',
+      'Frames not sent because the camera has no AI assignment (policy, not loss)',
+      (s) => s.skippedUnassigned,
+    ],
+    [
+      'media_perception_frames_skipped_held_total',
+      'Frames not sent because an operator paused the camera (policy, not loss)',
+      (s) => s.skippedHeld,
+    ],
+  ];
+  for (const [name, help, read] of series) {
+    new Gauge({
+      name,
+      help,
+      registers: [registry],
+      collect() {
+        this.set(read(provider.stats()));
+      },
+    });
+  }
 }

@@ -12,14 +12,16 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { ServiceConfig } from '../config/env.js';
 import { ReadinessRegistry } from '../application/readiness.js';
 import type { CameraService } from '../application/camera-service.js';
+import type { AssignmentService } from '../application/assignment-service.js';
 import { registerSecurity } from './plugins/security.js';
-import { registerMetrics } from './plugins/observability.js';
+import { registerMetrics, registerAssignmentMetrics } from './plugins/observability.js';
 import { createAuth, registerPrincipal } from './plugins/auth.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerMetricsRoute } from './routes/metrics.js';
 import { registerRootRoute } from './routes/root.js';
 import { registerCameraRoutes } from './routes/cameras.js';
+import { registerAssignmentRoutes } from './routes/assignments.js';
 import { registerInternalRoutes } from './routes/internal.js';
 
 export interface BuildServerOptions {
@@ -30,6 +32,12 @@ export interface BuildServerOptions {
   startedAt?: Date;
   /** Pre-seeded readiness registry (adapters register their checks here). */
   readiness?: ReadinessRegistry;
+  /**
+   * Camera Processing Assignment (P-8 Phase 6). Optional so a test that only exercises the camera
+   * inventory does not have to construct six collections it never reads — the assignment routes are
+   * simply not mounted, which is also a valid deployment.
+   */
+  assignments?: AssignmentService;
 }
 
 export interface BuiltServer {
@@ -71,7 +79,15 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
   registerMetricsRoute(app, registry);
   registerRootRoute(app, { name: config.serviceName, version: config.serviceVersion, startedAt });
   registerCameraRoutes(app, { service: opts.service, auth });
-  registerInternalRoutes(app, { service: opts.service, internalKey: config.internal.apiKey });
+  if (opts.assignments !== undefined) {
+    registerAssignmentRoutes(app, { assignments: opts.assignments, auth });
+    registerAssignmentMetrics(registry, opts.assignments);
+  }
+  registerInternalRoutes(app, {
+    service: opts.service,
+    internalKey: config.internal.apiKey,
+    ...(opts.assignments === undefined ? {} : { assignments: opts.assignments }),
+  });
 
   return { app, readiness };
 }

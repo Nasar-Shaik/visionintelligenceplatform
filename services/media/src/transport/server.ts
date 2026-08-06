@@ -10,13 +10,17 @@ import type { ServiceConfig } from '../config/env.js';
 import { ReadinessRegistry } from '../application/readiness.js';
 import type { StreamSupervisor } from '../application/stream-supervisor.js';
 import type { MediaCatalogService } from '../application/media-catalog-service.js';
-import type { FrameSinkStats } from '../adapters/http-frame-sink.js';
+import type { CameraFrameStats, FrameSinkStats } from '../adapters/http-frame-sink.js';
+import type { AssignmentClient } from '../adapters/assignment-client.js';
+import type { AssignmentGate } from '../application/assignment-gate.js';
 import type { EventPublisherStats } from '../adapters/event-publisher.js';
 import { registerSecurity } from './plugins/security.js';
 import {
   registerMetrics,
   registerPerceptionMetrics,
   registerEventPublisherMetrics,
+  registerAssignmentMetrics,
+  registerAssignmentSkipMetrics,
 } from './plugins/observability.js';
 import { createAuth, registerPrincipal } from './plugins/auth.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
@@ -29,6 +33,7 @@ import { registerClipRoutes } from './routes/clips.js';
 import { registerPerceptionRoutes } from './routes/perception.js';
 import { registerTrackingRoutes } from './routes/tracking.js';
 import { registerEventBridgeRoutes } from './routes/event-bridge.js';
+import { registerAssignmentRoutes } from './routes/assignment.js';
 
 export interface BuildServerOptions {
   config: ServiceConfig;
@@ -42,6 +47,19 @@ export interface BuildServerOptions {
   eventPublisher?: { stats(): EventPublisherStats };
   /** Injected so the tracking proxy can be driven without a runtime (tests only). */
   trackingFetch?: typeof fetch;
+  /**
+   * Camera Processing Assignment (P-8 Phase 6). Present only when the gate is enabled — absent is a
+   * valid deployment that analyses every camera, and the routes say so rather than reporting zeroes.
+   */
+  assignment?: {
+    gate: AssignmentGate;
+    client: AssignmentClient;
+    perception: {
+      cameraStats(tenantId: string, cameraId: string): CameraFrameStats | undefined;
+      cameras(tenantId: string): string[];
+    };
+    publisher?: { publishedFor(tenantId: string, cameraId: string): number | null };
+  };
 }
 
 export interface BuiltServer {
@@ -75,9 +93,13 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
 
   await registerSecurity(app);
   const registry = registerMetrics(app, { serviceName: config.serviceName });
-  if (opts.perception !== undefined) registerPerceptionMetrics(registry, opts.perception);
+  if (opts.perception !== undefined) {
+    registerPerceptionMetrics(registry, opts.perception);
+    registerAssignmentSkipMetrics(registry, opts.perception);
+  }
   if (opts.eventPublisher !== undefined)
     registerEventPublisherMetrics(registry, opts.eventPublisher);
+  if (opts.assignment !== undefined) registerAssignmentMetrics(registry, opts.assignment.client);
   registerPrincipal(app);
   const auth = createAuth({ secret: config.jwt.secret, issuer: 'identity', audience: 'vip' });
   registerErrorHandler(app);
@@ -104,6 +126,22 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
   registerEventBridgeRoutes(app, {
     auth,
     ...(opts.eventPublisher === undefined ? {} : { publisher: opts.eventPublisher }),
+  });
+  registerAssignmentRoutes(app, {
+    auth,
+    runtimeUrl: config.perception.url,
+    internalKey: config.internal.apiKey,
+    ...(opts.trackingFetch === undefined ? {} : { fetch: opts.trackingFetch }),
+    ...(opts.assignment === undefined
+      ? {}
+      : {
+          gate: opts.assignment.gate,
+          client: opts.assignment.client,
+          perception: opts.assignment.perception,
+          ...(opts.assignment.publisher === undefined
+            ? {}
+            : { publisher: opts.assignment.publisher }),
+        }),
   });
 
   return { app, readiness };
