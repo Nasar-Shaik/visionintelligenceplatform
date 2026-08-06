@@ -547,14 +547,41 @@ Re-run on the freeze candidate after the verification repairs of 2026-08-06/07, 
 development. `LADDER=1,2,4`, 45-second steady-state window per rung, 20-second dwell threshold. Every
 latency is the **platform's own** measurement read from `/metrics`, never timed by the harness.
 
-| cameras | event → rule | rule → candidate | end to end | zones | dwell timers | rules CPU / RSS | zone geometry |
-| ------: | -----------: | ---------------: | ---------: | ----: | -----------: | --------------- | ------------: |
-|       1 |       111 ms |           9.0 ms |     117 ms |     1 |            1 | 0.5 % / 113 MB  |       12.9 µs |
-|       2 |        85 ms |           3.0 ms |      88 ms |     2 |            4 | 0.5 % / 111 MB  |       13.0 µs |
-|       4 |       147 ms |           3.4 ms |     150 ms |     4 |            4 | 0.5 % / 113 MB  |        9.7 µs |
+**On the freeze commit `647a96e`:**
+
+| cameras | event → rule | rule → candidate | end to end | zones | dwell timers | rules CPU / RSS | zone geometry | detections tested |
+| ------: | -----------: | ---------------: | ---------: | ----: | -----------: | --------------- | ------------: | ----------------: |
+|       1 |        68 ms |           4.9 ms |      72 ms |     1 |            1 | 1.8 % / 105 MB  |        9.1 µs |             1 954 |
+|       2 |        91 ms |           4.9 ms |      95 ms |     2 |            2 | 0.5 % / 106 MB  |       12.3 µs |             2 377 |
+|       4 |       115 ms |           3.8 ms |     118 ms |     4 |            4 | 2.3 % / 108 MB  |        4.1 µs |             3 217 |
 
 **`refusedAt: null`** — the ladder ran to its configured top and was not truncated by the control
 plane. (A truncated ladder now records the rung it was refused at and why; see below.)
+
+### ⚠️ The same ladder, ninety minutes earlier, on the commit before the docs changed
+
+| cameras | event → rule | rule → candidate | end to end |
+| ------: | -----------: | ---------------: | ---------: |
+|       1 |       111 ms |           9.0 ms |     117 ms |
+|       2 |        85 ms |           3.0 ms |      88 ms |
+|       4 |       147 ms |           3.4 ms |     150 ms |
+
+⛔ **Nothing changed between these two runs except documentation, and rung 1 moved from 117 ms to
+72 ms — a 38 % swing.** Both tables are printed because either one alone would invite a reader to treat
+a 40 ms difference as a result.
+
+This is the measured case for the standing policy rather than a restatement of it: **no sizing figure
+is published until three independent runs agree.** A single ladder on a shared development host
+measures the host as much as the platform. What _is_ stable across both runs, and is therefore worth
+acting on:
+
+- **rule → candidate stays at 3–9 ms** while end-to-end moves by tens of milliseconds. The rule engine
+  is not the bottleneck under any of these conditions.
+- **rules CPU stays under 2.5 % and RSS within 105–113 MB** at every rung of both runs.
+- **zone geometry stays in single-digit to low-teens µs** per frame and does not grow with cameras.
+- **every rung scaled** — zones 1→2→4, dwell timers tracking the cameras, detections tested rising
+  1 954 → 3 217. ⚠️ Checked rather than assumed; see VERIFICATION_AUDIT F-1 for why that sentence needs
+  to be in this document at all.
 
 ### What this says, and what it does not
 
