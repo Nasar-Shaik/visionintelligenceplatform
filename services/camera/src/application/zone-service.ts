@@ -214,12 +214,22 @@ export class ZoneService {
     return byCamera;
   }
 
-  /** A compact catalog for the rules service's synchronous name/version lookup. */
-  async catalog(): Promise<{ tenantId: string; zoneId: string; name: string; version: number }[]> {
+  /**
+   * A compact catalog for the rules service's synchronous name/version lookup.
+   *
+   * ⚠️ Carries `cameraId`, and it is load-bearing rather than convenience. A dwell key is
+   * `tenant:rule:zone:subject` — it contains no camera, so a live timer had no way to say which
+   * camera its subject was standing in front of, and the Live Rule Status page's zone view could
+   * never populate its camera selector. The zone is the only thing that knows.
+   */
+  async catalog(): Promise<
+    { tenantId: string; zoneId: string; cameraId: string; name: string; version: number }[]
+  > {
     const docs = await this.#zones.find({} as never).toArray();
     return docs.map((d) => ({
       tenantId: d.tenantId,
       zoneId: d.zoneId,
+      cameraId: d.cameraId,
       name: d.name,
       version: d.version,
     }));

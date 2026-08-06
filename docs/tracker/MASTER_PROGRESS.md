@@ -268,7 +268,7 @@ _Last updated: 2026-08-05 · Claude_
   exactly as before. Dwell is a **new stateful stage** after `window`, keyed on `identityId` per
   ADR-0041 — expressing it as an event count would have made every loitering rule silently
   frame-rate-dependent. ⚠️ **Two different things in this platform are called a zone** — a
-  *place* (`RuleScope.nodeIds`) and a *polygon* (`RuleScope.zoneIds`) — and they are kept in separate
+  _place_ (`RuleScope.nodeIds`) and a _polygon_ (`RuleScope.zoneIds`) — and they are kept in separate
   fields (`zoneIds` / `detectionZoneIds`) so neither can be matched against the other; sharing one set
   would have matched nothing today and something **wrong** the day the hierarchy was wired
   ([ADR-0044](../adr/ADR-0044-one-word-two-zones.md)). **Loitering is configuration**: the word appears
@@ -278,13 +278,13 @@ _Last updated: 2026-08-05 · Claude_
   ⛔ **The deployment found an honesty field that lied.** `longestGapSeconds` exists so an operator can
   tell a duration that was watched continuously from one assembled across a gap. It read **10 s on
   every single incident**, because `services/events` collapses repeated detections into one event per
-  dedup bucket — so a *continuously present* person is observed once every ten seconds however fast
+  dedup bucket — so a _continuously present_ person is observed once every ten seconds however fast
   the camera runs. The summary said "the longest unobserved gap was 10s": true, alarming, and
   describing nothing but the platform's own sampling. An operator would have learned within a week to
   ignore the one field that exists to make them careful. Fixed with `typicalGapSeconds` (the
   **median**, so one real hole cannot redefine normal) and `gapIsUnusual` exported from contracts, so
   the summary, the incident panel and the live view cannot disagree. ⚠️ **The same discovery corrected
-  the dwell validation floor**, which warned against the *frame interval* and would have blessed a
+  the dwell validation floor**, which warned against the _frame interval_ and would have blessed a
   3-second reset that could never accumulate anything.
   ⛔ **And a latent defect nobody had ever hit: camera-scoped rules could not be enabled in any
   deployment.** Nothing had ever wired a `CameraDirectory` into the rules service, so every validation
@@ -305,7 +305,7 @@ _Last updated: 2026-08-05 · Claude_
   two the first run showed were **vacuous**: `identity-fragmentation` swapped `identityId` for
   `trackId` and stayed green because the fixture clip never fragments, and `duplicate-events` was
   collapsed by the store before reaching a rule. Both retargeted, and the run gained the check that
-  makes the first attributable: *a clock is RUNNING* stays green on a completely broken identity
+  makes the first attributable: _a clock is RUNNING_ stays green on a completely broken identity
   chain, because a fragmenting identity produces clocks that all read 0.0 s.
   **Governance:** ADR-0044 · ED-0075 · C-14f/C-14g · L-56/L-57/L-58/L-59 · R-030/R-031/R-032 ·
   five nightly stages in every profile · API inventory · benchmark.

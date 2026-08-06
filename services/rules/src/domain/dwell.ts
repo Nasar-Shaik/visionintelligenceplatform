@@ -32,6 +32,7 @@
  * whole visit rather than restarting. Resetting the clock on fire would make every candidate after the
  * first understate the situation — and understating is the direction that gets missed.
  */
+import { gapIsUnusual } from '@vip/contracts';
 import type { CandidateTimelineKind, DwellGroupBy, EventEnvelope, RuleDwell } from '@vip/contracts';
 
 /**
@@ -312,8 +313,24 @@ export function observe(
       record.trackIds.push(input.trackId);
     }
 
-    /* A gap worth noting: longer than a couple of observation intervals but under the reset. */
-    if (gapMs > 0 && gapMs >= resetMs / 2) {
+    /*
+     * ⚠️ A gap moment only when the gap is **unusual for this deployment** — the same predicate the
+     * summary and the incident panel use.
+     *
+     * The first version marked any gap over half the reset window. On a platform that observes a
+     * continuously present subject once per event-dedup bucket, that was **every single
+     * observation**: the timeline read "not observed for 10s · still in the zone · not observed for
+     * 10s · still in the zone" and the markers meant nothing. Same failure as the summary's, one
+     * surface further in.
+     */
+    /*
+     * ⚠️ **At least two prior gaps before anything is called unusual.** With no history there is no
+     * "normal" to be unusual against, and `gapIsUnusual` falls back to an absolute threshold — which
+     * marked the SECOND observation of every visit, on every deployment, for ever. Refusing to judge
+     * without a baseline is the honest reading, and it costs one unmarked gap at the start of a visit
+     * that the `first-observed` moment already accounts for.
+     */
+    if (previous.gapsMs.length >= 2 && gapIsUnusual(gapMs / 1000, median(previous.gapsMs))) {
       push(record, { atMs: input.atMs, kind: 'gap', gapSeconds: gapMs / 1000 });
     }
     push(record, relinked ? { ...moment, kind: 'identity-relinked' } : moment);
@@ -494,5 +511,6 @@ function median(valuesMs: readonly number[]): number | null {
   return value / 1000;
 }
 
-/* ⚠️ `gapIsUnusual` lives in `@vip/contracts` so every surface asks the same question — see there. */
-export { gapIsUnusual } from '@vip/contracts';
+/* ⚠️ Re-exported so callers in this service have one import — it lives in `@vip/contracts` so every
+ * surface asks the same question of the same numbers. */
+export { gapIsUnusual };

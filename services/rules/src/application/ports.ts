@@ -108,7 +108,7 @@ export interface DwellStoreStats {
 export type ZoneLookup = (
   tenantId: string,
   zoneId: string | undefined,
-) => { name: string; version: number } | undefined;
+) => { name: string; version: number; cameraId?: string } | undefined;
 
 /**
  * Holds one subject's presence in one zone between events (P-8 Phase 7).

@@ -100,30 +100,30 @@
 
 ### Detection zones — the reusable spatial assets a rule points at (P-8 Phase 7)
 
-> ⚠️ **Not location-hierarchy zones.** Those are *places* and belong to the Tenant context; these are
-> *polygons on one camera's image plane*. Two id spaces with one word — see
+> ⚠️ **Not location-hierarchy zones.** Those are _places_ and belong to the Tenant context; these are
+> _polygons on one camera's image plane_. Two id spaces with one word — see
 > [ADR-0044](../adr/ADR-0044-one-word-two-zones.md). `camera:read` to see, `camera:write` to draw:
 > moving a polygon changes which incidents the platform raises.
 
-| Method | Endpoint                          | Purpose                                                          | Auth           | Input                       | Output                                          |
-| ------ | --------------------------------- | ---------------------------------------------------------------- | -------------- | --------------------------- | ----------------------------------------------- |
-| GET    | `/zones`                          | Every zone, or one camera's (`?cameraId=`)                       | `camera:read`  | —                           | `200 {data:DetectionZone[]}`                    |
-| POST   | `/zones`                          | Draw a zone. ⚠️ Refuses a shape it cannot evaluate               | `camera:write` | `CreateDetectionZoneInput`  | `201 {data:DetectionZone}` · `400/404/409`      |
-| GET    | `/zones/:zoneId`                  | One zone                                                          | `camera:read`  | —                           | `200 {data:DetectionZone}` · `404`              |
-| PATCH  | `/zones/:zoneId`                  | Move, rename, enable or disable. Bumps `version`                 | `camera:write` | `UpdateDetectionZoneInput`  | `200 {data:DetectionZone}` · `400/404/409`      |
-| DELETE | `/zones/:zoneId`                  | Remove it. ⚠️ The **version history survives**                    | `camera:write` | —                           | `204` · `404`                                    |
-| GET    | `/zones/:zoneId/versions`         | Whole history, newest first — works for a **deleted** zone       | `camera:read`  | —                           | `200 {data:DetectionZoneVersionRecord[]}`       |
-| GET    | `/zones/:zoneId/versions/:version`| ⚠️ The geometry **as it was** — what an old incident is drawn on | `camera:read`  | —                           | `200 {data:DetectionZoneVersionRecord}` · `404` |
+| Method | Endpoint                           | Purpose                                                          | Auth           | Input                      | Output                                          |
+| ------ | ---------------------------------- | ---------------------------------------------------------------- | -------------- | -------------------------- | ----------------------------------------------- |
+| GET    | `/zones`                           | Every zone, or one camera's (`?cameraId=`)                       | `camera:read`  | —                          | `200 {data:DetectionZone[]}`                    |
+| POST   | `/zones`                           | Draw a zone. ⚠️ Refuses a shape it cannot evaluate               | `camera:write` | `CreateDetectionZoneInput` | `201 {data:DetectionZone}` · `400/404/409`      |
+| GET    | `/zones/:zoneId`                   | One zone                                                         | `camera:read`  | —                          | `200 {data:DetectionZone}` · `404`              |
+| PATCH  | `/zones/:zoneId`                   | Move, rename, enable or disable. Bumps `version`                 | `camera:write` | `UpdateDetectionZoneInput` | `200 {data:DetectionZone}` · `400/404/409`      |
+| DELETE | `/zones/:zoneId`                   | Remove it. ⚠️ The **version history survives**                   | `camera:write` | —                          | `204` · `404`                                   |
+| GET    | `/zones/:zoneId/versions`          | Whole history, newest first — works for a **deleted** zone       | `camera:read`  | —                          | `200 {data:DetectionZoneVersionRecord[]}`       |
+| GET    | `/zones/:zoneId/versions/:version` | ⚠️ The geometry **as it was** — what an old incident is drawn on | `camera:read`  | —                          | `200 {data:DetectionZoneVersionRecord}` · `404` |
 
 ### Internal (service-to-service, not gateway-exposed)
 
-| Method | Endpoint                       | Purpose                                                                         | Auth                             | Output                                                |
-| ------ | ------------------------------ | ------------------------------------------------------------------------------- | -------------------------------- | ----------------------------------------------------- |
-| GET    | `/internal/cameras/:id/stream` | Resolve a camera's connection **with decrypted creds** (media)                  | `x-internal-key` + `x-tenant-id` | `200 {success,data:StreamConnection}` · `401/400/404` |
-| GET    | `/internal/assignment/plan`    | ⚠️ **Cross-tenant** processing plan for the enforcement point                   | `x-internal-key`                 | `200 {success,data:AssignmentPlan}` · `401`           |
-| POST   | `/internal/assignment/report`  | ⚠️ The **only** path to an observed state — runtime health and per-camera facts | `x-internal-key`                 | `200 {success,data:{failover,failed}}` · `400/401`    |
+| Method | Endpoint                       | Purpose                                                                         | Auth                             | Output                                                 |
+| ------ | ------------------------------ | ------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------ |
+| GET    | `/internal/cameras/:id/stream` | Resolve a camera's connection **with decrypted creds** (media)                  | `x-internal-key` + `x-tenant-id` | `200 {success,data:StreamConnection}` · `401/400/404`  |
+| GET    | `/internal/assignment/plan`    | ⚠️ **Cross-tenant** processing plan for the enforcement point                   | `x-internal-key`                 | `200 {success,data:AssignmentPlan}` · `401`            |
+| POST   | `/internal/assignment/report`  | ⚠️ The **only** path to an observed state — runtime health and per-camera facts | `x-internal-key`                 | `200 {success,data:{failover,failed}}` · `400/401`     |
 | POST   | `/internal/zones/resolve`      | Validation-time scope resolution for the rules service (cameras, groups, zones) | `x-internal-key` + `x-tenant-id` | `200 {success,data:ScopeResolutionResult}` · `400/401` |
-| GET    | `/internal/zones/catalog`      | ⚠️ **Cross-tenant** zone name/version cache for the rule engine                 | `x-internal-key`                 | `200 {success,data:CatalogRow[]}` · `401`             |
+| GET    | `/internal/zones/catalog`      | ⚠️ **Cross-tenant** zone name/version cache for the rule engine                 | `x-internal-key`                 | `200 {success,data:CatalogRow[]}` · `401`              |
 
 > Camera context, P1-4. The single sanctioned credential-decryption point; the gateway **strips**
 > client `x-internal-key`, so only trusted internal services reach it ([ED-0025](ENGINEERING_DECISION_LOG.md)).

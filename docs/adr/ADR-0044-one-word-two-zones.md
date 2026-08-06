@@ -16,18 +16,18 @@ event platform, a rule engine with a windowed stateful stage, an incident pipeli
 
 Adding that fact required deciding three things.
 
-### 1. Two different things in this platform are called a *zone*
+### 1. Two different things in this platform are called a _zone_
 
-| | **Location-hierarchy zone** | **Detection zone** |
-|---|---|---|
-| owned by | Tenant context (`OrgNode`) | Camera context |
-| means | a *place* — "Floor 2 East" | an *area of one camera's picture* |
-| carried on | `Camera.zoneId`, `RuleScope.nodeIds` | `EventEnvelope.zoneId`, `RuleScope.zoneIds` |
-| how a subject relates to it | by which camera saw them | by where their feet were in the frame |
+|                             | **Location-hierarchy zone**          | **Detection zone**                          |
+| --------------------------- | ------------------------------------ | ------------------------------------------- |
+| owned by                    | Tenant context (`OrgNode`)           | Camera context                              |
+| means                       | a _place_ — "Floor 2 East"           | an _area of one camera's picture_           |
+| carried on                  | `Camera.zoneId`, `RuleScope.nodeIds` | `EventEnvelope.zoneId`, `RuleScope.zoneIds` |
+| how a subject relates to it | by which camera saw them             | by where their feet were in the frame       |
 
-`EventEnvelope.zoneId` sat beside `branchId` and `siteId` under a heading that said *tenancy and
-spatial scoping*, and **nothing had ever set it**. `ResolvedRuleScope.zoneIds` — the set the rule
-engine's scope stage matches that field against — is the *hierarchy* expansion. So the branch had
+`EventEnvelope.zoneId` sat beside `branchId` and `siteId` under a heading that said _tenancy and
+spatial scoping_, and **nothing had ever set it**. `ResolvedRuleScope.zoneIds` — the set the rule
+engine's scope stage matches that field against — is the _hierarchy_ expansion. So the branch had
 never fired in production, and the day something started stamping the field, the two id spaces would
 have met.
 
@@ -54,11 +54,11 @@ derivable from `cameraId` at query time; it never needed to be on the wire, and 
 - `detectionZoneIds` — the polygons a rule watches, matched against `envelope.zoneId`.
 
 They are never compared to each other. Sharing one set would have matched nothing today and something
-*wrong* the day the hierarchy was wired up — a rule scoped to the London site firing on a camera
+_wrong_ the day the hierarchy was wired up — a rule scoped to the London site firing on a camera
 polygon that happened to share an id.
 
 ⚠️ **Detection-zone scope narrows.** When a rule names any detection zone, an event outside every
-named zone is outside the rule *even on a camera the rule also names*. Checking the camera first
+named zone is outside the rule _even on a camera the rule also names_. Checking the camera first
 would have made the zone scope decorative.
 
 ### Zone membership is computed in **media**, on the frame path, carried by the assignment plan
@@ -86,7 +86,7 @@ Two consequences worth stating:
 
 `EventEnvelope.zoneId` is a single value — one event, one place. "A person is in the checkout queue"
 and "a person is in the aisle" are two facts, and a rule scoped to the queue must see the first
-without the second. Matching against an *array* would have made the scope stage a set intersection
+without the second. Matching against an _array_ would have made the scope stage a set intersection
 per rule per event, which is precisely the per-event cost the compiled-scope design removed in P-4.
 
 A subject in **no** zone still produces its event, unchanged. Suppressing those would have made
@@ -95,8 +95,8 @@ camera.
 
 ### Dwell is a **new stateful stage**, not a window
 
-`window` counts events: "≥ 5 matches within 60 seconds". Dwell measures *elapsed time between the
-first and most recent observation of one subject*. The two come apart whenever the frame rate does —
+`window` counts events: "≥ 5 matches within 60 seconds". Dwell measures _elapsed time between the
+first and most recent observation of one subject_. The two come apart whenever the frame rate does —
 "120 events in 60 s" is a statement about the deployment's fps, not about the customer's rule, and it
 breaks the moment a camera is throttled or a runtime sheds load. Expressing dwell as a count would
 have made every loitering rule silently frame-rate-dependent.
@@ -108,7 +108,7 @@ key at all, rather than bucketing anonymous detections under a placeholder.
 
 ### What this bought
 
-- Loitering is **configuration**: a dwell block and a zone scope. The word *loitering* appears in the
+- Loitering is **configuration**: a dwell block and a zone scope. The word _loitering_ appears in the
   id of one template and nowhere in the engine. `FUTURE_WORKFLOW_COVERAGE` records, per workflow the
   Architect named, which primitive expresses it and — where one is missing — exactly what is missing.
 - The same seam serves intrusion, queue monitoring and abandoned object with no new code.
@@ -122,7 +122,7 @@ key at all, rather than bucketing anonymous detections under a placeholder.
 ⚠️ **The observation interval is set by the event dedup window, not by the frame rate.**
 
 `services/events` collapses repeated detections of one subject into one event per dedup bucket
-(`EVENTS_DEDUP_WINDOW_MS`, 10 s by default). A dwell rule therefore observes a *continuously present*
+(`EVENTS_DEDUP_WINDOW_MS`, 10 s by default). A dwell rule therefore observes a _continuously present_
 person about once every ten seconds however fast the camera runs. Three things follow, and all three
 were discovered by running the deployment and reading the numbers rather than by any test:
 
@@ -142,7 +142,7 @@ Other costs:
 
 - **Dwell state is in-memory and lost on restart.** A rules service redeployed while somebody is
   standing in a monitored zone will not fire for them until they have been there for the full
-  threshold again. Unlike windowed state it is *not* re-derivable from event replay in the general
+  threshold again. Unlike windowed state it is _not_ re-derivable from event replay in the general
   case. The seam for a Redis-backed store is the `DwellStateStore` port, unchanged.
 - **Event volume grows where zones overlap**, and only there. A camera with one loitering zone
   produces the same number of events as before.

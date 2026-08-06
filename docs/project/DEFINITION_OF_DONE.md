@@ -145,6 +145,26 @@ Two rules that matter more than the labels:
 - **A Future Extension must not be written in the present tense.** "The hierarchy supports inherited
   permissions" is false; "a permission grant would attach to a node id" is true and clearly a plan.
 
+---
+
+## ⚠️ Where a long verification lives (execution policy, 2026-08-06)
+
+**Benchmark evidence** is one of the eight deliverables, and it must not become the thing that stops
+the other seven. Any verification expected to exceed **~10–15 minutes** is registered as a
+**Nightly Framework stage** unless it is strictly required to validate the implementation in hand:
+
+- capacity ladders · soak tests · extended benchmarks · long regression suites · multi-camera endurance.
+
+⚠️ **The obligation belongs to the milestone that introduces the run**, in the same commit — exactly
+as an ADR ships with its index row. Daytime work runs **enough to prove correctness** (a rung or two,
+or a single short window) and the full run happens overnight.
+
+A milestone may therefore sit at **Pending Freeze**: implemented, correct, deployment-verified,
+browser-verified and mutation-verified, waiting only on nightly numbers. **Freeze depends on those
+results; implementation does not.**
+
+This extends the verification-economy policy of 2026-08-05 rather than replacing it — that one says
+_verify what changed_, this one says _and do not let the verifying stop the building_.
 
 ---
 
@@ -155,7 +175,7 @@ end to end and then, on reading the numbers rather than the ticks, produced two 
 
 - every incident claimed a **ten-second unobserved gap** it did not have, because the platform samples
   a continuously present subject once per event-dedup bucket. The check that reported it was green and
-  correct; the *number it reported* was describing the platform's own sampling and would have taught
+  correct; the _number it reported_ was describing the platform's own sampling and would have taught
   operators to ignore the field;
 - the incident timeline rendered **"15 of 6 shown"**, because `total` counted observations while
   `entries` counted moments.

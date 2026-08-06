@@ -143,18 +143,13 @@ export function ZoneCanvas({
                 strokeWidth="0.004"
                 strokeDasharray={zone.enabled ? undefined : '0.02 0.01'}
               />
-              {zone.geometry.points[0] !== undefined ? (
-                <text
-                  x={zone.geometry.points[0][0] + 0.01}
-                  y={zone.geometry.points[0][1] - 0.012}
-                  fontSize="0.035"
-                  fill="currentColor"
-                  className="fill-fg-muted"
-                >
-                  {zone.name}
-                  {zone.enabled ? '' : ' (off)'}
-                </text>
-              ) : null}
+              {/*
+               * ⚠️ **No text inside the SVG.** `preserveAspectRatio="none"` is what makes the
+               * geometry correct — a zone at x = 0.5 must sit at 50% of the width whatever the
+               * element's shape — and it stretches glyphs by the same factor, which rendered
+               * "Checkout Queue" across half the frame in letters wider than they were tall. Names
+               * go in the legend below, where the browser lays them out normally.
+               */}
             </g>
           );
         })}
@@ -212,6 +207,35 @@ export function ZoneCanvas({
           <circle cx={hover[0]} cy={hover[1]} r="0.008" fill="rgb(52 211 153 / 0.6)" />
         ) : null}
       </svg>
+
+      {/*
+       * The legend. ⚠️ Outside the SVG for the reason above, and it doubles as the accessible name
+       * list — the shapes themselves convey nothing to a screen reader.
+       */}
+      {zones.length > 0 ? (
+        <ul className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border px-3 py-2 text-xs">
+          {zones.map((zone) => {
+            const on = highlighted.size === 0 || highlighted.has(zone.id);
+            return (
+              <li key={zone.id} className="flex items-center gap-1.5">
+                <span
+                  aria-hidden
+                  className="inline-block size-2.5 rounded-sm border"
+                  style={{
+                    borderColor: zone.enabled && on ? 'rgb(56 189 248)' : 'rgb(148 163 184)',
+                    background:
+                      zone.enabled && on ? 'rgb(56 189 248 / 0.35)' : 'rgb(148 163 184 / 0.15)',
+                  }}
+                />
+                <span className={zone.enabled ? '' : 'text-fg-muted'}>
+                  {zone.name}
+                  {zone.enabled ? '' : ' (off)'}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
 
       {/*
        * ⚠️ Stated on the canvas, not buried in documentation. An operator drawing over a grid must

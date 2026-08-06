@@ -254,7 +254,15 @@ export class RuleEngine {
         dryRun: rule.dryRun,
       };
       if (parsed.zoneKey !== '-') timer.zoneId = parsed.zoneKey;
-      if (zone !== undefined) timer.zoneName = zone.name;
+      if (zone !== undefined) {
+        timer.zoneName = zone.name;
+        /*
+         * ⚠️ The camera comes from the ZONE, because the dwell key does not carry one. Without it the
+         * Live Rule Status page cannot offer a camera to draw the zone view for — the screen the
+         * whole visual demonstration is built on had an empty selector.
+         */
+        if (zone.cameraId !== undefined) timer.cameraId = zone.cameraId;
+      }
       timers.push(timer);
     }
     /* Closest to firing first — what an operator watching a screen wants at the top. */

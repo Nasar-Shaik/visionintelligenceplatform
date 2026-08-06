@@ -350,6 +350,17 @@ try {
         '⚠️ naming the ZONE, not just its id — the cache reached the engine',
         timer.zoneName ?? 'no name',
       );
+      /*
+       * ⚠️ The camera, which the dwell key does NOT contain — it comes from the zone. Without it the
+       * zone view's selector is empty and the visual demonstration has nothing to draw. The first
+       * browser run rendered "No camera selected" on a page with a running clock, which is how this
+       * check came to exist.
+       */
+      check(
+        timer.cameraId !== undefined,
+        '⚠️ and the CAMERA, so the zone view has something to draw',
+        timer.cameraId ?? 'absent',
+      );
       /* The progress bar must actually be proportional, not decorative. */
       const width = await page
         .locator('div[style*="width"]')
@@ -380,6 +391,23 @@ try {
 
   /* ── 3 · the incident, and its evidence ────────────────────────────────────────────────────── */
   console.log('3 · Incident detail — the evidence an operator acts on');
+  /* ⚠️ Select the camera and capture the zone overlay — the demonstration's centre frame. */
+  const zoneOption = await page.locator('select[aria-label="Zone view camera"] option').nth(1);
+  const optionValue = await zoneOption.getAttribute('value').catch(() => null);
+  if (optionValue !== null && optionValue !== '') {
+    await page.getByLabel('Zone view camera').selectOption(optionValue);
+    await sleep(3500);
+    await page.screenshot({ path: `${OUT}/p8-loitering-zone-view.png`, fullPage: true });
+    check(
+      (await page.locator('svg polygon').count()) > 0,
+      '⚠️ the zone is drawn over the live subjects — the demonstration frame',
+      `${await page.locator('svg polygon').count()} polygon(s), ${await page.locator('svg rect[stroke]').count()} subject box(es)`,
+    );
+  } else {
+    check(false, 'the zone view offers a camera to draw', 'the selector was empty');
+  }
+  console.log('');
+
   body = await open('/incidents');
   await page.screenshot({ path: `${OUT}/p8-loitering-incidents.png`, fullPage: true });
 

@@ -121,14 +121,24 @@ function usage(container) {
  * Phase 6 shipped two latency metrics that fell as load rose (ADR-0039, [L-53]).
  */
 function histogram(container, name) {
-  const raw = shq('docker', ['exec', container, 'wget', '-qO-', 'http://127.0.0.1:8086/metrics']);
-  const body = raw === '' ? shq('docker', ['exec', container, 'curl', '-s', 'http://127.0.0.1:8086/metrics']) : raw;
-  const count = new RegExp(`^${name}_count\\s+([\\d.e+-]+)$`, 'm').exec(body);
-  const sum = new RegExp(`^${name}_sum\\s+([\\d.e+-]+)$`, 'm').exec(body);
-  if (count === null || sum === null) return null;
-  const n = Number(count[1]);
-  if (!Number.isFinite(n) || n === 0) return null;
-  return { count: n, sum: Number(sum[1]) };
+  const body = shq('docker', ['exec', container, 'wget', '-qO-', 'http://127.0.0.1:8086/metrics']);
+  /*
+   * ⚠️ **The label set is optional in the pattern, and leaving it out was a real bug.**
+   *
+   * The registry stamps `{service="rules"}` on every series, so `rules_..._count` never appears bare
+   * and an anchored `^name_count\s+` matched nothing. Every latency in the first ladder read "not
+   * measured" — which is the honest rendering of a failed read (ADR-0039) and therefore looked like a
+   * platform that had observed nothing rather than a script that could not parse. A `0` here would
+   * have been worse and would have shipped.
+   */
+  const read = (suffix) => {
+    const m = new RegExp(`^${name}_${suffix}(?:\\{[^}]*\\})?\\s+([\\d.e+-]+)$`, 'm').exec(body);
+    return m === null ? null : Number(m[1]);
+  };
+  const count = read('count');
+  const sum = read('sum');
+  if (count === null || sum === null || !Number.isFinite(count) || count === 0) return null;
+  return { count, sum };
 }
 
 /** The mean of a histogram between two samples — a WINDOW mean, not a lifetime one. */
@@ -147,7 +157,8 @@ function windowMean(before, after) {
 
 function counter(container, name) {
   const raw = shq('docker', ['exec', container, 'wget', '-qO-', 'http://127.0.0.1:8086/metrics']);
-  const m = new RegExp(`^${name}\\s+([\\d.e+-]+)$`, 'm').exec(raw);
+  /* ⚠️ Optional label set — see `histogram`. */
+  const m = new RegExp(`^${name}(?:\\{[^}]*\\})?\\s+([\\d.e+-]+)$`, 'm').exec(raw);
   return m === null ? null : Number(m[1]);
 }
 
@@ -186,6 +197,25 @@ if (process.argv[2] === 'clean') {
 
 await login();
 await cleanup(true);
+
+/*
+ * ⚠️ **The ladder raises the runtime's declared capacity for the run and restores it afterwards.**
+ *
+ * The seeded runtime declares 4 cameras — the provisional sizing figure — so an 8-camera rung is
+ * refused by the control plane doing exactly its job. A ladder that stopped there would be measuring
+ * the refusal path and reporting it as the cost of eight cameras. The same thing the assignment
+ * ladder does, for the same reason, and the declared figure is put back in the `finally`.
+ */
+const runtimes = (await api('/camera/processing-runtimes', { headers: H })).json?.data ?? [];
+const runtime = runtimes[0];
+const originalMax = runtime?.maxCameras;
+if (runtime !== undefined) {
+  await api(`/camera/processing-runtimes/${runtime.id}`, {
+    method: 'PATCH',
+    headers: H,
+    body: JSON.stringify({ maxCameras: Math.max(...LADDER) + 8 }),
+  });
+}
 
 console.log('\nP-8 Phase 7 · the loitering capacity ladder\n');
 console.log(
@@ -381,6 +411,14 @@ try {
     await sleep(6000);
   }
 } finally {
+  /* ⚠️ Restore the declared capacity, whatever happened above. */
+  if (runtime !== undefined && originalMax !== undefined) {
+    await api(`/camera/processing-runtimes/${runtime.id}`, {
+      method: 'PATCH',
+      headers: H,
+      body: JSON.stringify({ maxCameras: originalMax }),
+    }).catch(() => {});
+  }
   writeFileSync(
     OUT,
     `${JSON.stringify(

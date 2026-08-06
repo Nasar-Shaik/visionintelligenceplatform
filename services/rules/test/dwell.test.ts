@@ -286,6 +286,21 @@ describe('the typical gap (found by the deployment)', () => {
   it('never flags a sub-second jitter, however large the ratio', () => {
     expect(gapIsUnusual(0.4, 0.1)).toBe(false);
   });
+
+  /**
+   * ⚠️ The same wallpaper problem, one surface further in. The first version marked any gap over
+   * half the reset window as a timeline moment, which on a 10 s sampling interval was **every
+   * observation**: "not observed for 10s · still in the zone · not observed for 10s · …".
+   */
+  it('puts no gap markers on a regularly sampled timeline', () => {
+    const outcomes = walk([0, 10, 20, 30, 40, 50]);
+    expect(moments(last(outcomes).record).filter((m) => m.kind === 'gap')).toHaveLength(0);
+  });
+
+  it('but marks a real hole', () => {
+    const outcomes = walk([0, 5, 10, 15, 20, 45]);
+    expect(moments(last(outcomes).record).filter((m) => m.kind === 'gap')).toHaveLength(1);
+  });
 });
 
 describe('timeline', () => {

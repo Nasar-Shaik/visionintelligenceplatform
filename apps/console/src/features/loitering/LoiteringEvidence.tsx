@@ -91,7 +91,13 @@ export function LoiteringEvidence({
 
       <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
         <Field label="Subject">
-          <span className="font-mono text-xs">{explanation.identityId ?? '—'}</span>
+          {/*
+           * ⚠️ `break-all`. A track id is a long unbroken string of ids joined by underscores, and
+           * without it the value overflowed its grid cell and printed across the zone and camera
+           * beside it — legible in a narrow viewport and unreadable in a wide one, which is the way
+           * round that survives review.
+           */}
+          <span className="break-all font-mono text-xs">{explanation.identityId ?? '—'}</span>
           {explanation.subjectKind ? (
             <Badge variant="outline" className="ml-2">
               by {explanation.subjectKind}

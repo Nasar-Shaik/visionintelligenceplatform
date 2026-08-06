@@ -142,6 +142,8 @@ export class HttpCameraDirectory implements CameraDirectory {
 interface CatalogRow {
   tenantId: string;
   zoneId: string;
+  /** ⚠️ The dwell key has no camera in it — this is the only place a live timer can learn one. */
+  cameraId?: string;
   name: string;
   version: number;
 }
@@ -161,7 +163,7 @@ interface CatalogRow {
  * via the plan — the same signal media uses.
  */
 export class ZoneCatalog {
-  #byKey = new Map<string, { name: string; version: number }>();
+  #byKey = new Map<string, { name: string; version: number; cameraId?: string }>();
   #timer: NodeJS.Timeout | undefined;
   #lastRefreshAt: number | null = null;
   readonly #baseUrl: string;
@@ -204,9 +206,13 @@ export class ZoneCatalog {
        * must never observe a half-populated cache — it would name a zone correctly on one candidate
        * and not on the next, for no reason anybody could reproduce.
        */
-      const next = new Map<string, { name: string; version: number }>();
+      const next = new Map<string, { name: string; version: number; cameraId?: string }>();
       for (const row of rows) {
-        next.set(`${row.tenantId}:${row.zoneId}`, { name: row.name, version: row.version });
+        next.set(`${row.tenantId}:${row.zoneId}`, {
+          name: row.name,
+          version: row.version,
+          ...(row.cameraId === undefined ? {} : { cameraId: row.cameraId }),
+        });
       }
       this.#byKey = next;
       this.#lastRefreshAt = Date.now();

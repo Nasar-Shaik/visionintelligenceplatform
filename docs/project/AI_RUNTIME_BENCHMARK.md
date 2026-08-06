@@ -407,6 +407,73 @@ measured the refusal path instead of the cost of sixteen cameras.
 
 ---
 
+## 🕒 Retail loitering — where the time actually goes (P-8 Phase 7)
+
+`docs/review/p8/loitering-benchmark.mjs`, 45 s steady-state window per rung, 20 s dwell threshold,
+one rule covering every camera on the rung. Every latency is the **platform's own histogram**,
+differenced over that window — never this harness's stopwatch, and `null` rather than `0` when
+nothing was observed.
+
+| cameras | event → rule | rule → candidate | end to end | events/s | zone geometry | media CPU | rules CPU / RSS |
+| ------: | -----------: | ---------------: | ---------: | -------: | ------------: | --------: | --------------: |
+|       1 |      66.0 ms |           4.4 ms |    69.3 ms |     0.03 |       10.6 µs |     3.8 % |  0.8 % / 105 MB |
+|       2 |      86.0 ms |           3.3 ms |    89.1 ms |     0.09 |       10.2 µs |     8.0 % |  1.0 % / 105 MB |
+|       4 |     124.8 ms |           4.0 ms |   128.0 ms |     0.13 |        4.4 µs |    12.4 % |  0.8 % / 105 MB |
+|       8 |     195.9 ms |           4.5 ms |   185.6 ms |     0.31 |        5.5 µs |    27.5 % |  0.9 % / 105 MB |
+|      16 |     847.8 ms |           7.6 ms |   865.6 ms |     1.37 |        6.3 µs |    48.3 % |  1.3 % / 114 MB |
+
+### ⚠️ The separation earned its keep on the first run
+
+**Event → rule rises 13× from 1 to 16 cameras. Rule → candidate rises 1.7×.** The rule engine is not
+the bottleneck and never comes close: it holds ~1 % CPU and 105 MB across the whole ladder while
+media climbs to 48 %. What grows is the **transport half** — media's frame path, the broker, the
+events service, and the broker again.
+
+That is the entire point of Architect rec 6. A single end-to-end figure going from 69 ms to 866 ms
+says _something got slower_; these three say _the rule set did not, and do not go looking there_.
+
+⚠️ The two halves are internally consistent at every rung — 66.0 + 4.4 ≈ 69.3, 196 + 4.5 ≈ 186 (the
+small inversions are two independent histograms sampled over one window, not an error). A
+decomposition that did **not** add up would be the first sign one of the three was measuring
+something other than what it claims.
+
+### ⚠️ Throughput is small, and the reason is the dedup window rather than the platform
+
+1.37 events/s at 16 cameras looks low against 2 fps × 16 = 32 frames/s. It is not frame loss: the
+events service collapses repeated detections of one subject into one event per dedup bucket
+(`EVENTS_DEDUP_WINDOW_MS`, 10 s), so a stationary person contributes about one event per bucket
+however many frames they appear in. **32 dwell clocks were running at the 16-camera rung**, all of
+them accumulating, and **not one evaluation was skipped for want of an identity**.
+
+This is also why a dwell threshold under ~20 s is measuring the platform's sampling as much as the
+customer's policy — recorded as [L-57](KNOWN_LIMITATIONS.md).
+
+### Zone geometry is free
+
+10.6 µs per frame at one camera, **falling to 6.3 µs at sixteen** — the per-frame cost does not grow
+with the estate because each frame is tested against its own camera's zones only. Point-in-polygon on
+the recording path is not a cost worth optimising, and this is the measurement that says so rather
+than the assumption.
+
+### ⚠️ Sizing is unchanged: 2 supported, 4 provisional
+
+This ladder measures what **rule evaluation** costs, which is almost nothing. It does **not** raise
+the camera ceiling: the 16-camera rung is media-bound exactly as the tracking, publisher and
+assignment ladders are, and one run recommends nothing.
+
+⚠️ The ladder raises the seeded runtime's declared capacity for the run and restores it afterwards. A
+ladder that stopped at 4 would have measured the control plane's refusal path and reported it as the
+cost of eight cameras.
+
+### ⚠️ This ladder runs nightly, not in the working day
+
+Registered as `loitering/rule-benchmark.sh` in the nightly, weekly, benchmark and hardware profiles.
+Per the execution policy of 2026-08-06, a verification expected to exceed ~10–15 minutes belongs to
+the Nightly Framework; daytime work runs one or two rungs to prove correctness. The table above is a
+full local run, kept because it is the first one and establishes the shape.
+
+---
+
 ## Model warm-up — measured, and it earns less than expected
 
 |                          | Unwarmed (`INFERENCE_ONNX_WARMUP=0`) | Warmed (committed default) |

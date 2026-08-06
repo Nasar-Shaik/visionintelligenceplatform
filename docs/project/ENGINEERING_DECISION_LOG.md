@@ -1593,8 +1593,8 @@ Every loitering incident carries `longestGapSeconds` — the biggest hole in the
 so an operator can tell a duration that was watched continuously from one assembled across a gap. It
 is the field that stops a 94-second dwell being taken on trust.
 
-It read **10 seconds on every single incident**, and the summary said *"the longest unobserved gap
-was 10s"*. True, alarming, and describing nothing but the platform's own sampling: `services/events`
+It read **10 seconds on every single incident**, and the summary said _"the longest unobserved gap
+was 10s"_. True, alarming, and describing nothing but the platform's own sampling: `services/events`
 collapses repeated detections of one subject into one event per dedup bucket, so a **continuously
 present** person is observed about once every ten seconds however fast the camera runs.
 
@@ -1607,8 +1607,8 @@ lives in `@vip/contracts` so the candidate summary, the incident panel and the l
 disagree about which it was. Three implementations of "was that gap suspicious?" would have diverged
 the first time any of them was tuned, invisibly.
 
-⚠️ This generalises [[absence-hides-defects]] one step further. That lesson was *an honest absence and
-a broken code path look the same*. This one is: **an honest absence and an uninteresting absence also
+⚠️ This generalises [[absence-hides-defects]] one step further. That lesson was _an honest absence and
+a broken code path look the same_. This one is: **an honest absence and an uninteresting absence also
 look the same**, and the second is what makes people stop reading.
 
 ### 2 · The binding constraint was one layer away from where everyone would look
