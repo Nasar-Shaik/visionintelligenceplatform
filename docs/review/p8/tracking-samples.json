@@ -1,5 +1,5 @@
 {
-  "at": "2026-08-06T06:28:51.297Z",
+  "at": "2026-08-06T10:44:52.591Z",
   "observeSeconds": 26,
   "groundTruth": [
     {
@@ -50,71 +50,71 @@
   "results": {
     "walk": {
       "ids": [
-        "trk_cam_d6ab993694db494c906c8a87f653f09f_live-tnt_demo_retail-cam_d6ab993694db494c906c8a87f653f09f_1"
+        "trk_cam_7de0d08297f84cd391fe8cc31cf03bdf_live-tnt_demo_retail-cam_7de0d08297f84cd391fe8cc31cf03bdf_1"
       ],
-      "observations": 25,
-      "tracked": 25
+      "observations": 24,
+      "tracked": 24
     },
     "occlusion": {
       "ids": [
-        "trk_cam_13a682efb83f4eebbcdc04309f941973_live-tnt_demo_retail-cam_13a682efb83f4eebbcdc04309f941973_1"
+        "trk_cam_8bf32e7ee5f04247a3e958da864aef97_live-tnt_demo_retail-cam_8bf32e7ee5f04247a3e958da864aef97_1"
       ],
       "everLost": true,
-      "observations": 25,
+      "observations": 24,
       "tracked": 11
     },
     "reentry": {
       "ids": [
-        "trk_cam_98b27b53518f47e897bcfb4c6592690e_live-tnt_demo_retail-cam_98b27b53518f47e897bcfb4c6592690e_1",
-        "trk_cam_98b27b53518f47e897bcfb4c6592690e_live-tnt_demo_retail-cam_98b27b53518f47e897bcfb4c6592690e_2"
+        "trk_cam_c61fe6f7d9364fb0bc33229d5a0f6b56_live-tnt_demo_retail-cam_c61fe6f7d9364fb0bc33229d5a0f6b56_1",
+        "trk_cam_c61fe6f7d9364fb0bc33229d5a0f6b56_live-tnt_demo_retail-cam_c61fe6f7d9364fb0bc33229d5a0f6b56_2"
       ],
       "firstGone": true,
       "linked": true,
-      "precededBy": "trk_cam_98b27b53518f47e897bcfb4c6592690e_live-tnt_demo_retail-cam_98b27b53518f47e897bcfb4c6592690e_1",
+      "precededBy": "trk_cam_c61fe6f7d9364fb0bc33229d5a0f6b56_live-tnt_demo_retail-cam_c61fe6f7d9364fb0bc33229d5a0f6b56_1",
       "observations": 43,
-      "gapSeconds": 6.5
+      "gapSeconds": 6.499999999999998
     },
     "crossing": {
       "ids": [
-        "trk_cam_64627cdb6f3a4292857556cee17799e4_live-tnt_demo_retail-cam_64627cdb6f3a4292857556cee17799e4_1",
-        "trk_cam_64627cdb6f3a4292857556cee17799e4_live-tnt_demo_retail-cam_64627cdb6f3a4292857556cee17799e4_2"
+        "trk_cam_670c23e10db146b197b5a6291e955946_live-tnt_demo_retail-cam_670c23e10db146b197b5a6291e955946_1",
+        "trk_cam_670c23e10db146b197b5a6291e955946_live-tnt_demo_retail-cam_670c23e10db146b197b5a6291e955946_2"
       ],
-      "observations": 25,
-      "tracked": 25,
+      "observations": 24,
+      "tracked": 24,
       "lanes": [
         {
-          "id": "trk_cam_64627cdb6f3a4292857556cee17799e4_live-tnt_demo_retail-cam_64627cdb6f3a4292857556cee17799e4_1",
-          "span": 0.091,
-          "samples": 25
+          "id": "trk_cam_670c23e10db146b197b5a6291e955946_live-tnt_demo_retail-cam_670c23e10db146b197b5a6291e955946_1",
+          "span": 0.107,
+          "samples": 24
         },
         {
-          "id": "trk_cam_64627cdb6f3a4292857556cee17799e4_live-tnt_demo_retail-cam_64627cdb6f3a4292857556cee17799e4_2",
-          "span": 0.014,
-          "samples": 25
+          "id": "trk_cam_670c23e10db146b197b5a6291e955946_live-tnt_demo_retail-cam_670c23e10db146b197b5a6291e955946_2",
+          "span": 0.013,
+          "samples": 24
         }
       ]
     },
     "stats": {
       "schemaVersion": "1.0",
       "camerasTracked": 7,
-      "activeTracks": 7,
-      "confirmedTracks": 5,
+      "activeTracks": 8,
+      "confirmedTracks": 8,
       "tentativeTracks": 0,
-      "lostTracks": 2,
+      "lostTracks": 0,
       "removedTracks": 9,
-      "createdTracks": 18,
-      "recoveredTracks": 1,
-      "framesTracked": 1187,
-      "outOfOrderFrames": 9,
-      "averageTrackingMs": 0.1245,
-      "averageTrackLifetimeSeconds": 27.7114,
-      "averageTrackAgeFrames": 57.5714,
-      "averageTrackHits": 56.8571,
-      "fragmentation": 3.6,
+      "createdTracks": 23,
+      "recoveredTracks": 2,
+      "framesTracked": 1652,
+      "outOfOrderFrames": 14,
+      "averageTrackingMs": 0.1284,
+      "averageTrackLifetimeSeconds": 32.6314,
+      "averageTrackAgeFrames": 66.25,
+      "averageTrackHits": 67.25,
+      "fragmentation": 2.875,
       "camerasEvicted": 0,
-      "occlusionsSurvived": 1,
-      "crossings": 1,
-      "reentryOpportunities": 8,
+      "occlusionsSurvived": 2,
+      "crossings": 2,
+      "reentryOpportunities": 7,
       "identitySwitches": null,
       "reidentificationSuccessRate": null,
       "falseRecoveries": null,
@@ -140,7 +140,7 @@
   "findings": [
     {
       "label": "frames arrived out of order",
-      "detail": "9 skipped rather than tracked backwards"
+      "detail": "14 skipped rather than tracked backwards"
     }
   ]
 }

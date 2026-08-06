@@ -254,8 +254,12 @@ _Last updated: 2026-08-05 · Claude_
   **1032** · contracts · import graph 0 violations.
   [ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md).
 
-- **P-8 Phase 7 · Retail Loitering — the first complete customer workflow ✅ complete, ⏳ awaiting
-  review (2026-08-06)** — a person standing in a checkout queue for sixty seconds becomes an incident
+- **P-8 Phase 7 · Retail Loitering — the first complete customer workflow ✅ complete, 🟡 PENDING
+  FREEZE (2026-08-06)** — implemented, correct, deployment-verified, browser-verified and
+  mutation-verified. ⚠️ **Freeze awaits the nightly capacity ladder**, per the execution policy set
+  the same day: a verification expected to exceed ~10–15 minutes is registered as a Nightly Framework
+  stage and does not block the working day. A local full ladder was run and is recorded in the
+  benchmark document; the nightly result is what the freeze depends on. — a person standing in a checkout queue for sixty seconds becomes an incident
   candidate an operator can act on. **Every part of the path already existed except two: a zone, and
   a clock.** Detection zones are named polygons on a camera's image plane, owned by the camera
   context, versioned so a March incident still resolves March's geometry, and carried to the
