@@ -1,25 +1,25 @@
 {
-  "at": "2026-08-05T23:42:17.820Z",
+  "at": "2026-08-06T06:25:50.470Z",
   "dedupWindowMs": 10000,
   "streamDedupWindowMs": 120000,
   "samples": {
-    "run": "2784f599",
-    "camera": "cam_p8replay_2784f599",
+    "run": "3a36941a",
+    "camera": "cam_p8replay_3a36941a",
     "duplicates": {
       "acceptedA": 1,
       "acceptedB": 5,
       "persisted": 2
     },
     "traced": {
-      "id": "45fad385-c682-4640-aab1-2545d0300761",
+      "id": "93abc17a-17c0-44a8-8563-70a99763a864",
       "type": "perception.person.detected",
       "envelopeVersion": "1.0.0",
       "category": "perception",
       "schemaVersion": "1.0.0",
       "tenantId": "tnt_demo_retail",
-      "cameraId": "cam_p8replay_2784f599",
-      "occurredAt": "2026-08-05T23:41:59.787Z",
-      "ingestedAt": "2026-08-05T23:41:59.935Z",
+      "cameraId": "cam_p8replay_3a36941a",
+      "occurredAt": "2026-08-06T06:25:32.520Z",
+      "ingestedAt": "2026-08-06T06:25:32.675Z",
       "producer": {
         "capability": "perception.person-detection",
         "capabilityVersion": "0.1.0",
@@ -30,51 +30,51 @@
         {
           "class": "person",
           "bbox": [0.111058, 0.417881, 0.138998, 0.53213],
-          "trackId": "trk_2784f599_walk_2",
-          "identityId": "trk_2784f599_walk_1",
-          "precededBy": "trk_2784f599_walk_1"
+          "trackId": "trk_3a36941a_walk_2",
+          "identityId": "trk_3a36941a_walk_1",
+          "precededBy": "trk_3a36941a_walk_1"
         }
       ],
       "payload": {
         "label": "person",
         "executionProvider": "CPUExecutionProvider",
         "runtimeVersion": "0.1.0",
-        "frameId": "tnt_demo_retail:cam_p8replay_2784f599:42",
+        "frameId": "tnt_demo_retail:cam_p8replay_3a36941a:42",
         "frameSeq": 42
       },
       "evidenceRefs": [],
       "priority": "info",
-      "correlationId": "tnt_demo_retail:cam_p8replay_2784f599:42"
+      "correlationId": "tnt_demo_retail:cam_p8replay_3a36941a:42"
     },
     "incident": {
-      "id": "14ebb984-4549-49d6-ae3e-470f9ebec90a",
+      "id": "484381e9-3804-47d4-a59c-66b97e7a9865",
       "tenantId": "tnt_demo_retail",
       "status": "raised",
       "severity": "low",
       "title": "p8-replay raises: perception.person.detected",
       "category": "perception",
       "source": {
-        "ruleId": "93966e2e-6602-4e35-a73c-8b92e694d11a",
+        "ruleId": "8392376d-cb5a-4a17-8def-ef9fff7b78a8",
         "ruleVersion": 2,
         "ruleName": "p8-replay raises",
-        "candidateId": "b6c54bd9-05e2-47d8-bc35-beb50fcd1413",
-        "dedupKey": "tnt_demo_retail|93966e2e-6602-4e35-a73c-8b92e694d11a|-|29766221"
+        "candidateId": "b94936c0-1fe9-4850-9144-65c053ddae5b",
+        "dedupKey": "tnt_demo_retail|8392376d-cb5a-4a17-8def-ef9fff7b78a8|-|29766625"
       },
       "triggeredBy": {
-        "eventId": "45fad385-c682-4640-aab1-2545d0300761",
+        "eventId": "93abc17a-17c0-44a8-8563-70a99763a864",
         "eventType": "perception.person.detected",
-        "occurredAt": "2026-08-05T23:41:59.787Z",
-        "cameraId": "cam_p8replay_2784f599"
+        "occurredAt": "2026-08-06T06:25:32.520Z",
+        "cameraId": "cam_p8replay_3a36941a"
       },
       "matchedCount": 1,
       "version": 1,
-      "correlationId": "tnt_demo_retail:cam_p8replay_2784f599:42",
-      "causationId": "b6c54bd9-05e2-47d8-bc35-beb50fcd1413",
+      "correlationId": "tnt_demo_retail:cam_p8replay_3a36941a:42",
+      "causationId": "b94936c0-1fe9-4850-9144-65c053ddae5b",
       "history": [
         {
           "from": null,
           "to": "raised",
-          "at": "2026-08-05T23:41:59.940Z",
+          "at": "2026-08-06T06:25:32.682Z",
           "by": "system",
           "actor": {
             "kind": "system",
@@ -84,26 +84,26 @@
       ],
       "assignments": [],
       "notes": [],
-      "raisedAt": "2026-08-05T23:41:59.940Z",
-      "updatedAt": "2026-08-05T23:41:59.940Z"
+      "raisedAt": "2026-08-06T06:25:32.682Z",
+      "updatedAt": "2026-08-06T06:25:32.682Z"
     },
     "replay": {
       "replayed": 3,
       "reEvaluated": 0,
-      "incidentsBefore": 5,
-      "incidentsAfter": 5
+      "incidentsBefore": 2,
+      "incidentsAfter": 2
     },
     "simulation": {
-      "ruleId": "93966e2e-6602-4e35-a73c-8b92e694d11a",
+      "ruleId": "8392376d-cb5a-4a17-8def-ef9fff7b78a8",
       "ruleVersion": 2,
       "evaluated": 3,
       "matched": 3,
       "outcomes": [
         {
-          "eventId": "45fad385-c682-4640-aab1-2545d0300761",
+          "eventId": "93abc17a-17c0-44a8-8563-70a99763a864",
           "matched": true,
           "explanation": {
-            "ruleId": "93966e2e-6602-4e35-a73c-8b92e694d11a",
+            "ruleId": "8392376d-cb5a-4a17-8def-ef9fff7b78a8",
             "ruleVersion": 2,
             "ruleName": "p8-replay raises",
             "matched": true,
@@ -151,10 +151,10 @@
           }
         },
         {
-          "eventId": "f30af82e-1282-4560-a407-651095742d3c",
+          "eventId": "2a114f3e-1b0f-4ea1-96d9-9d1453b272cb",
           "matched": true,
           "explanation": {
-            "ruleId": "93966e2e-6602-4e35-a73c-8b92e694d11a",
+            "ruleId": "8392376d-cb5a-4a17-8def-ef9fff7b78a8",
             "ruleVersion": 2,
             "ruleName": "p8-replay raises",
             "matched": true,
@@ -202,10 +202,10 @@
           }
         },
         {
-          "eventId": "d8db285b-8189-473e-89c3-ce4be1d255b8",
+          "eventId": "934104d5-853a-4064-802a-abd649649603",
           "matched": true,
           "explanation": {
-            "ruleId": "93966e2e-6602-4e35-a73c-8b92e694d11a",
+            "ruleId": "8392376d-cb5a-4a17-8def-ef9fff7b78a8",
             "ruleVersion": 2,
             "ruleName": "p8-replay raises",
             "matched": true,

@@ -254,6 +254,29 @@ _Last updated: 2026-08-05 · Claude_
   **1032** · contracts · import graph 0 violations.
   [ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md).
 
+- **P-8 Phase 6 FREEZE · camera processing assignment 🔒 frozen (2026-08-06)** — every gate green
+  against the committed deployment, and the evidence below re-run on the freeze commit rather than
+  carried over from development. **Gate:** format · typecheck 28 · lint 20 · test 28 (camera 264 ·
+  media 114 · console 440) · build 19 · python **1036** · contracts · perception boundary · import
+  graph 0 violations · **deployment integrity — every running byte is the committed byte**.
+  **Verification, all green on the freeze commit:** `assignment.mjs` (an assigned camera becomes an
+  incident candidate; an unassigned one records and is never analysed) · `assignment-runtime.mjs`
+  (health measured, capacity enforced, failover moves only what it must, assignments survive a
+  restart of both halves) · `assignment-ui.mjs` **37/37** in a real browser · `event-bridge.mjs` ·
+  `event-bridge-replay.mjs` · `tracking.mjs` — the last three re-run because **this milestone changed
+  what they measure**. **Mutations 8/8**, each red at the check that names its fault; two of them
+  (`corruption`, `ordering`) turned exactly ONE check red. **Ladder** 1 → 16 cameras: assignment
+  latency 1.9 → 2.7 s, runtime probe 1–4 ms, nothing shed to 8 cameras, 96 frames dropped at 16,
+  media 3.4 → 35.4 % CPU and 189 → 673 MB, control plane under 8 % throughout.
+  ⚠️ **Three findings this phase that were about the process rather than the product.** (1) A
+  `git add -A` during a live mutation committed one of the harness's own breaks; the harness's
+  end-of-run tree check caught it, naming the file. (2) The benchmark ladder rejected **two**
+  versions of the assignment-latency metric, both of which _fell_ as load rose — 588 s and 89 s at
+  one camera; the second was merely bad and would have shipped. (3) Enabling the gate turned the
+  previous milestone's verification red, because twelve pre-Phase-6 scripts assumed every camera was
+  analysed — they now assign what they create, which is the scripts catching up with the platform.
+  **Sizing unchanged: 2 supported, 4 provisional, one run recommends nothing.**
+
 - **P-8 Phase 6 · camera processing assignment ✅ complete, ⏳ awaiting review (2026-08-06)** — the
   platform can now **choose which cameras consume AI**, which is the product's commercial proposition
   for the market it is sold into: record everything, spend compute on the till. Before this, perception

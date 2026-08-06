@@ -1,5 +1,5 @@
 {
-  "at": "2026-08-06T06:06:12.665Z",
+  "at": "2026-08-06T06:25:22.349Z",
   "observeSeconds": 24,
   "samples": {
     "before": {
@@ -26,10 +26,10 @@
     },
     "after": {
       "enabled": true,
-      "offered": 69,
+      "offered": 63,
       "published": 63,
       "rejected": 0,
-      "suppressed": 6,
+      "suppressed": 0,
       "droppedQueueFull": 0,
       "droppedOutOfOrder": 0,
       "sessionResets": 0,
@@ -40,25 +40,25 @@
       "queuePerCamera": 16,
       "activeCameras": 0,
       "inflight": 0,
-      "publishMsAvg": 0.6984126984126984,
+      "publishMsAvg": 0.8412698412698413,
       "throughputPerSecond": 2,
       "detectionsPublished": 63,
       "brokerStatus": "up",
       "publisherVersion": "1.0.0",
-      "lastPublishedAt": "2026-08-06T06:06:09.431Z",
+      "lastPublishedAt": "2026-08-06T06:25:19.593Z",
       "payloadSchemaVersion": "1.1"
     },
     "envelopes": 2,
     "sample": {
-      "id": "f8e5fe3d-4d7f-4988-b7a0-1beaf74e43af",
+      "id": "1a1430e5-3415-41ef-976e-84a9ec5a1406",
       "type": "perception.person.detected",
       "envelopeVersion": "1.0.0",
       "category": "perception",
       "schemaVersion": "1.0.0",
       "tenantId": "tnt_demo_retail",
-      "cameraId": "cam_8caf4546afaf4a7fb072b93e5f05210f",
-      "occurredAt": "2026-08-06T06:06:00.369Z",
-      "ingestedAt": "2026-08-06T06:06:00.444Z",
+      "cameraId": "cam_9a8511b9d68d434b804342e8a2245482",
+      "occurredAt": "2026-08-06T06:25:10.000Z",
+      "ingestedAt": "2026-08-06T06:25:10.071Z",
       "producer": {
         "capability": "perception.person-detection",
         "capabilityVersion": "0.1.0",
@@ -69,36 +69,36 @@
         {
           "class": "person",
           "bbox": [0.320453, 0.413197, 0.141048, 0.543226],
-          "trackId": "trk_cam_8caf4546afaf4a7fb072b93e5f05210f_live-tnt_demo_retail-cam_8caf4546afaf4a7fb072b93e5f05210f_1",
-          "identityId": "trk_cam_8caf4546afaf4a7fb072b93e5f05210f_live-tnt_demo_retail-cam_8caf4546afaf4a7fb072b93e5f05210f_1"
+          "trackId": "trk_cam_9a8511b9d68d434b804342e8a2245482_live-tnt_demo_retail-cam_9a8511b9d68d434b804342e8a2245482_1",
+          "identityId": "trk_cam_9a8511b9d68d434b804342e8a2245482_live-tnt_demo_retail-cam_9a8511b9d68d434b804342e8a2245482_1"
         }
       ],
       "payload": {
         "label": "person",
         "executionProvider": "CPUExecutionProvider",
         "runtimeVersion": "0.1.0",
-        "frameId": "tnt_demo_retail:cam_8caf4546afaf4a7fb072b93e5f05210f:50",
+        "frameId": "tnt_demo_retail:cam_9a8511b9d68d434b804342e8a2245482:50",
         "frameSeq": 50
       },
       "evidenceRefs": [],
       "priority": "info",
-      "correlationId": "tnt_demo_retail:cam_8caf4546afaf4a7fb072b93e5f05210f:50"
+      "correlationId": "tnt_demo_retail:cam_9a8511b9d68d434b804342e8a2245482:50"
     },
     "dedup": {
       "countBefore": 2,
       "countAfter": 3
     },
     "rule": {
-      "ruleId": "0aac4283-b82e-4013-a103-b16ead55b235",
+      "ruleId": "11b615ac-b8f1-4a36-b25e-7ea16e1a887d",
       "ruleName": "p8-bridge any person detection",
       "ruleVersion": 2,
       "evaluations": 5,
       "matches": 5,
       "failures": 0,
-      "avgEvaluationMicros": 2.3917999118566513,
-      "maxEvaluationMicros": 3.3340000081807375,
-      "lastEvaluatedAt": "2026-08-06T06:06:10.423Z",
-      "lastMatchedAt": "2026-08-06T06:06:10.423Z"
+      "avgEvaluationMicros": 2.350000001024455,
+      "maxEvaluationMicros": 2.9169999761506915,
+      "lastEvaluatedAt": "2026-08-06T06:25:20.599Z",
+      "lastMatchedAt": "2026-08-06T06:25:20.599Z"
     }
   },
   "findings": [

@@ -1,5 +1,5 @@
 {
-  "at": "2026-08-06T06:09:11.359Z",
+  "at": "2026-08-06T06:28:51.297Z",
   "observeSeconds": 26,
   "groundTruth": [
     {
@@ -50,66 +50,66 @@
   "results": {
     "walk": {
       "ids": [
-        "trk_cam_daff1c9b74c84f1eb4e9e9418c80df9c_live-tnt_demo_retail-cam_daff1c9b74c84f1eb4e9e9418c80df9c_1"
+        "trk_cam_d6ab993694db494c906c8a87f653f09f_live-tnt_demo_retail-cam_d6ab993694db494c906c8a87f653f09f_1"
       ],
       "observations": 25,
       "tracked": 25
     },
     "occlusion": {
       "ids": [
-        "trk_cam_7387a6a24b00497aab24a2dc37610636_live-tnt_demo_retail-cam_7387a6a24b00497aab24a2dc37610636_1"
+        "trk_cam_13a682efb83f4eebbcdc04309f941973_live-tnt_demo_retail-cam_13a682efb83f4eebbcdc04309f941973_1"
       ],
       "everLost": true,
-      "observations": 24,
+      "observations": 25,
       "tracked": 11
     },
     "reentry": {
       "ids": [
-        "trk_cam_9f9070a5a7d54c40b65e363df04e63ca_live-tnt_demo_retail-cam_9f9070a5a7d54c40b65e363df04e63ca_1",
-        "trk_cam_9f9070a5a7d54c40b65e363df04e63ca_live-tnt_demo_retail-cam_9f9070a5a7d54c40b65e363df04e63ca_2"
+        "trk_cam_98b27b53518f47e897bcfb4c6592690e_live-tnt_demo_retail-cam_98b27b53518f47e897bcfb4c6592690e_1",
+        "trk_cam_98b27b53518f47e897bcfb4c6592690e_live-tnt_demo_retail-cam_98b27b53518f47e897bcfb4c6592690e_2"
       ],
       "firstGone": true,
       "linked": true,
-      "precededBy": "trk_cam_9f9070a5a7d54c40b65e363df04e63ca_live-tnt_demo_retail-cam_9f9070a5a7d54c40b65e363df04e63ca_1",
+      "precededBy": "trk_cam_98b27b53518f47e897bcfb4c6592690e_live-tnt_demo_retail-cam_98b27b53518f47e897bcfb4c6592690e_1",
       "observations": 43,
-      "gapSeconds": 6.499999999999998
+      "gapSeconds": 6.5
     },
     "crossing": {
       "ids": [
-        "trk_cam_284095544ce34150bbd302a801a1e848_live-tnt_demo_retail-cam_284095544ce34150bbd302a801a1e848_1",
-        "trk_cam_284095544ce34150bbd302a801a1e848_live-tnt_demo_retail-cam_284095544ce34150bbd302a801a1e848_2"
+        "trk_cam_64627cdb6f3a4292857556cee17799e4_live-tnt_demo_retail-cam_64627cdb6f3a4292857556cee17799e4_1",
+        "trk_cam_64627cdb6f3a4292857556cee17799e4_live-tnt_demo_retail-cam_64627cdb6f3a4292857556cee17799e4_2"
       ],
-      "observations": 24,
-      "tracked": 24,
+      "observations": 25,
+      "tracked": 25,
       "lanes": [
         {
-          "id": "trk_cam_284095544ce34150bbd302a801a1e848_live-tnt_demo_retail-cam_284095544ce34150bbd302a801a1e848_1",
-          "span": 0.107,
-          "samples": 24
+          "id": "trk_cam_64627cdb6f3a4292857556cee17799e4_live-tnt_demo_retail-cam_64627cdb6f3a4292857556cee17799e4_1",
+          "span": 0.091,
+          "samples": 25
         },
         {
-          "id": "trk_cam_284095544ce34150bbd302a801a1e848_live-tnt_demo_retail-cam_284095544ce34150bbd302a801a1e848_2",
-          "span": 0.013,
-          "samples": 24
+          "id": "trk_cam_64627cdb6f3a4292857556cee17799e4_live-tnt_demo_retail-cam_64627cdb6f3a4292857556cee17799e4_2",
+          "span": 0.014,
+          "samples": 25
         }
       ]
     },
     "stats": {
       "schemaVersion": "1.0",
-      "camerasTracked": 5,
-      "activeTracks": 5,
+      "camerasTracked": 7,
+      "activeTracks": 7,
       "confirmedTracks": 5,
       "tentativeTracks": 0,
-      "lostTracks": 0,
+      "lostTracks": 2,
       "removedTracks": 9,
       "createdTracks": 18,
       "recoveredTracks": 1,
-      "framesTracked": 1198,
-      "outOfOrderFrames": 6,
-      "averageTrackingMs": 0.1281,
-      "averageTrackLifetimeSeconds": 34.0262,
-      "averageTrackAgeFrames": 69.6,
-      "averageTrackHits": 70.6,
+      "framesTracked": 1187,
+      "outOfOrderFrames": 9,
+      "averageTrackingMs": 0.1245,
+      "averageTrackLifetimeSeconds": 27.7114,
+      "averageTrackAgeFrames": 57.5714,
+      "averageTrackHits": 56.8571,
       "fragmentation": 3.6,
       "camerasEvicted": 0,
       "occlusionsSurvived": 1,
@@ -140,7 +140,7 @@
   "findings": [
     {
       "label": "frames arrived out of order",
-      "detail": "6 skipped rather than tracked backwards"
+      "detail": "9 skipped rather than tracked backwards"
     }
   ]
 }
