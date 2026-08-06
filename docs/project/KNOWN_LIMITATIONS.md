@@ -521,6 +521,16 @@ no planned milestone is honest; a limitation nobody wrote down is not.
 Format: **Description · Current behaviour · Customer impact · Planned milestone.** Say what the
 customer will _see_, not what the code does.
 
+## L-60 · A zone created in the last few seconds is named by its id on the incidents it causes
+
+|                       |                                                                                                                                                                                                                                                                                                                                                                                        |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | The rules service resolves a detection zone's **name and version** from a cache refreshed every 15 s, because the lookup sits on the per-event path and must never do I/O. A zone created since the last refresh is a miss: the candidate's explanation carries the zone **id** (`zn-82ea…`) instead of its name, and carries **no `zoneVersion`**                                     |
+| **Customer impact**   | ⚠️ **The missing version matters more than the missing name.** `zoneVersion` is what the incident detail page uses to fetch the geometry _as it was judged_; without it the page falls back to today's polygon, so an incident raised in that window can never be re-examined against the zone it was actually about — and nothing on the page says so                                 |
+| **Exposure**          | Up to 15 s after a zone is created or edited. ⚠️ It used to be 15 s after **every restart of the rules service, on every zone** — `ZoneCatalog.start()` fired its first refresh and returned, so the engine consumed events against an empty cache. Closed 2026-08-06: the composition root now awaits one refresh before the engine starts. Found by `docs/review/p8/rule-replay.mjs` |
+| **How to see it**     | `rules_zone_name_unresolved_total` counts every affected candidate, and `/ready` reports `zone-catalog: cold`. Both were added with the fix — until then the state was invisible                                                                                                                                                                                                       |
+| **Planned**           | Unscheduled. Closing it fully means the camera service pushing a zone change rather than the rules service polling for it, which is a new integration for a 15-second window on a rule that has just been created                                                                                                                                                                      |
+
 ---
 
 ## Related

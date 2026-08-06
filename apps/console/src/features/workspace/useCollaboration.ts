@@ -34,11 +34,19 @@ import { toast } from '@/ui';
 export type WorkspaceTransition = 'acknowledge' | 'investigate' | 'escalate' | 'resolve' | 'close';
 
 /**
- * Which transitions are legal from a status, mirrored from `services/workflow/domain/incident-state`.
+ * Which transitions this workspace **offers** from a status.
+ *
+ * ⚠️ **Deliberately narrower than what the server permits, and therefore not derived from
+ * `INCIDENT_LIFECYCLE`.** The frozen lifecycle allows `resolve` straight from `raised`; the workspace
+ * does not offer it, because resolving an incident nobody has acknowledged is a mis-click on the way
+ * to the acknowledge button. This is a workflow opinion, not a rule, and the two must be allowed to
+ * differ — but only in the safe direction. `incident-lifecycle.test.ts` asserts every transition
+ * offered here is one the frozen lifecycle permits, so the narrowing can never become a widening.
  *
  * ⚠️ **`closed` maps to nothing, deliberately.** A closed incident is sealed (CONSTRAINTS §57) —
  * offering any control on one would promise an operation the server refuses, and "retained for
- * audit" is only true if the record stops changing.
+ * audit" is only true if the record stops changing. `dismissed` and `archived` are terminal for the
+ * same reason, and unreachable besides.
  */
 const ALLOWED_FROM: Record<IncidentStatus, WorkspaceTransition[]> = {
   raised: ['acknowledge'],
@@ -47,6 +55,8 @@ const ALLOWED_FROM: Record<IncidentStatus, WorkspaceTransition[]> = {
   escalated: ['investigate', 'resolve'],
   resolved: ['close'],
   closed: [],
+  dismissed: [],
+  archived: [],
 };
 
 export function allowedTransitions(status: IncidentStatus): WorkspaceTransition[] {

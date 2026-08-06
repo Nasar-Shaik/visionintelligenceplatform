@@ -157,6 +157,16 @@ interface CatalogRow {
  * in the last few seconds. That staleness is bounded by the refresh interval and stated on the field
  * it affects (`CandidateExplanation.zoneName`), rather than removed by a blocking call.
  *
+ * ⚠️ **The composition root awaits one `refresh()` before the engine consumes anything**, so the
+ * window is *only* the zone created since the last tick — never the whole interval after a restart.
+ * It used to be both: `start()` fires and returns, and for fifteen seconds after every deploy every
+ * candidate on every zone lost its `zoneVersion`. Found by `docs/review/p8/rule-replay.mjs`, which
+ * produced two candidates from identical events, one naming the zone and one naming its id.
+ *
+ * ⚠️ A miss increments `rules_zone_name_unresolved_total` and a cold cache is reported by `/ready`.
+ * Both were added with the fix above: an earlier version of this comment claimed readiness reported
+ * warmth and **nothing did**, so the one state worth noticing was the one nothing could see.
+ *
  * ⚠️ The **version** is what makes the cache more than cosmetic: it is stamped onto every candidate so
  * an incident detail page can fetch the geometry *as it was*. A stale version here would send that
  * page to the wrong snapshot, so the refresh interval is short and a zone edit bumps it immediately

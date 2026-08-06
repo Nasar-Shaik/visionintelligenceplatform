@@ -111,6 +111,23 @@ async function main(): Promise<void> {
       return { status: 'fail', detail: err instanceof Error ? err.message : 'ping failed' };
     }
   });
+  /*
+   * ⚠️ **Reported, and deliberately NOT a `fail`.** An empty zone catalogue does not stop this service
+   * evaluating rules; it makes candidates carry a zone id instead of a zone name. Returning `fail`
+   * would take the whole rules service out of a deployment because the camera service was slow, which
+   * is a far worse outcome than an unnamed zone.
+   *
+   * It is here because a cold cache was **invisible** until P-8 Phase 7 — `ZoneCatalog.warm` existed,
+   * its own comment claimed readiness reported it, and nothing did. An absence that nothing surfaces
+   * is one nobody investigates (ADR-0039).
+   */
+  if (zoneCatalog !== undefined) {
+    readiness.register('zone-catalog', async () =>
+      zoneCatalog.warm
+        ? { status: 'pass' }
+        : { status: 'pass', detail: 'cold — candidates will carry zone ids, not zone names' },
+    );
+  }
 
   const { app, registry } = await buildServer({
     config,
@@ -135,9 +152,29 @@ async function main(): Promise<void> {
   });
 
   engineRef.current = engine;
+  /*
+   * ⚠️ **Warm the zone catalogue BEFORE the engine consumes its first event**, not alongside it.
+   *
+   * `start()` used to fire a refresh and return, so for the first refresh interval after every
+   * restart the cache was empty and every candidate raised in that window carried no `zoneName` and —
+   * far worse — no **`zoneVersion`**. The version is what lets an incident detail page fetch the
+   * geometry *as it was judged*; without it the page silently falls back to today's polygon, and an
+   * incident raised seconds after a deploy can never be re-examined against the zone it was actually
+   * about.
+   *
+   * Found by `docs/review/p8/rule-replay.mjs`, which produced two candidates from identical events —
+   * one naming `zn-82eaa704-c86` and one naming `Checkout Queue` — and had no way to be wrong about
+   * it. Nothing else would have: both candidates are individually plausible.
+   *
+   * ⚠️ It still fails **soft**. `refresh()` never throws and gives up after 5 s, so a camera service
+   * that is down delays this start-up by five seconds and then proceeds with an empty cache, exactly
+   * as before. Blocking an alerting service on a name lookup would be the wrong trade; blocking it
+   * for one bounded refresh at start-up is not.
+   */
+  await zoneCatalog?.refresh();
   zoneCatalog?.start();
   await engine.start();
-  app.log.info('rule engine consumer started');
+  app.log.info({ zoneCatalogWarm: zoneCatalog?.warm ?? null }, 'rule engine consumer started');
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     app.log.info({ signal }, 'shutdown signal received, draining');

@@ -1659,3 +1659,89 @@ is quadratic in its fastest run too, so it cannot pass by getting lucky.
 ⚠️ **A gate that fails at random teaches people to re-run it**, and the next real failure gets
 re-run too. Fixing someone else's flake is in scope for any milestone that needs the gate to mean
 something.
+
+---
+
+## ED-0076 — P-8 Phase 7 close-out: replay is where a decision stops being a function of its evidence
+
+**Date:** 2026-08-06 · **Milestone:** the first complete customer workflow (Retail Loitering), post-approval
+
+### 1 · A replay verification is a determinism test, and the first thing it tested was the harness
+
+The claim being verified is the one an auditor makes three months later: _re-run the same evidence and
+you get the same answer._ Two drafts of the verification failed before the product was tested at all,
+and both failures are worth recording because both would have produced a **green** run that proved
+nothing.
+
+The first seeded ten events, replayed them, and asserted the engine's candidate. It saw none. The
+seed's own publishes had put those envelopes on the stream, and a replay ninety seconds later carries
+the **same `msgId`** — so JetStream correctly suppressed all ten, the engine never saw them, and the
+run reported `10 envelope(s) replayed`. ⚠️ **That count came from the sender.** A verification that
+measures its own outbound call and calls it delivery is the shape of a check that cannot fail.
+
+The second produced **five** candidates for one person standing still, because the rule was written
+with `cooldownSeconds: 0` — copied from the end-to-end run, where zero exists to make a _repeat_
+visible inside a short window. Without a cool-down a dwell rule raises on every observation past the
+threshold. The suite now names that specific fault when the count is wrong, rather than reporting
+"the seeded visit did not produce a candidate" for four different repairs.
+
+### 2 · The defect it found: an incident that cannot be re-examined against its own evidence
+
+With the harness honest, the run produced two candidates from identical events — one naming the zone
+`zn-82eaa704-c86`, the other naming it `Checkout Queue`.
+
+The rules service resolves a zone's **name and version** from a cache refreshed on a timer, because
+the lookup sits on the per-event path and must never do I/O. That much was deliberate and documented.
+What was not: `ZoneCatalog.start()` fired its first refresh and returned, so **for the first refresh
+interval after every restart the cache was empty** — and a candidate built in that window carries no
+`zoneName` and, far more seriously, **no `zoneVersion`**.
+
+⚠️ The version is not cosmetic. It is what an incident detail page uses to fetch the geometry _as it
+was judged_. Without it the page silently falls back to today's polygon and answers a different
+question — a zone edited since would show an operator an area the rule never evaluated, with nothing
+anywhere saying so. Fifteen seconds of that after every deploy, on every zone.
+
+Three things were wrong at once and only the replay could see the first:
+
+1. the candidate was a function of the events **and** of a cache's warmth;
+2. `ZoneCatalog.warm` existed, its own comment claimed `/ready` reported it, and **nothing did**;
+3. a miss was uncounted, so a deployment could run in that state indefinitely.
+
+Fixed by awaiting one refresh before the engine consumes anything, reporting warmth on `/ready`
+(as `pass` with a detail — an unnamed zone must never take a rules service out of a deployment), and
+counting misses as `rules_zone_name_unresolved_total`. The wait is bounded at five seconds and still
+fails soft.
+
+⚠️ **Nothing else would have found this.** Both candidates are individually plausible; only putting
+two of them side by side made one of them wrong. That is the entire argument for replay verification,
+and it arrived on the first honest run.
+
+### 3 · Freezing a lifecycle meant finding out how many copies of it there were
+
+`IncidentStatus` was declared in one place and its **transition table in four** — the enforcing copy
+in the workflow service, and three in the console, two of which carried a comment saying they
+_mirrored_ it. All four agreed. Nothing checked that they did, and nothing had ever changed the enum
+in a way that would make them disagree out loud.
+
+Adding two values did exactly that: the compiler named all three console copies in eleven seconds.
+They now derive from `INCIDENT_LIFECYCLE` in the contracts package, except one — the investigation
+workspace deliberately offers **less** than the server permits, and a test now asserts it stays a
+subset rather than becoming a superset.
+
+⚠️ The exhaustive `Record<IncidentStatus, …>` is what made this cheap, and it was written in P-5.0 for
+exactly this purpose. The design worked; it had just never been exercised.
+
+### 4 · Two words for one thing is as expensive as one word for two
+
+ADR-0044 recorded the cost of `zone` meaning two things. This milestone's closing decision was the
+mirror image: the approved lifecycle named **Archived**, the platform already had **closed**, and the
+lazy reading is that they are synonyms.
+
+They are not. `closed` is an _outcome_ — a person finished with this. `archived` is _custody_ — a
+retention policy moved the record out of the working set and nobody decided anything. One is entered
+by an operator and the other only ever by the platform. Collapsing them would make "how many did we
+close last month" a question about the retention schedule.
+
+`Open` was the opposite call: it is the same state as `raised` under a newer name, and renaming a
+persisted enum value is a migration of every stored record plus a breaking change to a published
+subject. The word an operator reads is a display label and can change without touching the wire.

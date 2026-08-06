@@ -44,8 +44,149 @@ export const IncidentStatus = z.enum([
   'escalated',
   'resolved',
   'closed',
+  /**
+   * ⚠️ **Reserved (P-8 Phase 7 lifecycle freeze).** Nothing emits this and no action targets it — see
+   * `INCIDENT_LIFECYCLE`.
+   *
+   * The gap it exists to close: today an incident that turns out to be **nothing** must be
+   * `resolved`, which is the same word used for one that was real and was handled. Every resolution
+   * statistic, every mean-time-to-resolve, and every "how good are these rules" question is computed
+   * over a set that silently mixes the two. A false positive is not a resolution; it is a statement
+   * about the rule, and it needs its own word before anyone starts counting.
+   */
+  'dismissed',
+  /**
+   * ⚠️ **Reserved (P-8 Phase 7 lifecycle freeze).** Nothing emits this and no action targets it.
+   *
+   * ⚠️ **Not a synonym for `closed`, and the distinction is the whole reason it is declared
+   * separately.** `closed` is an *outcome*: a person finished with this incident. `archived` is
+   * *custody*: a retention policy moved the record out of the working set after its period elapsed,
+   * and no operator decided anything. One is entered by a person and the other only ever by the
+   * platform. Collapsing them would make "how many did we close last month" a question about the
+   * retention schedule.
+   */
+  'archived',
 ]);
 export type IncidentStatus = z.infer<typeof IncidentStatus>;
+
+/**
+ * Who may move an incident into a state.
+ *
+ * ⚠️ `system` is not a weaker `operator`. A state only the platform enters can never appear in an
+ * operator's action list, and no `incident:*` permission grants it — which is what stops "archive"
+ * becoming a button someone presses to make a queue look shorter.
+ */
+export const IncidentTransitionActor = z.enum(['operator', 'system']);
+export type IncidentTransitionActor = z.infer<typeof IncidentTransitionActor>;
+
+/**
+ * **The frozen incident lifecycle** (P-8 Phase 7). The single source of truth for which transitions
+ * exist — the Workflow context derives its enforcement table from this, and the console derives which
+ * actions it offers. Neither keeps its own copy, because two copies of a state machine are two state
+ * machines.
+ *
+ * ```
+ *   (candidate — Rules context, not an Incident yet)
+ *         │  promotion
+ *         ▼
+ *      raised ──► acknowledged ──► investigating ⇄ escalated
+ *         │            │                 │             │
+ *         └────────────┴─────────────────┴─────────────┴──► resolved ──► closed ──► archived
+ *                                                            (dismissed)              ▲
+ *                                                                 └───────────────────┘
+ * ```
+ *
+ * ### ⚠️ The Architect's vocabulary, and this table's
+ *
+ * The lifecycle approved for freeze reads *Candidate → Open → Acknowledged → Resolved → Dismissed →
+ * Archived*. Three of those words already exist here under different spellings, and they are **not**
+ * renamed:
+ *
+ * | approved word | this platform | why the platform's word stands |
+ * | ------------- | ------------- | ------------------------------ |
+ * | Candidate | `IncidentCandidateStatus.candidate` | a different context and a different object — a candidate is a *proposal*, and an incident that was never promoted has no lifecycle to be in |
+ * | Open | `raised` | persisted on every incident since P1-8, on the wire as `incident.raised`, and consumed by the notification context. Renaming a value is not a rename; it is a migration of every stored record plus a breaking change to a subject name |
+ * | Archived | `archived` | added here, distinct from `closed` — see the enum |
+ *
+ * ### ⚠️ Two states are declared and unreachable, on purpose
+ *
+ * `dismissed` and `archived` have `reachableFrom` sets and **no action targets them**, so no code path
+ * can produce one today. This is the pattern `IncidentCandidateStatus` and `RuleReferenceKind` used,
+ * and the reason is [ADR-0029](../../../../docs/adr/ADR-0029-incident-workflow-entry-criteria.md):
+ * adding a value to a published enum is **not** purely additive for a strict parser, so the values a
+ * later milestone needs are declared while nothing yet depends on the shape. Declaring them costs one
+ * compile error per exhaustive consumer, today, where it is cheap. Adding them later costs a
+ * coordinated release across the console, the notification service and every integration.
+ */
+export interface IncidentLifecycleState {
+  /** May an incident sit here forever, with nothing appendable after it? */
+  readonly terminal: boolean;
+  /** Who may move an incident **into** this state. */
+  readonly enteredBy: IncidentTransitionActor;
+  /** The states this one may be entered from. Empty means: only by promotion from a candidate. */
+  readonly reachableFrom: readonly IncidentStatus[];
+  /**
+   * `false` while nothing in the platform can produce this state. ⚠️ Readers must still **render**
+   * it — a record written by a future version must not break a console pinned to this one.
+   */
+  readonly reachable: boolean;
+}
+
+export const INCIDENT_LIFECYCLE: Readonly<Record<IncidentStatus, IncidentLifecycleState>> = {
+  /** Promoted from a candidate; awaiting operator attention. The Architect's *Open*. */
+  raised: { terminal: false, enteredBy: 'system', reachableFrom: [], reachable: true },
+  acknowledged: {
+    terminal: false,
+    enteredBy: 'operator',
+    reachableFrom: ['raised'],
+    reachable: true,
+  },
+  investigating: {
+    terminal: false,
+    enteredBy: 'operator',
+    reachableFrom: ['raised', 'acknowledged', 'escalated'],
+    reachable: true,
+  },
+  escalated: {
+    terminal: false,
+    enteredBy: 'operator',
+    reachableFrom: ['raised', 'acknowledged', 'investigating'],
+    reachable: true,
+  },
+  /*
+   * ⚠️ Reachable from every active state, so an incident that turns out to be nothing can be closed
+   * from wherever it sits without being walked through states that never happened.
+   */
+  resolved: {
+    terminal: false,
+    enteredBy: 'operator',
+    reachableFrom: ['raised', 'acknowledged', 'investigating', 'escalated'],
+    reachable: true,
+  },
+  closed: { terminal: true, enteredBy: 'operator', reachableFrom: ['resolved'], reachable: true },
+  /*
+   * ⚠️ Reachable from the same set as `resolved` — a false positive is recognisable at any point, and
+   * forcing an operator to "resolve" it first is what makes the resolution count meaningless.
+   */
+  dismissed: {
+    terminal: true,
+    enteredBy: 'operator',
+    reachableFrom: ['raised', 'acknowledged', 'investigating', 'escalated'],
+    reachable: false,
+  },
+  /* ⚠️ System-only, and only from a state a person has already finished with. */
+  archived: {
+    terminal: true,
+    enteredBy: 'system',
+    reachableFrom: ['closed', 'dismissed'],
+    reachable: false,
+  },
+};
+
+/** The statuses a record may rest in permanently. Nothing may be appended to an incident in one. */
+export const TERMINAL_INCIDENT_STATUSES: readonly IncidentStatus[] = IncidentStatus.options.filter(
+  (s) => INCIDENT_LIFECYCLE[s].terminal,
+);
 
 /** Provenance back to the rule + candidate that produced the incident (idempotency via `dedupKey`). */
 export const IncidentSource = z.object({

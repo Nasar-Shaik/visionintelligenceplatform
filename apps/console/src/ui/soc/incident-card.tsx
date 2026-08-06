@@ -13,7 +13,19 @@ import { SeverityBadge, SEVERITY_BORDER } from './severity-badge';
  */
 export type IncidentCardStatus = IncidentStatus;
 
-const STATUS_BADGE: Record<
+/**
+ * How each lifecycle state is labelled and coloured, for the whole console.
+ *
+ * ⚠️ **Declared in the `ui` layer and imported by `features`**, not the other way round, because that
+ * is the direction the import boundary allows. Until P-8 Phase 7 this card and
+ * `features/incidents/status.ts` each held their own copy of the same six rows; the lifecycle freeze
+ * made both fail to compile at once, which is the only reason anyone noticed there were two.
+ *
+ * ⚠️ `dismissed` and `archived` are declared and unreachable in this release (`INCIDENT_LIFECYCLE`).
+ * They are rendered anyway: a console pinned to this build must be able to show a record written by a
+ * later one rather than an empty chip.
+ */
+export const INCIDENT_STATUS_BADGE: Record<
   IncidentCardStatus,
   { variant: 'critical' | 'warning' | 'success' | 'neutral'; label: string }
 > = {
@@ -23,7 +35,11 @@ const STATUS_BADGE: Record<
   escalated: { variant: 'critical', label: 'Escalated' },
   resolved: { variant: 'success', label: 'Resolved' },
   closed: { variant: 'neutral', label: 'Closed' },
+  dismissed: { variant: 'neutral', label: 'Dismissed' },
+  archived: { variant: 'neutral', label: 'Archived' },
 };
+
+const STATUS_BADGE = INCIDENT_STATUS_BADGE;
 
 export interface IncidentCardProps {
   title: string;

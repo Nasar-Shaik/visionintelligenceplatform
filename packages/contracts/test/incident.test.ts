@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { Incident, IncidentStatus, IncidentQuery } from '../src/incidents/incident.js';
+import {
+  Incident,
+  IncidentStatus,
+  IncidentQuery,
+  INCIDENT_LIFECYCLE,
+  TERMINAL_INCIDENT_STATUSES,
+} from '../src/incidents/incident.js';
 import { EVENT_CATALOG } from '../src/events/catalog.js';
 
 const baseIncident = {
@@ -62,7 +68,68 @@ describe('Incident', () => {
       'escalated',
       'resolved',
       'closed',
+      'dismissed',
+      'archived',
     ]);
+  });
+});
+
+/**
+ * The frozen lifecycle (P-8 Phase 7, ADR-0045). These assertions exist so that **adding a state
+ * without deciding where it may be entered from, and by whom, fails the build** — the property the
+ * workflow service's transition table claimed and could not enforce while three other copies of it
+ * lived in the console.
+ */
+describe('INCIDENT_LIFECYCLE', () => {
+  it('describes every status, and only the declared statuses', () => {
+    expect(Object.keys(INCIDENT_LIFECYCLE).sort()).toEqual([...IncidentStatus.options].sort());
+  });
+
+  it('every reachableFrom names a real status, and no state reaches itself', () => {
+    for (const status of IncidentStatus.options) {
+      const state = INCIDENT_LIFECYCLE[status];
+      expect(state.reachableFrom).not.toContain(status);
+      for (const from of state.reachableFrom) {
+        expect(IncidentStatus.options).toContain(from);
+      }
+    }
+  });
+
+  /**
+   * ⚠️ The one that matters most. A terminal state is a **sealed record** (CONSTRAINTS §57) — if
+   * anything could be entered *from* one, "retained for audit" would stop being true.
+   */
+  it('nothing may leave a terminal state', () => {
+    const terminal = IncidentStatus.options.filter((s) => INCIDENT_LIFECYCLE[s].terminal);
+    expect(terminal).toEqual(['closed', 'dismissed', 'archived']);
+    expect(TERMINAL_INCIDENT_STATUSES).toEqual(terminal);
+    for (const status of IncidentStatus.options) {
+      /* `archived` is the sole exception: custody follows a record a person has already finished with. */
+      if (status === 'archived') continue;
+      for (const from of INCIDENT_LIFECYCLE[status].reachableFrom) {
+        expect(INCIDENT_LIFECYCLE[from].terminal, `${from} → ${status}`).toBe(false);
+      }
+    }
+  });
+
+  it('`raised` is entered only by promotion, and only the platform enters it', () => {
+    expect(INCIDENT_LIFECYCLE.raised.reachableFrom).toEqual([]);
+    expect(INCIDENT_LIFECYCLE.raised.enteredBy).toBe('system');
+  });
+
+  /**
+   * ⚠️ Declared, and reachable by nothing. If a milestone makes one of these emittable it must flip
+   * this flag deliberately — and this assertion is where whoever does it is asked to think about the
+   * strict parsers pinned to the schema that predates them (ADR-0029).
+   */
+  it('dismissed and archived are declared and unreachable', () => {
+    expect(IncidentStatus.options.filter((s) => !INCIDENT_LIFECYCLE[s].reachable)).toEqual([
+      'dismissed',
+      'archived',
+    ]);
+    /* Archival is custody, never an operator action — see ADR-0045. */
+    expect(INCIDENT_LIFECYCLE.archived.enteredBy).toBe('system');
+    expect(INCIDENT_LIFECYCLE.dismissed.enteredBy).toBe('operator');
   });
 });
 

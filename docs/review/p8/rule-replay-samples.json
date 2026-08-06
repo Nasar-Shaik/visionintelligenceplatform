@@ -1,0 +1,32 @@
+{
+  "run": "252bf68b",
+  "at": "2026-08-06T11:24:00.316Z",
+  "seed": {
+    "persisted": 10,
+    "spanSeconds": 99,
+    "fingerprint": "03b7398990b221e62364811f235769263434be9ee5f9a99185ba272307173114",
+    "from": "2026-08-06T11:21:22.451Z",
+    "to": "2026-08-06T11:25:12.451Z"
+  },
+  "instances": {
+    "compared": 208,
+    "diverged": []
+  },
+  "idempotent": {
+    "candidatesAfterReplay": 1
+  },
+  "replay": {
+    "fingerprint": "996148582252bb4a26b8b7ff1cbff1c2ac1c0a98302845578a167943383b6e70",
+    "dedupKey": "tnt_demo_retail|df0da5d9-dae7-4923-92e1-0b74e4a401e6|zn-6051ce0b-242|idt_replay_252bf68b|1786015342451|1786015397451",
+    "diverged": [],
+    "durationSeconds": 55
+  },
+  "stored": {
+    "before": 10,
+    "after": 10,
+    "incidentsFromThisRun": 0,
+    "incidentsFromOtherRules": 3
+  },
+  "failures": 0,
+  "findings": []
+}

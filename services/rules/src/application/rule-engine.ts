@@ -546,6 +546,16 @@ export class RuleEngine {
     if (zone !== undefined) {
       context.zoneName = zone.name;
       context.zoneVersion = zone.version;
+    } else if (envelope.zoneId !== undefined) {
+      /*
+       * ⚠️ **Counted, because the consequence is not cosmetic.** A miss costs the candidate its
+       * `zoneVersion`, and that is what an incident detail page uses to fetch the geometry *as it was
+       * judged*. Without it the page falls back to today's polygon and quietly answers a different
+       * question. The candidate is still raised and still actionable — the miss must never block an
+       * alert — but a deployment with a non-zero rate here has incidents that cannot be re-examined
+       * against their own evidence, and nothing else would say so.
+       */
+      this.metrics?.zoneNameUnresolved.inc();
     }
     return context;
   }

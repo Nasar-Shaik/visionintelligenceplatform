@@ -212,17 +212,30 @@ source` — describing the platform as it was before P-8 Phase 2. TD-4 and TD-5 
 
 ## Detection → response
 
-| id       | Capability                                         | Contract |         Backend          |  Frontend  | Demo |       Pilot       | Prod | Milestone  | Dependencies | Owner    |
-| -------- | -------------------------------------------------- | :------: | :----------------------: | :--------: | :--: | :---------------: | :--: | ---------- | ------------ | -------- |
-| **C-24** | Rule authoring (create)                            |    ✅    |            ✅            |     ✅     |  ✅  |        ✅         |  ✅  | done       | —            | rules    |
-| **C-25** | Rule editing                                       |    ✅    |            ✅            |     ✅     |  ✅  |        ✅         |  ✅  | done (P-6) | —            | rules    |
-| **C-26** | Rule versions · diff · rollback · dry-run · audit  |    ✅    |            ✅            | ⚠️ partial |  ⚠️  |        ⚠️         |  ✅  | **P-6**    | C-25         | rules    |
-| **C-27** | Rule scoping to hierarchy nodes                    |    ✅    |            ✅            |     ✅     |  ✅  |        ✅         |  ✅  | done       | —            | rules    |
-| **C-28** | Rule state at scale (windowed thresholds)          |    ✅    | ⚠️ **in-process** (TD-7) |    n/a     |  ✅  | ✅ single replica |  ⚠️  | P-14       | Redis        | rules    |
-| **C-29** | Incident lifecycle — raise → ack → resolve → close |    ✅    |            ✅            |     ✅     |  ✅  |        ✅         |  ✅  | done       | —            | workflow |
-| **C-30** | Incident assignment · SLA · activity               |    ✅    |            ✅            |     ✅     |  ✅  |        ✅         |  ✅  | done       | —            | workflow |
+| id        | Capability                                          | Contract |         Backend          |  Frontend  | Demo |       Pilot       | Prod | Milestone   | Dependencies | Owner    |
+| --------- | --------------------------------------------------- | :------: | :----------------------: | :--------: | :--: | :---------------: | :--: | ----------- | ------------ | -------- |
+| **C-24**  | Rule authoring (create)                             |    ✅    |            ✅            |     ✅     |  ✅  |        ✅         |  ✅  | done        | —            | rules    |
+| **C-25**  | Rule editing                                        |    ✅    |            ✅            |     ✅     |  ✅  |        ✅         |  ✅  | done (P-6)  | —            | rules    |
+| **C-26**  | Rule versions · diff · rollback · dry-run · audit   |    ✅    |            ✅            | ⚠️ partial |  ⚠️  |        ⚠️         |  ✅  | **P-6**     | C-25         | rules    |
+| **C-27**  | Rule scoping to hierarchy nodes                     |    ✅    |            ✅            |     ✅     |  ✅  |        ✅         |  ✅  | done        | —            | rules    |
+| **C-28**  | Rule state at scale (windowed thresholds)           |    ✅    | ⚠️ **in-process** (TD-7) |    n/a     |  ✅  | ✅ single replica |  ⚠️  | P-14        | Redis        | rules    |
+| **C-29**  | Incident lifecycle — **frozen** (ADR-0045)          |    ✅    |            ✅            |     ✅     |  ✅  |        ✅         |  ✅  | done        | —            | workflow |
+| **C-29a** | ⚠️ Dismissal · archival — **declared, unreachable** |    ✅    |            ⛔            |     ⛔     |  ⛔  |        ⛔         |  ⛔  | unscheduled | C-29         | workflow |
+| **C-30**  | Incident assignment · SLA · activity                |    ✅    |            ✅            |     ✅     |  ✅  |        ✅         |  ✅  | done        | —            | workflow |
 
-## Investigation
+> ⚠️ **C-29 — the lifecycle is FROZEN as of 2026-08-06 ([ADR-0045](../adr/ADR-0045-the-incident-lifecycle-is-frozen.md)).**
+> `raised · acknowledged · investigating · escalated · resolved · closed`, plus two states that are
+> **declared and unreachable** (C-29a). `INCIDENT_LIFECYCLE` in `@vip/contracts` is the single
+> declaration of which transitions exist; the workflow service and the console derive from it rather
+> than keeping copies. There were **four** copies before the freeze, all agreeing, none checked.
+>
+> ⚠️ **C-29a is a contract, not a feature, and the row is ⛔ across the board on purpose.** `dismissed`
+> and `archived` exist in the enum and no action targets either, so nothing can produce one. The gap
+> `dismissed` will close is real and worth naming: today a false positive must be **resolved**, so
+> every resolution count and every mean-time-to-resolve mixes "handled" with "wasn't real" — which
+> matters now that a customer has a rule to tune. `archived` is **custody**, not an outcome: a
+> retention policy moving a record out of the working set, never an operator decision. Neither is
+> scheduled, and until one is, the honest answer to "can we dismiss a false positive" is **no**.
 
 | id       | Capability                                 | Contract |            Backend             |            Frontend            |      Demo      | Pilot | Prod | Milestone      | Dependencies              | Owner              |
 | -------- | ------------------------------------------ | :------: | :----------------------------: | :----------------------------: | :------------: | :---: | :--: | -------------- | ------------------------- | ------------------ |

@@ -314,6 +314,50 @@ _Last updated: 2026-08-05 · Claude_
   **Governance:** ADR-0044 · ED-0075 · C-14f/C-14g · L-56/L-57/L-58/L-59 · R-030/R-031/R-032 ·
   five nightly stages in every profile · API inventory · benchmark.
 
+- **P-8 Phase 7 close-out · replay determinism, the lifecycle freeze, and the customer-facing
+  architecture (2026-08-06)** — the six items the Architect asked for on approval, and one defect
+  they found.
+  ⛔ **Rule replay found an incident that could not be re-examined against its own evidence.**
+  `rule-replay.mjs` puts a persisted window through the engine twice — once live, once replayed after
+  a rules-service restart — and compares the candidates **byte for byte**, excluding only `id` and
+  `at` and then asserting those are the only two that differ. It produced two candidates from
+  identical events, one naming the zone `zn-82eaa704-c86` and one naming it `Checkout Queue`. The zone
+  catalogue's first refresh was **fired and not awaited**, so for one refresh interval after **every
+  restart** the engine consumed events against an empty cache and every candidate raised in that
+  window lost its `zoneVersion` — the field an incident detail page uses to fetch the geometry _as it
+  was judged_. Without it the page silently resolves today's polygon and answers a different question.
+  ⚠️ Both candidates were individually plausible; only putting two of them side by side made one of
+  them wrong. Fixed by awaiting one bounded refresh before the engine starts, reporting warmth on
+  `/ready`, and counting misses as `rules_zone_name_unresolved_total` — an absence that nothing
+  surfaces is one nobody investigates. Residual window recorded as [L-60].
+  ⚠️ **Two of the harness's own drafts would have passed while proving nothing** — recorded because
+  both are the same shape. The first seeded, replayed inside the broker's duplicate window, and
+  reported `10 envelope(s) replayed` from the **sender** while the engine saw none. The second used
+  `cooldownSeconds: 0` and produced five candidates for one stationary person.
+  🔒 **The incident lifecycle is frozen** ([ADR-0045](../adr/ADR-0045-the-incident-lifecycle-is-frozen.md)):
+  `INCIDENT_LIFECYCLE` in `@vip/contracts` is now the single declaration of which transitions exist,
+  with `dismissed` and `archived` **declared and unreachable** — no action targets either, so nothing
+  can produce one. ⚠️ Freezing it revealed the transition table existed in **four** places, all
+  agreeing, none checked; the compiler named all three console copies in eleven seconds. Three now
+  derive from the contract; the investigation workspace keeps its own **on purpose** (it offers less
+  than the server permits) with a test asserting it stays a subset. `raised` was **not** renamed to
+  `Open` — it is persisted on every incident, published as `incident.raised`, and consumed by the
+  notification context; the word an operator reads is a display label.
+  **Documentation:** [`docs/customer-workflows/`](../customer-workflows/) — Retail-Loitering as the
+  customer-facing reference architecture, and VERTICALS mapping the same pipeline onto six industries.
+  ⚠️ The vertical map's honest conclusion is that **most of its ✅ rows are the same rule** — zone scope
+  plus dwell plus a schedule — so the first capability was expensive, the next six are cheap, and the
+  seventh is expensive again. [PHASE_8_PLAN](../project/PHASE_8_PLAN.md) sets the two-track split
+  (~20 % platform / ~80 % capability) and names count aggregation as the one primitive worth building
+  next: five capabilities across five verticals, one new stage beside `dwell`.
+  **Verification:** `rule-replay.mjs` — 208 leaf fields compared across two engine instances, and the
+  replayed candidate byte-identical to the live one including its `dedupKey`; replay idempotent; the
+  event store unchanged by fingerprint; no incident raised by either dry-run rule. Registered as the
+  nightly stage `events/rule-replay` in the same commit.
+  **Governance:** ADR-0045 · ED-0076 · C-29/C-29a · L-60 · ADR-0044 amended · verification matrix
+  (P-8 Phase 7 rows, ⚠️ with Phases 5–6 marked as an acknowledged gap rather than invented) ·
+  PHASE_8_PLAN · customer-workflows.
+
 - **P-8 Phase 6 FREEZE · camera processing assignment 🔒 frozen (2026-08-06)** — every gate green
   against the committed deployment, and the evidence below re-run on the freeze commit rather than
   carried over from development. **Gate:** format · typecheck 28 · lint 20 · test 28 (camera 264 ·

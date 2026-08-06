@@ -150,6 +150,19 @@ Other costs:
   covered until the rule is re-validated — visible (`resolvedAt`) rather than silent, and the same
   trade ADR-0026 made for the hierarchy.
 
+⚠️ **The zone-name cache was warm too late, and only a replay could see it** (found 2026-08-06, after
+approval). The cache refreshes on a timer, which is correct — the lookup is on the per-event path and
+must never do I/O. But its first refresh was fired and not awaited, so for one refresh interval after
+**every restart** the engine consumed events against an empty cache, and every candidate raised in
+that window lost its `zoneVersion`. That is the field an incident detail page uses to fetch the
+geometry _as it was judged_; without it the page silently resolves today's polygon.
+
+The verification that found it produced two candidates from identical events, one naming
+`zn-82eaa704-c86` and one naming `Checkout Queue`. Both are individually plausible; only putting them
+side by side made one of them wrong. Now: one awaited refresh before the engine starts, warmth
+reported on `/ready`, and misses counted as `rules_zone_name_unresolved_total`. The residual window —
+a zone created since the last tick — is [L-60](../project/KNOWN_LIMITATIONS.md).
+
 ### The guardrails
 
 No new service. No frozen contract changed — zone memberships ride in `Detection.attributes`, the

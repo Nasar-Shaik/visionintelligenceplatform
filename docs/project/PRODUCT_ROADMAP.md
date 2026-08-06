@@ -374,6 +374,10 @@ justifies an architecture milestone of its own.
 
 ## Related
 
+- [PHASE_8_PLAN](PHASE_8_PLAN.md) — ⚠️ **what follows P-8 Phase 7**: customer capabilities on two
+  tracks (~20 % platform / ~80 % capability), and why the cost curve across capabilities is not flat
+- [customer-workflows/](../customer-workflows/) — the customer-facing reference architecture, one
+  document per shipped capability
 - [IMPLEMENTATION_READINESS](IMPLEMENTATION_READINESS.md) — the matrix this plan is built on
 - [Roadmap review](../review/roadmap-2026-08/README.md) · [CUSTOMER_VALUE_MATRIX](../review/roadmap-2026-08/CUSTOMER_VALUE_MATRIX.md) · [PILOT_READINESS_MATRIX](../review/roadmap-2026-08/PILOT_READINESS_MATRIX.md) · [UI_BENCHMARK](../review/roadmap-2026-08/UI_BENCHMARK.md)
 - [TECH-DEBT](../../tracking/TECH-DEBT.md) · [RISK_REGISTER](RISK_REGISTER.md) · [MASTER_PROGRESS](../tracker/MASTER_PROGRESS.md)

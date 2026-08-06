@@ -17,6 +17,7 @@ export class RuleMetrics {
   readonly dwellWithoutIdentity: Counter<string>;
   readonly dwellSuppressedByCooldown: Counter<string>;
   readonly candidatesSuppressedByDryRun: Counter<string>;
+  readonly zoneNameUnresolved: Counter<string>;
   readonly candidateLatency: Histogram<string>;
   readonly ingestLatency: Histogram<string>;
 
@@ -72,6 +73,17 @@ export class RuleMetrics {
     this.candidatesSuppressedByDryRun = new Counter({
       name: 'rules_dry_run_withheld_total',
       help: 'Candidates built and deliberately not published because the rule is in dry run',
+      registers: [registry],
+    });
+    /*
+     * ⚠️ A zoned event whose zone the catalogue could not name. The candidate is raised regardless —
+     * this must never block an alert — but it carries no `zoneVersion`, so the incident detail page
+     * cannot fetch the geometry it was judged against and silently shows today's instead. Non-zero
+     * here means some incidents cannot be re-examined against their own evidence.
+     */
+    this.zoneNameUnresolved = new Counter({
+      name: 'rules_zone_name_unresolved_total',
+      help: 'Candidates whose detection zone the catalogue could not name (no zoneName, no zoneVersion)',
       registers: [registry],
     });
 
