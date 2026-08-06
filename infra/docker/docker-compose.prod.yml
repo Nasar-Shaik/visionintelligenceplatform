@@ -232,7 +232,25 @@ services:
     <<: *service-common
     build: { <<: *service-build, args: { SERVICE: rules } }
     image: vip/rules:local
-    environment: { <<: *service-env, PORT: '8086', SERVICE_NAME: rules }
+    environment:
+      <<: *service-env
+      PORT: '8086'
+      SERVICE_NAME: rules
+      # ⚠️ P-8 Phase 7. The camera context, for two things with opposite failure postures:
+      #
+      #   1. **Scope resolution at validation time** — fails CLOSED. Unreachable means a camera-,
+      #      group- or zone-scoped rule reports `verified: false` and cannot be enabled, which is
+      #      correct: a rule that goes live because a check could not run is the configuration
+      #      version of certifying hardware from a simulation.
+      #   2. **The zone name/version cache** — fails SOFT. A candidate whose zone could not be named
+      #      carries the zone id, which is honest and still actionable. Blocking an alert on a name
+      #      lookup would be the wrong trade in every direction.
+      #
+      # ⚠️ Blank keeps the pre-Phase-7 behaviour exactly — and that behaviour was itself a latent
+      # defect: nothing had ever wired a camera directory, so EVERY camera-scoped rule in every
+      # deployment was unverifiable and therefore un-enablable. Recorded as L-56.
+      CAMERA_SERVICE_URL: ${CAMERA_SERVICE_URL:-http://camera:8082}
+      RULES_ZONE_CATALOG_INTERVAL_MS: ${RULES_ZONE_CATALOG_INTERVAL_MS:-15000}
     depends_on: *infra-deps
 
   workflow:
