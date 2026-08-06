@@ -23,8 +23,10 @@
  * No retry. A frame is a perishable observation: by the time a retry lands, a newer frame has been
  * dropped to make room for it. Retrying frames trades fresh data for stale data and costs twice.
  */
+import type { PlanZone, ZoneEvaluationStats } from '@vip/contracts';
 import type { Frame, FrameSink } from '../application/ports.js';
 import type { AssignmentGate } from '../application/assignment-gate.js';
+import { ResolveTimer, resolveZones } from '../application/zone-resolver.js';
 
 export interface FrameSinkStats {
   /** Frames handed over by the decoder. */
@@ -89,6 +91,17 @@ export interface FrameSinkStats {
   skippedUnassigned: number;
   /** Frames not sent because an operator paused the camera. Also policy, also its own counter. */
   skippedHeld: number;
+
+  /* --- Detection zones (P-8 Phase 7) ---------------------------------------------------------- */
+  /**
+   * Zone evaluation on the frame path.
+   *
+   * ⚠️ `zonesLoaded` is what the enforcement point currently HOLDS, from the plan — so an operator
+   * can tell "no zones are configured" from "zones are configured and the plan has not reached this
+   * process yet", which are the two explanations for a loitering rule that never fires and have
+   * completely different fixes.
+   */
+  zones: ZoneEvaluationStats;
 }
 
 /** Per-camera measurements. ⚠️ Served over the tenant-scoped API — never as Prometheus labels. */
@@ -140,6 +153,14 @@ interface Queued {
   runtimeUrl: string;
   capabilityId: string;
   runtimeId: string | null;
+  /**
+   * The camera's detection zones at the moment this frame was admitted (P-8 Phase 7).
+   *
+   * ⚠️ Captured here for the same reason `runtimeUrl` is: a plan may land during the round trip, and
+   * a frame must be scored against the geometry that was configured when it was taken. Otherwise an
+   * operator who redraws a zone retroactively changes what happened in the frames already in flight.
+   */
+  zones: readonly PlanZone[];
 }
 
 export interface HttpFrameSinkOptions {
@@ -233,6 +254,11 @@ export class HttpFrameSink implements FrameSink {
 
   #detections = 0;
   #framesWithDetections = 0;
+  /* --- P-8 Phase 7: zone evaluation ----------------------------------------------------------- */
+  #zoneTested = 0;
+  /** ⚠️ Memberships, not detections — a subject in two zones counts twice. See `ZoneEvaluationStats`. */
+  #zoneInside = 0;
+  readonly #zoneResolveMicros = new ResolveTimer();
   readonly #byLabel = new Map<string, number>();
   readonly #inferenceMs = new Rolling(200);
   readonly #frameLatencyMs = new Rolling(200);
@@ -283,6 +309,8 @@ export class HttpFrameSink implements FrameSink {
     let runtimeUrl = this.#url;
     let capabilityId = this.#capabilityId;
     let runtimeId: string | null = null;
+    /* ⚠️ No gate ⇒ no zones either. Zones arrive on the plan, and the plan arrives through the gate. */
+    let zones: readonly PlanZone[] = [];
     if (this.#gate !== undefined) {
       const decision = this.#gate.decide(tenantId, cameraId);
       if (!decision.deliver) {
@@ -298,6 +326,7 @@ export class HttpFrameSink implements FrameSink {
       runtimeUrl = decision.runtimeUrl.replace(/\/+$/, '');
       capabilityId = decision.capabilityId;
       runtimeId = decision.runtimeId;
+      zones = decision.zones;
     }
 
     let q = this.#queues.get(key);
@@ -313,6 +342,7 @@ export class HttpFrameSink implements FrameSink {
       runtimeUrl,
       capabilityId,
       runtimeId,
+      zones,
     });
     /*
      * ⚠️ Drop the **oldest**, keep the newest. A perception pipeline that catches up by processing a
@@ -411,6 +441,32 @@ export class HttpFrameSink implements FrameSink {
   }
 
   /** A point-in-time reading. Cheap enough to call from a Prometheus collector. */
+  /**
+   * What zone evaluation has cost and found (P-8 Phase 7 §Benchmark).
+   *
+   * ⚠️ `zonesLoaded` and `camerasWithZones` are read from the **gate**, not from a counter this class
+   * keeps: they describe the configuration currently in force, and a counter would describe the
+   * configuration at some past moment. A stale "12 zones loaded" beside a plan carrying none is
+   * exactly the reading that would send somebody looking in the wrong service.
+   */
+  zoneStats(): ZoneEvaluationStats {
+    let zonesLoaded = 0;
+    let camerasWithZones = 0;
+    for (const zones of this.#gate?.zonesByCamera() ?? []) {
+      if (zones.length === 0) continue;
+      camerasWithZones += 1;
+      zonesLoaded += zones.length;
+    }
+    return {
+      zonesLoaded,
+      camerasWithZones,
+      detectionsTested: this.#zoneTested,
+      insideDetections: this.#zoneInside,
+      /* ⚠️ `null` until something has been tested — never 0. See `ResolveTimer`. */
+      averageResolveMicros: this.#zoneResolveMicros.average,
+    };
+  }
+
   stats(): FrameSinkStats {
     let depth = 0;
     let active = 0;
@@ -431,6 +487,7 @@ export class HttpFrameSink implements FrameSink {
       frameAgeMsAvg: this.#frameAgeMs.avg,
       assignmentEnabled: this.#gate !== undefined,
       skippedUnassigned: this.#skippedUnassigned,
+      zones: this.zoneStats(),
       skippedHeld: this.#skippedHeld,
       detections: this.#detections,
       detectionsByLabel: Object.fromEntries(this.#byLabel),
@@ -524,7 +581,7 @@ export class HttpFrameSink implements FrameSink {
       /* Bounded: the fps window is 10 s, so anything older can never be counted again. */
       if (per.recent.length > 200) per.recent.splice(0, per.recent.length - 200);
       this.#gate?.delivered(item.tenantId, item.cameraId);
-      this.#record(body);
+      this.#record(body, item.zones);
     } catch (err) {
       this.#fail(err instanceof Error ? err.message : String(err), item, per);
     }
@@ -537,7 +594,7 @@ export class HttpFrameSink implements FrameSink {
    * delivered; only our accounting of the answer failed. Counting that as `failed` would report a
    * transport problem that did not happen and hide the parsing one that did.
    */
-  #record(body: string): void {
+  #record(body: string, zones: readonly PlanZone[] = []): void {
     let data: unknown;
     try {
       data = (JSON.parse(body) as { data?: unknown }).data;
@@ -545,6 +602,27 @@ export class HttpFrameSink implements FrameSink {
       return;
     }
     if (typeof data !== 'object' || data === null) return;
+
+    /*
+     * ⚠️ **Zones are stamped BEFORE the publish**, and this ordering is load-bearing rather than
+     * incidental. The publisher hands the result to the broker synchronously; a detection that left
+     * here without its zone attribute produces an event with no `zoneId`, and a zone-scoped loitering
+     * rule then declines it at the scope stage — silently, correctly, and for ever.
+     *
+     * ⚠️ The zones come from the **queued item**, captured when the frame was admitted, not from the
+     * gate as it stands now. A plan may have landed during the round trip. See `GateDecision.zones`.
+     */
+    const detections = (data as { detections?: unknown }).detections;
+    if (zones.length > 0 && Array.isArray(detections)) {
+      const startedAt = performance.now();
+      const resolved = resolveZones(
+        detections as { bbox: [number, number, number, number] }[],
+        zones,
+      );
+      this.#zoneResolveMicros.add((performance.now() - startedAt) * 1000);
+      this.#zoneTested += resolved.tested;
+      this.#zoneInside += resolved.inside;
+    }
 
     /*
      * ⚠️ Handed over BEFORE this method's own accounting, and deliberately.

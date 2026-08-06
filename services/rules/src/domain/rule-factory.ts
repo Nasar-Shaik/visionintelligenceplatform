@@ -38,12 +38,14 @@ export function newRule(
     severity: input.severity,
     actions: input.actions,
     scope: input.scope,
+    dryRun: input.dryRun,
     createdAt: at,
     updatedAt: at,
   };
   if (input.description !== undefined) rule.description = input.description;
   if (input.condition !== undefined) rule.condition = input.condition;
   if (input.window !== undefined) rule.window = input.window;
+  if (input.dwell !== undefined) rule.dwell = input.dwell;
   if (actor !== undefined) rule.createdBy = actor;
   return { rule, version: versionRecord(rule, 'created', actor, at) };
 }
@@ -73,6 +75,8 @@ export function applyUpdate(
   if (patch.categories !== undefined) rule.categories = patch.categories;
   if (patch.condition !== undefined) rule.condition = patch.condition;
   if (patch.window !== undefined) rule.window = patch.window;
+  if (patch.dwell !== undefined) rule.dwell = patch.dwell;
+  if (patch.dryRun !== undefined) rule.dryRun = patch.dryRun;
   /*
    * Re-scoping invalidates the resolution: the stored expansion belongs to the *previous* scope, and
    * carrying it forward would leave the engine matching zones the author just removed. Dropped here
@@ -134,12 +138,20 @@ export function restoreVersion(
     severity: target.severity,
     actions: [...target.actions],
     scope: target.scope,
+    /*
+     * ⚠️ Dry run is restored with the content, unlike `lifecycle`. It is a property of what the rule
+     * DOES — "evaluate but do not act" — so rolling back to a version that was being trialled must
+     * bring the trial back with it. Lifecycle is the opposite case and is deliberately not restored:
+     * whether a rule is switched on is an operational decision about now, not about the content.
+     */
+    dryRun: target.dryRun,
     createdAt: current.createdAt,
     updatedAt: at,
   };
   if (target.description !== undefined) rule.description = target.description;
   if (target.condition !== undefined) rule.condition = target.condition;
   if (target.window !== undefined) rule.window = target.window;
+  if (target.dwell !== undefined) rule.dwell = target.dwell;
   if (current.createdBy !== undefined) rule.createdBy = current.createdBy;
   const restored = resolution ?? target.resolvedScope;
   if (restored !== undefined) rule.resolvedScope = restored;

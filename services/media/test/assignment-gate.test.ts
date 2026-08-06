@@ -70,6 +70,8 @@ describe('P-8.6 · the assignment gate', () => {
       capabilityId: PERSON,
       runtimeId: 'rt1',
       profileId: 'person-tracking',
+      /* P-8 Phase 7 — the camera's zones ride on the decision. Empty for a camera with none. */
+      zones: [],
     });
     expect(gate.decide(TENANT, 'cam2')).toEqual({ deliver: false, reason: 'unassigned' });
     expect(gate.decide('tnt_b', 'cam1')).toEqual({ deliver: false, reason: 'unassigned' });

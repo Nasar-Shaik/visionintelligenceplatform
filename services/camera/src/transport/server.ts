@@ -13,6 +13,7 @@ import type { ServiceConfig } from '../config/env.js';
 import { ReadinessRegistry } from '../application/readiness.js';
 import type { CameraService } from '../application/camera-service.js';
 import type { AssignmentService } from '../application/assignment-service.js';
+import type { ZoneService } from '../application/zone-service.js';
 import { registerSecurity } from './plugins/security.js';
 import { registerMetrics, registerAssignmentMetrics } from './plugins/observability.js';
 import { createAuth, registerPrincipal } from './plugins/auth.js';
@@ -22,6 +23,7 @@ import { registerMetricsRoute } from './routes/metrics.js';
 import { registerRootRoute } from './routes/root.js';
 import { registerCameraRoutes } from './routes/cameras.js';
 import { registerAssignmentRoutes } from './routes/assignments.js';
+import { registerZoneRoutes } from './routes/zones.js';
 import { registerInternalRoutes } from './routes/internal.js';
 
 export interface BuildServerOptions {
@@ -38,6 +40,12 @@ export interface BuildServerOptions {
    * simply not mounted, which is also a valid deployment.
    */
   assignments?: AssignmentService;
+  /**
+   * Detection zones (P-8 Phase 7). Optional for the same reason as `assignments`: a deployment that
+   * has not wired them simply has no zones, stamps no `zoneId` on any event, and behaves exactly as
+   * it did before this milestone.
+   */
+  zones?: ZoneService;
 }
 
 export interface BuiltServer {
@@ -83,10 +91,12 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
     registerAssignmentRoutes(app, { assignments: opts.assignments, auth });
     registerAssignmentMetrics(registry, opts.assignments);
   }
+  if (opts.zones !== undefined) registerZoneRoutes(app, { zones: opts.zones, auth });
   registerInternalRoutes(app, {
     service: opts.service,
     internalKey: config.internal.apiKey,
     ...(opts.assignments === undefined ? {} : { assignments: opts.assignments }),
+    ...(opts.zones === undefined ? {} : { zones: opts.zones }),
   });
 
   return { app, readiness };

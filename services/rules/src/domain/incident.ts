@@ -5,12 +5,29 @@
  * shaped. Pure — no I/O, no state. The `dedupKey` lets identical candidates collapse downstream.
  */
 import type { EventEnvelope, IncidentCandidate, Rule, RuleAction, RuleMatch } from '@vip/contracts';
+import { buildEvidenceRefs, buildExplanation, buildTimeline } from './candidate-detail.js';
+import type { DwellOutcome } from './dwell.js';
 
 type RaiseIncident = Extract<RuleAction, { type: 'raise-incident' }>;
 
 export interface IncidentDeps {
   newId: () => string;
   now: () => Date;
+}
+
+/**
+ * What the dwell stage produced, when the rule has one (P-8 Phase 7).
+ *
+ * ⚠️ Optional throughout. A stateless rule's candidate carries no dwell fields at all, rather than
+ * zeroes — the difference between "this rule does not measure duration" and "the duration was zero"
+ * is the difference between a correct record and a broken-looking one.
+ */
+export interface DwellContext {
+  outcome: DwellOutcome;
+  /** The subject key the visit was filed under. */
+  subject: string;
+  zoneName?: string | undefined;
+  zoneVersion?: number | undefined;
 }
 
 /** The group key for windowing/dedup, per the rule's `window.groupBy`. */
@@ -28,10 +45,43 @@ export function groupKeyFor(rule: Rule, envelope: EventEnvelope): string {
 /**
  * Dedup key for an incident candidate: identical (tenant, rule, group, time-bucket) candidates
  * collapse within `windowMs`, so a burst of matches raises one incident, not hundreds.
+ *
+ * ### ⚠️ A dwell rule keys on the SUBJECT, and getting this wrong loses incidents
+ *
+ * The time-bucket dedup exists to collapse a burst from one rule. For a dwell rule the natural group
+ * is `'-'` (no window), so **two different people loitering in the same minute would share a dedup
+ * key** and the second candidate would be silently collapsed into the first by the broker. One person
+ * would get an incident; the other would vanish, with no error anywhere — the platform would simply
+ * have decided that two loiterers were one.
+ *
+ * So the subject is part of the key whenever there is one. The cool-down, not dedup, is what stops a
+ * single subject firing repeatedly — dedup's job here is only to make a redelivery idempotent.
  */
-export function candidateDedupKey(rule: Rule, envelope: EventEnvelope, windowMs: number): string {
+export function candidateDedupKey(
+  rule: Rule,
+  envelope: EventEnvelope,
+  windowMs: number,
+  dwell?: DwellContext | undefined,
+): string {
   const bucket =
     windowMs > 0 ? Math.floor(Date.parse(envelope.occurredAt) / windowMs) : envelope.id;
+  if (dwell !== undefined) {
+    /*
+     * ⚠️ Keyed on the subject, the zone and the moment the visit STARTED — not on a time bucket. Two
+     * candidates for the same visit are the same candidate however far apart they fall, which makes a
+     * redelivery idempotent; a second visit by the same person starts at a different instant and is
+     * correctly a second candidate. `firedAtMs` would have made every cool-down expiry a new key,
+     * which is right, but it would also have made a redelivery a new key, which is not.
+     */
+    return [
+      envelope.tenantId,
+      rule.id,
+      envelope.zoneId ?? '-',
+      dwell.subject,
+      dwell.outcome.record.firstObservedAtMs,
+      dwell.outcome.record.firedAtMs ?? bucket,
+    ].join('|');
+  }
   return [envelope.tenantId, rule.id, groupKeyFor(rule, envelope), bucket].join('|');
 }
 
@@ -51,10 +101,20 @@ export function buildIncidentCandidate(
   matchedCount: number,
   dedupWindowMs: number,
   deps: IncidentDeps,
+  dwell?: DwellContext | undefined,
 ): IncidentCandidate {
   const action = raiseAction(rule);
   const severity = action?.severity ?? rule.severity;
-  const title = action?.title ?? `${rule.name}: ${envelope.type}`;
+  /*
+   * ⚠️ A dwell title says what happened, not which event type happened to arrive. "Retail Loitering:
+   * perception.person.detected" is technically accurate and tells an operator nothing — the event
+   * type is the *sampling mechanism*, and the fact is the duration.
+   */
+  const title =
+    action?.title ??
+    (dwell !== undefined
+      ? `${rule.name}: ${Math.round(dwell.outcome.observedSeconds)}s in ${dwell.zoneName ?? envelope.zoneId ?? 'the monitored area'}`
+      : `${rule.name}: ${envelope.type}`);
   const candidate: IncidentCandidate = {
     id: deps.newId(),
     tenantId: envelope.tenantId,
@@ -70,12 +130,38 @@ export function buildIncidentCandidate(
       occurredAt: envelope.occurredAt,
     },
     matchedCount,
-    dedupKey: candidateDedupKey(rule, envelope, dedupWindowMs),
+    dedupKey: candidateDedupKey(rule, envelope, dedupWindowMs, dwell),
     at: deps.now().toISOString(),
+    status: 'candidate',
+    evidence: [],
+    dryRun: rule.dryRun,
   };
   if (envelope.cameraId) candidate.triggeredBy.cameraId = envelope.cameraId;
   if (envelope.zoneId) candidate.triggeredBy.zoneId = envelope.zoneId;
   if (envelope.correlationId) candidate.correlationId = envelope.correlationId;
+
+  if (dwell !== undefined) {
+    const detail = {
+      rule,
+      envelope,
+      outcome: dwell.outcome,
+      subject: dwell.subject,
+      zoneName: dwell.zoneName,
+      zoneVersion: dwell.zoneVersion,
+    };
+    candidate.identityId = dwell.subject;
+    candidate.durationSeconds = dwell.outcome.observedSeconds;
+    candidate.explanation = buildExplanation(detail);
+    candidate.timeline = buildTimeline(detail);
+    candidate.evidence = buildEvidenceRefs(detail);
+    candidate.confidence = dwell.outcome.meanConfidence;
+    /*
+     * ⚠️ `matchedCount` becomes the observation count for a dwell rule. It is the closest honest
+     * reading of "how many matching events satisfied this rule" — and leaving it at 1 would make a
+     * candidate assembled from 180 observations look identical to one from a single frame.
+     */
+    candidate.matchedCount = Math.max(1, dwell.outcome.record.observations);
+  }
   return candidate;
 }
 

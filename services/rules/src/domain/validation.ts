@@ -38,6 +38,21 @@ export interface ReferenceFindings {
   archivedNodeIds?: readonly string[];
   /** Zone ids the scope expanded to. Used to warn about a scope that covers nothing. */
   resolvedZoneIds?: readonly string[];
+
+  // --- P-8 Phase 7 ------------------------------------------------------------------------------
+  /** Camera groups named by the scope that the camera service could not find. */
+  missingGroupIds?: readonly string[];
+  /** Groups that exist but hold no cameras — inert, not invalid. */
+  emptyGroupIds?: readonly string[];
+  /** Cameras the named groups expanded to. */
+  groupCameraIds?: readonly string[];
+  /** Detection zones named by the scope that do not exist. */
+  missingZoneIds?: readonly string[];
+  /** Detection zones that exist but are switched off. */
+  disabledZoneIds?: readonly string[];
+  /** Which camera each named zone belongs to — for the zone-outside-camera-scope check. */
+  zoneCameraIds?: Readonly<Record<string, string>>;
+
   /** Which reference kinds were actually checked. Anything absent was not looked at. */
   checked: readonly RuleReferenceKind[];
 }
@@ -121,6 +136,97 @@ export function selfChecks(rule: Rule): RuleValidationIssue[] {
     );
   }
 
+  issues.push(...dwellChecks(rule));
+  return issues;
+}
+
+/**
+ * **Dwell coherence** (P-8 Phase 7) — every way a dwell rule can be configured to never fire.
+ *
+ * Each of these is a rule that saves cleanly, enables cleanly, reports healthy, and does nothing. A
+ * loitering rule that silently never fires is the single most expensive failure this milestone can
+ * ship, because the customer discovers it by *not* being told about a theft. So the checks are
+ * deliberately opinionated and say what to do rather than what is wrong.
+ */
+export function dwellChecks(rule: Rule): RuleValidationIssue[] {
+  const dwell = rule.dwell;
+  if (dwell === undefined) return [];
+  const issues: RuleValidationIssue[] = [];
+
+  /*
+   * ⚠️ The reset must exceed the observation interval or the visit resets between frames and nothing
+   * ever accumulates. The platform's conservative sizing runs at 2 fps, so a reset under a second is
+   * always wrong; between 1s and 5s it depends on the deployment's frame rate, which this pure module
+   * cannot know — hence a warning rather than an error.
+   */
+  if (dwell.resetAfterSeconds < 1) {
+    issues.push(
+      issue(
+        'dwell-reset-too-short',
+        'error',
+        'dwell',
+        `a reset of ${dwell.resetAfterSeconds}s is shorter than the gap between two frames — every observation would start a new visit and the threshold could never be reached`,
+      ),
+    );
+  } else if (dwell.resetAfterSeconds < 5) {
+    issues.push(
+      issue(
+        'dwell-reset-near-frame-interval',
+        'warning',
+        'dwell',
+        `a reset of ${dwell.resetAfterSeconds}s is close to the frame interval on a conservatively sized deployment — a single dropped frame would restart the clock`,
+      ),
+    );
+  }
+
+  if (dwell.minSeconds <= dwell.resetAfterSeconds) {
+    issues.push(
+      issue(
+        'dwell-threshold-below-reset',
+        'warning',
+        'dwell',
+        `the threshold (${dwell.minSeconds}s) is at or below the reset (${dwell.resetAfterSeconds}s) — a subject seen twice that far apart fires immediately, which is probably not the intent`,
+      ),
+    );
+  }
+
+  /*
+   * ⚠️ Without a cool-down a rule past its threshold raises on EVERY frame — 120 candidates a minute
+   * at 2 fps for one stationary person. It is legal, because a rule with a long reset may want
+   * exactly one candidate per visit and gets it from the visit lifecycle. It is warned about, loudly,
+   * because the far more common reason for a zero here is that nobody thought about it.
+   */
+  if (dwell.cooldownSeconds === 0) {
+    issues.push(
+      issue(
+        'dwell-no-cooldown',
+        'warning',
+        'dwell',
+        'with no cool-down this rule raises a candidate on every frame once the threshold is met — set one unless the reset window is doing that job',
+      ),
+    );
+  }
+
+  /*
+   * A dwell rule needs a subject on every event it evaluates. It cannot check that from here — the
+   * producer decides — but it CAN check that the author has not scoped the rule to event types that
+   * structurally carry no subject at all.
+   */
+  const subjectless = rule.eventTypes.filter(
+    (t) => t.startsWith('system.') || t.startsWith('camera.'),
+  );
+  for (const type of subjectless) {
+    issues.push(
+      issue(
+        'dwell-on-subjectless-event',
+        'error',
+        'dwell',
+        `"${type}" carries no tracked subject, so there is nothing for a dwell rule to accumulate against`,
+        type,
+      ),
+    );
+  }
+
   return issues;
 }
 
@@ -164,15 +270,93 @@ export function referenceChecks(rule: Rule, findings: ReferenceFindings): RuleVa
     );
   }
 
+  // --- P-8 Phase 7: groups and detection zones --------------------------------------------------
+
+  for (const groupId of findings.missingGroupIds ?? []) {
+    issues.push(
+      issue(
+        'missing-camera-group',
+        'error',
+        'camera-group',
+        `camera group "${groupId}" does not exist in this tenant`,
+        groupId,
+      ),
+    );
+  }
+
+  for (const groupId of findings.emptyGroupIds ?? []) {
+    issues.push(
+      issue(
+        'empty-camera-group',
+        'warning',
+        'camera-group',
+        `camera group "${groupId}" holds no cameras — it contributes nothing to this rule's scope yet`,
+        groupId,
+      ),
+    );
+  }
+
+  for (const zoneId of findings.missingZoneIds ?? []) {
+    issues.push(
+      issue(
+        'missing-zone',
+        'error',
+        'zone',
+        `detection zone "${zoneId}" does not exist in this tenant`,
+        zoneId,
+      ),
+    );
+  }
+
+  for (const zoneId of findings.disabledZoneIds ?? []) {
+    issues.push(
+      issue(
+        'disabled-zone',
+        'warning',
+        'zone',
+        `detection zone "${zoneId}" is switched off — no event will be stamped with it, so this rule will not fire on it`,
+        zoneId,
+      ),
+    );
+  }
+
+  /*
+   * ⚠️ A zone on a camera the rule does not cover.
+   *
+   * This one is worth an error rather than a warning, and it is the mistake an operator makes most:
+   * they scope a rule to "the front-door camera" and then pick a zone drawn on the stockroom camera
+   * from a list that shows every zone in the tenant. `matchesScope` narrows to the zone, so the rule
+   * covers the intersection — which is empty. It saves, it validates, it enables, and it can never
+   * fire.
+   */
+  const zoneCameras = findings.zoneCameraIds ?? {};
+  const scopedCameras = new Set(scopeOf(rule).cameraIds ?? []);
+  const groupCameras = findings.groupCameraIds ?? [];
+  for (const cameraId of groupCameras) scopedCameras.add(cameraId);
+  if (scopedCameras.size > 0) {
+    for (const [zoneId, cameraId] of Object.entries(zoneCameras)) {
+      if (scopedCameras.has(cameraId)) continue;
+      issues.push(
+        issue(
+          'zone-outside-camera-scope',
+          'error',
+          'zone',
+          `zone "${zoneId}" is on camera "${cameraId}", which this rule's camera scope does not cover — the two scopes intersect to nothing and the rule can never fire`,
+          zoneId,
+        ),
+      );
+    }
+  }
+
   /*
    * A scope that names real places but expands to no zones is legal, inert, and almost certainly a
    * mistake — an empty building, say. A warning rather than an error: an operator may be scoping a
    * rule ahead of installing the cameras, and refusing that would make the product argue with them.
    */
   const authored = scopeOf(rule);
-  const scoped = authored.nodeIds.length > 0 || authored.cameraIds.length > 0;
+  const scoped = (authored.nodeIds?.length ?? 0) > 0 || (authored.cameraIds?.length ?? 0) > 0;
   const resolvedNothing =
-    (findings.resolvedZoneIds?.length ?? 0) === 0 && authored.cameraIds.length === 0;
+    (findings.resolvedZoneIds?.length ?? 0) === 0 && (authored.cameraIds?.length ?? 0) === 0;
   if (scoped && resolvedNothing && findings.checked.includes('location')) {
     issues.push(
       issue(
@@ -209,8 +393,10 @@ export function validateRule(
 
   const authored = scopeOf(rule);
   const needed: RuleReferenceKind[] = ['event-type', 'category', 'action'];
-  if (authored.nodeIds.length > 0) needed.push('location');
-  if (authored.cameraIds.length > 0) needed.push('camera');
+  if ((authored.nodeIds?.length ?? 0) > 0) needed.push('location');
+  if ((authored.cameraIds?.length ?? 0) > 0) needed.push('camera');
+  if ((authored.groupIds?.length ?? 0) > 0) needed.push('camera-group');
+  if ((authored.zoneIds?.length ?? 0) > 0) needed.push('zone');
 
   const checked = new Set(findings.checked);
   const verified = needed.every((kind) => checked.has(kind));

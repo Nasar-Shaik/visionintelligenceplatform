@@ -101,9 +101,12 @@ export function measureRule(rule: Rule): RuleComplexity {
     eventTypes: rule.eventTypes.length,
     categories: rule.categories.length,
     actions: rule.actions.length,
-    scopeNodes: scope.nodeIds.length,
-    scopeCameras: scope.cameraIds.length,
-    resolvedZones: rule.resolvedScope?.zoneIds.length ?? 0,
+    /* ⚠️ `?.length ?? 0` throughout — a rule stored before P-8 Phase 7 has no group/zone arrays. */
+    scopeNodes: scope.nodeIds?.length ?? 0,
+    scopeCameras: scope.cameraIds?.length ?? 0,
+    resolvedZones: rule.resolvedScope?.zoneIds?.length ?? 0,
+    scopeGroups: scope.groupIds?.length ?? 0,
+    scopeDetectionZones: scope.zoneIds?.length ?? 0,
   };
 }
 
@@ -171,6 +174,20 @@ const CEILINGS: readonly Ceiling[] = [
     code: 'scope-expands-too-far',
     kind: 'location',
     noun: 'covered zones',
+  },
+  {
+    measured: 'scopeGroups',
+    limit: 'maxScopeGroups',
+    code: 'scope-too-many-groups',
+    kind: 'camera-group',
+    noun: 'scoped camera groups',
+  },
+  {
+    measured: 'scopeDetectionZones',
+    limit: 'maxScopeDetectionZones',
+    code: 'scope-too-many-zones',
+    kind: 'zone',
+    noun: 'scoped detection zones',
   },
 ];
 

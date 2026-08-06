@@ -411,10 +411,27 @@ describe('enterprise scale (rec 8, 12)', () => {
   });
 
   it('scales linearly rather than quadratically', () => {
+    /*
+     * ⚠️ **Best of several runs, not a single measurement.**
+     *
+     * A single timing on a machine running the whole monorepo's suites in parallel measures the
+     * scheduler as much as the algorithm: one sample can be taken while the process has a core and
+     * the next while it is descheduled, and the ratio blows past any bound. That made this check go
+     * red intermittently on a cold-cache parallel run — a flaky gate, which is worse than a missing
+     * one, because people learn to re-run it.
+     *
+     * Taking the best sample removes scheduler noise without weakening the assertion at all: an
+     * O(n²) implementation is quadratic in its *fastest* run too. It cannot be made to pass by
+     * getting lucky, only by actually being linear.
+     */
     const time = (docs: OrgNodeDoc[]) => {
-      const started = performance.now();
-      buildTree(docs);
-      return performance.now() - started;
+      let best = Infinity;
+      for (let run = 0; run < 5; run += 1) {
+        const started = performance.now();
+        buildTree(docs);
+        best = Math.min(best, performance.now() - started);
+      }
+      return best;
     };
     // Warm the JIT so the first measurement is not the compiler.
     time(estate(100, 10));

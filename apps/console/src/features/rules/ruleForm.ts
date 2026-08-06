@@ -49,6 +49,29 @@ export const ruleFormSchema = z
      */
     scopeNodeIds: z.array(z.string()),
     scopeCameraIds: z.array(z.string()),
+    /**
+     * Camera groups (P-8 Phase 7). Expanded into cameras when the rule is validated, and
+     * **snapshotted** — a camera added to the group later is not covered until the rule is
+     * re-validated. The editor says so rather than leaving an operator to discover it.
+     */
+    scopeGroupIds: z.array(z.string()),
+    /**
+     * Detection zones (P-8 Phase 7) — polygons on a camera, **not** location-hierarchy places.
+     *
+     * ⚠️ Naming any zone NARROWS the rule to those zones: an event outside every named zone is
+     * outside the rule even on a camera the rule also names. That is what makes a loitering rule
+     * about a checkout queue rather than about a shop.
+     */
+    scopeZoneIds: z.array(z.string()),
+
+    /* --- dwell (P-8 Phase 7) ------------------------------------------------------------------ */
+    dwellEnabled: z.boolean(),
+    dwellMinSeconds: z.number().int().min(1).max(86_400),
+    dwellGroupBy: z.enum(['identity', 'track']),
+    dwellResetAfterSeconds: z.number().int().min(1).max(3_600),
+    dwellCooldownSeconds: z.number().int().min(0).max(86_400),
+    /** Evaluate against live traffic and raise nothing. A property of the rule, not of a session. */
+    dryRun: z.boolean(),
   })
   .superRefine((v, ctx) => {
     for (const t of parseEventTypes(v.eventTypesText)) {
@@ -84,6 +107,29 @@ export const ruleFormSchema = z
       }
     }
 
+    /*
+     * ⚠️ The same coherence checks the server enforces, mirrored here so an operator learns before
+     * they save rather than from a validation report afterwards. The server remains the authority —
+     * this is a courtesy, and a form that disagreed with it would be worse than one that stayed
+     * quiet, so every message here names the same fact the server's does.
+     */
+    if (v.dwellEnabled) {
+      if (v.dwellMinSeconds <= v.dwellResetAfterSeconds) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['dwellMinSeconds'],
+          message: `A threshold at or below the reset (${v.dwellResetAfterSeconds}s) fires on the second sighting.`,
+        });
+      }
+      if (v.dwellResetAfterSeconds < 5) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['dwellResetAfterSeconds'],
+          message:
+            'A reset under 5s is close to the frame interval — one dropped frame restarts the clock.',
+        });
+      }
+    }
     if (v.windowEnabled && v.windowCount < 1) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -144,6 +190,15 @@ export const DEFAULT_RULE_FORM: RuleFormValues = {
   actionEventType: '',
   scopeNodeIds: [],
   scopeCameraIds: [],
+  scopeGroupIds: [],
+  scopeZoneIds: [],
+  dwellEnabled: false,
+  /* Defaults mirror `LOITERING_TEMPLATE` — the values an operator gets before touching anything. */
+  dwellMinSeconds: 60,
+  dwellGroupBy: 'identity',
+  dwellResetAfterSeconds: 30,
+  dwellCooldownSeconds: 300,
+  dryRun: false,
 };
 
 /** Hydrate the form from a persisted rule (edit mode). */
@@ -170,6 +225,15 @@ export function ruleToFormValues(rule: Rule): RuleFormValues {
     // A rule written before P-4 carries no scope; an absent scope has always meant tenant-wide.
     scopeNodeIds: rule.scope?.nodeIds ?? [],
     scopeCameraIds: rule.scope?.cameraIds ?? [],
+    /* ⚠️ `?? []` — a rule stored before P-8 Phase 7 carries neither array. */
+    scopeGroupIds: rule.scope?.groupIds ?? [],
+    scopeZoneIds: rule.scope?.zoneIds ?? [],
+    dwellEnabled: Boolean(rule.dwell),
+    dwellMinSeconds: rule.dwell?.minSeconds ?? 60,
+    dwellGroupBy: rule.dwell?.groupBy ?? 'identity',
+    dwellResetAfterSeconds: rule.dwell?.resetAfterSeconds ?? 30,
+    dwellCooldownSeconds: rule.dwell?.cooldownSeconds ?? 300,
+    dryRun: rule.dryRun ?? false,
   };
 }
 
@@ -196,12 +260,26 @@ export function toRuleInput(v: RuleFormValues): CreateRuleInput {
     categories: v.categories,
     severity: v.severity,
     actions: [buildAction(v)],
-    scope: { nodeIds: v.scopeNodeIds, cameraIds: v.scopeCameraIds },
+    scope: {
+      nodeIds: v.scopeNodeIds,
+      cameraIds: v.scopeCameraIds,
+      groupIds: v.scopeGroupIds,
+      zoneIds: v.scopeZoneIds,
+    },
+    dryRun: v.dryRun,
   };
   const description = v.description.trim();
   if (description) input.description = description;
   const condText = v.conditionText.trim();
   if (condText) input.condition = JSON.parse(condText) as CreateRuleInput['condition'];
+  if (v.dwellEnabled) {
+    input.dwell = {
+      minSeconds: v.dwellMinSeconds,
+      groupBy: v.dwellGroupBy,
+      resetAfterSeconds: v.dwellResetAfterSeconds,
+      cooldownSeconds: v.dwellCooldownSeconds,
+    };
+  }
   if (v.windowEnabled) {
     input.window = {
       withinSeconds: v.windowWithinSeconds,

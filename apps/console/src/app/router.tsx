@@ -96,6 +96,19 @@ const RuntimeCapacityPage = lazy(() =>
 const RuntimeHealthPage = lazy(() =>
   import('@/features/assignment/RuntimeHealthPage').then((m) => ({ default: m.RuntimeHealthPage })),
 );
+/**
+ * P-8 Phase 7 — Retail Loitering. The zone editor and the live rule status page, lazily loaded like
+ * every other feature so the console's first paint does not carry them.
+ */
+const ZoneEditorPage = lazy(() =>
+  import('@/features/loitering/ZoneEditorPage').then((m) => ({ default: m.ZoneEditorPage })),
+);
+const LiveRuleStatusPage = lazy(() =>
+  import('@/features/loitering/LiveRuleStatusPage').then((m) => ({
+    default: m.LiveRuleStatusPage,
+  })),
+);
+
 const AssignmentHistoryPage = lazy(() =>
   import('@/features/assignment/AssignmentHistoryPage').then((m) => ({
     default: m.AssignmentHistoryPage,
@@ -213,6 +226,15 @@ export const router = createBrowserRouter([
           { path: 'assignment/capacity', element: route(<RuntimeCapacityPage />) },
           { path: 'assignment/health', element: route(<RuntimeHealthPage />) },
           { path: 'assignment/history', element: route(<AssignmentHistoryPage />) },
+          /*
+           * P-8 Phase 7 — the first complete customer workflow.
+           *
+           * ⚠️ `/zones` sits under the rules family in the sidebar rather than under cameras, because
+           * a zone exists to be pointed at by a rule. It is camera configuration that only an
+           * automation author has a reason to touch.
+           */
+          { path: 'zones', element: route(<ZoneEditorPage />) },
+          { path: 'rules/live', element: route(<LiveRuleStatusPage />) },
           // P-6.3 — tenant settings. Was a placeholder; the route is unchanged so every existing
           // link, bookmark and runbook reference still lands somewhere real.
           { path: 'settings', element: route(<SettingsPage />) },

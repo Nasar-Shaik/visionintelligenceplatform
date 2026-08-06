@@ -47,6 +47,7 @@
  */
 import { z } from 'zod';
 import { CapabilityId, IsoDateTime, TenantId } from '../common/primitives.js';
+import { PlanZone } from '../zones/zone.js';
 
 // ---------------------------------------------------------------------------------------------
 // The processing state machine (Architect P-8 Phase 6 rec 2)
@@ -798,6 +799,29 @@ export const AssignmentPlanEntry = z.object({
   assignmentVersion: z.number().int(),
   /** ⚠️ A change means "release this camera's state before processing it again". */
   sessionEpoch: z.number().int(),
+  /**
+   * The camera's **enabled detection zones** (P-8 Phase 7 §Zones, ADR-0044).
+   *
+   * ⚠️ Carried on the plan rather than fetched, and that choice is the whole reason this milestone
+   * needed no new integration. Media already polls this document every 5 seconds, already versions
+   * it, and already treats it as the deployment's truth about a camera. Zones are per-camera
+   * configuration that only matters for a camera being analysed — which is exactly what a plan entry
+   * describes. The alternative was a second poll against a second endpoint with its own cache, its
+   * own staleness and its own failure mode, to deliver a few hundred bytes that fit here.
+   *
+   * ⚠️ **Disabled zones are absent, not present-and-false.** The enforcement point evaluates what it
+   * is given; a flag it had to check would be a flag it could forget to check.
+   */
+  zones: z.array(PlanZone).default([]),
+  /**
+   * Bumped when this camera's zone set changes in any way — geometry, enablement, membership.
+   *
+   * ⚠️ Separate from `assignmentVersion`. Editing a polygon must not look like a reassignment: an
+   * assignment change releases tracking and publisher state and starts a new session epoch, and
+   * dragging a vertex is not a reason to throw away a person's accumulated dwell. The two versions
+   * move independently because they mean independent things.
+   */
+  zoneVersion: z.number().int().min(0).default(0),
 });
 export type AssignmentPlanEntry = z.infer<typeof AssignmentPlanEntry>;
 

@@ -19,7 +19,10 @@ import {
   GROUP_INDEXES,
   PROBE_INDEXES,
   PROFILE_INDEXES,
+  ZONE_INDEXES,
+  ZONE_VERSION_INDEXES,
 } from './indexes.js';
+import type { ZoneDoc, ZoneVersionDoc } from '../domain/zone.js';
 
 export interface MongoAdapter {
   client: MongoClient;
@@ -39,6 +42,10 @@ export interface MongoAdapter {
   processingFacts: Collection<ProcessingFactsDoc>;
   /** The monotonic plan-version counter. One document. */
   assignmentMeta: Collection<MetaDoc>;
+  /* --- Detection zones (P-8 Phase 7) --------------------------------------------------------- */
+  zones: Collection<ZoneDoc>;
+  /** Append-only. ⚠️ Survives the zone's deletion — see `ZoneService.remove`. */
+  zoneVersions: Collection<ZoneVersionDoc>;
   ping(): Promise<void>;
   close(): Promise<void>;
 }
@@ -66,12 +73,19 @@ export async function connectMongo(opts: ConnectMongoOptions): Promise<MongoAdap
   const cameraGroups = db.collection<GroupDoc>('camera_groups');
   const assignmentMeta = db.collection<MetaDoc>('assignment_meta');
   const processingFacts = db.collection<ProcessingFactsDoc>('camera_processing_facts');
-  await ensureIndexes(cameras, probes, {
-    assignments,
-    processingProfiles,
-    assignmentHistory,
-    cameraGroups,
-  });
+  const zones = db.collection<ZoneDoc>('detection_zones');
+  const zoneVersions = db.collection<ZoneVersionDoc>('detection_zone_versions');
+  await ensureIndexes(
+    cameras,
+    probes,
+    {
+      assignments,
+      processingProfiles,
+      assignmentHistory,
+      cameraGroups,
+    },
+    { zones, zoneVersions },
+  );
   return {
     client,
     db,
@@ -84,6 +98,8 @@ export async function connectMongo(opts: ConnectMongoOptions): Promise<MongoAdap
     cameraGroups,
     processingFacts,
     assignmentMeta,
+    zones,
+    zoneVersions,
     async ping() {
       await db.command({ ping: 1 });
     },
@@ -91,6 +107,12 @@ export async function connectMongo(opts: ConnectMongoOptions): Promise<MongoAdap
       await client.close();
     },
   };
+}
+
+/** P-8 Phase 7. */
+interface ZoneCollections {
+  zones: Collection<ZoneDoc>;
+  zoneVersions: Collection<ZoneVersionDoc>;
 }
 
 interface AssignmentCollections {
@@ -104,6 +126,7 @@ async function ensureIndexes(
   cameras: Collection<CameraDoc>,
   probes: Collection<ProbeRecordDoc>,
   assignment: AssignmentCollections,
+  zoneCollections: ZoneCollections,
 ): Promise<void> {
   /*
    * Created from the declared specs so the code and the coverage test cannot disagree. Every index
@@ -172,6 +195,9 @@ async function ensureIndexes(
     [assignment.assignmentHistory as unknown as Collection<never>, ASSIGNMENT_HISTORY_INDEXES],
     [assignment.processingProfiles as unknown as Collection<never>, PROFILE_INDEXES],
     [assignment.cameraGroups as unknown as Collection<never>, GROUP_INDEXES],
+    /* P-8 Phase 7 — detection zones and their append-only version history. */
+    [zoneCollections.zones as unknown as Collection<never>, ZONE_INDEXES],
+    [zoneCollections.zoneVersions as unknown as Collection<never>, ZONE_VERSION_INDEXES],
   ];
   for (const [collection, specs] of sets) {
     const existing = await collection.indexes().catch(() => []);

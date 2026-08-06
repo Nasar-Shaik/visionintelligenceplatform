@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { EventType, IsoDateTime, TenantId, Uuid } from '../common/primitives.js';
 import { EventPriority } from '../events/priority.js';
 import { EventCategory } from '../events/category.js';
+import { CandidateEvidenceRef, CandidateExplanation, CandidateTimeline } from '../rules/rules.js';
 
 /**
  * Incident lifecycle (P1-8 Architect rec 2 — defined before the Alert Engine; extended by P-5.0).
@@ -251,6 +252,29 @@ export const Incident = z.object({
   closedAt: IsoDateTime.optional(),
   raisedAt: IsoDateTime,
   updatedAt: IsoDateTime,
+
+  // --- P-8 Phase 7: the analytical detail the candidate carried -------------------------------
+  //
+  // ⚠️ Copied onto the incident at promotion, not fetched from the candidate later. A candidate is a
+  // message on a bus with a retention policy; an incident is a record somebody may open in a year.
+  // An incident that had to reach back to a broker message to explain itself would eventually be an
+  // incident that cannot explain itself.
+  //
+  // ⚠️ All optional. An incident raised by a stateless rule carries none of it, and that is correct
+  // rather than incomplete — there is no subject to name and no duration to report.
+
+  /** The subject the rule accumulated on. Hoisted so "every incident for this person" is indexable. */
+  identityId: z.string().optional(),
+  /** Observed dwell in seconds. Hoisted for the same reason — it is a primary sort on the list. */
+  durationSeconds: z.number().nonnegative().optional(),
+  /** Structured evidence for why this exists. Rendered by the incident detail page. */
+  explanation: CandidateExplanation.optional(),
+  /** The ordered story of the subject's visit. */
+  timeline: CandidateTimeline.optional(),
+  /** Where the pixels are. ⚠️ References only — see `CandidateEvidenceRef`. */
+  evidence: z.array(CandidateEvidenceRef).max(16).default([]),
+  /** Mean detection confidence over the contributing observations. `null` when unmeasurable. */
+  detectionConfidence: z.number().min(0).max(1).nullable().optional(),
 });
 export type Incident = z.infer<typeof Incident>;
 

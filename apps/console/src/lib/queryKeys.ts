@@ -58,6 +58,24 @@ export const queryKeys = {
     detail: (id: string) => ['rules', 'detail', id] as const,
     // P-4. Keyed apart from the rule: re-checking references must not refetch the rule itself.
     validation: (id: string) => ['rules', 'validation', id] as const,
+    /*
+     * P-8 Phase 7. ⚠️ `live` is keyed apart from everything above because it refreshes every two
+     * seconds and the rule list does not — sharing a key would make the whole rules tree refetch at
+     * the loiter timer's rate.
+     */
+    live: () => ['rules', 'live'] as const,
+    dryRuns: () => ['rules', 'dry-runs'] as const,
+    templates: () => ['rules', 'templates'] as const,
+  },
+  /*
+   * P-8 Phase 7 — detection zones. ⚠️ NOT the location hierarchy (that is `organization`); these are
+   * polygons on a camera. Keyed by camera because that is how the editor reads them.
+   */
+  zones: {
+    all: () => ['zones'] as const,
+    list: (cameraId?: string) => ['zones', 'list', cameraId ?? 'all'] as const,
+    detail: (zoneId: string) => ['zones', 'detail', zoneId] as const,
+    versions: (zoneId: string) => ['zones', 'versions', zoneId] as const,
   },
   incidents: {
     all: () => ['incidents'] as const,

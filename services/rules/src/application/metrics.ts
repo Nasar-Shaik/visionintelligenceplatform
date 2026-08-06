@@ -13,6 +13,12 @@ export class RuleMetrics {
   readonly rulesMatched: Counter<string>;
   readonly candidatesRaised: Counter<string>;
   readonly evaluationDuration: Histogram<string>;
+  // --- P-8 Phase 7 -----------------------------------------------------------------------------
+  readonly dwellWithoutIdentity: Counter<string>;
+  readonly dwellSuppressedByCooldown: Counter<string>;
+  readonly candidatesSuppressedByDryRun: Counter<string>;
+  readonly candidateLatency: Histogram<string>;
+  readonly ingestLatency: Histogram<string>;
 
   constructor(registry: Registry) {
     this.eventsConsumed = new Counter({
@@ -45,6 +51,59 @@ export class RuleMetrics {
       name: 'rules_event_evaluation_duration_seconds',
       help: "Time to evaluate one event against all of a tenant's enabled rules",
       buckets: [0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5],
+      registers: [registry],
+    });
+
+    /*
+     * ⚠️ A non-zero rate here means a dwell rule is receiving events it cannot accumulate: the
+     * producer is not stamping identity. The rule looks enabled and healthy and will never fire, so
+     * this counter is the only thing standing between that state and a silent product failure.
+     */
+    this.dwellWithoutIdentity = new Counter({
+      name: 'rules_dwell_without_identity_total',
+      help: 'Dwell evaluations skipped because the event carried no identity or track id',
+      registers: [registry],
+    });
+    this.dwellSuppressedByCooldown = new Counter({
+      name: 'rules_dwell_cooldown_suppressed_total',
+      help: 'Dwell thresholds met but held silent by the rule cool-down',
+      registers: [registry],
+    });
+    this.candidatesSuppressedByDryRun = new Counter({
+      name: 'rules_dry_run_withheld_total',
+      help: 'Candidates built and deliberately not published because the rule is in dry run',
+      registers: [registry],
+    });
+
+    /*
+     * The three latencies the Architect asked to be able to separate (P-8 Phase 7 rec 6).
+     *
+     * ⚠️ Two of the three are measurable here and the third is not, so only two are recorded:
+     *
+     *  - `ingestLatency`  — event `occurredAt` → this engine consuming it. **Event → Rule.**
+     *  - `candidateLatency` — event `occurredAt` → candidate published. **End-to-end from the frame.**
+     *
+     * `evaluationDuration` is already the pure Rule → Candidate cost, measured with one clock inside
+     * one process. Subtracting it from `candidateLatency` gives the transport share. What is NOT
+     * measured here is the camera→event half, because this service never sees the frame — that lives
+     * on the media side and is reported there. Reconstructing it by differencing two services' wall
+     * clocks would be measuring skew and calling it latency.
+     *
+     * ⚠️ Buckets reach 30s because a dwell candidate's `occurredAt` is the frame's capture time and a
+     * backlog after an outage is legitimately minutes old. A histogram whose top bucket is 0.5s
+     * reports every one of those identically, which is the failure mode that hides a recovering
+     * pipeline.
+     */
+    this.ingestLatency = new Histogram({
+      name: 'rules_event_ingest_latency_seconds',
+      help: 'From an event occurring to the rule engine consuming it (event → rule)',
+      buckets: [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30],
+      registers: [registry],
+    });
+    this.candidateLatency = new Histogram({
+      name: 'rules_candidate_latency_seconds',
+      help: 'From an event occurring to its incident candidate being published (end to end)',
+      buckets: [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30],
       registers: [registry],
     });
   }

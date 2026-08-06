@@ -51,6 +51,7 @@ import { RuleEngine } from '../../../services/rules/src/application/rule-engine.
 import { RuleService } from '../../../services/rules/src/application/rule-service.js';
 import { InMemoryRuleStore } from '../../../services/rules/src/adapters/in-memory-rule-store.js';
 import { InMemoryRuleStateStore } from '../../../services/rules/src/adapters/in-memory-rule-state.js';
+import { InMemoryDwellStateStore } from '../../../services/rules/src/adapters/in-memory-dwell-state.js';
 
 import { IncidentService } from '../../../services/workflow/src/application/incident-service.js';
 import { IncidentPromoter } from '../../../services/workflow/src/application/incident-promoter.js';
@@ -97,6 +98,8 @@ export class PlatformHarness {
   // rules context
   private readonly ruleStore: InMemoryRuleStore;
   private readonly ruleState: InMemoryRuleStateStore;
+  /** P-8 Phase 7 — the dwell stage's state, in-memory here exactly as in production. */
+  private readonly dwellState: InMemoryDwellStateStore;
   readonly ruleService: RuleService;
   private readonly ruleEngine: RuleEngine;
 
@@ -132,6 +135,7 @@ export class PlatformHarness {
     // rules — consume t.*.event.>, evaluate, publish incident.candidate + rule.matched
     this.ruleStore = new InMemoryRuleStore({ now, newId });
     this.ruleState = new InMemoryRuleStateStore();
+    this.dwellState = new InMemoryDwellStateStore();
     // Authoring writes drop the engine's compiled-rule cache, exactly as the real service wires it.
     const engineRef: { current?: RuleEngine } = {};
     this.ruleService = new RuleService({
@@ -141,6 +145,7 @@ export class PlatformHarness {
       onRulesChanged: (tenantId) => engineRef.current?.invalidate(tenantId),
     });
     this.ruleEngine = new RuleEngine({
+      dwell: this.dwellState,
       bus: this.bus,
       store: this.ruleStore,
       state: this.ruleState,

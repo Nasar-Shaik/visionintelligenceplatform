@@ -10,6 +10,7 @@ import type { Registry } from 'prom-client';
 import type { ServiceConfig } from '../config/env.js';
 import { ReadinessRegistry } from '../application/readiness.js';
 import type { RuleService } from '../application/rule-service.js';
+import type { RuleEngine } from '../application/rule-engine.js';
 import { registerSecurity } from './plugins/security.js';
 import { registerMetrics } from './plugins/observability.js';
 import { createAuth, registerPrincipal } from './plugins/auth.js';
@@ -19,12 +20,21 @@ import { registerMetricsRoute } from './routes/metrics.js';
 import { registerRootRoute } from './routes/root.js';
 import { registerRuleAuthoringRoutes } from './routes/rule-authoring.js';
 import { registerRuleOperationsRoutes } from './routes/rule-operations.js';
+import { registerRuleLiveRoutes } from './routes/rule-live.js';
 
 export interface BuildServerOptions {
   config: ServiceConfig;
   ruleService: RuleService;
   startedAt?: Date;
   readiness?: ReadinessRegistry;
+  /**
+   * The evaluating engine on this node (P-8 Phase 7), late-bound.
+   *
+   * ⚠️ A **reference cell**, not the engine: the engine is constructed after the server because it
+   * needs the metrics registry, and the live-status plane must not force that order to invert. An
+   * empty cell means this node does not evaluate, which the routes answer with a `503`.
+   */
+  engine?: { current?: RuleEngine };
 }
 
 export interface BuiltServer {
@@ -72,6 +82,8 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
    */
   registerRuleAuthoringRoutes(app, { service: opts.ruleService, auth });
   registerRuleOperationsRoutes(app, { service: opts.ruleService, auth });
+  /* P-8 Phase 7 — live status, dry-run results and templates. See `rule-live.ts`. */
+  registerRuleLiveRoutes(app, { auth, engine: opts.engine ?? {} });
 
   return { app, readiness, registry };
 }

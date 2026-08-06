@@ -62,6 +62,7 @@ import {
   type UpdateCameraGroupInput,
   type UpdateProcessingProfileInput,
   type UpdateRuntimeInput,
+  type PlanZone,
 } from '@vip/contracts';
 import { NO_ASSIGNMENT_LIMITS } from '@vip/contracts';
 import type { TenantRepository, TenantScope } from '@vip/tenancy';
@@ -172,6 +173,21 @@ export interface AssignmentServiceDeps {
   /** ⚠️ Ceilings a future licensing subsystem supplies. Unset on every deployment today. */
   limits?: AssignmentLimits;
   publisher?: EventPublisher;
+  /**
+   * Supplies each camera's enabled detection zones for the plan (P-8 Phase 7).
+   *
+   * ⚠️ Optional, and its absence is a plan whose entries carry `zones: []` — which the enforcement
+   * point reads as "this camera has no zones", i.e. the pre-Phase-7 behaviour. A deployment that has
+   * not wired zones therefore degrades to stamping no zone on any event rather than failing, which
+   * is the only safe direction: the alternative would take AI processing down over a configuration
+   * subsystem nothing was using.
+   */
+  zones?: ZonePlanSource;
+}
+
+/** The one thing the assignment service needs from the zone service (P-8 Phase 7). */
+export interface ZonePlanSource {
+  planZonesByCamera(): Promise<Map<string, PlanZone[]>>;
 }
 
 /** In-process counters exported as metrics. Reset on restart, like every Prometheus counter. */
@@ -198,6 +214,7 @@ export class AssignmentService {
   readonly #placement: PlacementStrategy;
   readonly #limits: AssignmentLimits;
   readonly #publisher: EventPublisher;
+  readonly #zones: ZonePlanSource | undefined;
   readonly #counters: Counters = { changes: 0, failures: 0, failovers: 0, latencySamples: [] };
   /**
    * The change this process is waiting to see applied, and when it was accepted.
@@ -224,6 +241,7 @@ export class AssignmentService {
     this.#placement = deps.placement ?? new LeastLoadedPlacement();
     this.#limits = deps.limits ?? NO_ASSIGNMENT_LIMITS;
     this.#publisher = deps.publisher ?? nullPublisher;
+    this.#zones = deps.zones;
   }
 
   // -------------------------------------------------------------------------------------------
@@ -838,7 +856,7 @@ export class AssignmentService {
    */
   async plan(): Promise<AssignmentPlan> {
     const now = this.#clock.now();
-    const [meta, runtimes, docs] = await Promise.all([
+    const [meta, runtimes, docs, zonesByCamera] = await Promise.all([
       this.#metaDoc(),
       this.#allRuntimes(),
       this.#assignments
@@ -846,6 +864,14 @@ export class AssignmentService {
           state: { $in: ['assigned', 'starting', 'running', 'recovering', 'paused'] },
         } as never)
         .toArray(),
+      /*
+       * ⚠️ P-8 Phase 7. One cross-tenant query for every enabled zone, joined in memory — never a
+       * query per camera. The plan is polled every few seconds by every media process, and an N+1
+       * here would be invisible on a fixture and quadratic on an estate.
+       */
+      this.#zones === undefined
+        ? Promise.resolve(new Map<string, PlanZone[]>())
+        : this.#zones.planZonesByCamera(),
     ]);
     const runtimeById = new Map(runtimes.map((r) => [r._id, r]));
     const profileCache = new Map<string, ProfileDoc | null>();
@@ -874,6 +900,14 @@ export class AssignmentService {
         targetFps: profile.targetFps,
         assignmentVersion: doc.version,
         sessionEpoch: doc.sessionEpoch,
+        zones: zonesByCamera.get(`${doc.tenantId}:${doc.cameraId}`) ?? [],
+        /*
+         * ⚠️ Derived from the zones themselves, not stored. The maximum zone version on the camera
+         * changes whenever any of its zones is edited, added or removed — and a derived value cannot
+         * disagree with the thing it describes after a partial write, which a stored counter can.
+         * Same reasoning as `RuleCompilation`'s hashes being derived rather than persisted.
+         */
+        zoneVersion: maxZoneVersion(zonesByCamera.get(`${doc.tenantId}:${doc.cameraId}`)),
       });
     }
 
@@ -893,6 +927,9 @@ export class AssignmentService {
         targetFps: null,
         assignmentVersion: doc.version,
         sessionEpoch: doc.sessionEpoch,
+        /* ⚠️ A release carries no zones: there is nothing left to evaluate them against. */
+        zones: [],
+        zoneVersion: 0,
       });
     }
 
@@ -1142,6 +1179,24 @@ export class AssignmentService {
   }
 
   /** Bump the plan version. One increment per accepted operation, not per document written. */
+  /**
+   * Make the next plan poll see a change that did not come from an assignment (P-8 Phase 7).
+   *
+   * ⚠️ Called by the zone service, and **not** marked as a pending change: `#pending` anchors the
+   * assignment-latency metric, and timing a polygon edit as though it were a reassignment would
+   * pollute a measurement that exists to answer a different question. The plan version still moves,
+   * which is all the enforcement point needs.
+   */
+  async bumpPlanVersion(): Promise<number> {
+    const now = this.#clock.now();
+    await this.#meta.updateOne(
+      { _id: PLAN_META_ID } as never,
+      { $inc: { version: 1 } as never, $set: { versionAt: now.toISOString() } as never },
+      { upsert: true },
+    );
+    return this.#planVersion();
+  }
+
   async #bumpPlan(): Promise<number> {
     const now = this.#clock.now();
     await this.#meta.updateOne(
@@ -1565,3 +1620,23 @@ export function placementMessage(failure: PlacementFailure): string {
 
 /** Ids the built-in catalogue occupies, for the routes that refuse to shadow them. */
 export const RESERVED_PROFILE_IDS: ReadonlySet<string> = new Set(BUILT_IN_PROFILE_IDS);
+
+/**
+ * The highest version among a camera's zones — the camera's zone-set version (P-8 Phase 7).
+ *
+ * ⚠️ `0` for a camera with no zones, which is a legitimate value and not a missing measurement: a
+ * camera with nothing drawn on it genuinely has no zone configuration to be at a version of. Because
+ * every zone starts at version 1, `0` can never collide with a real one.
+ *
+ * ⚠️ A *maximum* rather than a sum or a count, and the difference matters: deleting a zone lowers the
+ * count and would make a change look like a revert, while the maximum only ever moves forward for as
+ * long as any zone on the camera is edited. It is not a perfect monotonic counter — deleting the
+ * newest zone lowers it — and that is acceptable because the enforcement point compares for
+ * *inequality*, not for ordering.
+ */
+function maxZoneVersion(zones: readonly PlanZone[] | undefined): number {
+  if (zones === undefined || zones.length === 0) return 0;
+  let max = 0;
+  for (const zone of zones) if (zone.version > max) max = zone.version;
+  return max;
+}

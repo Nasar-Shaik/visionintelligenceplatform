@@ -69,6 +69,15 @@ export function promoteFromCandidate(
       eventType: candidate.triggeredBy.eventType,
       occurredAt: candidate.triggeredBy.occurredAt,
     },
+    /*
+     * ⚠️ P-8 Phase 7 — the analytical detail is COPIED onto the incident, not referenced.
+     *
+     * A candidate is a message on a bus with a retention policy; an incident is a record somebody
+     * may open in a year. An incident that had to reach back to a broker message to explain itself
+     * would, in a year, be an incident that cannot explain itself. `evidence` is a list of locators
+     * rather than bytes, so copying it costs a few hundred bytes and buys permanence.
+     */
+    evidence: candidate.evidence ?? [],
     matchedCount: candidate.matchedCount,
     version: 1,
     // rec 1 — always present: inherit the event's correlation, else anchor to the triggering event.
@@ -85,6 +94,13 @@ export function promoteFromCandidate(
   if (candidate.triggeredBy.cameraId)
     incident.triggeredBy.cameraId = candidate.triggeredBy.cameraId;
   if (candidate.triggeredBy.zoneId) incident.triggeredBy.zoneId = candidate.triggeredBy.zoneId;
+
+  /* ⚠️ Conditional, not defaulted. Absent means "this rule does not measure duration". */
+  if (candidate.identityId !== undefined) incident.identityId = candidate.identityId;
+  if (candidate.durationSeconds !== undefined) incident.durationSeconds = candidate.durationSeconds;
+  if (candidate.explanation !== undefined) incident.explanation = candidate.explanation;
+  if (candidate.timeline !== undefined) incident.timeline = candidate.timeline;
+  if (candidate.confidence !== undefined) incident.detectionConfidence = candidate.confidence;
   return incident;
 }
 

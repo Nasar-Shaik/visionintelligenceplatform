@@ -10,7 +10,13 @@
  * the distinct `t.*.incident.>` / `t.*.rule.>` roots, so it can never trigger on its own output. It is
  * fail-closed: an envelope that does not satisfy the contract is dead-lettered, never evaluated.
  */
-import { EventEnvelope, type RuleCacheStats } from '@vip/contracts';
+import {
+  EventEnvelope,
+  type LiveDwellTimer,
+  type LiveRuleStatus,
+  type Rule,
+  type RuleCacheStats,
+} from '@vip/contracts';
 import {
   ALL_EVENTS,
   AUTOMATION_STREAM,
@@ -33,9 +39,19 @@ import {
   buildRuleMatch,
   groupKeyFor,
   raisesIncident,
+  type DwellContext,
 } from '../domain/incident.js';
-import type { RuleStateStore, RuleStore } from './ports.js';
+import {
+  dwellKey,
+  parseDwellKey,
+  subjectKeyFor,
+  timerStateOf,
+  zoneKeyFor,
+} from '../domain/dwell.js';
+import type { DwellStateStore, RuleStateStore, RuleStore, ZoneLookup } from './ports.js';
 import type { RuleMetrics } from './metrics.js';
+import { DryRunLog } from './dry-run-log.js';
+import { RateWindow } from './rate-window.js';
 
 export type LogFn = (level: 'info' | 'warn' | 'error', msg: string, fields?: object) => void;
 // (automation outputs land on their own subject roots — see start())
@@ -44,6 +60,17 @@ export interface RuleEngineDeps {
   bus: EventBus;
   store: RuleStore;
   state: RuleStateStore;
+  /** Where a subject's visit lives between events (P-8 Phase 7). */
+  dwell: DwellStateStore;
+  /**
+   * Resolves a detection zone's name and version for the candidate's explanation (P-8 Phase 7).
+   *
+   * ⚠️ **Synchronous and optional.** It is read on the per-event path, so it must be a cache lookup
+   * and never a call; and a deployment without it produces candidates carrying the zone id alone,
+   * which is honest and still actionable. A required async lookup here would have put the camera
+   * service between a camera and an alert.
+   */
+  zones?: ZoneLookup | undefined;
   maxRulesPerEvent: number;
   candidateDedupWindowMs: number;
   /** How long a compiled rule set may be served before it is rebuilt (P-4). */
@@ -55,12 +82,29 @@ export interface RuleEngineDeps {
   newId?: () => string;
   log?: LogFn;
   durable?: string;
+  /** Which node this is, for `LiveRuleStatus.node`. Defaults to `HOSTNAME`. */
+  node?: string;
 }
 
 export class RuleEngine {
   private readonly bus: EventBus;
   private readonly store: RuleStore;
   private readonly state: RuleStateStore;
+  private readonly dwell: DwellStateStore;
+  private readonly zones: ZoneLookup | undefined;
+  /** Candidates a dry-run rule would have raised. Bounded, in-process, read by the console. */
+  readonly dryRuns = new DryRunLog();
+  /** Which node is answering. Every number on the status page is this node's — see `LiveRuleStatus`. */
+  private readonly node: string;
+  private readonly startedAtMs: number;
+  /** Sliding rate windows for the Live Rule Status page. ⚠️ `null` until a window elapses. */
+  private readonly rates: {
+    events: RateWindow;
+    evaluations: RateWindow;
+    candidates: RateWindow;
+  };
+  /** ⚠️ Mirrors the Prometheus counter, so the status page can show it without a scrape. */
+  private withoutIdentity = 0;
   private readonly maxRulesPerEvent: number;
   private readonly dedupWindowMs: number;
   /** Compiled, scope-expanded rules per tenant — so evaluating an event touches no store (P-4). */
@@ -76,6 +120,8 @@ export class RuleEngine {
     this.bus = deps.bus;
     this.store = deps.store;
     this.state = deps.state;
+    this.dwell = deps.dwell;
+    this.zones = deps.zones;
     this.maxRulesPerEvent = deps.maxRulesPerEvent;
     this.dedupWindowMs = deps.candidateDedupWindowMs;
     this.compiled = new RuleSetCache({
@@ -89,6 +135,13 @@ export class RuleEngine {
     this.newId = deps.newId ?? (() => crypto.randomUUID());
     this.log = deps.log ?? (() => {});
     this.durable = deps.durable ?? 'rules-engine';
+    this.node = deps.node ?? process.env['HOSTNAME'] ?? 'rules';
+    this.startedAtMs = this.now().getTime();
+    this.rates = {
+      events: new RateWindow(this.startedAtMs),
+      evaluations: new RateWindow(this.startedAtMs),
+      candidates: new RateWindow(this.startedAtMs),
+    };
   }
 
   async start(): Promise<void> {
@@ -137,6 +190,100 @@ export class RuleEngine {
     return this.compiled.statsFor(tenantId);
   }
 
+  /**
+   * **What the engine is doing right now** (P-8 Phase 7, Architect recs 3 + 6).
+   *
+   * Assembled from what this process already holds — the compiled rule set, the rate windows and the
+   * dwell store — so it costs a walk of live state and no I/O. Nothing here is stored, and nothing in
+   * evaluation reads it.
+   *
+   * ⚠️ Every rate is `null` until its window has elapsed (ADR-0039). `0.0/s` on a node that started
+   * four seconds ago is a fabrication, and it is the fabrication most likely to be believed, because
+   * an idle estate produces the identical number honestly.
+   */
+  async liveStatus(tenantId: string): Promise<LiveRuleStatus> {
+    const nowMs = this.now().getTime();
+    const scope = TenantScope.fromTenantId(tenantId);
+    const compiled = await this.compiled.get(scope);
+
+    let dwellRules = 0;
+    let dryRunRules = 0;
+    const zoneIds = new Set<string>();
+    /** Rule id → the rule, so a live timer can name its threshold without a second lookup. */
+    const byId = new Map<string, Rule>();
+    for (const { rule, scope: ruleScope } of compiled.rules) {
+      byId.set(rule.id, rule);
+      if (rule.dwell !== undefined) dwellRules += 1;
+      if (rule.dryRun) dryRunRules += 1;
+      for (const zoneId of ruleScope.detectionZoneIds) zoneIds.add(zoneId);
+    }
+
+    /*
+     * ⚠️ The dwell store is cross-tenant (one process, every tenant), so entries are filtered by the
+     * tenant prefix of their key. Returning another tenant's live timers on this page would be a
+     * cross-tenant leak wearing an operations hat.
+     */
+    const prefix = `${tenantId}:`;
+    const timers: LiveDwellTimer[] = [];
+    let activeCount = 0;
+    for (const { key, record } of this.dwell.active()) {
+      if (!key.startsWith(prefix)) continue;
+      const parsed = parseDwellKey(key);
+      if (parsed === undefined) continue;
+      const rule = byId.get(parsed.ruleId);
+      if (rule?.dwell === undefined) continue;
+      activeCount += 1;
+      if (timers.length >= 50) continue;
+
+      const { state, cooldownRemainingSeconds } = timerStateOf(record, rule.dwell, nowMs);
+      const zone = this.zones?.(tenantId, parsed.zoneKey === '-' ? undefined : parsed.zoneKey);
+      const timer: LiveDwellTimer = {
+        ruleId: rule.id,
+        ruleName: rule.name,
+        subject: parsed.subject,
+        subjectKind: rule.dwell.groupBy,
+        firstObservedAt: new Date(record.firstObservedAtMs).toISOString(),
+        lastObservedAt: new Date(record.lastObservedAtMs).toISOString(),
+        elapsedSeconds: (record.lastObservedAtMs - record.firstObservedAtMs) / 1000,
+        thresholdSeconds: rule.dwell.minSeconds,
+        observations: record.observations,
+        trackFragments: Math.max(1, record.trackIds.length),
+        longestGapSeconds: record.longestGapMs / 1000,
+        state,
+        cooldownRemainingSeconds,
+        dryRun: rule.dryRun,
+      };
+      if (parsed.zoneKey !== '-') timer.zoneId = parsed.zoneKey;
+      if (zone !== undefined) timer.zoneName = zone.name;
+      timers.push(timer);
+    }
+    /* Closest to firing first — what an operator watching a screen wants at the top. */
+    timers.sort(
+      (a, b) => b.elapsedSeconds / b.thresholdSeconds - a.elapsedSeconds / a.thresholdSeconds,
+    );
+
+    const dwellStats = this.dwell.stats();
+    return {
+      tenantId,
+      node: this.node,
+      uptimeSeconds: (nowMs - this.startedAtMs) / 1000,
+      activeRules: compiled.rules.length,
+      dwellRules,
+      dryRunRules,
+      activeZones: zoneIds.size,
+      evaluationsPerSecond: this.rates.evaluations.perSecond(nowMs),
+      candidatesPerSecond: this.rates.candidates.perSecond(nowMs),
+      eventsPerSecond: this.rates.events.perSecond(nowMs),
+      activeDwellTimers: activeCount,
+      timers,
+      dwellWithoutIdentity: this.withoutIdentity,
+      dwellStateEntries: dwellStats.entries,
+      dwellStateCapacity: dwellStats.maxEntries,
+      dwellStateEvicted: dwellStats.evicted,
+      at: new Date(nowMs).toISOString(),
+    };
+  }
+
   async onMessage(msg: BusMessage): Promise<void> {
     let raw: unknown;
     try {
@@ -158,6 +305,17 @@ export class RuleEngine {
     }
     const envelope = parsed.data;
     this.metrics?.eventsConsumed.inc();
+    this.rates.events.add(this.now().getTime());
+    /*
+     * ⚠️ **Event → Rule latency, sampled on arrival** (Architect rec 6). Measured before any work,
+     * so it is the transport half alone: how long a frame's event took to reach this engine. Pairing
+     * it with `candidateLatency` at the other end isolates a slow broker from a slow rule set, which
+     * is the entire point of separating the two.
+     */
+    const ingestMs = this.now().getTime() - Date.parse(envelope.occurredAt);
+    if (Number.isFinite(ingestMs) && ingestMs >= 0) {
+      this.metrics?.ingestLatency.observe(ingestMs / 1000);
+    }
 
     try {
       await this.evaluate(envelope);
@@ -189,6 +347,7 @@ export class RuleEngine {
 
     for (const { rule, scope: ruleScope, stats } of compiled.rules) {
       this.metrics?.rulesEvaluated.inc();
+      this.rates.evaluations.add(startedAtMs);
       if (stats) {
         stats.evaluations += 1;
         stats.lastEvaluatedAt = startedAtMs;
@@ -235,8 +394,40 @@ export class RuleEngine {
         windowPassed = matchedCount >= rule.window.count;
       }
 
+      /*
+       * Dwell threshold (stateful) — the last stage, and the only one that can decline for a reason
+       * that is about the *platform* rather than about the rule. See `domain/dwell.ts`.
+       */
+      let dwell: DwellContext | undefined;
+      let dwellPassed = true;
+      if (rule.dwell && windowPassed) {
+        const outcome = await this.#observeDwell(rule, envelope);
+        if (outcome === undefined) {
+          /*
+           * ⚠️ No subject key — the event carries neither an identity nor a track id, so there is
+           * nothing to accumulate against. Counted and skipped, never bucketed under a placeholder:
+           * pooling anonymous detections into one subject produces a phantom who is always present
+           * and crosses every threshold. This is the "Missing Identity" mutation.
+           */
+          this.metrics?.dwellWithoutIdentity.inc();
+          this.withoutIdentity += 1;
+          dwellPassed = false;
+        } else {
+          dwell = outcome;
+          dwellPassed = outcome.outcome.fires;
+          if (outcome.outcome.coolingDown) this.metrics?.dwellSuppressedByCooldown.inc();
+        }
+      }
+
       this.metrics?.rulesMatched.inc();
-      const willRaise = windowPassed && raisesIncident(rule);
+      const wouldRaise = windowPassed && dwellPassed && raisesIncident(rule);
+      /*
+       * ⚠️ **Dry run is applied HERE and nowhere else.** Everything above ran exactly as it would
+       * live — the dwell clock advanced, the cool-down armed — because a dry run whose state diverged
+       * from a live run would report numbers for a rule nobody is going to operate. What changes is
+       * only whether the candidate is published.
+       */
+      const willRaise = wouldRaise && !rule.dryRun;
 
       // rule.matched — lightweight audit on every match (idempotent per event+rule).
       await this.bus.publish(
@@ -245,23 +436,109 @@ export class RuleEngine {
         { msgId: `${envelope.id}:${rule.id}` },
       );
 
-      if (!willRaise) continue;
+      if (!wouldRaise) continue;
 
-      const candidate = buildIncidentCandidate(rule, envelope, matchedCount, this.dedupWindowMs, {
-        newId: this.newId,
-        now: this.now,
-      });
+      const candidate = buildIncidentCandidate(
+        rule,
+        envelope,
+        matchedCount,
+        this.dedupWindowMs,
+        { newId: this.newId, now: this.now },
+        dwell,
+      );
+
+      if (!willRaise) {
+        /*
+         * ⚠️ Built and then deliberately not published. Building it is what makes the dry-run report
+         * trustworthy: it is the same function, so what an operator sees in the dry run is exactly
+         * the candidate they would have received. Recording it here rather than publishing it is the
+         * one and only difference between the two modes.
+         */
+        this.metrics?.candidatesSuppressedByDryRun.inc();
+        this.dryRuns.record(candidate);
+        this.log('info', 'dry run: candidate withheld', {
+          ruleId: rule.id,
+          eventId: envelope.id,
+          durationSeconds: candidate.durationSeconds,
+        });
+        continue;
+      }
+
       // incident.candidate — dedup key doubles as the JetStream msgId so bursts collapse.
       await this.bus.publish(incidentCandidateSubject(envelope.tenantId), candidate, {
         msgId: candidate.dedupKey,
       });
       this.metrics?.candidatesRaised.inc({ severity: candidate.severity });
+      this.rates.candidates.add(this.now().getTime());
+      /*
+       * ⚠️ **Event → candidate latency, sampled where both ends are known** (Architect rec 6). The
+       * event's `occurredAt` is when the camera saw it; `now` is when the candidate went out. Nowhere
+       * else in the platform holds both, and a metric assembled later from two services' clocks would
+       * be measuring clock skew.
+       */
+      const producedMs = this.now().getTime() - Date.parse(envelope.occurredAt);
+      if (Number.isFinite(producedMs) && producedMs >= 0) {
+        this.metrics?.candidateLatency.observe(producedMs / 1000);
+      }
       this.log('info', 'incident candidate raised', {
         ruleId: rule.id,
         eventId: envelope.id,
         severity: candidate.severity,
+        ...(candidate.durationSeconds !== undefined
+          ? { durationSeconds: candidate.durationSeconds }
+          : {}),
       });
     }
     endTimer?.();
+  }
+
+  /**
+   * Run the dwell stage for one rule and one event.
+   *
+   * Returns `undefined` when the event carries no subject key — see the call site for why that is a
+   * refusal rather than a default.
+   */
+  async #observeDwell(rule: Rule, envelope: EventEnvelope): Promise<DwellContext | undefined> {
+    const config = rule.dwell;
+    if (config === undefined) return undefined;
+    const subject = subjectKeyFor(config.groupBy, envelope);
+    if (subject === undefined) return undefined;
+
+    const key = dwellKey(envelope.tenantId, rule.id, zoneKeyFor(envelope), subject);
+    /*
+     * ⚠️ `occurredAt`, not the node's clock — a replayed backlog must contribute the duration it
+     * actually represents. See `domain/dwell.observe`.
+     */
+    const atMs = Date.parse(envelope.occurredAt);
+    const outcome = await this.dwell.observe(
+      key,
+      {
+        atMs: Number.isFinite(atMs) ? atMs : this.now().getTime(),
+        eventId: envelope.id,
+        eventType: envelope.type,
+        trackId: envelope.subjects[0]?.trackId,
+        confidence: envelope.confidence,
+        /*
+         * ⚠️ The frame this event came from, so the timeline can point at footage (rec 1). It lives
+         * in the payload rather than on the envelope — see the normalizer for why a frame sequence
+         * has no business being a field every `tenant.created` event carries.
+         */
+        frameId:
+          typeof envelope.payload['frameId'] === 'string' ? envelope.payload['frameId'] : undefined,
+      },
+      config,
+    );
+    const context: DwellContext = { outcome, subject };
+    /*
+     * The zone's name and version, from the resolver the composition root supplied. ⚠️ A synchronous
+     * in-memory lookup against a cache media already refreshes — never a call. When it is absent the
+     * candidate carries the zone id alone, which is honest and still actionable.
+     */
+    const zone = this.zones?.(envelope.tenantId, envelope.zoneId);
+    if (zone !== undefined) {
+      context.zoneName = zone.name;
+      context.zoneVersion = zone.version;
+    }
+    return context;
   }
 }

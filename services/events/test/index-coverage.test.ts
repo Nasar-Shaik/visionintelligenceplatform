@@ -14,6 +14,18 @@
  *    performs. Neither is new to P-5.0; both are fixed here because P-5 is about to lean on them.
  */
 import { describe, expect, it } from 'vitest';
+/*
+ * ⚠️ Imported statically, at module load, NOT with `await import()` inside the test body.
+ *
+ * It was dynamic, and it made this test flaky in a way that looked like a logic failure: the first
+ * cold import of the contracts barrel takes longer than vitest's 5 s default when the whole
+ * monorepo's suites run in parallel on a cold cache, so the test **timed out** and the gate reported
+ * a red that had nothing to do with indexes. Found while running the P-8 Phase 7 gate; the flake
+ * predates that milestone and reproduces on the P-8 Phase 6 freeze commit.
+ *
+ * A module-level import is paid once during collection, where no timeout applies.
+ */
+import { EventQuery } from '@vip/contracts';
 import { EVENT_CURSOR, EVENT_INDEXES, type IndexSpec } from '../src/adapters/indexes.js';
 
 interface QueryShape {
@@ -130,8 +142,7 @@ describe('the events index set (G-5)', () => {
     ]);
   });
 
-  it('has one declared index per EventQuery filter', async () => {
-    const { EventQuery } = await import('@vip/contracts');
+  it('has one declared index per EventQuery filter', () => {
     const filters = Object.keys(EventQuery.shape).filter(
       (key) => !['limit', 'cursor', 'from', 'to'].includes(key),
     );

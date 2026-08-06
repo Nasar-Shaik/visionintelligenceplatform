@@ -1,4 +1,5 @@
 import {
+  MapPin,
   Activity,
   Bell,
   Camera,
@@ -89,6 +90,15 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Configure',
     items: [
       { to: '/rules', label: 'Rules', icon: SlidersHorizontal, permission: 'rule:read' },
+      /*
+       * P-8 Phase 7 — Retail Loitering.
+       *
+       * ⚠️ "Detection Zones", not "Zones". The Location Hierarchy also has a level called a zone, and
+       * a sidebar with two entries called "Zones" is the same ambiguity that made "Cameras" appear
+       * twice in P-8 Phase 6 and be caught by a browser check rather than by review.
+       */
+      { to: '/zones', label: 'Detection Zones', icon: MapPin, permission: 'camera:read' },
+      { to: '/rules/live', label: 'Rule Status', icon: Activity, permission: 'rule:read' },
       /*
        * ⚠️ Gated on `user:update`, not `user:read`. Every role holds `*:read`, so `user:read` would
        * put an administration screen in a viewer's sidebar — the TD-26 wildcard hazard again. The

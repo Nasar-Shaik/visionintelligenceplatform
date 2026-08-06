@@ -98,6 +98,48 @@ export const ASSIGNMENT_INDEXES: readonly IndexSpec[] = [
   },
 ] as const;
 
+/**
+ * Detection zones (P-8 Phase 7).
+ *
+ * ⚠️ `plan_enabled` is the counterpart to `plan_state` above and carries production for the same
+ * reason: the assignment plan is rebuilt on the enforcement point's poll interval, across every
+ * tenant, and it reads every **enabled** zone. Without an `enabled`-leading index that is a
+ * collection scan every few seconds — invisible with four zones, linear with the estate.
+ */
+export const ZONE_INDEXES: readonly IndexSpec[] = [
+  {
+    name: 'tenant_zone',
+    keys: ['tenantId', 'zoneId'],
+    serves: 'one zone by id; the tenant-scoped listing',
+    unique: true,
+  },
+  {
+    name: 'tenant_camera',
+    keys: ['tenantId', 'cameraId', 'name'],
+    serves: 'the zone editor’s per-camera list, and the per-camera uniqueness check',
+  },
+  {
+    name: 'plan_enabled',
+    keys: ['enabled', 'tenantId', 'cameraId'],
+    serves: '⚠️ the cross-tenant plan read, rebuilt on every enforcement-point poll',
+  },
+] as const;
+
+/**
+ * Zone version history (P-8 Phase 7, Architect rec 2) — append-only.
+ *
+ * ⚠️ Read by an incident detail page resolving the geometry as it was, so the lookup is by
+ * (zone, version) and must be exact rather than a scan of a zone's whole history.
+ */
+export const ZONE_VERSION_INDEXES: readonly IndexSpec[] = [
+  {
+    name: 'tenant_zone_version',
+    keys: ['tenantId', 'zoneId', 'version'],
+    serves: '⚠️ resolving a historical incident’s zone geometry',
+    unique: true,
+  },
+] as const;
+
 export const ASSIGNMENT_HISTORY_INDEXES: readonly IndexSpec[] = [
   {
     name: 'tenant_camera_at',

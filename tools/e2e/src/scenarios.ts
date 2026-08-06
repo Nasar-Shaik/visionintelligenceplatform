@@ -131,7 +131,8 @@ function rule(
     categories: [],
     severity,
     actions: [{ type: 'raise-incident' }],
-    scope: { nodeIds: [], cameraIds: [] },
+    scope: { nodeIds: [], cameraIds: [], groupIds: [], zoneIds: [] },
+    dryRun: false,
   };
   if (condition) r.condition = condition;
   return r;

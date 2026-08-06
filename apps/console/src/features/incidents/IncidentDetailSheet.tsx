@@ -23,6 +23,7 @@ import {
   toast,
 } from '@/ui';
 import type { TimelineItem } from '@/ui';
+import { LoiteringEvidence } from '@/features/loitering/LoiteringEvidence';
 import { useCameraName } from '@/features/cameras/useCameras';
 import { INCIDENT_STATUS, allowedActions } from './status';
 import {
@@ -189,6 +190,18 @@ export function IncidentDetailSheet({ incidentId, onClose }: IncidentDetailSheet
                   {incident.resolution}
                 </div>
               ) : null}
+
+              {/*
+               * P-8 Phase 7 — why a dwell rule raised this, with its timeline and evidence links.
+               * ⚠️ Renders nothing at all for an incident from a stateless rule: absent detail is
+               * absent, not an empty section implying an analysis that found nothing.
+               */}
+              <LoiteringEvidence
+                explanation={incident.explanation}
+                timeline={incident.timeline}
+                evidence={incident.evidence}
+                confidence={incident.detectionConfidence}
+              />
 
               <div>
                 <p className="mb-2 text-xs font-medium uppercase tracking-wide text-text-subtle">

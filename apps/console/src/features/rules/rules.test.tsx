@@ -205,9 +205,12 @@ describe('rule scope and validation (P-4)', () => {
     expect(values.scopeNodeIds).toEqual(['on_london']);
     expect(values.scopeCameraIds).toEqual(['cam_1']);
 
+    /* P-8 Phase 7 added group and zone scope; both are empty for a P-4-vintage rule. */
     expect(toRuleInput(values).scope).toEqual({
       nodeIds: ['on_london'],
       cameraIds: ['cam_1'],
+      groupIds: [],
+      zoneIds: [],
     });
   });
 
@@ -215,7 +218,12 @@ describe('rule scope and validation (P-4)', () => {
     // No `scope` field at all — an absent scope has always meant "everywhere".
     const values = ruleToFormValues(RULE as never);
     expect(values.scopeNodeIds).toEqual([]);
-    expect(toRuleInput(values).scope).toEqual({ nodeIds: [], cameraIds: [] });
+    expect(toRuleInput(values).scope).toEqual({
+      nodeIds: [],
+      cameraIds: [],
+      groupIds: [],
+      zoneIds: [],
+    });
   });
 
   it('reports a clean validation', async () => {

@@ -15,6 +15,7 @@ import { ReadinessRegistry } from './application/readiness.js';
 import { LoggingEventPublisher } from './application/events.js';
 import { CameraService } from './application/camera-service.js';
 import { AssignmentService } from './application/assignment-service.js';
+import { ZoneService } from './application/zone-service.js';
 import { HttpRuleAvailability } from './application/capability-matrix.js';
 import { HttpDiscoveryProvider, UnavailableDiscoveryProvider } from './application/discovery.js';
 import { HttpStreamProbe, UnavailableStreamProbe } from './application/stream-probe.js';
@@ -93,7 +94,28 @@ async function main(): Promise<void> {
    * deployment behaves exactly as it did before this milestone. Making it optional would have added
    * a flag whose only effect is to hide the reason nothing is being analysed.
    */
+  /*
+   * Detection zones (P-8 Phase 7). Constructed before the assignment service, which reads them when
+   * building the plan.
+   *
+   * ⚠️ `onZonesChanged` bumps the plan version, so an edited polygon reaches the enforcement point
+   * within one poll — the same path an assignment change takes. Without it a zone edit would sit in
+   * Mongo, correct and invisible, until something unrelated happened to bump the plan.
+   */
+  const zones = new ZoneService({
+    zones: mongo.zones,
+    zoneVersions: mongo.zoneVersions,
+    cameras: mongo.cameras as never,
+    groups: mongo.cameraGroups as never,
+    onZonesChanged: () => {
+      void assignmentsRef.current?.bumpPlanVersion();
+    },
+    clock,
+  } as never);
+  const assignmentsRef: { current?: AssignmentService } = {};
+
   const assignments = new AssignmentService({
+    zones,
     assignments: mongo.assignments,
     profiles: mongo.processingProfiles,
     runtimes: mongo.processingRuntimes,
@@ -118,9 +140,10 @@ async function main(): Promise<void> {
    * already has somewhere to place a camera. A runtime that appears one interval later would make
    * the first assignment on a fresh install fail for no reason an operator could see.
    */
+  assignmentsRef.current = assignments;
   if (config.defaultRuntime !== null) await assignments.seedRuntime(config.defaultRuntime);
 
-  const { app } = await buildServer({ config, service, readiness, assignments });
+  const { app } = await buildServer({ config, service, readiness, assignments, zones });
   loggerRef.current = app.log;
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {

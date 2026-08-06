@@ -16,7 +16,7 @@
  */
 import type { EventEnvelope, ResolvedRuleScope, RuleScope } from '@vip/contracts';
 
-const EMPTY_SCOPE: RuleScope = { nodeIds: [], cameraIds: [] };
+const EMPTY_SCOPE: RuleScope = { nodeIds: [], cameraIds: [], groupIds: [], zoneIds: [] };
 
 /**
  * A rule's authored scope, defaulted.
@@ -30,10 +30,23 @@ export function scopeOf(rule: { scope?: RuleScope | undefined }): RuleScope {
   return rule.scope ?? EMPTY_SCOPE;
 }
 
-/** An authored scope that names nothing applies everywhere in the tenant. */
+/**
+ * An authored scope that names nothing applies everywhere in the tenant.
+ *
+ * ⚠️ Reads the arrays defensively (`?.length`) rather than trusting the type. A rule stored before
+ * P-8 Phase 7 has no `groupIds` or `zoneIds` at all, and this function is called on documents that
+ * came out of Mongo rather than through a parser — which is exactly the additive-in-a-store case
+ * Foundation Principle 11 is about. `undefined.length` here would throw on every legacy rule, on the
+ * per-event path, for every event.
+ */
 export function isTenantWide(scope: RuleScope | undefined): boolean {
   if (!scope) return true;
-  return scope.nodeIds.length === 0 && scope.cameraIds.length === 0;
+  return (
+    (scope.nodeIds?.length ?? 0) === 0 &&
+    (scope.cameraIds?.length ?? 0) === 0 &&
+    (scope.groupIds?.length ?? 0) === 0 &&
+    (scope.zoneIds?.length ?? 0) === 0
+  );
 }
 
 /**
@@ -45,7 +58,25 @@ export function isTenantWide(scope: RuleScope | undefined): boolean {
  */
 export interface CompiledScope {
   readonly tenantWide: boolean;
+  /**
+   * **Location-hierarchy** zone ids, expanded from the authored nodes.
+   *
+   * ⚠️ Read the note on `detectionZoneIds`. Nothing in the platform has ever stamped a hierarchy id
+   * onto an `EventEnvelope`, so this set has never matched a perception event — recorded as [L-55]
+   * rather than quietly fixed here, because making it match is a change to what the *hierarchy* means
+   * on the wire and belongs in its own milestone.
+   */
   readonly zoneIds: ReadonlySet<string>;
+  /**
+   * **Detection** zone ids — polygons on a camera (P-8 Phase 7).
+   *
+   * ⚠️ A separate set from `zoneIds`, and this is the load-bearing part. From P-8 Phase 7 the
+   * envelope's `zoneId` carries a *detection* zone, because that is the only zone the platform can
+   * observe. Matching it against the hierarchy expansion would compare two unrelated id spaces: it
+   * would silently match nothing today and, the day somebody wires the hierarchy up, silently match
+   * something wrong. One word, two meanings, kept in two fields. See ADR-0044.
+   */
+  readonly detectionZoneIds: ReadonlySet<string>;
   readonly cameraIds: ReadonlySet<string>;
   /**
    * The rule names places but has no expansion — it has never been validated, or was re-scoped since.
@@ -76,20 +107,40 @@ export function compileScope(
 ): CompiledScope {
   if (resolved) {
     if (resolved.tenantWide) {
-      return { tenantWide: true, zoneIds: NOTHING, cameraIds: NOTHING, unresolved: false };
+      return {
+        tenantWide: true,
+        zoneIds: NOTHING,
+        detectionZoneIds: NOTHING,
+        cameraIds: NOTHING,
+        unresolved: false,
+      };
     }
     return {
       tenantWide: false,
-      zoneIds: new Set(resolved.zoneIds),
-      cameraIds: new Set(resolved.cameraIds),
+      zoneIds: new Set(resolved.zoneIds ?? []),
+      /* ⚠️ `?? []` — a rule resolved before P-8 Phase 7 has no `detectionZoneIds` field at all. */
+      detectionZoneIds: new Set(resolved.detectionZoneIds ?? []),
+      cameraIds: new Set(resolved.cameraIds ?? []),
       unresolved: false,
     };
   }
 
   if (isTenantWide(authored)) {
-    return { tenantWide: true, zoneIds: NOTHING, cameraIds: NOTHING, unresolved: false };
+    return {
+      tenantWide: true,
+      zoneIds: NOTHING,
+      detectionZoneIds: NOTHING,
+      cameraIds: NOTHING,
+      unresolved: false,
+    };
   }
-  return { tenantWide: false, zoneIds: NOTHING, cameraIds: NOTHING, unresolved: true };
+  return {
+    tenantWide: false,
+    zoneIds: NOTHING,
+    detectionZoneIds: NOTHING,
+    cameraIds: NOTHING,
+    unresolved: true,
+  };
 }
 
 /**
@@ -105,6 +156,15 @@ export function compileScope(
  */
 export function matchesScope(scope: CompiledScope, envelope: EventEnvelope): boolean {
   if (scope.tenantWide) return true;
+  /*
+   * ⚠️ **Detection zone first, and it is the narrowing test that must win.** A rule scoped to one
+   * camera AND one zone on it should fire only inside that zone; checking the camera first would
+   * return true on every event from that camera and make the zone scope decorative. So when the rule
+   * names detection zones at all, an event must be in one of them.
+   */
+  if (scope.detectionZoneIds.size > 0) {
+    return envelope.zoneId !== undefined && scope.detectionZoneIds.has(envelope.zoneId);
+  }
   if (envelope.cameraId && scope.cameraIds.has(envelope.cameraId)) return true;
   if (envelope.zoneId && scope.zoneIds.has(envelope.zoneId)) return true;
   return false;
@@ -116,6 +176,14 @@ export function explainScope(scope: CompiledScope, envelope: EventEnvelope): str
     return 'the rule names locations but has not been validated since — its scope is not resolved, so it matches nothing';
   }
   if (scope.tenantWide) return 'the rule applies tenant-wide';
+  if (scope.detectionZoneIds.size > 0) {
+    if (envelope.zoneId === undefined) {
+      return `the rule watches ${scope.detectionZoneIds.size} detection zone(s), and this event was not inside any zone`;
+    }
+    return scope.detectionZoneIds.has(envelope.zoneId)
+      ? `zone ${envelope.zoneId} is one of the ${scope.detectionZoneIds.size} the rule watches`
+      : `zone ${envelope.zoneId} is not one of the ${scope.detectionZoneIds.size} the rule watches`;
+  }
   if (envelope.cameraId && scope.cameraIds.has(envelope.cameraId)) {
     return `camera ${envelope.cameraId} is named in the rule's scope`;
   }

@@ -65,10 +65,36 @@ function subjectOf(detection: Detection): EventSubject {
 }
 
 /** Turn one detection into one envelope (one event per detection in Phase 1). */
+/**
+ * The attribute key media stamps a detection's zone memberships under (P-8 Phase 7).
+ *
+ * ⚠️ **This string must equal `ZONE_ATTRIBUTE` in `services/media`**, and the two cannot import each
+ * other — they are separate services joined by a broker. The failure mode of a mismatch is silent and
+ * total: every event would carry no zone, every zone-scoped rule would decline at the scope stage,
+ * and loitering would simply never fire with nothing in any log. The end-to-end verification asserts
+ * a zone actually arrives on an envelope for exactly this reason; no unit test on either side can.
+ */
+const ZONE_ATTRIBUTE = 'zoneIds';
+
+/**
+ * The detection zones a subject was standing in, as media measured them.
+ *
+ * ⚠️ Defensive. `attributes` is an open map that crossed a service boundary and a broker, so a
+ * non-array or a non-string member is treated as absent rather than trusted — the alternative is a
+ * malformed value becoming an envelope's `zoneId` and then an incident's primary key.
+ */
+function zonesOf(detection: Detection): string[] {
+  const raw = detection.attributes[ZONE_ATTRIBUTE];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((z): z is string => typeof z === 'string' && z.length > 0);
+}
+
 function toEnvelope(
   result: DetectionResult,
   detection: Detection,
   deps: NormalizeDeps,
+  /** The detection zone this envelope is about, when the subject was inside one (P-8 Phase 7). */
+  zoneId?: string,
 ): EventEnvelope {
   const type = eventTypeForLabel(detection.label);
   const entry = lookupEvent(type);
@@ -111,6 +137,17 @@ function toEnvelope(
     evidenceRefs: [],
     priority,
   };
+  /*
+   * ⚠️ The **detection zone**, not a location-hierarchy node (P-8 Phase 7).
+   *
+   * `EventEnvelope.zoneId` sat beside `branchId`/`siteId` and was documented as spatial scoping, and
+   * nothing had ever set it. From this milestone it carries the zone the platform can actually
+   * *observe*: the polygon on the camera the subject was standing in. The rule engine's scope stage
+   * keeps the two id spaces in separate sets (`zoneIds` vs `detectionZoneIds`) precisely so neither
+   * can be silently matched against the other. See ADR-0044.
+   */
+  if (zoneId !== undefined) envelope.zoneId = zoneId;
+
   // Correlation is threaded end-to-end (P1-8 Architect rec 1): use the detection's correlation id
   // when present, else anchor the chain to this event's own id so every downstream artifact
   // (candidate → incident → notification) shares a correlation key.
@@ -118,11 +155,68 @@ function toEnvelope(
   return envelope;
 }
 
+/**
+ * One detection becomes **one envelope per zone it was inside**, or one zoneless envelope when it was
+ * inside none (P-8 Phase 7).
+ *
+ * ### ⚠️ Why a fan-out rather than a list of zones on one envelope
+ *
+ * "A person is in the checkout queue" and "a person is in the aisle" are two facts, and a rule scoped
+ * to the queue must see the first without the second. `EventEnvelope.zoneId` is a single value — one
+ * event, one place — and a rule matching against an *array* would need the scope stage to do set
+ * intersection per event per rule, which is exactly the per-event cost the compiled-scope design
+ * exists to avoid.
+ *
+ * ### ⚠️ Volume, and why it does not explode
+ *
+ * A camera with one loitering zone produces the same number of events as before: subjects inside it
+ * get one zoned event, subjects outside get one zoneless one. Volume only grows where zones actually
+ * **overlap**, which is a deliberate act by an operator. The zone-evaluation metrics report
+ * `insideDetections` as *memberships* rather than detections for precisely this reason — it is the
+ * number that predicts this fan-out.
+ *
+ * ### ⚠️ A subject in no zone still produces its event
+ *
+ * Unchanged from before this milestone, and it must stay that way: tenant-wide and camera-scoped
+ * rules, every existing verification, and every consumer of `perception.person.detected` depend on
+ * it. Suppressing zoneless events would have made zones a switch that silently disabled everything
+ * else on the camera.
+ */
 export function normalizeDetectionResult(
   result: DetectionResult,
   deps: NormalizeDeps,
 ): EventEnvelope[] {
-  return result.detections.map((d) => toEnvelope(result, d, deps));
+  const envelopes: EventEnvelope[] = [];
+  for (const detection of result.detections) {
+    const zones = zonesOf(detection);
+    if (zones.length === 0) {
+      envelopes.push(toEnvelope(result, detection, deps));
+      continue;
+    }
+
+    /*
+     * ⚠️ **The zone envelopes of ONE detection share one correlation chain.**
+     *
+     * `toEnvelope` falls back to `correlationId = its own id` when the producer supplied none — which
+     * P-8 Phase 5 already recorded as a defect and fixed at the publisher, where every result is
+     * stamped with its frame id. The fan-out makes the fallback worse in a new way: one person
+     * standing in two overlapping zones would produce two envelopes about *the same subject in the
+     * same frame* on two unrelated traces, so "what did this person do" could not be answered even in
+     * principle.
+     *
+     * Anchoring the group to its first envelope costs nothing and is correct for any producer. The
+     * broader case — separate detections in one frame — is deliberately left as it is: it is the
+     * publisher's job, it is already done there, and changing it here would alter the correlation of
+     * every event on the platform to fix something that is not broken in the deployment.
+     */
+    const group = zones.map((zoneId) => toEnvelope(result, detection, deps, zoneId));
+    const anchor = result.correlationId ?? group[0]?.id;
+    for (const envelope of group) {
+      if (anchor !== undefined) envelope.correlationId = anchor;
+      envelopes.push(envelope);
+    }
+  }
+  return envelopes;
 }
 
 /**

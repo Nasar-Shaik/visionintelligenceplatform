@@ -8,7 +8,14 @@
  * docs/architecture/phase1/RULE_ENGINE.md.
  */
 import { z } from 'zod';
-import { EventType, IsoDateTime, SemVer, TenantId, Uuid } from '../common/primitives.js';
+import {
+  Confidence,
+  EventType,
+  IsoDateTime,
+  SemVer,
+  TenantId,
+  Uuid,
+} from '../common/primitives.js';
 import { EventPriority } from '../events/priority.js';
 import { EventCategory } from '../events/category.js';
 import { EventEnvelope } from '../events/envelope.js';
@@ -65,6 +72,72 @@ export const RuleWindow = z.object({
 });
 export type RuleWindow = z.infer<typeof RuleWindow>;
 
+/**
+ * What a dwell rule accumulates over (P-8 Phase 7).
+ *
+ * ⚠️ **`identity` is the only correct answer for a person, and picking `track` fails silently.** A
+ * subject occluded for a second comes back with a new `trackId` — ADR-0038 forbids reusing one — so a
+ * 60-second threshold keyed on `trackId` sees two 30-second visits and never fires. There is no
+ * error, nothing is dropped, and it gets *worse as the host gets busier*, because identity fragments
+ * under load ([L-42]). The same rule then fires on a quiet site and not on a busy one.
+ *
+ * `track` is offered anyway, for the case where the question genuinely is "one uninterrupted
+ * observation" — an abandoned object, say, where a re-linked identity would be a different object.
+ * The console labels it as such and defaults to `identity`.
+ */
+export const DwellGroupBy = z.enum(['identity', 'track']);
+export type DwellGroupBy = z.infer<typeof DwellGroupBy>;
+
+/**
+ * **Continuous presence for a minimum duration** — the stateful stage loitering is built from
+ * (P-8 Phase 7 §Implementation).
+ *
+ * ### ⚠️ How this differs from `window`, and why it could not be expressed as one
+ *
+ * `window` counts *events*: "≥ 5 matches within 60 seconds". Dwell measures *elapsed time between the
+ * first and the most recent observation of one subject*: "the same person, here, for 60 seconds". The
+ * two come apart whenever the frame rate does — a window of "120 events in 60 s" is a statement about
+ * the deployment's fps, not about the customer's rule, and it breaks the moment a camera is throttled
+ * or a runtime sheds load. Expressing dwell as a count would have made every loitering rule silently
+ * frame-rate-dependent.
+ *
+ * ### ⚠️ What the accumulated duration actually means
+ *
+ * It is **observed** duration: `lastObservedAt − firstObservedAt` for one subject in one zone. It is
+ * not a claim of continuous physical presence, because the platform sees frames rather than reality.
+ * `IncidentDwell.longestGapSeconds` travels with every candidate for exactly this reason — a
+ * 90-second dwell assembled from observations with a 40-second hole in the middle is a different
+ * assertion from one sampled twice a second, and an operator must be able to tell them apart.
+ */
+export const RuleDwell = z.object({
+  /** How long the subject must be present before the rule fires. The customer's "Minimum Dwell Time". */
+  minSeconds: z.number().int().min(1).max(86_400),
+  /** What "the same subject" means. See `DwellGroupBy` — `identity` unless you know otherwise. */
+  groupBy: DwellGroupBy.default('identity'),
+  /**
+   * **Reset condition**: a gap longer than this ends the visit, and the next observation starts a new
+   * one from zero.
+   *
+   * ⚠️ This is the knob that decides whether somebody who leaves and returns is one long loiter or two
+   * short visits, and there is no universally right value — it is the customer's policy, which is why
+   * it is configuration. It must be **larger than the observation interval** or every subject resets
+   * between frames and nothing ever accumulates; validation enforces a floor, and the console warns
+   * when it is close to the deployment's frame interval.
+   */
+  resetAfterSeconds: z.number().int().min(1).max(3_600).default(30),
+  /**
+   * **Cool-down**: after firing for a subject, stay silent about that same subject-in-zone for this
+   * long.
+   *
+   * ⚠️ Without it a loitering rule fires on *every frame* past the threshold — at 2 fps that is 120
+   * incidents a minute for one person standing still, which is not an alerting system, it is a denial
+   * of service against the operator. `0` disables it and is allowed, because a rule with a very long
+   * `resetAfterSeconds` may legitimately want one incident per visit and nothing more.
+   */
+  cooldownSeconds: z.number().int().min(0).max(86_400).default(300),
+});
+export type RuleDwell = z.infer<typeof RuleDwell>;
+
 /** Raise an incident candidate (the primary Phase-1 action). */
 export const RaiseIncidentAction = z.object({
   type: z.literal('raise-incident'),
@@ -109,6 +182,29 @@ export const RuleScope = z.object({
   nodeIds: z.array(z.string().min(1)).max(200).default([]),
   /** Individual cameras this rule covers, regardless of where they sit. */
   cameraIds: z.array(z.string().min(1)).max(500).default([]),
+  /**
+   * **Camera groups** this rule covers (P-8 Phase 7 §Implementation).
+   *
+   * Groups were stored but deliberately inert in P-8 Phase 6 — "prepare the contracts and storage,
+   * no logic". This is the first thing that reads them, and it reads them exactly once: at
+   * validation, where the group is expanded into `ResolvedRuleScope.cameraIds` and snapshotted. The
+   * engine never learns that groups exist.
+   *
+   * ⚠️ The cost of snapshotting is **staleness**, identical to the location hierarchy's: a camera
+   * added to a group after the rule was validated is not covered until the rule is re-validated.
+   * That is visible (`resolvedAt`, and the console says so) rather than silent, and it is the right
+   * trade — the alternative is a group lookup per rule per event.
+   */
+  groupIds: z.array(z.string().min(1)).max(100).default([]),
+  /**
+   * **Detection zones** this rule covers (P-8 Phase 7 §Zones) — polygons on a camera's image plane.
+   *
+   * ⚠️ **Not hierarchy zones.** `nodeIds` may also contain something called a zone, and it means a
+   * *place*; these mean *an area of one camera's picture*. Two id spaces, one word. They are kept in
+   * separate fields here and in `ResolvedRuleScope` so neither can be silently matched against the
+   * other — see `DetectionZone` and ADR-0044.
+   */
+  zoneIds: z.array(z.string().min(1)).max(500).default([]),
 });
 export type RuleScope = z.infer<typeof RuleScope>;
 
@@ -130,13 +226,33 @@ export type RuleScope = z.infer<typeof RuleScope>;
  * silent, and revalidation is one click. See ADR-0026.
  */
 export const ResolvedRuleScope = z.object({
-  /** Every zone id the scope covers, expanded from the authored nodes. Empty = tenant-wide. */
+  /**
+   * Every **location-hierarchy** zone id the scope covers, expanded from the authored `nodeIds`.
+   *
+   * ⚠️ A *place*, not a polygon. Matched against `EventEnvelope.zoneId` before P-8 Phase 7, which is
+   * why the two spaces had to be separated when detection zones started stamping that field — see
+   * `detectionZoneIds` and ADR-0044.
+   */
   zoneIds: z.array(z.string().min(1)).default([]),
-  /** Camera ids the scope covers directly. */
+  /**
+   * Every **detection zone** id the scope covers (P-8 Phase 7): the zones authored directly, plus
+   * nothing else. Zones are not hierarchical, so there is no expansion — this is a snapshot for
+   * symmetry with the rest of the resolution and so the engine holds one shape.
+   */
+  detectionZoneIds: z.array(z.string().min(1)).default([]),
+  /**
+   * Camera ids the scope covers: authored directly **and** expanded from `groupIds` (P-8 Phase 7).
+   *
+   * ⚠️ Deliberately merged rather than kept apart. The engine asks one question — "is this camera
+   * covered?" — and answering it from two sets would be two lookups for no gain. Which cameras came
+   * from a group is authoring provenance, and it lives in `groupCameraIds` for the console to show.
+   */
   cameraIds: z.array(z.string().min(1)).default([]),
+  /** The subset of `cameraIds` that arrived via a group. Presentation only; the engine ignores it. */
+  groupCameraIds: z.array(z.string().min(1)).default([]),
   /** True when the authored scope was empty — the rule applies everywhere in the tenant. */
   tenantWide: z.boolean().default(true),
-  /** When the expansion was computed. A hierarchy change after this is not reflected. */
+  /** When the expansion was computed. A hierarchy or group change after this is not reflected. */
   resolvedAt: IsoDateTime,
 });
 export type ResolvedRuleScope = z.infer<typeof ResolvedRuleScope>;
@@ -153,6 +269,22 @@ export const Rule = z.object({
   priority: z.number().int().min(0).max(1000).default(100),
   /** Monotonic version — bumps on every content change (audit trail in rule versions). */
   version: z.number().int().min(1),
+  /**
+   * **The version that is live** (P-8 Phase 7, Architect rec 1 — versioning preparation).
+   *
+   * ⚠️ Today this equals `version` whenever the rule is enabled and is absent otherwise, because the
+   * engine evaluates the current content and nothing else. It is declared now so that "edit a rule
+   * that is running without changing what is running" — the draft/publish split — becomes a change to
+   * the *engine's read* rather than a change to the *stored shape*, which is the part that would
+   * otherwise need a migration on a live estate.
+   *
+   * ⚠️ **No approval workflow, deliberately.** The Architect asked for the contract to be ready, not
+   * for the feature. A half-built approval gate is worse than none: somebody would ship a rule
+   * believing it had been reviewed. What exists is a field an incident already stamps
+   * (`IncidentCandidate.ruleVersion`), a full immutable history (`RuleVersionRecord`) and a rollback
+   * (`RuleRollbackInput`) — publishing is the only missing verb.
+   */
+  publishedVersion: z.number().int().min(1).optional(),
   /** Fast pre-filter by event type (empty = any type). */
   eventTypes: z.array(EventType).default([]),
   /** Fast pre-filter by category (empty = any category). */
@@ -161,11 +293,29 @@ export const Rule = z.object({
   condition: RuleCondition.optional(),
   /** Optional windowed threshold (stateful). */
   window: RuleWindow.optional(),
+  /** Optional minimum-dwell threshold (stateful, per subject per zone) — P-8 Phase 7. */
+  dwell: RuleDwell.optional(),
+  /**
+   * **Dry run** (P-8 Phase 7 §Implementation) — evaluate fully, publish `rule.matched`, raise nothing.
+   *
+   * ⚠️ Distinct from `POST /rules/:id/simulate`, and the difference is the whole point. Simulation
+   * runs a rule against events *you* supply; dry run runs it against the live estate, in the engine,
+   * on real traffic, for as long as you leave it on — which is the only way to find out how often a
+   * threshold would have fired at 4 p.m. on a Saturday before committing to waking somebody up.
+   *
+   * ⚠️ It is a property of the **rule**, not of a request, so it survives restarts and is visible in
+   * the rule list. A dry-run flag that lived in a session would be forgotten in the on position, and
+   * "why did this rule stop raising incidents" is not a question anybody should have to ask twice.
+   *
+   * Stateful stages still advance: a dry-run dwell rule accumulates and cools down exactly as it
+   * would live, or the numbers it reports would describe a rule nobody is going to run.
+   */
+  dryRun: z.boolean().default(false),
   /** Severity carried onto the incident candidate. */
   severity: EventPriority.default('medium'),
   actions: z.array(RuleAction).min(1),
   /** Where this rule applies (P-4). Absent/empty = tenant-wide. */
-  scope: RuleScope.default({ nodeIds: [], cameraIds: [] }),
+  scope: RuleScope.default({ nodeIds: [], cameraIds: [], groupIds: [], zoneIds: [] }),
   /** The scope expanded to leaf ids, snapshotted at validation. Absent until first validated. */
   resolvedScope: ResolvedRuleScope.optional(),
   createdAt: IsoDateTime,
@@ -184,9 +334,11 @@ export const CreateRuleInput = z.object({
   categories: z.array(EventCategory).default([]),
   condition: RuleCondition.optional(),
   window: RuleWindow.optional(),
+  dwell: RuleDwell.optional(),
+  dryRun: z.boolean().default(false),
   severity: EventPriority.default('medium'),
   actions: z.array(RuleAction).min(1),
-  scope: RuleScope.default({ nodeIds: [], cameraIds: [] }),
+  scope: RuleScope.default({ nodeIds: [], cameraIds: [], groupIds: [], zoneIds: [] }),
 });
 export type CreateRuleInput = z.infer<typeof CreateRuleInput>;
 
@@ -200,6 +352,8 @@ export const UpdateRuleInput = z.object({
   categories: z.array(EventCategory).optional(),
   condition: RuleCondition.optional(),
   window: RuleWindow.optional(),
+  dwell: RuleDwell.optional(),
+  dryRun: z.boolean().optional(),
   severity: EventPriority.optional(),
   actions: z.array(RuleAction).min(1).optional(),
   scope: RuleScope.optional(),
@@ -229,6 +383,16 @@ export const RuleReferenceKind = z.enum([
   'output',
   'action',
   'condition',
+  /**
+   * P-8 Phase 7. A **detection zone** — a polygon on a camera, not a location (`location` above is
+   * the hierarchy). Separate kinds because "what breaks if I delete this?" has different answers and
+   * different owners: the Tenant context owns places, the Camera context owns polygons.
+   */
+  'zone',
+  /** P-8 Phase 7. A **camera group**, expanded at validation into cameras. */
+  'camera-group',
+  /** P-8 Phase 7. The rule's own `dwell` block — like `condition`, it references nothing external. */
+  'dwell',
 ]);
 export type RuleReferenceKind = z.infer<typeof RuleReferenceKind>;
 
@@ -310,8 +474,22 @@ export const ConditionTrace: z.ZodType<ConditionTrace> = z.lazy(() =>
   }),
 );
 
-/** The stages of evaluation, in the order the engine applies them. */
-export const RuleStage = z.enum(['lifecycle', 'scope', 'prefilter', 'condition', 'window']);
+/**
+ * The stages of evaluation, in the order the engine applies them.
+ *
+ * ⚠️ `dwell` sits **after** `window` and is the last stage, because it is the most expensive and the
+ * only one that can be decided by state this node might not have. Ordering the stages cheapest-first
+ * is what makes "evaluate every rule against every event" affordable, and it is also what makes an
+ * explanation useful: the first stage that fails is the one worth fixing.
+ */
+export const RuleStage = z.enum([
+  'lifecycle',
+  'scope',
+  'prefilter',
+  'condition',
+  'window',
+  'dwell',
+]);
 export type RuleStage = z.infer<typeof RuleStage>;
 
 /**
@@ -358,7 +536,7 @@ export const RuleExplanation = z.object({
   ruleName: z.string(),
   matched: z.boolean(),
   /** The stage that decided the outcome. `matched` when every stage passed. */
-  decidedBy: z.enum(['lifecycle', 'scope', 'prefilter', 'condition', 'window', 'matched']),
+  decidedBy: z.enum(['lifecycle', 'scope', 'prefilter', 'condition', 'window', 'dwell', 'matched']),
   /** One line an operator can read without knowing the rule's internals. */
   summary: z.string().min(1).max(400),
   stages: z.object({
@@ -367,6 +545,12 @@ export const RuleExplanation = z.object({
     prefilterPassed: z.boolean(),
     conditionPassed: z.boolean(),
     windowPassed: z.boolean(),
+    /**
+     * P-8 Phase 7. ⚠️ Optional so an explanation captured before dwell existed still parses — and,
+     * more usefully, so `true` never has to stand in for "this rule has no dwell stage". A rule
+     * without dwell reports `undefined` here and no `dwell` stage in `tree`.
+     */
+    dwellPassed: z.boolean().optional(),
   }),
   /**
    * Every stage as a walkable tree, with the condition nested under its stage (P-4.1). The same
@@ -381,6 +565,35 @@ export const RuleExplanation = z.object({
       counted: z.number().int().min(0),
       required: z.number().int().min(1),
       withinSeconds: z.number().int().min(1),
+    })
+    .optional(),
+  /**
+   * For a dwell rule: how long the subject has been observed, against how long is required
+   * (P-8 Phase 7).
+   *
+   * ⚠️ Every field here is what was *measured*, including the ones that make the rule look bad.
+   * `longestGapSeconds` and `trackFragments` are the two that turn "it fired" into "it fired, and
+   * here is how much of that duration we actually watched".
+   */
+  dwell: z
+    .object({
+      /** `identity` or `track`, whichever the rule accumulates on. */
+      groupBy: DwellGroupBy,
+      /** The subject key this observation was filed under — an identityId or a trackId. */
+      subject: z.string().optional(),
+      zoneId: z.string().optional(),
+      observedSeconds: z.number().nonnegative(),
+      requiredSeconds: z.number().nonnegative(),
+      observations: z.number().int().nonnegative(),
+      /** Distinct track ids seen under one identity. `>1` means tracking fragmented and was bridged. */
+      trackFragments: z.number().int().nonnegative(),
+      longestGapSeconds: z.number().nonnegative(),
+      /** True when this observation started a fresh visit because the gap exceeded the reset. */
+      reset: z.boolean(),
+      /** True when the threshold was met but the rule stayed silent inside its cool-down. */
+      coolingDown: z.boolean(),
+      /** Seconds left on the cool-down, when one is running. */
+      cooldownRemainingSeconds: z.number().nonnegative().optional(),
     })
     .optional(),
 });
@@ -399,10 +612,257 @@ export const RuleVersionRecord = z.object({
 });
 export type RuleVersionRecord = z.infer<typeof RuleVersionRecord>;
 
+// ---------------------------------------------------------------------------------------------
+// P-8 Phase 7 — what a candidate must carry for a person to act on it.
+//
+// The Architect's list was: Camera, Identity, Zone, Rule, Duration, Event Timeline, Evidence
+// References, Confidence, Explanation. Every one of them below is either **measured** or **derived
+// from something measured**, and the ones that cannot be either are absent rather than defaulted.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The candidate's place in a lifecycle that does not exist yet (Architect rec 3).
+ *
+ * ⚠️ Declared as a **closed set now, emitting one value**, for the reason `RuleReferenceKind` and
+ * `DependencyStatus` were: adding a value to a published enum is not purely additive for a strict
+ * parser, so the values a future milestone will need are declared while nothing yet depends on the
+ * shape. This milestone emits `candidate` and only `candidate`; the rest are reserved and a producer
+ * that sets one today would be lying about a workflow nobody has built.
+ */
+export const IncidentCandidateStatus = z.enum([
+  /** Raised by the engine, not yet looked at. The only value P-8 Phase 7 emits. */
+  'candidate',
+  /** Reserved — a person or a policy accepted it and it became an incident. */
+  'promoted',
+  /** Reserved — a person judged it not worth an incident. */
+  'dismissed',
+  /** Reserved — collapsed into an earlier candidate for the same subject. */
+  'merged',
+  /** Reserved — aged out without anyone deciding. */
+  'expired',
+]);
+export type IncidentCandidateStatus = z.infer<typeof IncidentCandidateStatus>;
+
+/**
+ * Where the pixels are (Architect rec 4: *reference evidence rather than copying it*).
+ *
+ * ⚠️ **A locator, never bytes and never a promise.** The rule engine has no access to media and must
+ * not acquire any: an engine that reached for a clip while deciding whether to raise a candidate
+ * would put a storage round trip on the per-event path and make an alert depend on a disk. What it
+ * can do — with no I/O at all — is say precisely *which camera over which interval*, because it knows
+ * both. Turning that into a clip is the Evidence context's job, on demand, when a person asks.
+ *
+ * ⚠️ `locator` is a **platform-relative path**, not a URL: it carries no host, no scheme and no token,
+ * so it stays valid across deployments and cannot become a credential leak inside an incident record.
+ */
+export const CandidateEvidenceKind = z.enum([
+  /** A recorded interval on a camera. The primary reference for a dwell candidate. */
+  'recording-interval',
+  /** A specific event in the Events context. */
+  'event',
+  /** An already-materialised Evidence item, when one happens to exist. */
+  'evidence',
+  /**
+   * One captured frame, named by `tenant:camera:seq` (P-8 Phase 7 rec 1).
+   *
+   * ⚠️ The frame id is **derived**, not stored anywhere — it is the same deterministic triple the
+   * event publisher stamps as `correlationId` and the normalizer copies into `payload.frameId`. So a
+   * frame reference resolves by construction rather than by lookup, and re-deriving it always names
+   * the same observation.
+   */
+  'frame',
+  /**
+   * A still image of a moment. ⚠️ **Reserved.** Nothing produces one on this path: the rule engine has
+   * no access to pixels and must not acquire any (see `buildEvidenceRefs`). Declared now because
+   * adding a value to a published enum is not purely additive for a strict parser, and because a
+   * future snapshot capture must fit this timeline rather than replace it.
+   */
+  'snapshot',
+  /** A rendered clip. ⚠️ **Reserved**, for the same reason as `snapshot`. */
+  'video',
+  /**
+   * The subject itself — a reference into the tracking context (P-8 Phase 7 rec 1).
+   *
+   * ⚠️ An identity is evidence: "this is the person, here is their track history" is what turns a
+   * duration into a story. It is the one entry that is not media and is included deliberately, so a
+   * future workflow reusing this model has somewhere to put the subject.
+   */
+  'identity',
+]);
+export type CandidateEvidenceKind = z.infer<typeof CandidateEvidenceKind>;
+
+export const CandidateEvidenceRef = z.object({
+  kind: CandidateEvidenceKind,
+  cameraId: z.string().min(1).optional(),
+  /** The referenced artefact's id, for `event` and `evidence`. Absent for an interval. */
+  id: z.string().min(1).optional(),
+  startedAt: IsoDateTime.optional(),
+  endedAt: IsoDateTime.optional(),
+  /** Platform-relative path that resolves this reference. See the warning above. */
+  locator: z.string().min(1).max(500),
+  /** One line naming what a person would see if they followed it. */
+  label: z.string().min(1).max(200),
+});
+export type CandidateEvidenceRef = z.infer<typeof CandidateEvidenceRef>;
+
+/** What kind of moment a timeline entry marks (Architect rec 5). */
+export const CandidateTimelineKind = z.enum([
+  /** The first observation of this subject in this zone — the clock starts. */
+  'first-observed',
+  /** A subsequent observation. The bulk of a timeline, and the part that gets truncated. */
+  'observed',
+  /** The subject's track id changed under a stable identity — tracking fragmented and was bridged. */
+  'identity-relinked',
+  /** A gap longer than the observation interval but shorter than the reset. */
+  'gap',
+  /** The observed duration reached the rule's threshold. */
+  'threshold-crossed',
+  /** The candidate was raised. Always the last entry. */
+  'raised',
+]);
+export type CandidateTimelineKind = z.infer<typeof CandidateTimelineKind>;
+
+/**
+ * One ordered moment in the story of a candidate (Architect rec 5).
+ *
+ * ⚠️ **Ordered by `at`, ascending, always** — a timeline whose order depends on the reader is not a
+ * timeline. The browser renders it as a track without sorting, and the sort belongs where the entries
+ * are built because that is the only place that knows they came from a single subject's history.
+ */
+export const CandidateTimelineEntry = z.object({
+  at: IsoDateTime,
+  kind: CandidateTimelineKind,
+  /** The event this moment came from, when it came from one. Absent on derived markers. */
+  eventId: Uuid.optional(),
+  eventType: EventType.optional(),
+  /**
+   * The frame this moment was observed in — `tenant:camera:seq` (P-8 Phase 7 rec 1).
+   *
+   * ⚠️ The join key between a timeline entry and the pixels. Every other reference on the entry is a
+   * platform id; this is the one that points at an image, and it is what a future snapshot or clip
+   * would be captured from.
+   */
+  frameId: z.string().optional(),
+  /** The track id carrying the identity at this moment — it changes on `identity-relinked`. */
+  trackId: z.string().optional(),
+  zoneId: z.string().optional(),
+  confidence: Confidence.optional(),
+  /** Seconds since the first observation. Precomputed so a renderer never parses dates to lay out. */
+  elapsedSeconds: z.number().nonnegative(),
+  /**
+   * What a reader can open from this moment (P-8 Phase 7 rec 1).
+   *
+   * ⚠️ **Per entry, in addition to the candidate-level `evidence` array**, and the two are different
+   * questions. The array answers "show me this incident"; these answer "show me *this instant* in
+   * it". A timeline whose entries were unlinked would be a list of times, and the operator would be
+   * left scrubbing.
+   */
+  evidence: z.array(CandidateEvidenceRef).max(4).default([]),
+  /** One line, for a reader who is not going to expand the entry. */
+  summary: z.string().min(1).max(300),
+});
+export type CandidateTimelineEntry = z.infer<typeof CandidateTimelineEntry>;
+
+/**
+ * A candidate's timeline: bounded, ordered, and honest about what it left out.
+ *
+ * ⚠️ **Bounded, and it has to be.** A ten-minute dwell at 2 fps is 1 200 observations; putting them
+ * all on a message that travels through a broker and into a document store would make the record of
+ * one person standing still larger than the video of them doing it. The head and tail are kept —
+ * which is where the interesting entries are, because the markers cluster at the start and the end —
+ * and `omitted` says exactly how many observations are missing rather than leaving a reader to infer
+ * it from a suspiciously round count.
+ */
+export const CandidateTimeline = z.object({
+  entries: z.array(CandidateTimelineEntry).max(64).default([]),
+  /** Observations not included between the head and the tail. `0` means the timeline is complete. */
+  omitted: z.number().int().nonnegative().default(0),
+  /** Every observation that contributed, included or not — the denominator for `omitted`. */
+  total: z.number().int().nonnegative().default(0),
+});
+export type CandidateTimeline = z.infer<typeof CandidateTimeline>;
+
+/**
+ * **The structured explanation** (Architect rec 4) — evidence, not prose.
+ *
+ * ⚠️ A sentence is unqueryable, untestable and untranslatable. "Person P was in Checkout Queue for
+ * 94 s (threshold 60 s)" reads well and cannot answer *"show me every candidate where the observed
+ * gap was more than a third of the duration"* — which is the question that finds a fragmenting
+ * camera. So every number is a field, and `summary` is **rendered from these fields**, never typed
+ * alongside them: one source of truth, and a summary that cannot drift from the evidence it claims
+ * to summarise.
+ */
+export const CandidateExplanation = z.object({
+  /** What fired it. `dwell` is the only value this milestone produces. */
+  trigger: z.enum(['dwell', 'condition', 'window']),
+  /** The subject the rule accumulated on, and which kind of id that is. */
+  subjectKind: DwellGroupBy.optional(),
+  identityId: z.string().optional(),
+  /** The most recent track id under that identity. Differs from `identityId` after a re-link. */
+  trackId: z.string().optional(),
+  cameraId: z.string().optional(),
+  zoneId: z.string().optional(),
+  zoneName: z.string().optional(),
+  /**
+   * The zone's version at the moment the candidate was raised (Architect rec 2).
+   *
+   * ⚠️ This is what lets an incident from March still be read in September after somebody dragged the
+   * polygon. Without it the detail page would draw today's zone over last spring's footage and be
+   * wrong in a way that looks completely correct.
+   */
+  zoneVersion: z.number().int().min(1).optional(),
+  /** What was measured against what was configured. */
+  observedSeconds: z.number().nonnegative().optional(),
+  thresholdSeconds: z.number().nonnegative().optional(),
+  /**
+   * **Entry time** — the first observation of this subject in this zone (Architect rec 4).
+   *
+   * ⚠️ First *observation*, not first *presence*. The subject may have been standing there before
+   * the camera or the assignment noticed them; the platform can only report when it started counting.
+   */
+  firstObservedAt: IsoDateTime.optional(),
+  /** The most recent observation. Together with `firstObservedAt` this spans `observedSeconds`. */
+  lastObservedAt: IsoDateTime.optional(),
+  /**
+   * **Exit time** — when the subject was confirmed to have left (Architect rec 4).
+   *
+   * ⚠️ **`null` while the visit is still open, which is the case for almost every candidate.** A
+   * candidate is raised *during* a loiter, not after it, so at the moment of raising nobody has left.
+   * An exit is only ever known retrospectively, when a gap exceeds the rule's reset — and by then
+   * this record has already been written.
+   *
+   * It would have been easy to set this to `lastObservedAt` and call it the exit. That would be a
+   * fabricated fact on an evidence record: it would read as "they left at 14:32" when the truth is
+   * "we last saw them at 14:32 and they may still be there". The field is declared so a future
+   * visit-closed update has somewhere honest to write, and it is `null` until something actually
+   * observes an exit.
+   */
+  exitAt: IsoDateTime.nullable().optional(),
+  observations: z.number().int().nonnegative().optional(),
+  /**
+   * ⚠️ The two honesty fields. `trackFragments > 1` means the duration spans a link the platform
+   * *inferred*; `longestGapSeconds` says how much of the window nothing was actually seen. Both are
+   * carried on every candidate, because an operator deciding whether to act on a 94-second dwell
+   * needs to know it was assembled from two fragments with a 19-second hole in it.
+   */
+  trackFragments: z.number().int().nonnegative().optional(),
+  longestGapSeconds: z.number().nonnegative().optional(),
+  /** Mean confidence over the contributing observations. `null` when none carried one (ADR-0039). */
+  meanConfidence: z.number().min(0).max(1).nullable().optional(),
+  /** Rendered from the fields above. Never authored independently — see the header. */
+  summary: z.string().min(1).max(600),
+});
+export type CandidateExplanation = z.infer<typeof CandidateExplanation>;
+
 /**
  * The `incident.candidate` payload — a rule match proposing an incident. Domain-neutral; the alert /
  * workflow engine (P1-8) promotes it to a raised incident. Carries provenance back to the rule + the
  * triggering event, and a `dedupKey` so repeat matches collapse (idempotent downstream).
+ *
+ * ⚠️ Everything added in P-8 Phase 7 is **optional**. A candidate raised by a stateless rule carries
+ * none of it, and that is correct rather than incomplete: there is no identity to name, no duration
+ * to report and no timeline to draw. Defaulting those to `''`, `0` and `[]` would make every simple
+ * candidate look like a dwell candidate that had gone wrong.
  */
 export const IncidentCandidate = z.object({
   id: Uuid,
@@ -425,6 +885,36 @@ export const IncidentCandidate = z.object({
   correlationId: z.string().optional(),
   dedupKey: z.string(),
   at: IsoDateTime,
+
+  // --- P-8 Phase 7 (all additive, all optional) -------------------------------------------------
+
+  /** Lifecycle slot. Always `candidate` in this milestone — see `IncidentCandidateStatus`. */
+  status: IncidentCandidateStatus.default('candidate'),
+  /**
+   * The subject, hoisted out of the explanation so it can be **indexed and filtered** without
+   * unpacking a nested document. "Show me every candidate for this person today" is the first thing
+   * an operator asks and it must not require a scan.
+   */
+  identityId: z.string().optional(),
+  /** Observed dwell in seconds, hoisted for the same reason: it is the primary sort on a list. */
+  durationSeconds: z.number().nonnegative().optional(),
+  /** Structured evidence for why this exists (Architect rec 4). */
+  explanation: CandidateExplanation.optional(),
+  /** Ordered, bounded story of the subject's visit (Architect rec 5). */
+  timeline: CandidateTimeline.optional(),
+  /** Where the pixels are. References only — never bytes (Architect rec 4 of the main brief). */
+  evidence: z.array(CandidateEvidenceRef).max(16).default([]),
+  /** Mean detection confidence over the contributing observations. `null` when unmeasurable. */
+  confidence: Confidence.nullable().optional(),
+  /**
+   * True when the rule was in **dry run**: everything was evaluated and nothing was raised.
+   *
+   * ⚠️ Present on a candidate that, by definition, was never published. It exists because the
+   * dry-run *report* is built from the same function that builds a real candidate — one code path,
+   * so what a dry run shows you is exactly what you would have got. A candidate carrying `true` must
+   * never reach the incident promoter, and the engine's publish path is what guarantees that.
+   */
+  dryRun: z.boolean().default(false),
 });
 export type IncidentCandidate = z.infer<typeof IncidentCandidate>;
 
@@ -619,6 +1109,10 @@ export const RuleLimits = z.object({
   maxScopeCameras: z.number().int().positive(),
   /** How many zones one rule's scope may expand to. A whole-org scope on a big estate hits this. */
   maxResolvedZones: z.number().int().positive(),
+  /** Camera groups one rule may name (P-8 Phase 7). Each is expanded at validation. */
+  maxScopeGroups: z.number().int().positive(),
+  /** Detection zones one rule may name (P-8 Phase 7). */
+  maxScopeDetectionZones: z.number().int().positive(),
 });
 export type RuleLimits = z.infer<typeof RuleLimits>;
 
@@ -639,6 +1133,8 @@ export const DEFAULT_RULE_LIMITS: RuleLimits = {
   maxScopeNodes: 200,
   maxScopeCameras: 500,
   maxResolvedZones: 10_000,
+  maxScopeGroups: 100,
+  maxScopeDetectionZones: 500,
 };
 
 /** What a rule actually costs, measured (Architect rec 4). Compared against `RuleLimits`. */
@@ -651,6 +1147,9 @@ export const RuleComplexity = z.object({
   scopeNodes: z.number().int().nonnegative(),
   scopeCameras: z.number().int().nonnegative(),
   resolvedZones: z.number().int().nonnegative(),
+  /** P-8 Phase 7. Default `0` so a rule measured before these existed still parses as unchanged. */
+  scopeGroups: z.number().int().nonnegative().default(0),
+  scopeDetectionZones: z.number().int().nonnegative().default(0),
 });
 export type RuleComplexity = z.infer<typeof RuleComplexity>;
 
@@ -997,6 +1496,9 @@ export const RuleDiffArea = z.enum([
   'actions',
   'severity',
   'priority',
+  /** P-8 Phase 7 — the dwell block, and the dry-run switch. */
+  'dwell',
+  'dry-run',
 ]);
 export type RuleDiffArea = z.infer<typeof RuleDiffArea>;
 
@@ -1194,3 +1696,119 @@ export const RuleDiagnosticSearchResult = z.object({
   at: IsoDateTime,
 });
 export type RuleDiagnosticSearchResult = z.infer<typeof RuleDiagnosticSearchResult>;
+
+// ---------------------------------------------------------------------------------------------
+// P-8 Phase 7 — Live Rule Status (§Operator UI; Architect recs 3 + 6).
+//
+// What the engine is doing **right now**, on the node you asked. Everything here is a live gauge or
+// a rate, and every one of them obeys ADR-0039: a number that has not been measured is `null`, never
+// `0`. Nothing in evaluation reads any of it.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * One dwell clock that is currently running (Architect recs 3 + 6).
+ *
+ * ⚠️ **This is the loiter timer.** It is what the browser renders beside a live camera, and it is the
+ * only place in the platform where an operator can watch a threshold approach rather than learn about
+ * it afterwards. It exists for verification and demonstration, and it is read-only: nothing about a
+ * rule's behaviour depends on anyone looking at it.
+ */
+export const LiveDwellTimer = z.object({
+  ruleId: z.string().min(1),
+  ruleName: z.string(),
+  /** The subject key the visit is filed under — an identityId or a trackId. */
+  subject: z.string().min(1),
+  subjectKind: DwellGroupBy,
+  cameraId: z.string().optional(),
+  zoneId: z.string().optional(),
+  zoneName: z.string().optional(),
+  firstObservedAt: IsoDateTime,
+  lastObservedAt: IsoDateTime,
+  /** Observed duration so far. The number that grows on screen. */
+  elapsedSeconds: z.number().nonnegative(),
+  thresholdSeconds: z.number().nonnegative(),
+  observations: z.number().int().nonnegative(),
+  trackFragments: z.number().int().nonnegative(),
+  longestGapSeconds: z.number().nonnegative(),
+  /**
+   * Where this visit stands.
+   *
+   * `accumulating` — below the threshold, clock running.
+   * `met`          — at or past it; the next observation raises (or would, in dry run).
+   * `cooling-down` — past it, but suppressed by the rule's cool-down.
+   */
+  state: z.enum(['accumulating', 'met', 'cooling-down']),
+  cooldownRemainingSeconds: z.number().nonnegative().nullable(),
+  /** True when the owning rule is in dry run — this timer will never raise anything. */
+  dryRun: z.boolean(),
+});
+export type LiveDwellTimer = z.infer<typeof LiveDwellTimer>;
+
+/**
+ * The engine's live picture for one tenant on one node (Architect rec 3).
+ *
+ * ⚠️ **Per process, like `RuleStatsReport`, and for the same reason.** A node knows what it
+ * evaluated; summing across a load balancer would produce a number that is wrong in a way nobody
+ * could detect. `node` is carried so the answer says who gave it.
+ */
+export const LiveRuleStatus = z.object({
+  tenantId: TenantId,
+  node: z.string().min(1),
+  /** How long this process has been collecting. Every rate below is meaningless without it. */
+  uptimeSeconds: z.number().nonnegative(),
+
+  /** Rules in `enabled` lifecycle for this tenant, as compiled on this node. */
+  activeRules: z.number().int().nonnegative(),
+  /** Of those, how many carry a dwell block. */
+  dwellRules: z.number().int().nonnegative(),
+  /** Of those, how many are in dry run — evaluating and deliberately raising nothing. */
+  dryRunRules: z.number().int().nonnegative(),
+  /**
+   * Distinct detection zones named across this tenant's enabled rules.
+   *
+   * ⚠️ Zones a **rule** watches, not zones that **exist**. A tenant with forty zones and one rule
+   * scoped to two reports 2 — which is the number that predicts evaluation cost and the number an
+   * operator asking "what is being watched?" means.
+   */
+  activeZones: z.number().int().nonnegative(),
+
+  /**
+   * Rule evaluations per second, over this node's recent window.
+   *
+   * ⚠️ `null` until a window has elapsed. `0.0/s` and "nothing has been measured yet" look identical
+   * and mean opposite things — the first is an idle estate, the second is a node that just started
+   * (ADR-0039).
+   */
+  evaluationsPerSecond: z.number().nonnegative().nullable(),
+  /** Incident candidates published per second. `null` before a window has elapsed. */
+  candidatesPerSecond: z.number().nonnegative().nullable(),
+  /** Events consumed per second. `null` before a window has elapsed. */
+  eventsPerSecond: z.number().nonnegative().nullable(),
+
+  /** Dwell clocks running right now. A live gauge, legitimately `0` on a quiet site. */
+  activeDwellTimers: z.number().int().nonnegative(),
+  /**
+   * The running clocks themselves, newest-first by elapsed time, bounded.
+   *
+   * ⚠️ Bounded because a busy site could have hundreds and this is a status endpoint, not a data
+   * feed. `activeDwellTimers` above is the true count; this is the sample a screen can render.
+   */
+  timers: z.array(LiveDwellTimer).max(50).default([]),
+
+  /**
+   * ⚠️ Dwell evaluations skipped because the event carried no identity.
+   *
+   * A non-zero value here means a dwell rule is receiving events it can never accumulate — the rule
+   * looks enabled and healthy and will never fire. It is on the status page rather than only in
+   * Prometheus because it is the one number that distinguishes "nothing is happening" from "this is
+   * broken", and those are indistinguishable from every other field.
+   */
+  dwellWithoutIdentity: z.number().int().nonnegative(),
+  /** Visits the dwell store is holding, and the ceiling before it evicts. */
+  dwellStateEntries: z.number().int().nonnegative(),
+  dwellStateCapacity: z.number().int().nonnegative(),
+  /** ⚠️ Non-zero means a visit was silently forgotten and its rule will not fire for that subject. */
+  dwellStateEvicted: z.number().int().nonnegative(),
+  at: IsoDateTime,
+});
+export type LiveRuleStatus = z.infer<typeof LiveRuleStatus>;

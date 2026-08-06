@@ -30,6 +30,18 @@ export interface ServiceConfig extends AppConfig {
   database: DatabaseConfig;
   nats: NatsConfig;
   rules: RulesTuning;
+  /**
+   * The camera context, for validation-time scope resolution and the zone-name cache (P-8 Phase 7).
+   *
+   * ⚠️ `url: ''` is a valid deployment and means **unconfigured**, not broken. The service then uses
+   * `unavailableCameraDirectory`, which reports `available: false` — so a camera- or zone-scoped rule
+   * cannot be enabled and says exactly why, rather than going live on a check nobody ran.
+   *
+   * ⚠️ That was already the behaviour before this milestone and nobody had noticed, because nothing
+   * wired a camera directory at all: **every camera-scoped rule in every deployment was unverifiable
+   * and therefore un-enablable.** Recorded as [L-56]. Wiring this is what fixes it.
+   */
+  camera: { url: string; internalKey: string; catalogIntervalMs: number };
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
@@ -46,6 +58,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
         .min(0)
         .max(3_600_000)
         .default(60_000),
+      CAMERA_SERVICE_URL: z.string().default(''),
+      INTERNAL_API_KEY: z.string().default(''),
+      RULES_ZONE_CATALOG_INTERVAL_MS: z.coerce
+        .number()
+        .int()
+        .min(1_000)
+        .max(600_000)
+        .default(15_000),
     }),
     env,
     'rules',
@@ -60,6 +80,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
     rules: {
       maxRulesPerEvent: tuning.RULES_MAX_PER_EVENT,
       candidateDedupWindowMs: tuning.RULES_CANDIDATE_DEDUP_WINDOW_MS,
+    },
+    camera: {
+      /* ⚠️ Both must be present. A URL with no key would 401 on every call and report unavailable —
+       * correct, but for a reason that looks like a camera-service outage rather than a missing env. */
+      url: tuning.INTERNAL_API_KEY === '' ? '' : tuning.CAMERA_SERVICE_URL,
+      internalKey: tuning.INTERNAL_API_KEY,
+      catalogIntervalMs: tuning.RULES_ZONE_CATALOG_INTERVAL_MS,
     },
   };
 }

@@ -29,6 +29,7 @@ import type {
   AssignmentPlanEntry,
   CameraObservation,
   CameraObservationState,
+  PlanZone,
 } from '@vip/contracts';
 
 /** What the gate says about one frame. */
@@ -40,6 +41,15 @@ export type GateDecision =
       capabilityId: string;
       runtimeId: string;
       profileId: string;
+      /**
+       * The camera's enabled detection zones, as of the last plan (P-8 Phase 7).
+       *
+       * ⚠️ Carried on the **decision**, not looked up after the response arrives. The decision and
+       * the response are separated by a network round trip during which a plan may land; resolving
+       * zones against whatever the gate holds *later* would stamp a frame with a zone set that did
+       * not exist when it was captured. Taking them here binds the geometry to the frame.
+       */
+      zones: readonly PlanZone[];
     }
   | {
       deliver: false;
@@ -135,7 +145,13 @@ export class AssignmentGate {
         existing.entry.capabilityId !== entry.capabilityId ||
         existing.entry.runtimeUrl !== entry.runtimeUrl ||
         existing.entry.intent !== entry.intent ||
-        existing.entry.assignmentVersion !== entry.assignmentVersion
+        existing.entry.assignmentVersion !== entry.assignmentVersion ||
+        /*
+         * ⚠️ A zone edit counts as a change but does **not** release the camera. Dragging a vertex
+         * must not throw away a person's accumulated dwell or restart the runtime session — that is
+         * why `zoneVersion` is a separate counter from `sessionEpoch`. See `AssignmentPlanEntry`.
+         */
+        (existing.entry.zoneVersion ?? 0) !== (entry.zoneVersion ?? 0)
       ) {
         changed = true;
       }
@@ -167,6 +183,8 @@ export class AssignmentGate {
       capabilityId: held.entry.capabilityId,
       runtimeId: held.entry.runtimeId,
       profileId: held.entry.profileId,
+      /* ⚠️ `?? []` — a plan from a control plane older than P-8 Phase 7 carries no zones. */
+      zones: held.entry.zones ?? [],
     };
   }
 
@@ -204,6 +222,16 @@ export class AssignmentGate {
       byId.set(held.entry.runtimeId, held.entry.runtimeUrl);
     }
     return [...byId].map(([runtimeId, url]) => ({ runtimeId, url }));
+  }
+
+  /**
+   * Each held camera's zone set (P-8 Phase 7), for the zone-evaluation metrics.
+   *
+   * ⚠️ Read from what the gate is **currently enforcing**, so the reported configuration and the
+   * enforced configuration cannot disagree. A separately-maintained counter could.
+   */
+  zonesByCamera(): readonly (readonly PlanZone[])[] {
+    return [...this.#held.values()].map((held) => held.entry.zones ?? []);
   }
 
   /** The plan version currently applied. `null` before the first plan lands. */

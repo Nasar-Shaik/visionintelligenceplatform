@@ -45,6 +45,10 @@ export * from './perception/perception.js';
 // tracking + zones (AI-2)
 export * from './tracking/tracking.js';
 
+// detection zones — named polygons on a camera's image plane (P-8 Phase 7). ⚠️ NOT location-hierarchy
+// zones; see the table at the top of zones/zone.ts and ADR-0044.
+export * from './zones/zone.js';
+
 // behavior analysis (AI-3)
 export * from './behavior/behavior.js';
 
@@ -72,6 +76,8 @@ export * from './events/query.js';
 
 // rules + incident candidates (P1-7)
 export * from './rules/rules.js';
+// rule templates — the reference workflow as configuration (P-8 Phase 7)
+export * from './rules/templates.js';
 
 // incidents — workflow lifecycle (P1-8)
 export * from './incidents/incident.js';

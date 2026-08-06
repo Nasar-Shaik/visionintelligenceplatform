@@ -332,12 +332,42 @@ export class RuleService {
     const at = this.now().toISOString();
     const authored = scopeOf(rule);
     if (isTenantWide(authored)) {
-      return { zoneIds: [], cameraIds: [], tenantWide: true, resolvedAt: at };
+      return {
+        zoneIds: [],
+        detectionZoneIds: [],
+        cameraIds: [],
+        groupCameraIds: [],
+        tenantWide: true,
+        resolvedAt: at,
+      };
     }
-    const resolution = await this.hierarchy.resolveScope(scope, authored.nodeIds);
+    const nodeIds = authored.nodeIds ?? [];
+    const groupIds = authored.groupIds ?? [];
+    const resolution =
+      nodeIds.length > 0
+        ? await this.hierarchy.resolveScope(scope, nodeIds)
+        : { available: true, zoneIds: [], missingNodeIds: [], archivedNodeIds: [] };
+    /*
+     * ⚠️ Groups are expanded HERE and never again. The engine holds the resulting camera set; it has
+     * no idea groups exist. See `CameraDirectory.resolveGroups` for why this validation-time call is
+     * a recorded exception to PLATFORM_BOUNDARIES rule 4 rather than a violation of it.
+     */
+    const groups =
+      groupIds.length > 0
+        ? await this.cameras.resolveGroups(scope, groupIds)
+        : { available: true, cameraIds: [], missingGroupIds: [], emptyGroupIds: [] };
+
+    /*
+     * ⚠️ Merged and deduplicated. A camera named directly AND reachable through a group is one
+     * camera; without the dedup the engine's set would still be correct, but `RuleComplexity` would
+     * report a scope larger than the estate and the budget check would refuse a legitimate rule.
+     */
+    const cameraIds = [...new Set([...(authored.cameraIds ?? []), ...groups.cameraIds])].sort();
     return {
       zoneIds: resolution.zoneIds,
-      cameraIds: [...authored.cameraIds],
+      detectionZoneIds: [...(authored.zoneIds ?? [])].sort(),
+      cameraIds,
+      groupCameraIds: [...new Set(groups.cameraIds)].sort(),
       tenantWide: false,
       resolvedAt: at,
     };
@@ -350,7 +380,7 @@ export class RuleService {
     const findings: ReferenceFindings = { checked };
     const authored = scopeOf(rule);
 
-    if (authored.nodeIds.length > 0) {
+    if ((authored.nodeIds?.length ?? 0) > 0) {
       const resolution = await this.hierarchy.resolveScope(scope, authored.nodeIds);
       if (resolution.available) {
         checked.push('location');
@@ -360,13 +390,41 @@ export class RuleService {
       }
     }
 
-    if (authored.cameraIds.length > 0) {
+    if ((authored.cameraIds?.length ?? 0) > 0) {
       const lookup = await this.cameras.findMissing(scope, authored.cameraIds);
       if (lookup.available) {
         checked.push('camera');
         findings.missingCameraIds = lookup.missingCameraIds;
       }
     }
+
+    if ((authored.groupIds?.length ?? 0) > 0) {
+      const groups = await this.cameras.resolveGroups(scope, authored.groupIds);
+      if (groups.available) {
+        checked.push('camera-group');
+        findings.missingGroupIds = groups.missingGroupIds;
+        findings.emptyGroupIds = groups.emptyGroupIds;
+        findings.groupCameraIds = groups.cameraIds;
+      }
+    }
+
+    if ((authored.zoneIds?.length ?? 0) > 0) {
+      const zones = await this.cameras.resolveZones(scope, authored.zoneIds);
+      if (zones.available) {
+        checked.push('zone');
+        findings.missingZoneIds = zones.missingZoneIds;
+        findings.disabledZoneIds = zones.disabledZoneIds;
+        findings.zoneCameraIds = zones.zoneCameraIds;
+      }
+    }
+
+    /*
+     * ⚠️ The dwell block is checked unconditionally and needs nothing external — like `condition`, it
+     * references only itself. It is listed in `checked` so a report can distinguish "the dwell
+     * configuration was examined and is sound" from "this rule has no dwell", which the absence of
+     * issues alone cannot say.
+     */
+    if (rule.dwell !== undefined) checked.push('dwell');
 
     return validateRule(rule, findings, this.now());
   }
@@ -1094,10 +1152,17 @@ function toCreateInput(rule: Rule): CreateRuleInput {
     severity: rule.severity,
     actions: [...rule.actions],
     scope: scopeOf(rule),
+    /*
+     * ⚠️ Dry run travels with an exported rule. A package trialled in one tenant should land in the
+     * next one still trialled — importing it live would be the package silently promoting itself,
+     * which is the same failure the "imported rules land as drafts" rule already guards against.
+     */
+    dryRun: rule.dryRun ?? false,
   };
   if (rule.description !== undefined) input.description = rule.description;
   if (rule.condition !== undefined) input.condition = rule.condition;
   if (rule.window !== undefined) input.window = rule.window;
+  if (rule.dwell !== undefined) input.dwell = rule.dwell;
   return input;
 }
 
