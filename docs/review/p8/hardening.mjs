@@ -24,7 +24,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { assignCameras } from './_assign.mjs';
+import { assignCameras, raiseRuntimeCapacity } from './_assign.mjs';
 
 const ROOT = resolve(new URL('../../..', import.meta.url).pathname);
 const B = process.env.BASE ?? 'https://localhost';
@@ -356,8 +356,22 @@ if (want(2)) {
 
 /* ── 3 · capacity ────────────────────────────────────────────────────────────────────────────── */
 const rows = [];
+/**
+ * ⚠️ **Raised for the ladder, restored in the `finally` below.**
+ *
+ * The seeded runtime declares 4 cameras, and from P-8 Phase 6 the control plane enforces it — so the
+ * 8-camera rung is refused with a 409 by the control plane doing exactly its job. This ladder reached
+ * 16 cameras the week before that gate shipped and stopped dead at 4 afterwards; the first full
+ * nightly since is what found it. See `raiseRuntimeCapacity`, which is shared so the next ladder does
+ * not rediscover this.
+ *
+ * ⚠️ The sizing policy is untouched: nothing is published from one run, and a rung that drops frames
+ * still reports dropped frames. What is removed is a refusal standing in front of a measurement.
+ */
+let restoreCapacity = async () => {};
 if (want(3)) {
   console.log(`\n3 · capacity at ${LADDER.join(', ')} cameras (${WINDOW}s windows)`);
+  restoreCapacity = await raiseRuntimeCapacity(api, H, Math.max(...LADDER) + 8);
   shq('docker', ['rm', '-f', FIXTURE]);
   sh('docker', [
     'run', '-d', '--rm', '--name', FIXTURE, '--network', NETWORK,
@@ -579,6 +593,7 @@ console.log(`\n  samples written to ${OUT}`);
 
 // ⚠️ Only a full run touches the deployment on the way out. When the mutation harness calls a single
 // section, force-recreating the runtime here would quietly undo the very mutation under test.
+await restoreCapacity();
 if (SECTIONS.length === 6) restoreRuntime();
 console.log(
   failures === 0

@@ -5,3 +5,14 @@ coverage
 .turbo
 pnpm-lock.yaml
 docs/_archive
+
+# ⚠️ Machine-written verification evidence. These are MEASUREMENTS, not source: a verification run
+# rewrites them, and prettier's array wrapping does not agree with `JSON.stringify(x, null, 2)`. The
+# result was a production gate that went red because a verification had been run — which trains people
+# to re-run the gate, and the next real failure gets re-run too. Formatting a measurement changes
+# nothing about what it measured.
+docs/review/**/*-samples.json
+docs/review/**/*-capacity.json
+docs/review/**/*-mutations.json
+docs/review/**/*-resilience.json
+docs/review/p8/tracking-truth.json

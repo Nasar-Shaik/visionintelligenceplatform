@@ -14,14 +14,7 @@
           "message": "with no cool-down this rule raises a candidate on every frame once the threshold is met — set one unless the reset window is doing that job"
         }
       ],
-      "checked": [
-        "event-type",
-        "category",
-        "action",
-        "camera",
-        "zone",
-        "dwell"
-      ],
+      "checked": ["event-type", "category", "action", "camera", "zone", "dwell"],
       "checkedAt": "2026-08-06T11:38:45.043Z"
     },
     "gate": {
@@ -89,18 +82,7 @@
               "latencyP50Ms": 76.536,
               "latencyP95Ms": 147.372,
               "queueDepth": 0,
-              "confidenceDistribution": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                2,
-                2,
-                20,
-                8
-              ],
+              "confidenceDistribution": [0, 0, 0, 0, 0, 0, 2, 2, 20, 8],
               "memoryMb": 121.04,
               "uptimeSeconds": 89.876,
               "avgFrameLatencyMs": 103.588,
@@ -120,18 +102,10 @@
               "outputFormat": "yolox",
               "preprocessingVersion": "1.0/letterbox-416x416-NCHW-float32-BGR-pad114",
               "executionProvider": "CPUExecutionProvider",
-              "requestedProviders": [
-                "CPUExecutionProvider"
-              ],
-              "availableProviders": [
-                "AzureExecutionProvider",
-                "CPUExecutionProvider"
-              ],
+              "requestedProviders": ["CPUExecutionProvider"],
+              "availableProviders": ["AzureExecutionProvider", "CPUExecutionProvider"],
               "inputName": "images",
-              "inputSize": [
-                416,
-                416
-              ],
+              "inputSize": [416, 416],
               "inputLayout": "NCHW",
               "intraOpThreads": 10,
               "interOpThreads": 1,
@@ -160,18 +134,10 @@
               "outputFormat": "yolox",
               "preprocessingVersion": "1.0/letterbox-416x416-NCHW-float32-BGR-pad114",
               "executionProvider": "CPUExecutionProvider",
-              "requestedProviders": [
-                "CPUExecutionProvider"
-              ],
-              "availableProviders": [
-                "AzureExecutionProvider",
-                "CPUExecutionProvider"
-              ],
+              "requestedProviders": ["CPUExecutionProvider"],
+              "availableProviders": ["AzureExecutionProvider", "CPUExecutionProvider"],
               "inputName": "images",
-              "inputSize": [
-                416,
-                416
-              ],
+              "inputSize": [416, 416],
               "inputLayout": "NCHW",
               "intraOpThreads": 10,
               "interOpThreads": 1,
@@ -193,16 +159,9 @@
             "format": "yolox",
             "status": "enabled",
             "default": true,
-            "capabilities": [
-              "perception.person-detection"
-            ],
-            "accelerators": [
-              "cpu"
-            ],
-            "inputSize": [
-              416,
-              416
-            ],
+            "capabilities": ["perception.person-detection"],
+            "accelerators": ["cpu"],
+            "inputSize": [416, 416],
             "labelCount": 80,
             "sizeBytes": 3659407,
             "checksum": "sha256:c789161ed43c",
@@ -253,11 +212,7 @@
             "groundTruth": {
               "available": false,
               "reason": "these ask whether an identity was CORRECT, which is only answerable against ground truth: which real object each track belonged to. A live camera does not carry that.",
-              "metrics": [
-                "identitySwitches",
-                "reidentificationSuccessRate",
-                "falseRecoveries"
-              ],
+              "metrics": ["identitySwitches", "reidentificationSuccessRate", "falseRecoveries"],
               "measuredBy": "docs/review/p8/tracking.mjs"
             }
           }

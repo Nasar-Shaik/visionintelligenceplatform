@@ -411,7 +411,15 @@ function main() {
   }
 
   const truth = {
-    generatedAt: new Date().toISOString(),
+    /*
+     * ⚠️ **No `generatedAt`, and its removal is the point.** This file is a tracked ground truth
+     * derived deterministically from the deployed model, so regenerating it should change nothing —
+     * and for the whole of P-8 it changed on every run, because it stamped the clock. Two costs: the
+     * working tree drifted after every unattended run (which blocks the next one — mutation stages
+     * refuse a dirty tree), and `git diff` could never answer the one question tracking it exists to
+     * answer, *did the fixtures actually move?* A field that always changes reports nothing.
+     * When it changed is what the git history is for.
+     */
     source: 'infra/docker/fixtures/media/scene-people.jpg (CC0)',
     frame: { width: W, height: H, fps: FPS, durationSeconds: DURATION },
     warning:

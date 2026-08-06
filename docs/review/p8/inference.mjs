@@ -33,7 +33,7 @@ import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { assignCameras } from './_assign.mjs';
+import { assignCameras, raiseRuntimeCapacity } from './_assign.mjs';
 
 const ROOT = resolve(new URL('../../..', import.meta.url).pathname);
 const B = process.env.BASE ?? 'https://localhost';
@@ -624,14 +624,46 @@ if (FAST) {
 /* ── 7 · the ladder ──────────────────────────────────────────────────────────────────────────── */
 console.log('\n7 · throughput at 1, 2, 4, 8 and 16 cameras');
 const rows = [];
+/*
+ * ⚠️ The seeded runtime declares 4 cameras and the control plane enforces it, so the 8-camera rung is
+ * refused with a 409 unless the declaration is raised for the run. Restored below. See
+ * `raiseRuntimeCapacity` — shared, so the next ladder does not rediscover this.
+ */
+const restoreCapacity = await raiseRuntimeCapacity(api, H, Math.max(...LADDER) + 8);
 {
   let created = 1; // camera 1 is already running the scene
+  let newlyAssigned = false;
   for (const target of LADDER) {
     while (created < target) {
       created += 1;
       const id = await createCamera(created + 10);
       await api(`/media/streams/${id}/start`, { method: 'POST', headers: H, body: '{}' });
+      /*
+       * ⛔ **This assignment was missing, and it made every rung above the first a lie.**
+       *
+       * From P-8 Phase 6 a camera with no assignment is never analysed. The two sections above this
+       * one were updated; the ladder was not. So it started sixteen streams, analysed the ONE camera
+       * an earlier section had assigned, and printed `16 cameras · 44 analysed · 65.2ms` — one
+       * camera's throughput under a heading that says sixteen. Every capacity figure above rung 1 was
+       * measuring a single stream, and the numbers looked entirely reasonable.
+       *
+       * ⚠️ Nothing here noticed. What noticed was §8's frame-accounting check — `offered` scaled with
+       * the cameras while `delivered` did not, so the books stopped balancing — and it reported it as
+       * "frames lost silently", which is exactly what it looked like from inside. A check written for
+       * one purpose caught a different defect because it was written against an invariant rather than
+       * against an expected value.
+       */
+      await assignCameras(api, H, [id], { settleMs: 0 });
+      newlyAssigned = true;
     }
+    /*
+     * ⚠️ One extra plan-poll interval when the rung added cameras. `assignCameras` is called with
+     * `settleMs: 0` above because settling per camera would cost 12 s × 16; the wait belongs once,
+     * here. Without it the rung measures a window that begins before the enforcement point has picked
+     * the plan up, and under-reports the rung it is named after.
+     */
+    if (newlyAssigned) await sleep(7000);
+    newlyAssigned = false;
     await sleep(WARMUP * 1000);
     const before = scrape(MEDIA, 8083);
     const beforeRuntime = scrape(RUNTIME, 8085);
@@ -668,6 +700,7 @@ const rows = [];
     );
   }
 }
+await restoreCapacity();
 
 /* ── 8 · what the ladder has to prove ────────────────────────────────────────────────────────── */
 console.log('\n8 · the assertions the ladder exists for');

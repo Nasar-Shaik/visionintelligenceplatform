@@ -393,8 +393,15 @@ const { out: finalOut } = verifyBridge();
 const stillGreen = !/✗/.test(finalOut);
 check(stillGreen, '⚠️ the restored deployment verifies GREEN again', stillGreen ? 'every mutation reverted cleanly' : 'THE RESTORE DID NOT WORK');
 
+/*
+ * ⚠️ **Redirectable, because a stage may not write to a tracked file.** This script spent a milestone
+ * writing its results straight into `docs/review/p8/` — the exact discipline it lectures about at the
+ * top of this file, broken for its own output. The first full nightly after that discipline was
+ * written down reported the working tree CHANGED, with this file in the drift, which then blocks the
+ * next unattended run: every mutation stage refuses to start on a dirty tree.
+ */
 writeFileSync(
-  join(ROOT, 'docs/review/p8/event-bridge-mutations.json'),
+  process.env.RESULTS_OUT ?? join(ROOT, 'docs/review/p8/event-bridge-mutations.json'),
   `${JSON.stringify({ at: new Date().toISOString(), results, restoredGreen: stillGreen }, null, 2)}\n`,
 );
 

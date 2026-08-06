@@ -22,14 +22,38 @@ if [ "$FOUND" = "0" ]; then
 fi
 
 note "$FOUND nightly-only suite(s) — timing ratios that need an idle machine"
-pnpm vitest run --root . --include '**/*.nightly.test.ts'
-RC=$?
+
+# ⚠️ **Run inside each owning package, never from the root.** `vitest` is a per-package dev
+# dependency; there is no root binary, so `pnpm vitest` at the repo root fails with
+# `Command "vitest" not found` — which is exactly what this stage did on the first full nightly after
+# the convention was introduced. The stage reported RED, correctly, about itself. A runner that has
+# never run is the same failure the `FOUND = 0` branch above exists to catch, one level down.
+#
+# ⚠️ The filter is a **positional name pattern**, not `--include`: vitest 4 rejects `--include` as an
+# unknown option, and the package's own config narrows `include` to `test/**/*.test.ts` anyway.
+PKGS=$(
+  find services packages apps -name '*.nightly.test.ts' -not -path '*/node_modules/*' 2>/dev/null |
+    while IFS= read -r f; do
+      d=$(dirname "$f")
+      while [ "$d" != "." ] && [ ! -f "$d/package.json" ]; do d=$(dirname "$d"); done
+      [ -f "$d/package.json" ] && printf '%s\n' "$d"
+    done | sort -u
+)
+
+RC=0
+for pkg in $PKGS; do
+  note "running in $pkg"
+  if pnpm --dir "$pkg" exec vitest run 'nightly.test'; then
+    ok "$pkg — every nightly-only assertion held"
+  else
+    bad "$pkg — a nightly-only assertion failed"
+    RC=1
+  fi
+done
 
 if [ "$RC" -eq 0 ]; then
-  ok "every nightly-only assertion held on an idle machine"
-  headline "$FOUND suite(s) passed"
+  headline "$FOUND suite(s) passed across $(printf '%s\n' "$PKGS" | wc -l | tr -d ' ') package(s)"
 else
-  bad "a nightly-only assertion failed (exit $RC)"
   headline "nightly-only suites failed"
 fi
 

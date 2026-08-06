@@ -24,8 +24,14 @@ node docs/review/p8/tracking-fixtures.mjs >/dev/null || {
 # otherwise leaves a mutated publisher in the running image and every later stage measures that.
 guard "cd '$REPO' && node $SCRIPT restore"
 
+# ⚠️ Into the run directory, never into `docs/review/p8/`. A stage that writes a tracked file leaves
+# the working tree dirty, and every mutation stage on the NEXT run refuses to start on a dirty tree —
+# so one stage's tidiness failure disables five others a day later. Found by the first full nightly
+# after the rule was written down.
+RESULTS="$(metrics_path bridge-mutations)"
+rm -f "$RESULTS"
 note "publisher disabled · queue overflow · schema corruption · ordering · retry disabled · broker down"
-node "$SCRIPT"
+RESULTS_OUT="$RESULTS" node "$SCRIPT"
 RC=$?
 unguard
 
@@ -35,7 +41,6 @@ else
   bad "the bridge mutation harness reported failures (exit $RC)"
 fi
 
-RESULTS="docs/review/p8/event-bridge-mutations.json"
 if [ -f "$RESULTS" ]; then
   SUMMARY=$(node -e '
     const d = require(process.argv[1]);

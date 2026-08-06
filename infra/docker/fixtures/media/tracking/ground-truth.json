@@ -1,5 +1,4 @@
 {
-  "generatedAt": "2026-08-05T23:28:17.209Z",
   "source": "infra/docker/fixtures/media/scene-people.jpg (CC0)",
   "frame": {
     "width": 640,
@@ -7,7 +6,7 @@
     "fps": 15,
     "durationSeconds": 70
   },
-  "warning": "Composited sprites on a plain background. Real person pixels on authored trajectories — NOT real CCTV footage. L-1 stands: no camera has ever been connected. These prove tracking logic against known input, never tracker performance on real video.",
+  "warning": "Composited sprites on a plain background. Real person pixels on authored trajectories \u2014 NOT real CCTV footage. L-1 stands: no camera has ever been connected. These prove tracking logic against known input, never tracker performance on real video.",
   "scenarios": [
     {
       "id": "walk",
@@ -37,7 +36,7 @@
         "survivesOcclusion": false,
         "ends": true,
         "linked": true,
-        "note": "The identity must END and a NEW track id must appear — ids are never reused. The two must be linked by identityId, because the same person came back."
+        "note": "The identity must END and a NEW track id must appear \u2014 ids are never reused. The two must be linked by identityId, because the same person came back."
       }
     },
     {

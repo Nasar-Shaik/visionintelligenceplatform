@@ -29,7 +29,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { assignCameras } from './_assign.mjs';
+import { assignCameras, raiseRuntimeCapacity } from './_assign.mjs';
 
 const ROOT = resolve(new URL('../../..', import.meta.url).pathname);
 const B = process.env.BASE ?? 'https://localhost';
@@ -156,6 +156,19 @@ if (process.argv[2] === 'clean') {
 
 await login();
 await cleanup(true);
+
+/*
+ * ⚠️ **The ladder raises the runtime's DECLARED capacity for the run and restores it afterwards.**
+ *
+ * The seeded runtime declares 4 cameras — the provisional sizing figure — and from P-8 Phase 6 the
+ * control plane enforces it, so an 8-camera rung is refused with a 409 by the control plane doing
+ * exactly its job. This ladder climbed to 16 the week before that gate shipped and stopped at 4
+ * afterwards; the first full nightly since is what found it. See `raiseRuntimeCapacity`.
+ *
+ * ⚠️ The sizing policy is untouched: no capacity number is published from one run, and a rung that
+ * drops frames still reports dropped frames.
+ */
+const restoreCapacity = await raiseRuntimeCapacity(api, H, Math.max(...LADDER) + 8);
 
 if (!existsSync(join(ROOT, 'infra/docker/fixtures/media/tracking/walk.mp4'))) {
   console.log('\ntracking fixtures are missing — generating them first\n');
@@ -305,6 +318,7 @@ try {
     await sleep(3000);
   }
 } finally {
+  await restoreCapacity();
   await cleanup(true);
 }
 

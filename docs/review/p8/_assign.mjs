@@ -83,3 +83,59 @@ export async function releaseCameras(api, headers, cameraIds) {
     }
   }
 }
+
+/**
+ * **Raise the runtime's declared camera capacity for the duration of a ladder, and restore it.**
+ *
+ * ### ⚠️ Why this exists, and why it belongs here rather than in each benchmark
+ *
+ * The seeded runtime declares **4** cameras — the provisional sizing figure. From P-8 Phase 6 the
+ * control plane enforces that figure, so a ladder asking for an 8-camera rung is refused with a 409
+ * by the control plane **doing exactly its job**. A ladder that stopped there would be measuring the
+ * refusal path and reporting it as the cost of eight cameras.
+ *
+ * ⚠️ **Three benchmarks went dark for a day because this was fixed one script at a time.** The
+ * P-8 Phase 7 loitering ladder hit the 409, and the repair was made inside that one file. The first
+ * full nightly afterwards found `benchmark`, `tracking-benchmark` and `publisher-benchmark` all
+ * failing at their 8-camera rung with the identical error — each had climbed to 16 the week before.
+ * The instance was fixed and the class was not. This function is the class.
+ *
+ * ### ⚠️ It raises a DECLARATION, not a capability
+ *
+ * `maxCameras` is what the operator told the platform this runtime can take. Raising it does not make
+ * the host faster, and the ladder's job is precisely to find out what happens past the declared
+ * figure. **The sizing policy is untouched by this**: no capacity number is published from one run,
+ * and a rung that drops frames reports dropped frames. What is removed is the control plane refusing
+ * before the measurement can be taken.
+ *
+ * @returns a `restore()` — call it in a `finally`, always. A verification that leaves a raised
+ *   declaration behind hands the next run a deployment that will accept more than it can serve.
+ */
+export async function raiseRuntimeCapacity(api, headers, needed) {
+  const runtimes = (await api('/camera/processing-runtimes', { headers })).json?.data ?? [];
+  const runtime = runtimes[0];
+  if (runtime === undefined) {
+    /* No control plane to raise. Older deployments, and the caller's ladder will fail honestly. */
+    return async () => {};
+  }
+  const originalMax = runtime.maxCameras;
+  await api(`/camera/processing-runtimes/${runtime.id}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ maxCameras: needed }),
+  });
+  let restored = false;
+  return async () => {
+    if (restored) return;
+    restored = true;
+    try {
+      await api(`/camera/processing-runtimes/${runtime.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ maxCameras: originalMax }),
+      });
+    } catch {
+      /* best effort — see releaseCameras */
+    }
+  };
+}
