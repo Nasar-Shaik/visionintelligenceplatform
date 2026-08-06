@@ -637,3 +637,30 @@ cd /private/tmp/pwrun && node <repo>/docs/review/p8/assignment-ui.mjs
 ```
 
 Each takes `clean` (or `restore`) if a run was interrupted.
+
+## P-8 Phase 7 — Retail Loitering (the first complete customer workflow)
+
+| Script | What it proves | Runtime |
+| --- | --- | --- |
+| `loitering.mjs` | camera → assignment → tracking → identity → zone → events → rule → candidate, every hop asserted separately. ⚠️ **Two negative controls on the same deployment at the same moment**: a camera with no zone that never stamps one, and a dry-run twin that raises nothing while its clock advances and its withheld candidates accumulate | ~2 min |
+| `loitering-ui.mjs` | The zone editor, the live loiter timer and the incident's evidence panel in a real browser, every figure traced to the payload the browser received. ⚠️ Also produces the customer walkthrough screenshots (`p8-loitering-*.png`) | ~3 min |
+| `loitering-mutations.mjs` | Eight deliberate breaks, each red at the check naming its fault | ~50 min |
+| `loitering-benchmark.mjs` | The ladder: **event → rule**, **rule → candidate** and **end to end**, separated | ~15 min |
+
+### ⚠️ The dry-run twin is not decoration
+
+A run proving only "a loiterer produces a candidate" passes on a rule that fires for everybody, and a
+run proving only "a dry run raises nothing" passes on a rule that silently stopped evaluating. Both
+halves run together, and the check that separates the second pair reads `withheld > 0`.
+
+It has already earned its place: the first run reported "the live rule raised an incident — 0" while
+the dry-run twin, with identical configuration, was demonstrably withholding four. Two statements
+that cannot both be true, pointing straight at the run reading `data.incidents` where the API returns
+`data.items`.
+
+### ⚠️ Why the observation window is long
+
+The platform observes a **continuously present** subject about once every ten seconds — the event
+dedup window, not the frame rate. A run shorter than a minute cannot accumulate a dwell threshold and
+would go red on a product that is working. Every timeout and window in these scripts is sized against
+that interval, and the reason is written where the number is.

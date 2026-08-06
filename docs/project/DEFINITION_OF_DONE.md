@@ -144,3 +144,25 @@ Two rules that matter more than the labels:
   limitation, it is a wish. See [E-1](../tracker/E-1-EVIDENCE-LOCATION-SNAPSHOT.md) for the shape.
 - **A Future Extension must not be written in the present tense.** "The hierarchy supports inherited
   permissions" is false; "a permission grant would attach to a node id" is true and clearly a plan.
+
+
+---
+
+## ⚠️ A ninth thing, learned the hard way in P-8 Phase 7: **read the green run**
+
+The eight deliverables say a subsystem is not done until it has been verified. P-8 Phase 7 went green
+end to end and then, on reading the numbers rather than the ticks, produced two defects:
+
+- every incident claimed a **ten-second unobserved gap** it did not have, because the platform samples
+  a continuously present subject once per event-dedup bucket. The check that reported it was green and
+  correct; the *number it reported* was describing the platform's own sampling and would have taught
+  operators to ignore the field;
+- the incident timeline rendered **"15 of 6 shown"**, because `total` counted observations while
+  `entries` counted moments.
+
+Neither is visible as a failing check. Both are visible in thirty seconds of looking at what the run
+wrote down.
+
+⚠️ **A green run is the beginning of the reading, not the end of it.** Every verification in this
+repository writes a samples file for exactly this reason. Open it. See
+[ED-0075](ENGINEERING_DECISION_LOG.md) and [[absence-hides-defects]].
