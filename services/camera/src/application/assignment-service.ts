@@ -1352,18 +1352,28 @@ export class AssignmentService {
   }
 
   /**
-   * Move every camera whose runtime is no longer usable (§3 failover).
+   * Move every camera that is not where it should be (§3 — failover *and* recovery).
    *
-   * ⚠️ **Only** cameras whose runtime became unplaceable are touched. A camera on a healthy runtime
-   * is never moved, never re-placed and never restarted — "healthy runtimes must never restart
-   * unnecessarily" is enforced by what this loop skips.
+   * ### ⚠️ Two populations, and the second one was missing
+   *
+   * - **a camera whose runtime became unusable** — move it;
+   * - **a camera stranded in `error`** — retry it, because a runtime may have come back.
+   *
+   * The first version swept only the first, and the deployment verification caught the consequence:
+   * a camera parked in `error` while every runtime was down stayed in `error` for ever once one
+   * returned, waiting for an operator who had no reason to know they were needed. A control plane
+   * that can put a camera into a hole it cannot climb out of is not an orchestration layer.
+   *
+   * ⚠️ **A camera on a healthy runtime is still never touched.** "Healthy runtimes must never restart
+   * unnecessarily" is enforced by what this loop skips, and the added population is disjoint from it:
+   * a camera in `error` is by definition not processing.
    */
   async #reconcile(now: Date): Promise<{ failover: number; failed: number }> {
     const runtimes = await this.#allRuntimes();
     const usable = new Set(runtimes.filter((r) => placeable(r, now)).map((r) => r._id));
     const docs = await this.#assignments
       .find({
-        state: { $in: ['assigned', 'starting', 'running', 'paused', 'recovering'] },
+        state: { $in: ['assigned', 'starting', 'running', 'paused', 'recovering', 'error'] },
       } as never)
       .toArray();
 
@@ -1371,7 +1381,14 @@ export class AssignmentService {
     let failed = 0;
     let changed = false;
     for (const doc of docs) {
-      if (doc.runtimeId !== null && usable.has(doc.runtimeId)) continue;
+      const strandedInError = doc.state === 'error';
+      const runtimeGone = doc.runtimeId === null || !usable.has(doc.runtimeId);
+      if (!strandedInError && !runtimeGone) continue;
+      /*
+       * ⚠️ A stranded camera with still nowhere to go re-runs `place-failed`, a legal self-transition
+       * on `error`. It rewrites the same reason rather than doing nothing, so "we are still trying"
+       * stays visible — an operator can tell a retry loop from a control plane that gave up.
+       */
       const outcome = await this.#replace(doc, 'failover', 'system');
       if (outcome === 'placed') {
         failover += 1;

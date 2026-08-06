@@ -817,6 +817,42 @@ describe('P-8.6 · the control plane', () => {
     expect(cam2.version).toBe(cam2Before.version);
   });
 
+  /**
+   * ⚠️ **The deployment verification found this; the unit suite did not have it.**
+   *
+   * A camera parked in `error` while every runtime was down stayed in `error` for ever once one came
+   * back, because the failover sweep only looked at cameras whose runtime had become unusable — and
+   * a stranded camera's runtime was, by then, perfectly usable. It waited for an operator who had no
+   * reason to know they were needed.
+   */
+  it('⚠️ recovers a stranded camera on its own when a runtime comes back', async () => {
+    await withRuntime(h, 'rt1', 4);
+    await h.service.enable(scope, 'cam1', { profileId: 'person-tracking', actor: 'op' });
+
+    /* Every runtime goes away — the camera has nowhere to go. */
+    await h.service.report({
+      reportedBy: 'media',
+      at: NOW.toISOString(),
+      planVersion: null,
+      runtimes: [{ runtimeId: 'rt1', health: 'offline', latencyMs: null, capabilities: null }],
+      cameras: [],
+    });
+    expect((await h.service.getAssignment(scope, 'cam1')).state).toBe('error');
+
+    /* It comes back. Nobody clicks anything. */
+    await h.service.report({
+      reportedBy: 'media',
+      at: NOW.toISOString(),
+      planVersion: null,
+      runtimes: [{ runtimeId: 'rt1', health: 'healthy', latencyMs: 3, capabilities: [PERSON] }],
+      cameras: [],
+    });
+    const recovered = await h.service.getAssignment(scope, 'cam1');
+    expect(recovered.state).toBe('recovering');
+    expect(recovered.runtimeId).toBe('rt1');
+    expect(recovered.placementFailure).toBeNull();
+  });
+
   it('parks a camera in error when failover has nowhere to put it', async () => {
     await withRuntime(h, 'rt1', 4);
     await h.service.enable(scope, 'cam1', { profileId: 'person-tracking', actor: 'op' });
