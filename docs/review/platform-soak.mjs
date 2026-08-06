@@ -581,12 +581,19 @@ try {
     if (id === undefined)
       throw new Error(`camera ${i} was not created: ${made.text.slice(0, 200)}`);
     cameraIds.push(id);
-    await api(`/media/streams/${id}/start`, { method: 'POST', headers: H, body: '{}' });
   }
-  const assign = await tryAssignCameras(api, H, cameraIds, { settleMs: 12_000 });
-  if (!assign.ok) throw new Error(`assignment refused at setup: ${assign.reason}`);
-  console.log(`  ✓ ${cameraIds.length} cameras streaming and assigned`);
+  console.log(`  ✓ ${cameraIds.length} cameras created`);
 
+  /*
+   * ⚠️ **Zones are created BEFORE the cameras are assigned, and the order is load-bearing.**
+   *
+   * Detection zones ride to the enforcement point on the assignment plan (ADR-0043/0044), which media
+   * polls every five seconds. Creating the zone after assignment means the first plan media acts on
+   * carries no polygon, so early events are published with no `zoneId` — and a rule scoped to that
+   * zone matches nothing until the next refresh. Over a six-hour soak that is a harmless warm-up
+   * window; over a short verification it is the whole run, and it looks exactly like a broken dwell
+   * stage rather than a race. Creating zones first removes the window entirely.
+   */
   for (const z of profile.zones({ cameraIds, tag: TAG })) {
     const made = await api('/camera/zones', {
       method: 'POST',
@@ -607,6 +614,13 @@ try {
     zoneIds.push(id);
   }
   if (zoneIds.length > 0) console.log(`  ✓ ${zoneIds.length} detection zone(s) created`);
+
+  for (const id of cameraIds) {
+    await api(`/media/streams/${id}/start`, { method: 'POST', headers: H, body: '{}' });
+  }
+  const assign = await tryAssignCameras(api, H, cameraIds, { settleMs: 12_000 });
+  if (!assign.ok) throw new Error(`assignment refused at setup: ${assign.reason}`);
+  console.log(`  ✓ ${cameraIds.length} cameras streaming and assigned`);
 
   for (const r of profile.rules({ cameraIds, zoneIds, tag: TAG })) {
     const made = await api('/rules/rules', {
@@ -687,6 +701,16 @@ try {
      * same entry, which makes reconnect count and recording continuity direct readings rather than
      * things inferred from a paginated list.
      */
+    /*
+     * ⚠️ **Per-rule attribution, and the reason it is not optional.** `rules_matched_total` and
+     * `rules_candidate_latency_*` are GLOBAL across every rule in the tenant — including the seeded
+     * tenant-wide rules, which match the same events this run generates. The smoke test read 37-40
+     * matches and a healthy candidate latency per sample and concluded the workload was alive; every
+     * one of those observations belonged to a seeded rule. `/rules/rules/live` is where THIS run's
+     * dwell rule can be seen: `dwellRules` counts it, `activeZones` says the zone reached the engine,
+     * and `activeDwellTimers` says a clock is actually running for a subject.
+     */
+    const live = (await api('/rules/rules/live', { headers: H })).json?.data ?? {};
     const streamHealth = (await api('/media/streams/health', { headers: H })).json?.data ?? {};
     const allStreams = streamHealth.streams ?? [];
     const myStreams = allStreams.filter((s) => cameraIds.includes(s.cameraId));
@@ -698,15 +722,22 @@ try {
     ).filter((r) => cameraIds.includes(r.cameraId));
     const recDurations = newRecordings.map((r) => num(r.durationSeconds)).filter((v) => v > 0);
 
+    /*
+     * ⚠️ `raisedAt`, NOT `createdAt`. An incident has no `createdAt`, so the first version of this
+     * filtered on a field that is always `undefined` — `Date.parse(undefined)` is `NaN`, the
+     * "is it older than the cut-off" test was never true, and the walk ran to its page limit every
+     * sample collecting the whole collection. It still returned the right answer for the TAG filter,
+     * which is exactly why it survived a smoke test: a broken filter behind a correct total.
+     */
     const newIncidents = (
-      await collectSince('/workflow/incidents', prev.atIso, { timeField: 'createdAt' })
+      await collectSince('/workflow/incidents', prev.atIso, { timeField: 'raisedAt' })
     ).filter((i) => `${i.title ?? ''} ${i.source?.ruleName ?? ''}`.includes(TAG));
     /* Incident latency: raised minus the event that triggered it. null, never 0, when unobserved. */
     const incidentLatencies = newIncidents
       .map((i) => {
         const occurred = Date.parse(i.triggeredBy?.occurredAt ?? '');
-        const created = Date.parse(i.createdAt ?? '');
-        return Number.isFinite(occurred) && Number.isFinite(created) ? created - occurred : null;
+        const raised = Date.parse(i.raisedAt ?? '');
+        return Number.isFinite(occurred) && Number.isFinite(raised) ? raised - occurred : null;
       })
       .filter((v) => v !== null && v >= 0);
     incidentsAtStart += newIncidents.length;
@@ -813,6 +844,16 @@ try {
         'rules_candidate_latency_seconds_count',
         'rules_candidate_latency_seconds_sum',
       ),
+
+      /* the rule engine's own live view — attributable to THIS run's rules */
+      liveActiveRules: num(live.activeRules),
+      liveDwellRules: num(live.dwellRules),
+      liveActiveZones: num(live.activeZones),
+      liveDwellTimers: num(live.activeDwellTimers),
+      liveDwellStateEntries: num(live.dwellStateEntries),
+      liveDwellStateEvicted: num(live.dwellStateEvicted),
+      liveCandidatesPerSecond: num(live.candidatesPerSecond),
+      liveEventsPerSecond: num(live.eventsPerSecond),
 
       /* incidents — NEW since the previous sample, so this is throughput rather than a page size */
       incidentCount: newIncidents.length,
@@ -921,8 +962,8 @@ try {
    */
   incidentsAtEnd =
     incidentsAtStart +
-    (await collectSince('/workflow/incidents', prev.atIso, { timeField: 'createdAt' })).filter(
-      (i) => `${i.title ?? ''} ${i.source?.ruleName ?? ''}`.includes(TAG),
+    (await collectSince('/workflow/incidents', prev.atIso, { timeField: 'raisedAt' })).filter((i) =>
+      `${i.title ?? ''} ${i.source?.ruleName ?? ''}`.includes(TAG),
     ).length;
   flush({ incidentsRaised: incidentsAtEnd });
 
@@ -1225,15 +1266,47 @@ try {
   );
   if (ruleIds.length > 0) {
     /*
-     * ⚠️ Asserted only when the profile HAS a live rule that raises. A profile with no rules (the
-     * baseline control) legitimately raises nothing, and a check that went red on that would be
-     * measuring the profile rather than the platform.
+     * ⚠️ **These are the attributable checks, and they replaced one that was not.**
+     *
+     * The first draft asserted only "incidents were raised". The smoke test showed why that is weak
+     * in both directions: `rules_matched_total` and the candidate histogram are GLOBAL, so a seeded
+     * tenant-wide rule matching the same events makes the workload look alive when this run's rule
+     * has never fired — and conversely, incident RAISING depends on dedup and cool-down behaviour
+     * that a stability soak has no business asserting rigidly.
+     *
+     * `/rules/rules/live` is per-engine and, during a soak, this run owns the only dwell rule. So:
+     * the rule is loaded, the zone reached the engine, and a clock is actually running for a subject.
+     * That is the capability being alive, provable, and attributable.
      */
-    check(
-      incidentsAtEnd > 0,
-      '⚠️ the capability produced incidents — the rule path is live, not merely enabled',
-      `${incidentsAtEnd} raised`,
-    );
+    const dwellProfile = profile
+      .rules({ cameraIds: ['x'], zoneIds: ['z'], tag: TAG })
+      .some((r) => r.dwell);
+    if (dwellProfile) {
+      const dwellRules = pick((s) => s.liveDwellRules);
+      check(
+        guard(dwellRules, Math.min(...dwellRules) >= 1),
+        "the engine carried this run's dwell rule at every sample",
+        `${dwellRules.length ? Math.min(...dwellRules) : 0}–${dwellRules.length ? Math.max(...dwellRules) : 0} dwell rule(s)`,
+      );
+      const zones = pick((s) => s.liveActiveZones);
+      check(
+        guard(zones, Math.min(...zones) >= 1),
+        '⚠️ the detection zone reached the rule engine — events carry a zoneId',
+        `${zones.length ? Math.min(...zones) : 0}–${zones.length ? Math.max(...zones) : 0} active zone(s)`,
+      );
+      const timers = pick((s) => s.liveDwellTimers);
+      check(
+        guard(timers, Math.max(...timers) >= 1),
+        '⚠️ a dwell clock was RUNNING — the capability accumulated, it was not merely enabled',
+        `${timers.length ? Math.min(...timers) : 0}–${timers.length ? Math.max(...timers) : 0} timers, ${sum('liveDwellStateEvicted') === 0 ? 'no eviction' : `${sum('liveDwellStateEvicted')} evicted`}`,
+      );
+    }
+    if (incidentsAtEnd === 0) {
+      finding(
+        'this run raised no incidents',
+        'reported rather than asserted — with a 300s cool-down and a static scene, zero is a legitimate outcome and incident RAISING is not what a stability soak is entitled to assert',
+      );
+    }
     if (incLat.length > 0) {
       console.log(
         `  · incident latency ${Math.min(...incLat).toFixed(0)}–${Math.max(...incLat).toFixed(0)}ms (event occurred → incident raised)`,
