@@ -1,12 +1,12 @@
 {
-  "run": "1be41838",
-  "at": "2026-08-06T11:37:50.484Z",
+  "run": "569437dc",
+  "at": "2026-08-06T11:43:20.188Z",
   "seed": {
     "persisted": 10,
     "spanSeconds": 99,
-    "fingerprint": "63ffb0ad73624dc1f7b1f92ea13de037fe974497309d52e28c4cc868c165000c",
-    "from": "2026-08-06T11:35:12.671Z",
-    "to": "2026-08-06T11:39:02.671Z"
+    "fingerprint": "2290d1c7ded6669db57f2f9d5824895f3373bcd2ffa9ae5bf506e7e0aaa51ac6",
+    "from": "2026-08-06T11:40:42.302Z",
+    "to": "2026-08-06T11:44:32.302Z"
   },
   "instances": {
     "compared": 208,
@@ -16,8 +16,8 @@
     "candidatesAfterReplay": 1
   },
   "replay": {
-    "fingerprint": "14f3e70c505403111d15fb0c1d64290db352ade4e8631f11d12b544f45c80b34",
-    "dedupKey": "tnt_demo_retail|bad44b2c-bd84-4fa6-a0a2-bb816f2b272a|zn-c6b46680-ab3|idt_replay_1be41838|1786016172671|1786016227671",
+    "fingerprint": "cdb0fe307c69e878af00d6a12af2895dcc69bd459f1a13423c3deff78c8b770d",
+    "dedupKey": "tnt_demo_retail|1a8d0151-7bf7-45f2-b8dc-e198570f3279|zn-a9018354-35d|idt_replay_569437dc|1786016502302|1786016557302",
     "diverged": [],
     "durationSeconds": 55
   },
@@ -25,7 +25,7 @@
     "before": 10,
     "after": 10,
     "incidentsFromThisRun": 0,
-    "incidentsFromOtherRules": 2
+    "incidentsFromOtherRules": 3
   },
   "failures": 0,
   "findings": []
