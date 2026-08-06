@@ -69,6 +69,38 @@ const AiRuntimePage = lazy(() =>
 const EventBridgePage = lazy(() =>
   import('@/features/system/EventBridgePage').then((m) => ({ default: m.EventBridgePage })),
 );
+/*
+ * P-8 Phase 6 — Camera Processing Assignment. Six pages, lazily loaded like every other feature:
+ * an operator who never assigns AI never downloads the control plane's UI.
+ */
+const CameraAssignmentPage = lazy(() =>
+  import('@/features/assignment/CameraAssignmentPage').then((m) => ({
+    default: m.CameraAssignmentPage,
+  })),
+);
+const RuntimeAssignmentPage = lazy(() =>
+  import('@/features/assignment/RuntimeAssignmentPage').then((m) => ({
+    default: m.RuntimeAssignmentPage,
+  })),
+);
+const ProcessingProfilesPage = lazy(() =>
+  import('@/features/assignment/ProcessingProfilesPage').then((m) => ({
+    default: m.ProcessingProfilesPage,
+  })),
+);
+const RuntimeCapacityPage = lazy(() =>
+  import('@/features/assignment/RuntimeCapacityPage').then((m) => ({
+    default: m.RuntimeCapacityPage,
+  })),
+);
+const RuntimeHealthPage = lazy(() =>
+  import('@/features/assignment/RuntimeHealthPage').then((m) => ({ default: m.RuntimeHealthPage })),
+);
+const AssignmentHistoryPage = lazy(() =>
+  import('@/features/assignment/AssignmentHistoryPage').then((m) => ({
+    default: m.AssignmentHistoryPage,
+  })),
+);
 const LiveTracksPage = lazy(() =>
   import('@/features/tracking/LiveTracksPage').then((m) => ({ default: m.LiveTracksPage })),
 );
@@ -167,6 +199,20 @@ export const router = createBrowserRouter([
           // gateway, so this page is served through media.
           { path: 'system/ai-runtime', element: route(<AiRuntimePage />) },
           { path: 'system/event-bridge', element: route(<EventBridgePage />) },
+          /*
+           * P-8 Phase 6 — Camera Processing Assignment.
+           *
+           * ⚠️ Its own top-level `/assignment` tree rather than a branch of `/system`. System pages
+           * are engineering views gated on `system:inspect`; these are an operator's controls over
+           * what the deployment analyses, gated on `assignment:read`/`write`. Filing them under
+           * System would have hidden a tenant-facing feature behind an infrastructure permission.
+           */
+          { path: 'assignment', element: route(<CameraAssignmentPage />) },
+          { path: 'assignment/runtimes', element: route(<RuntimeAssignmentPage />) },
+          { path: 'assignment/profiles', element: route(<ProcessingProfilesPage />) },
+          { path: 'assignment/capacity', element: route(<RuntimeCapacityPage />) },
+          { path: 'assignment/health', element: route(<RuntimeHealthPage />) },
+          { path: 'assignment/history', element: route(<AssignmentHistoryPage />) },
           // P-6.3 — tenant settings. Was a placeholder; the route is unchanged so every existing
           // link, bookmark and runbook reference still lands somewhere real.
           { path: 'settings', element: route(<SettingsPage />) },

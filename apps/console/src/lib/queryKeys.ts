@@ -102,6 +102,28 @@ export const queryKeys = {
     eventBridge: () => ['health', 'event-bridge'] as const,
   },
   /*
+   * P-8 Phase 6 — Camera Processing Assignment.
+   *
+   * ⚠️ `all()` is the invalidation root and every other key sits under it, because any accepted
+   * action changes the list, the capacity and the history together: a camera moving to a runtime
+   * changes its row, that runtime's occupancy and the audit trail in one write. Invalidating only
+   * the list would leave a capacity page insisting there is room that has just been taken.
+   *
+   * ⚠️ `gate()` and `metrics()` are under the same root but come from a DIFFERENT service. They are
+   * kept here so one invalidation refreshes both halves of the page; they are separate keys so a
+   * media outage cannot blank the control-plane view.
+   */
+  assignment: {
+    all: () => ['assignment'] as const,
+    list: (filter: Record<string, unknown> = {}) => ['assignment', 'list', filter] as const,
+    profiles: () => ['assignment', 'profiles'] as const,
+    runtimes: () => ['assignment', 'runtimes'] as const,
+    capacity: () => ['assignment', 'capacity'] as const,
+    history: (params: Record<string, unknown> = {}) => ['assignment', 'history', params] as const,
+    gate: () => ['assignment', 'gate'] as const,
+    metrics: () => ['assignment', 'metrics'] as const,
+  },
+  /*
    * P-8 Phase 4 — object tracking. ⚠️ Separate keys rather than one, because the pages have
    * different refresh budgets and different failure modes: the live list moves at the frame rate,
    * the statistics do not, and a single track's detail must be able to 404 on its own without

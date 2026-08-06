@@ -36,6 +36,11 @@ export interface ServiceConfig extends AppConfig {
    * ⚠️ Empty is a valid deployment: the fact reads `unknown` rather than `false`.
    */
   rulesUrl: string;
+  /**
+   * The AI runtime this deployment ships with (P-8 Phase 6). Empty ⇒ nothing is seeded and an
+   * operator registers runtimes through the API.
+   */
+  defaultRuntime: { id: string; name: string; url: string; maxCameras: number } | null;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
@@ -50,6 +55,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
   // second service needs it, that is the moment to promote it (ADR-0018 governs secrets, not URLs).
   const discoveryUrl = env.CAMERA_DISCOVERY_URL?.trim();
   const rulesUrl = env.RULES_URL?.trim() ?? '';
+  const runtimeUrl = env.ASSIGNMENT_RUNTIME_URL?.trim() ?? '';
+  const defaultRuntime =
+    runtimeUrl === ''
+      ? null
+      : {
+          id: env.ASSIGNMENT_RUNTIME_ID?.trim() || 'inference',
+          name: env.ASSIGNMENT_RUNTIME_NAME?.trim() || 'Inference runtime',
+          url: runtimeUrl,
+          /* ⚠️ The provisional ceiling from the P-8 Phase 5 benchmark. See `seedRuntime`. */
+          maxCameras: Number(env.ASSIGNMENT_RUNTIME_MAX_CAMERAS ?? '4') || 4,
+        };
   return {
     ...app,
     serviceVersion,
@@ -59,5 +75,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
     internal,
     ...(discoveryUrl ? { discoveryUrl } : {}),
     rulesUrl,
+    defaultRuntime,
   };
 }

@@ -338,6 +338,39 @@ export class AssignmentService {
   // Runtimes (§3)
   // -------------------------------------------------------------------------------------------
 
+  /**
+   * Register the deployment's own runtime, once, if no runtime exists yet.
+   *
+   * ### ⚠️ Why this exists rather than requiring an operator step
+   *
+   * A fresh install would otherwise come up with an inference container running, a control plane
+   * that has never heard of it, and every camera unplaceable — which looks exactly like a broken
+   * deployment and is fixed by an API call nobody knows to make. Seeding the runtime the deployment
+   * actually ships makes `up` produce a working platform.
+   *
+   * ### ⚠️ `$setOnInsert`, so it is not a config push
+   *
+   * An operator's edits to capacity, labels or `enabled` survive every restart. The seed only ever
+   * creates. It **will** re-create a runtime that was deliberately removed, on the next restart —
+   * that is a deliberate trade (a deployment should converge on its own topology) and it is the
+   * reason the removal path re-places cameras rather than dropping them.
+   *
+   * ⚠️ The default capacity is the **provisional** figure from the P-8 Phase 5 benchmark, not a
+   * guess. Two cameras are the supported number; four is the provisional ceiling. Shipping a
+   * capacity nobody measured would make every capacity refusal unexplainable.
+   */
+  async seedRuntime(input: RegisterRuntimeInput): Promise<void> {
+    const existing = await this.#runtimes.countDocuments({} as never);
+    if (existing > 0) return;
+    const doc = newRuntime(input, 'system', this.#clock.now());
+    await this.#runtimes.updateOne(
+      { _id: doc._id } as never,
+      { $setOnInsert: doc as never },
+      { upsert: true },
+    );
+    await this.#bumpPlan();
+  }
+
   async listRuntimes(): Promise<ProcessingRuntime[]> {
     const now = this.#clock.now();
     return (await this.#allRuntimes()).map((d) => toRuntime(d, now));

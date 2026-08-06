@@ -166,7 +166,25 @@ services:
     <<: *service-common
     build: { <<: *service-build, args: { SERVICE: camera } }
     image: vip/camera:local
-    environment: { <<: *service-env, PORT: '8082', SERVICE_NAME: camera }
+    environment:
+      <<: *service-env
+      PORT: '8082'
+      SERVICE_NAME: camera
+      # ══ Camera Processing Assignment — the control plane (P-8 Phase 6) ═══════════════════════
+      # ⚠️ The runtime this deployment ships with, seeded ONCE if the registry is empty. Without it
+      # a fresh install comes up with an inference container running, a control plane that has never
+      # heard of it, and every camera unplaceable — which looks exactly like a broken deployment and
+      # is fixed by an API call nobody knows to make. `$setOnInsert`, so operator edits survive.
+      ASSIGNMENT_RUNTIME_URL: ${ASSIGNMENT_RUNTIME_URL:-http://inference:8085}
+      ASSIGNMENT_RUNTIME_ID: ${ASSIGNMENT_RUNTIME_ID:-inference}
+      ASSIGNMENT_RUNTIME_NAME: ${ASSIGNMENT_RUNTIME_NAME:-Inference runtime}
+      # ⚠️ The PROVISIONAL ceiling from the P-8 Phase 5 benchmark, not a guess. Two cameras is the
+      # supported figure; four is provisional. A capacity nobody measured makes every capacity
+      # refusal unexplainable — see AI_RUNTIME_BENCHMARK.md.
+      ASSIGNMENT_RUNTIME_MAX_CAMERAS: ${ASSIGNMENT_RUNTIME_MAX_CAMERAS:-4}
+      # ⚠️ Read ONLY for the capability matrix's `rules` fact, with the CALLER's token forwarded.
+      # Unset is valid: the fact reads `unknown` rather than `false`.
+      RULES_URL: ${RULES_SERVICE_URL:-http://rules:8086}
     depends_on: *infra-deps
 
   media:
@@ -193,6 +211,12 @@ services:
       MEDIA_EVENT_QUEUE_PER_CAMERA: ${MEDIA_EVENT_QUEUE_PER_CAMERA:-16}
       MEDIA_EVENT_MAX_INFLIGHT: ${MEDIA_EVENT_MAX_INFLIGHT:-4}
       MEDIA_EVENT_MAX_ATTEMPTS: ${MEDIA_EVENT_MAX_ATTEMPTS:-2}
+      # ⚠️ Camera Processing Assignment (P-8 Phase 6) — the one variable that makes the plan govern
+      # which cameras are analysed. OFF keeps the pre-Phase-6 behaviour exactly: every camera is
+      # analysed. It is ON here because a control plane the deployment does not obey is a control
+      # plane nothing verifies; the choice is logged at boot either way.
+      MEDIA_ASSIGNMENT_ENABLED: ${MEDIA_ASSIGNMENT_ENABLED:-1}
+      MEDIA_ASSIGNMENT_INTERVAL_MS: ${MEDIA_ASSIGNMENT_INTERVAL_MS:-5000}
     depends_on:
       <<: *infra-deps
       minio: { condition: service_healthy }

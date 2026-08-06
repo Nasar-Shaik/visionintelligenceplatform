@@ -4,7 +4,11 @@ import {
   Camera,
   Building2,
   Cpu,
+  Gauge,
   HeartPulse,
+  History,
+  Layers,
+  Server,
   LayoutDashboard,
   MonitorPlay,
   Radar,
@@ -95,6 +99,45 @@ export const NAV_GROUPS: NavGroup[] = [
       // P-6.3 — `tenant:update`, the permission the page's one editable field actually requires.
       // It was `user:create`, which was a stand-in from when the page was a placeholder.
       { to: '/settings', label: 'Settings', icon: Settings, permission: 'tenant:update' },
+    ],
+  },
+  {
+    /*
+     * P-8 Phase 6 — Camera Processing Assignment. Its own section, above System, because these are
+     * an operator's controls over what the deployment analyses rather than an engineering view of
+     * it. Every entry is gated on `assignment:read`, which operators and viewers hold via `*:read`
+     * and `admin` holds explicitly (TD-26 — `admin` holds no `*:read`, and a resource that reaches
+     * it only through the wildcard leaves the tenant's own administrator refused a page their staff
+     * can see; this file has now recorded that failure three times).
+     */
+    label: 'AI Assignment',
+    items: [
+      /*
+       * ⚠️ "Camera Assignment", not "Cameras". A second sidebar entry called "Cameras" is ambiguous
+       * for an operator and was ambiguous for the shell test, which found two links by that name —
+       * the label collision was a real navigation defect, caught by an accessibility query.
+       */
+      { to: '/assignment', label: 'Camera Assignment', icon: Cpu, permission: 'assignment:read' },
+      {
+        to: '/assignment/runtimes',
+        label: 'Runtimes',
+        icon: Server,
+        permission: 'assignment:read',
+      },
+      {
+        to: '/assignment/profiles',
+        label: 'Profiles',
+        icon: Layers,
+        permission: 'assignment:read',
+      },
+      { to: '/assignment/capacity', label: 'Capacity', icon: Gauge, permission: 'assignment:read' },
+      {
+        to: '/assignment/health',
+        label: 'Runtime Health',
+        icon: Activity,
+        permission: 'assignment:read',
+      },
+      { to: '/assignment/history', label: 'History', icon: History, permission: 'assignment:read' },
     ],
   },
   {

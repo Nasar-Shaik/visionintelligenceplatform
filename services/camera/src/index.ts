@@ -113,6 +113,13 @@ async function main(): Promise<void> {
     publisher,
   });
 
+  /*
+   * ⚠️ Seeded before the server listens, so the very first plan poll from an enforcement point
+   * already has somewhere to place a camera. A runtime that appears one interval later would make
+   * the first assignment on a fresh install fail for no reason an operator could see.
+   */
+  if (config.defaultRuntime !== null) await assignments.seedRuntime(config.defaultRuntime);
+
   const { app } = await buildServer({ config, service, readiness, assignments });
   loggerRef.current = app.log;
 
