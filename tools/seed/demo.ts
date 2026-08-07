@@ -247,12 +247,30 @@ const RETAIL: Vertical = {
       severity: 'medium',
       description: 'A person dwelling in the electronics aisle beyond the configured threshold.',
     },
+    /*
+     * ⛔ **Renamed after a customer's first upload, because the name claimed two things the rule
+     * did not do.** It was "After-hours presence — stock room": scoped to no camera (so it fires
+     * tenant-wide) and conditioned on nothing but a person detection (so it fires at any hour).
+     * A recording from a shop entrance therefore raised four incidents captioned "stock room", and
+     * a demonstration audience would have concluded the platform understands trading hours. It does
+     * not — there is no schedule condition anywhere in the rule engine (L-67), so no seeded rule can
+     * honestly be named for one.
+     *
+     * ⚠️ It stays deliberately unscoped: it is the only seeded rule that reacts to an event type the
+     * platform actually produces, so scoping it to the stock room would mean an uploaded recording
+     * raised nothing at all and the demo would show an empty timeline. The name now says so.
+     *
+     * ⚠️ `severity: 'critical'` is left as seeded — it is a policy choice for whoever runs the demo
+     * rather than an untrue statement, but every person who walks past a camera raising a *critical*
+     * incident is worth revisiting.
+     */
     {
       id: 'rule_demo_retail_afterhours',
-      name: 'After-hours presence — stock room',
+      name: 'Person detected — any camera',
       eventTypes: ['perception.person.detected'],
       severity: 'critical',
-      description: 'Any person detected in the stock room outside trading hours.',
+      description:
+        'Any person detected on any camera in this tenant. Unscoped on purpose so an uploaded recording always produces incidents to review; this rule has no schedule and applies at every hour.',
     },
     {
       id: 'rule_demo_retail_queue',

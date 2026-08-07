@@ -108,7 +108,18 @@ export function InvestigationDetailPage() {
               <TableRow>
                 <TableHead>Run</TableHead>
                 <TableHead>State</TableHead>
-                <TableHead>Progress</TableHead>
+                {/*
+                  ⛔ **Seven cells, and for one release only six headers.** The row below has always
+                  rendered pacing AND measured speed as separate cells; the header row named only
+                  one of them, so every column from here rightwards was captioned by its
+                  left-hand neighbour's title — "Detections" sat over the frame count and the model
+                  id had no header at all. Nothing failed: HTML lays out a row with more cells than
+                  headers without complaint, and the assertions on this page all matched text rather
+                  than the column it appeared under. A customer reading their first real analysis
+                  found it in seconds. `table-arity.test.ts` now counts these against the row.
+                */}
+                <TableHead>Pacing</TableHead>
+                <TableHead>Speed</TableHead>
                 <TableHead>Frames</TableHead>
                 <TableHead>Detections</TableHead>
                 <TableHead>Model</TableHead>

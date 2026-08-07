@@ -561,6 +561,15 @@ customer will _see_, not what the code does.
 | **How to see it**     | `infra/docker/fixtures/media/validation/manifest.json` — every entry's ground truth is measured against the same model that will be sold, on frames built from one photograph                                                                                                                                                          |
 | **Planned**           | Partially closed by [L-64]'s six recordings; fully only by **P-9**, on real cameras. ⚠️ Deliberately not approximated: a generated "warehouse" clip would turn an open question into a green test, which is worse than having neither                                                                                                  |
 
+⛔ **They are also all one shape.** Every clip is **640×360 landscape at 15 fps**. The first upload
+the platform received from outside this project was **2160×4096 portrait 4K at 25 fps** — a phone,
+not a CCTV head — and the library contains nothing like it in resolution, orientation or source
+device. The pipeline handled it correctly (67/67 frames, 285 detections, 24 events, 10 tracks), so
+this is a *coverage* gap rather than a defect, but no fixture would have caught one: a portrait
+letterbox failure, an aspect-ratio bug in zone normalisation ([L-58] works in normalised coordinates)
+or a 4K decode-memory limit would all have passed the entire dataset. Recorded 2026-08-07.
+
+
 ## L-64 · Six real-venue recordings are required and do not exist
 
 |                       |                                                                                                                                                                                                                                                                                        |
@@ -590,6 +599,18 @@ customer will _see_, not what the code does.
 | **Exposure**          | The first customer who uploads an hour of 1080p CCTV — which is a routine thing to want to do, and comfortably inside the stated limit                                                                                                                                  |
 | **How to see it**     | `tools/dataset/large.mjs` builds the duration ladder and stops at 60 minutes / ~9 MB; the header of that file records why 2 GB is not generated                                                                                                                         |
 | **Planned**           | One measured 2 GB upload on real hardware, recorded in [PERFORMANCE_BASELINE](PERFORMANCE_BASELINE.md). ⚠️ Cheap to do and deliberately not faked: at this deployment's loopback throughput it is ~6 minutes and 2 GB of disk per run, which is a decision, not a blocker |
+
+---
+
+## L-67 · A rule cannot be restricted to a time of day
+
+|                       |                                                                                                                                                                                                                                                                                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | Rule conditions are field/op/value predicates over the event payload (`services/rules/src/domain/condition.ts`). There is **no schedule, trading-hours, day-of-week or hour-of-day condition**, and a rule that is `enabled` evaluates every matching event at every hour                                |
+| **Customer impact**   | ⛔ "After hours", "outside trading hours" and "at night" — the framing most security customers describe their requirements in — **cannot be expressed**. A rule intended for them fires all day                                                                                                          |
+| **Exposure**          | Found in P-8.5 follow-up: the seeded retail demo shipped a rule *named* `After-hours presence — stock room` whose only condition was a person detection. A customer's first real upload raised four incidents captioned "after-hours" and "stock room", on daytime-agnostic footage from a shop entrance |
+| **How to see it**     | `RuleReferenceKind` in `packages/contracts/src/rules/rules.ts` declares `'schedule'` as a validation reference kind — the vocabulary exists, the condition does not. The seeded rule is now named `Person detected — any camera` for exactly this reason                                                 |
+| **Planned**           | A schedule block on the rule, evaluated against the envelope's `occurredAt` **in the site's timezone**. ⚠️ Note the three-clocks problem: for offline analysis "after hours" must mean the hour in the *footage*, not the hour the analysis ran, or every replayed investigation would be mislabelled    |
 
 ---
 

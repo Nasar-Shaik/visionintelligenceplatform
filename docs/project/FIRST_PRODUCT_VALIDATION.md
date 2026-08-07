@@ -154,6 +154,71 @@ restatement of these two.
 
 ---
 
+## The customer's own upload — V-8, V-9, V-10
+
+⭐ **Everything above was found by me. These three were found by the Architect**, on the first
+upload this platform ever received that I did not choose: a **2160×4096 portrait 4K H.264** clip,
+33.28 s, 43 MB, shot on a phone rather than a CCTV head — a shape no fixture in `TEST_DATASET.md`
+covers.
+
+⭐ **The pipeline itself was correct on it.** 67 frames decoded and analysed, 0 dropped, 285
+detections, **24 events, 10 tracks, 120 density buckets, 4 incidents**, ×3.6 real time — slower than
+the ×8.8–9.1 baseline because 2160×4096 is **24× the pixels** of the 640×360 fixtures, which is the
+expected direction. Track ids carried the session id, so the ADR-0048 fix holds on real footage from
+a real device. What failed was everything *around* the result.
+
+### ⛔ V-8 · The runs table captioned six of its seven columns wrongly · **UX, high**
+
+The header row declared **six** headers over a body row of **seven** cells. Every column from the
+third rightwards sat under its left neighbour's title: `Detections` stood over the frame count,
+`Model` over the detection count, and the model id had no header at all. A customer reading their
+first analysis saw *"DETECTIONS 67 / 67"* and *"MODEL 285"*.
+
+⛔ **Nothing could have caught it.** HTML lays out a row with more cells than headers without a
+warning; the four-browser certification passed because every assertion matched *text* (`60 / 60`,
+`yolox-nano`) and text is still present when it stands under the wrong title.
+
+**Fix:** the missing `Pacing` header (pacing requested, beside speed measured — the row always
+rendered both). **Test:** `apps/console/src/ui/table-arity.test.ts` counts headers against body cells
+across **every** table in the console by parsing source, so the check covers the pages nobody
+remembers to test. Verified to fail when the header is removed.
+
+### ⛔ V-9 · A verification rule I created was left enabled in a customer-facing demo tenant · **process, high**
+
+`Slice 5 — person seen at checkout 1` — tenant-wide, `enabled`, raise-incident, created **during this
+phase's own validation** and never removed. It titled two of the four incidents on the Architect's
+recording with an internal slice number.
+
+⛔ **The lesson is not "delete the rule".** Validation wrote directly into the tenant a customer
+demonstrates from, and nothing in the repo created it, so nothing in the repo could clean it up. A
+harness that seeds a real deployment must own its teardown, exactly as `TD-52` concluded for the
+seeder. **Fix:** archived (reversible, not deleted). Every incident it raised stays auditable.
+
+### ⛔ V-10 · The demo shipped a rule named for a capability the platform does not have · **honesty, high**
+
+`After-hours presence — stock room` was scoped to **no** camera and conditioned on **nothing but a
+person detection**. So it fired on a shop-entrance recording, at every hour, and captioned four
+incidents with a room the footage never showed.
+
+⛔ **There is no schedule condition anywhere in the rule engine** — now [L-67]. `RuleReferenceKind`
+declares `'schedule'` as a *validation* vocabulary term, which is what made the name look supportable.
+A demonstration audience would have concluded the platform understands trading hours.
+
+**Fix:** renamed to `Person detected — any camera`, in the seed and in the running deployment, with
+the description stating that it has no schedule and applies at every hour. Left deliberately unscoped
+— it is the only seeded rule that reacts to an event type the platform actually produces, so scoping
+it would leave every uploaded recording with an empty timeline.
+
+### ⚠️ Also found, recorded not fixed
+
+**`counts.events` and `counts.incidents` on a session are always `0`** — for a run whose own timeline
+holds 24 and 4. Nothing writes them; both are downstream and asynchronous. Already fixed once for the
+export report and never for the session projection. Not visible in the UI today, and the honest shape
+([ADR-0039](../adr/)) is `null` with a reason — which is a contract change this phase's own rules
+forbid. **[TD-72]**
+
+---
+
 ## ⚠️ V-7 · Found, deliberately not fixed
 
 **The timeline UI renders incidents only.** `entries`, `tracks` and `density` — the whole of slice

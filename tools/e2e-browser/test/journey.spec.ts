@@ -74,6 +74,32 @@ test.describe('the investigation journey', () => {
     await expect(page.getByText(/succeeded/i).first()).toBeVisible();
     await page.screenshot({ path: shot('06-succeeded'), fullPage: true });
 
+    /*
+     * ⛔ **Every value must be standing under its own heading** (V-8).
+     *
+     * The runs table shipped with six headers over seven cells, so `Detections` captioned the frame
+     * count and the model id had no heading at all. Every assertion in this suite passed throughout,
+     * because they all match text — and text is still on the page when it is under the wrong title.
+     * A customer found it on their first real analysis.
+     *
+     * ⚠️ Counting alone is not enough: six headers over six cells in the wrong ORDER would still
+     * mislabel everything. So the last column is also read by name and checked to be a model id
+     * rather than a number, which is the pair that was actually transposed.
+     */
+    const runsTable = page.locator('table').first();
+    const headers = await runsTable.locator('thead th').allInnerTexts();
+    const firstRow = await runsTable.locator('tbody tr').first().locator('td').allInnerTexts();
+    expect(
+      firstRow.length,
+      `runs table: ${headers.length} headers [${headers.join(' | ')}] over ${firstRow.length} cells [${firstRow.join(' | ')}]`,
+    ).toBe(headers.length);
+
+    const modelColumn = headers.findIndex((h) => /^model$/i.test(h.trim()));
+    expect(modelColumn, 'the runs table has no "Model" heading').toBeGreaterThan(-1);
+    /* ⚠️ The model id, not the detection count that used to sit here. */
+    expect(firstRow[modelColumn]?.trim()).toMatch(/[a-z]/i);
+    expect(firstRow[modelColumn]?.trim()).not.toMatch(/^\d+$/);
+
     /* ── 7. the timeline, checked against the payload ─────────────────── */
     await expect(page.getByRole('heading', { name: /timeline/i })).toBeVisible();
 

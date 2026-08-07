@@ -274,7 +274,8 @@ show `plannedCameras > 0`.)*
 
 | ☐ | Do this | Expect |
 | --- | --- | --- |
-| ☐ | On the Timeline, read the incident titles | Real rule names, e.g. *"After-hours presence — stock room"* |
+| ☐ | On the Timeline, read the incident titles | Real rule names, e.g. *"Person detected — any camera: perception.person.detected"* |
+| ☐ | ⚠️ Check no title names a **place or a time** your recording does not show | Renamed in V-10: the seeded rule used to be called *"After-hours presence — stock room"* and was scoped to neither. **[L-67]** the rule engine has no schedule condition, so no rule can honestly be named for one |
 | ☐ | Open **`https://localhost/incidents`** (sidebar: INVESTIGATE → Incidents) | The live work queue |
 | ☐ | ⛔ Look for the incidents you just saw on the Timeline | **They must NOT be here** |
 | ☐ | Go back to Recorded Video → your analysis | Its incidents are still on its own Timeline |

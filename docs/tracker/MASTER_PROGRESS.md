@@ -320,6 +320,30 @@ _Last updated: 2026-08-07 · Claude_
   brief for this phase forbids new features, so it is recorded as the largest gap between what the
   platform computes and what a customer can see, and the first thing P-8.6 should close.
 
+  ⛔ **V-8 · V-9 · V-10 — found by the Architect, on the first upload I did not choose.** A
+  **2160×4096 portrait 4K** phone clip, a shape no fixture in the library covers. ⭐ **The pipeline was
+  right on it** — 67/67 frames, 285 detections, 24 events, 10 tracks, 4 incidents, ×3.6 (slower than
+  the ×8.8 baseline because it is **24× the pixels** of a 640×360 fixture, which is the expected
+  direction), track ids carrying the session id so ADR-0048 holds on real device footage. Everything
+  *around* the result was wrong. **V-8:** the runs table declared **six headers over seven cells**, so
+  `Detections` captioned the frame count, `Model` captioned the detection count, and the model id had
+  no heading — HTML renders that without a murmur, and all 80 browser assertions passed because they
+  match *text*, which is still present under the wrong title. **V-9:** a rule named `Slice 5 — person
+  seen at checkout 1` that **this phase's own validation** created in a customer-facing demo tenant
+  and never removed; nothing in the repo made it, so nothing in the repo could clean it up — the same
+  conclusion TD-52 reached about the seeder. **V-10:** the seeded rule `After-hours presence — stock
+  room` was scoped to **no** camera and conditioned on **nothing but a person detection**, so it fired
+  on shop-entrance footage at every hour and captioned incidents with a room the recording never
+  showed — ⛔ **there is no schedule condition anywhere in the rule engine** ([L-67]), and
+  `RuleReferenceKind` declaring `'schedule'` as a validation term is what made the name look
+  supportable. ⭐ The guard for V-8 is `table-arity.test.ts`, which parses **every** table in the
+  console rather than the one that broke, plus a rendered check on the deployment that reads the last
+  column *by heading* — because six headers over six cells in the wrong order would still mislabel
+  everything. Also recorded, not fixed: `counts.events`/`counts.incidents` are always `0` on a
+  session — 0 beside a timeline holding 24 and 4 — already fixed once for the export report and never
+  for the session projection; the honest shape is `null` per ADR-0039, which is a contract change this
+  phase's own rules forbid (**TD-72**).
+
   **Permanent infrastructure, not one-off scripts.** `tools/dataset/` (37 clips: motion · rules ·
   degraded · capture-rate · 4 resolutions · 4 codecs · 4 angles · 6 corrupted, plus a duration
   ladder) — ⭐ **ground truth is MEASURED against the deployed model and written to a committed
