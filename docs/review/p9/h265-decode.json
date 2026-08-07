@@ -1,0 +1,179 @@
+{
+  "measuredAt": "2026-08-07T06:48:05.241Z",
+  "rows": [
+    {
+      "engine": "chromium",
+      "launched": true,
+      "entry": "avc1",
+      "codec": "h264",
+      "control": true,
+      "claim": "probably",
+      "decoded": true,
+      "distinct": 25,
+      "width": 640,
+      "height": 360
+    },
+    {
+      "engine": "chromium",
+      "launched": true,
+      "entry": "hvc1",
+      "codec": "h265",
+      "control": false,
+      "claim": "",
+      "decoded": false,
+      "error": "media error 4: PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    {
+      "engine": "chromium",
+      "launched": true,
+      "entry": "hev1",
+      "codec": "h265",
+      "control": false,
+      "claim": "",
+      "decoded": false,
+      "error": "media error 4: PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams"
+    },
+    {
+      "engine": "chrome",
+      "launched": true,
+      "entry": "avc1",
+      "codec": "h264",
+      "control": true,
+      "claim": "probably",
+      "decoded": true,
+      "distinct": 25,
+      "width": 640,
+      "height": 360
+    },
+    {
+      "engine": "chrome",
+      "launched": true,
+      "entry": "hvc1",
+      "codec": "h265",
+      "control": false,
+      "claim": "probably",
+      "decoded": true,
+      "distinct": 25,
+      "width": 640,
+      "height": 360
+    },
+    {
+      "engine": "chrome",
+      "launched": true,
+      "entry": "hev1",
+      "codec": "h265",
+      "control": false,
+      "claim": "probably",
+      "decoded": true,
+      "distinct": 25,
+      "width": 640,
+      "height": 360
+    },
+    {
+      "engine": "msedge",
+      "launched": true,
+      "entry": "avc1",
+      "codec": "h264",
+      "control": true,
+      "claim": "probably",
+      "decoded": true,
+      "distinct": 25,
+      "width": 640,
+      "height": 360
+    },
+    {
+      "engine": "msedge",
+      "launched": true,
+      "entry": "hvc1",
+      "codec": "h265",
+      "control": false,
+      "claim": "probably",
+      "decoded": true,
+      "distinct": 25,
+      "width": 640,
+      "height": 360
+    },
+    {
+      "engine": "msedge",
+      "launched": true,
+      "entry": "hev1",
+      "codec": "h265",
+      "control": false,
+      "claim": "probably",
+      "decoded": true,
+      "distinct": 25,
+      "width": 640,
+      "height": 360
+    },
+    {
+      "engine": "firefox",
+      "launched": true,
+      "entry": "avc1",
+      "codec": "h264",
+      "control": true,
+      "claim": "probably",
+      "decoded": true,
+      "distinct": 25,
+      "width": 640,
+      "height": 360
+    },
+    {
+      "engine": "firefox",
+      "launched": true,
+      "entry": "hvc1",
+      "codec": "h265",
+      "control": false,
+      "claim": "probably",
+      "decoded": true,
+      "distinct": 25,
+      "width": 640,
+      "height": 360
+    },
+    {
+      "engine": "firefox",
+      "launched": true,
+      "entry": "hev1",
+      "codec": "h265",
+      "control": false,
+      "claim": "probably",
+      "decoded": true,
+      "distinct": 25,
+      "width": 640,
+      "height": 360
+    },
+    {
+      "engine": "webkit",
+      "launched": true,
+      "entry": "avc1",
+      "codec": "h264",
+      "control": true,
+      "claim": "probably",
+      "decoded": true,
+      "distinct": 25,
+      "width": 640,
+      "height": 360
+    },
+    {
+      "engine": "webkit",
+      "launched": true,
+      "entry": "hvc1",
+      "codec": "h265",
+      "control": false,
+      "claim": "probably",
+      "decoded": true,
+      "distinct": 25,
+      "width": 640,
+      "height": 360
+    },
+    {
+      "engine": "webkit",
+      "launched": true,
+      "entry": "hev1",
+      "codec": "h265",
+      "control": false,
+      "claim": "",
+      "decoded": false,
+      "error": "media error 4: "
+    }
+  ]
+}

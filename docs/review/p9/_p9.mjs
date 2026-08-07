@@ -20,7 +20,15 @@
  */
 import { execFileSync } from 'node:child_process';
 
-export const ROOT = new URL('../../..', import.meta.url).pathname;
+/**
+ * ⚠️ `REPO` wins when set. Browser verifications are copied to `/private/tmp/pwrun` and run from
+ * there — playwright is installed at that path on this machine and not in this repository — so
+ * deriving the repo root from `import.meta.url` would resolve to the temp directory. The existing
+ * P-8 UI scripts take the same environment variable for the same reason.
+ */
+export const ROOT = process.env.REPO
+  ? `${process.env.REPO.replace(/\/$/, '')}/`
+  : new URL('../../..', import.meta.url).pathname;
 export const BASE = process.env.BASE ?? 'https://localhost';
 export const TENANT = process.env.TENANT ?? 'tnt_demo_retail';
 export const ADMIN = {

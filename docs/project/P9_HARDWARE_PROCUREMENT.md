@@ -109,10 +109,20 @@ is less forgiving than that.
 
 ## 5 · Two items that need no purchase order and start today
 
-**Item 11 — an HEVC file.** [A5](P9_IMPLEMENTATION_PLAN.md) closes **TD-29** (H.265 decode across
-browsers). It needs a _file_, not a camera, and one can be produced from any H.264 source with
-`ffmpeg -c:v libx265 -tag:v hvc1`. ⚠️ The `hvc1` tag matters: `hev1` in MP4 is rejected by browsers
-that accept `hvc1`, and the two are otherwise identical to a casual inspection.
+**Item 11 — an HEVC file.** ✅ **Done, and it needed no hardware.** [A5](../review/p9/h265.mjs)
+closed **TD-29** on 2026-08-07: `infra/docker/fixtures/media/codec/` holds real `hvc1`, `hev1` and
+H.264 clips, decoded in five engines. ⭐ **`canPlayType` told the truth in all fifteen
+measurements** — no engine claimed a codec it could not decode, and none refused one it could — so
+the product's codec verdicts can be trusted.
+
+⛔ **One result became a procurement requirement.** WebKit/Safari answers `''` to `hev1` **and
+genuinely cannot decode it**, while decoding `hvc1` perfectly. The two tags are otherwise
+indistinguishable to any casual inspection of a file.
+
+> ⭐ **Every camera must be configured to write `hvc1`, not `hev1`.** A camera left on `hev1`
+> produces recordings no Safari or iOS user can play. The platform will correctly report them as
+> undecodable and offer the download — but an investigator on an iPad sees no video, and the camera
+> looks healthy in every other respect. Confirm at commissioning; it is on the field checklist.
 
 **Item 12 — a USB webcam.** [A9](P9_IMPLEMENTATION_PLAN.md) validates the ingestion path against a
 real lens today. ⛔ **It is not a substitute for ONVIF certification, and §6 records why in terms the
