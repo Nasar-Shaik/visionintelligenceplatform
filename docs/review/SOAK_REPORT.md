@@ -214,6 +214,18 @@ production code.
 | 4   | Stream checks refuse to pass when the signal was never measured                        | Detail now names unavailable samples instead of reading 0        |
 | 5   | Suspended samples detected (`elapsed > 2× cadence`) and excluded from rates and trends | Logic exercised against the 4458 s sample                        |
 | 6   | A run of ≥60 minutes refuses to start on battery (`SOAK_ALLOW_BATTERY=1` to override)  | Precondition present; tonight's run needs AC                     |
+| 7   | ⚠️ `login()` **mutates** the headers object rather than reassigning it                 | Found afterwards: capacity was left at 6, not restored           |
+
+⚠️ **Fix 7 was caused by fix 1, and was found by reading the deployment state afterwards rather than
+assuming teardown had worked.** `raiseRuntimeCapacity(api, H, …)` closes over the headers **object**,
+and its `restore()` uses that reference at teardown hours later. Re-authenticating by reassigning `H`
+left every existing closure holding the expired token, so `restore()` took a 401 and the runtime's
+declared capacity stayed raised at 6. That is finding **F-4** — one stage leaking a shared deployment
+declaration into the next — reintroduced by the repair for an unrelated defect. Headers are now
+mutated in place.
+
+⚠️ **And the harness still has no assertion that its own restore succeeded**, which is finding **F-3**
+(a harness that verifies the tree and not the deployment) in a new place. Added below as SF-8.
 
 ### ⚠️ Recommended next, in priority order
 
@@ -225,6 +237,7 @@ production code.
 | **SF-4** | **Resumability.** A soak that dies at hour six should be able to append rather than restart, keyed on the run's own evidence file                                | This run lost 11 samples to a restart decision that better tooling would not have forced                                    |
 | **SF-5** | **A second profile for contrast.** Run `baseline` alongside `retail-loitering` on alternate nights                                                               | A drift in both is perception; a drift in one is the rule. Today neither can be distinguished                               |
 | **SF-6** | **Put `docs/review/*.mjs` under the lint gate.** `turbo run lint` covers 21 packages and none of them is `docs/`                                                 | ⚠️ 34 pre-existing errors in `inference-soak.mjs` alone. Verification code is production code, and it is currently unlinted |
+| **SF-8** | **Assert the teardown worked.** Re-read declared capacity and camera count after `finally` and go red if either was not restored                                 | ⚠️ F-3 and F-4 in a new place: this run leaked a raised capacity and nothing noticed                                        |
 | **SF-7** | **Narrow the log-error regex.** It matched `"state":"error"` inside a JSON payload and reported 5 "exceptions" that were `level:30` info lines                   | It found something real by accident; a check that is right by luck will be wrong by luck                                    |
 
 ### ⚠️ What tonight's run must do differently
