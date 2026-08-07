@@ -3,6 +3,22 @@
 **What the platform computes, versus what it shows.** Produced 2026-08-07, read-only, against the
 deployed production stack — no code was changed to write this.
 
+> ## ✅ Closed by P-8.6 Product Surface (2026-08-07)
+>
+> This audit was the input to the **P-8.6 Product Surface** milestone, which exposed what it found
+> without adding any new measurement. **Eight of the ten gaps below are now closed:** the recording
+> plays in the investigation page, the detection overlay draws stored boxes with confidence and track
+> id, all four timeline lanes render, the events explorer filters by `analysisSessionId`, the
+> analysis details panel shows every asset and provenance field, and the export report has a button.
+>
+> ⛔ **The two that are not closed are the two that need persistence, not a screen** — trajectory and
+> full-detection replay — and they are now a recorded decision rather than an omission:
+> **[ADR-0049](../adr/ADR-0049-per-frame-perception-data-is-not-persisted.md)**.
+>
+> **The measurements below are unchanged and still true.** The funnel (67 frames → 285 detections →
+> 24 events → 10 tracks → 4 incidents) is what the product surface now states on screen rather than
+> leaving a customer to infer.
+
 ## How this was measured
 
 Every number below comes from **one real recording the Architect uploaded**, analysed **twice**:
@@ -221,20 +237,29 @@ export.
 
 ## What you can test today, by hand
 
-| Question | Today | How |
+⚠️ **Two columns: what this audit measured on 2026-08-07, and what P-8.6 changed hours later.**
+
+| Question | At audit | After P-8.6 |
 | --- | :---: | --- |
-| Does one person keep the same Track ID? | ⚠️ **Indirectly** | API only. `GET /api/events/events?analysisSessionId=…` and group by `subjects[].trackId`. Your run: 10 tracks over 24 events. ⛔ You cannot see this in the UI, and you cannot confirm it is the *same* person without boxes to look at |
-| Can I see confidence scores? | ⛔ **Not for uploads** | Present on every event and on every timeline entry; the Events page has a Confidence column but excludes analysis events. API: `entries[].confidence` |
-| Can I see bounding boxes? | ⛔ **No** | Stored on all 24 events. No UI renders them, though `DetectionOverlay` exists |
-| Can I replay detections? | ⛔ **No** | Two blockers: no video player is wired, and only 8.4% of detections were kept |
-| Can I jump to incidents? | ✅ **Yes** | Timeline rows show `mm:ss` footage offsets. ⚠️ It is a *label*, not a link — nothing to click through to |
-| Can I inspect evidence? | ✅ **Yes** | **Capture still** on any timeline row → a real JPEG at that footage offset, captioned with footage time. ⚠️ Not listable afterwards |
-| Can I verify timeline accuracy? | ✅ **Yes** | Compare `offsetSeconds` against `footageStartedAt + offset`. Your run: incidents at 00:00 and 00:16 = `20:18:44Z` and `20:19:00Z`. ⭐ Do check the amber banner first — the start came from file metadata, unconfirmed |
-| Can I compare two analyses of the same video? | ⚠️ **Manually** | Click either row in **Runs**; the timeline switches to that run and never merges them. ⛔ No side-by-side, no diff |
-| Can I verify rerun reproducibility? | ✅ **Yes — and I did** | Run 2 returned `67/67/0` frames, **285** detections, **24** entries, **10** tracks, **120** density buckets and **byte-identical confidences**. Incidents differed (4 → 2) **because I changed the rules between runs** — which is the correct behaviour: incidents belong to the rule set at the time of the run |
-| Can I verify event ordering? | ⚠️ **API only** | Events return newest-first by `occurredAt` in **footage** time. Your 9 distinct offsets: 0, 0.5, 2, 6, 9.5, 10, 16, 20.5, 26 s |
-| Can I inspect analysis metadata? | ⚠️ **Partly** | UI: filename, camera, footage time, frames, detections, model. ⛔ Not shown: resolution, codec, duration, file size, five of six provenance fields, throughput, ETA reason |
-| Can I export results? | ⛔ **Not from the UI** | The endpoint is complete. `curl` it with a bearer token |
+| Does one person keep the same Track ID? | ⚠️ API only | ✅ **Tracks tab → "Show me"** seeks to the subject's first appearance and outlines only them |
+| Can I see confidence scores? | ⛔ | ✅ Events tab, the overlay badge, and the Events explorer |
+| Can I see bounding boxes? | ⛔ | ✅ Drawn on the video, and as numbers in the Events tab |
+| Can I replay detections? | ⛔ | ⚠️ **Partly.** ⏮ ⏭ step between analysed frames. ⛔ Only the 8.4 % that were kept exist — [ADR-0049] |
+| Can I jump to incidents? | ✅ label only | ✅ Every time is a button that seeks the video |
+| Can I inspect evidence? | ✅ | ✅ The still now also states its size and ⚠️ that it has no custody |
+| Can I verify timeline accuracy? | ✅ | ✅ And certified: `occurredAt − footageStartedAt = offsetSeconds` for every entry and incident |
+| Can I compare two analyses of the same video? | ⚠️ manual | ⚠️ Unchanged — click either run; still no side-by-side diff |
+| Can I verify rerun reproducibility? | ✅ | ✅ Unchanged |
+| Can I verify event ordering? | ⚠️ API only | ✅ Events tab, in footage order |
+| Can I inspect analysis metadata? | ⚠️ 3 of 10 | ✅ **Analysis details panel** — every asset and provenance field, throughput, and the ETA reason |
+| Can I export results? | ⛔ no button | ✅ **Export report** downloads a JSON named for the run |
+
+⭐ **Also answerable now, from the seven investigation questions:** *why was this event created* (type,
+confidence, box and track on one row), *which rule created this incident* (name **and** version),
+*which frame generated this evidence* (the still names its own offset), *how many people were visible*
+(the funnel strip, with the caveat that tracks are not a headcount), *which detections became events*
+(285 vs 24, stated), and *which events became incidents* (a badge driven by the stored
+`triggeredByEventId`).
 
 ### The one command that shows you everything the UI hides
 
@@ -264,25 +289,32 @@ curl -sk "https://localhost/api/media/analyses/<ANALYSIS_ID>/report" \
 Ranked by how much product each unlocks per unit of work. **No development is proposed here** — this
 is the inventory.
 
-| | What exists | What is missing | Effort |
+| | What exists | What was missing | Status |
 | --- | --- | --- | --- |
-| 1 | Timeline `entries` · `tracks` · `density` — computed every request | Three lanes of rendering. **[V-7 / TD-69]** | UI only |
-| 2 | `investigationsApi.playback()` → working presigned source URL | A `<video>` element. **You cannot watch your own upload** | UI only |
-| 3 | `investigationsApi.report()` **and** `useReport()` | A button, and a download | UI only |
-| 4 | `DetectionOverlay` + `video-player-container` overlay slot | Wiring, and bboxes on the timeline projection (they are on the events) | UI + 1 field |
-| 5 | 5 of 6 provenance fields, 7 of 10 asset fields, `throughputFps`, `etaUnavailableReason` | A metadata panel | UI only |
-| 6 | `GET /events?analysisSessionId=` and `includeAnalyses` | The Events page never sets either | UI only |
-| 7 | Runtime `history[]` — per-frame bbox and centroid | ⛔ **Persistence.** Memory-only, capped at 50 frames, evicted on completion | **Backend** |
-| 8 | 285 detections computed per run | ⛔ **Persistence.** 8.4% survive dedup; the rest are never written | **Backend** |
-| 9 | Snapshot capture to object storage | A record, a list endpoint, evidence custody. **[TD-15]** | Backend |
-| 10 | `counts.events` / `counts.incidents` correct in the report | The session API still says `0`. **[TD-72]** | Contract decision |
+| 1 | Timeline `entries` · `tracks` · `density` — computed every request | Three lanes of rendering. **[V-7 / TD-69]** | ✅ **P-8.6** |
+| 2 | `investigationsApi.playback()` → working presigned source URL | A `<video>` element. **You could not watch your own upload** | ✅ **P-8.6** |
+| 3 | `investigationsApi.report()` **and** `useReport()` | A button, and a download | ✅ **P-8.6** |
+| 4 | `DetectionOverlay` + `video-player-container` overlay slot | Wiring, and bboxes on the timeline projection | ✅ **P-8.6** — `bbox` added to `AnalysisTimelineEntry` (additive) |
+| 5 | 5 of 6 provenance fields, 7 of 10 asset fields, `throughputFps`, `etaUnavailableReason` | A metadata panel | ✅ **P-8.6** |
+| 6 | `GET /events?analysisSessionId=` | The Events page never set it | ✅ **P-8.6** — ⛔ `includeAnalyses` deliberately **not** exposed (ADR-0047) |
+| 7 | Runtime `history[]` — per-frame bbox and centroid | ⛔ **Persistence.** Memory-only, capped at 50 frames, evicted on completion | ⛔ **Deferred — [ADR-0049]** |
+| 8 | 285 detections computed per run | ⛔ **Persistence.** 8.4 % survive dedup; the rest are never written | ⛔ **Deferred — [ADR-0049]** |
+| 9 | Snapshot capture to object storage | A record, a list endpoint, evidence custody. **[TD-15]** | ⚠️ Open — the still now states it has no custody |
+| 10 | `counts.events` / `counts.incidents` correct in the report | The session API still says `0`. **[TD-72]** | ⚠️ Open — contract decision |
 
-⭐ **Six of the ten are UI-only work against APIs that already return the data.** That is the headline
-of this audit: the perception pipeline is substantially ahead of the product surface.
+⭐ **Also exposed by P-8.6, beyond the audit's list:** `ruleName`, `ruleVersion`, `triggeredByEventId`
+and `matchedCount` were stored on every incident and projected away, which is why "which rule created
+this incident?" could only be answered with `rule_demo_retail_afterhours`. All four are now on the
+timeline contract and on screen.
 
-⛔ **Two are not.** Trajectory and full-detection replay require **storing data the platform currently
-computes and discards**, and that is a schema, retention and cost decision — 285 detections per 33
-seconds of one camera at 2 fps extrapolates to roughly 8.5 M rows per camera-day at 25 fps.
+⭐ **Six of the ten were UI-only work against APIs that already returned the data** — and all six
+shipped in P-8.6. That was the headline of this audit: the perception pipeline was substantially
+ahead of the product surface.
+
+⛔ **Two are not, and are now [ADR-0049].** Trajectory and full-detection replay require **storing
+data the platform computes and discards**, and that is a schema, retention and cost decision — 285
+detections per 33 seconds of one camera at 2 fps extrapolates to roughly 8.5 M rows per camera-day at
+25 fps, of records showing where identifiable people walked.
 
 ---
 

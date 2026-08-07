@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Activity, Rows2, Rows3 } from 'lucide-react';
-import type { EventPriority } from '@vip/contracts';
+import { Activity, FlaskConical, Rows2, Rows3 } from 'lucide-react';
+import type { EventEnvelope, EventPriority } from '@vip/contracts';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { setDensity } from '@/store/uiSlice';
 import { formatTimestamp, shortId, timeAgo } from '@/lib/format';
@@ -27,7 +27,26 @@ import {
   TableSkeleton,
 } from '@/ui';
 import { useCameraName } from '@/features/cameras/useCameras';
+import { shortTrack } from '@/features/investigations/overlay';
 import { useEventsInfinite } from './useEvents';
+
+/**
+ * The subject a row describes.
+ *
+ * ⚠️ **`subjects[0]`, matching every other reader in the platform** — the timeline projection, the
+ * rule engine's aggregation key and the overlay all take the first subject. Picking a different one
+ * here would show a track id and a box belonging to a different person than the confidence beside
+ * them, and the row would look entirely plausible.
+ */
+function subjectOf(event: EventEnvelope): Partial<EventEnvelope['subjects'][number]> {
+  /*
+   * ⛔ **Optional-chained even though the contract marks `subjects` required.** A system event
+   * carries none, and a document written before the field existed has none either — and this list
+   * renders every event in the tenant. One envelope without subjects would otherwise throw inside
+   * `map` and blank the entire page, which is a catastrophic failure mode for a missing rectangle.
+   */
+  return event.subjects?.[0] ?? {};
+}
 
 /** Event timeline — URL-backed filters (severity + search), density toggle, cursor pagination. */
 export function EventsPage() {
@@ -37,6 +56,13 @@ export function EventsPage() {
 
   const q = params.get('q') ?? '';
   const severity = params.get('severity') ?? 'all';
+  /*
+   * ⭐ **One analysis run's events** (P-8.6). Offline events are excluded from every unfiltered read
+   * — that is ADR-0047 and it is correct, because an investigation of last month's footage must not
+   * land in the queue an operator is being dispatched from. Naming a run is how you reach them, and
+   * it is index-backed (`tenant_analysisSession_time`).
+   */
+  const analysisSessionId = params.get('analysisSessionId') ?? '';
 
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -47,7 +73,10 @@ export function EventsPage() {
 
   /* The camera an operator recognises, not the row id — the same resolver the queue uses. */
   const cameraName = useCameraName();
-  const query = useEventsInfinite({ limit: 50 });
+  const query = useEventsInfinite({
+    limit: 50,
+    ...(analysisSessionId === '' ? {} : { analysisSessionId }),
+  });
   const events = useMemo(() => query.data?.pages.flatMap((p) => p.events) ?? [], [query.data]);
 
   const filtered = useMemo(() => {
@@ -63,7 +92,36 @@ export function EventsPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-6">
-      <PageHeader title="Events" description="Detections and system events across your tenant." />
+      <PageHeader
+        title="Events"
+        description={
+          analysisSessionId === ''
+            ? 'Detections and system events across your tenant.'
+            : 'Every event one analysis run persisted.'
+        }
+      />
+
+      {/*
+        ⛔ **A filtered feed says it is filtered.** Without this the page looks like the live event
+        stream while showing footage that may be weeks old — the single most misleading thing an
+        events list can do to an operator on shift.
+      */}
+      {analysisSessionId === '' ? null : (
+        <div
+          className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-brand/40 bg-brand/5 p-3 text-sm"
+          data-testid="analysis-filter-banner"
+        >
+          <FlaskConical className="h-4 w-4 shrink-0 text-brand" aria-hidden />
+          <span>
+            Showing <strong>offline analysis</strong> events from run{' '}
+            <span className="tabular">{shortId(analysisSessionId)}</span>. These are findings from a
+            recording — <strong>not live activity</strong>, and nobody is being dispatched to them.
+          </span>
+          <Button size="sm" variant="outline" onClick={() => setParam('analysisSessionId', '')}>
+            Back to live events
+          </Button>
+        </div>
+      )}
 
       <FilterBar
         search={q}
@@ -119,6 +177,9 @@ export function EventsPage() {
               <TableHead>Camera</TableHead>
               <TableHead>Severity</TableHead>
               <TableHead>Confidence</TableHead>
+              {/* ⭐ P-8.6: stored on every event since P-8 Phase 2, shown on no screen until now. */}
+              <TableHead>Track</TableHead>
+              <TableHead>Box (x, y, w, h)</TableHead>
               <TableHead>Correlation</TableHead>
             </TableRow>
           </TableHeader>
@@ -140,6 +201,14 @@ export function EventsPage() {
                 </TableCell>
                 <TableCell className="tabular text-muted-foreground">
                   {e.confidence !== undefined ? `${Math.round(e.confidence * 100)}%` : '—'}
+                </TableCell>
+                <TableCell className="tabular text-muted-foreground" title={subjectOf(e).trackId}>
+                  {subjectOf(e).trackId === undefined ? '—' : shortTrack(subjectOf(e).trackId!)}
+                </TableCell>
+                <TableCell className="text-2xs tabular text-text-subtle">
+                  {subjectOf(e).bbox === undefined
+                    ? '—'
+                    : subjectOf(e).bbox!.map((n) => n.toFixed(3)).join(', ')}
                 </TableCell>
                 <TableCell className="tabular text-text-subtle" title={e.correlationId}>
                   {e.correlationId ? shortId(e.correlationId) : '—'}

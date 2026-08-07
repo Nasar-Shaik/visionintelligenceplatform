@@ -51,6 +51,14 @@ export function toEntry(event: EventEnvelope, footageStartedAt: string): Analysi
     confidence: typeof event.confidence === 'number' ? event.confidence : null,
     ...(subject?.trackId === undefined ? {} : { trackId: subject.trackId }),
     ...(event.zoneId === undefined ? {} : { zoneId: event.zoneId }),
+    /*
+     * ⭐ **The box, carried through rather than projected away** (P-8.6).
+     *
+     * ⚠️ Taken from the SAME subject the label, confidence and track id came from — `subjects[0]`.
+     * Reading it from a different index would attach one person's box to another's identity, which
+     * is a wrong answer that looks entirely plausible on screen.
+     */
+    ...(subject?.bbox === undefined ? {} : { bbox: subject.bbox }),
   };
 }
 

@@ -614,6 +614,18 @@ or a 4K decode-memory limit would all have passed the entire dataset. Recorded 2
 
 ---
 
+## L-68 · The detection overlay outlines a subject at a fraction of the recording's frames
+
+|                       |                                                                                                                                                                                                                                                                                                     |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | P-8.6 draws stored bounding boxes over the recording. Boxes exist only where an **event** was persisted — one per track per ten-second bucket ([L-57]). Measured: a 33.28 s recording analysed 67 frames, produced **285 detections**, and stored **24 events at 9 distinct offsets**                |
+| **Customer impact**   | ⚠️ For most of a recording's runtime **no box is drawn**, and a viewer's natural reading is "the AI missed them". It did not — the detection was made, evaluated and then not retained                                                                                                              |
+| **Exposure**          | Any demonstration where someone scrubs the video rather than using the timeline. ⛔ Also any expectation that the platform can show a person's **path**: the runtime computes one and holds it in memory only ([ADR-0049])                                                                            |
+| **How to see it**     | The player states it: *"Boxes are drawn only on frames this run stored a detection for — N moment(s) in this recording. Gaps are retention, not blindness."* The transport's ⏮ ⏭ controls step between analysed frames rather than seconds, which is the usable way to review                        |
+| **Planned**           | Nothing until [ADR-0049](../adr/ADR-0049-per-frame-perception-data-is-not-persisted.md) is superseded with a schema, retention policy and measured cost. ⛔ Deliberately **not** mitigated by interpolation: a line drawn between two boxes ten seconds apart is a claim about where a person walked |
+
+---
+
 ## Related
 
 - [PRODUCT_CAPABILITY_MATRIX](PRODUCT_CAPABILITY_MATRIX.md) — the state behind each limitation

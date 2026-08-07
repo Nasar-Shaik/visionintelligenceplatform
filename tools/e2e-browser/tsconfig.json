@@ -4,6 +4,10 @@
     "noEmit": true,
     "skipLibCheck": true,
     "types": ["node"],
+    /* P-8.6: `page.evaluate` bodies compile here but RUN in the browser, so they need DOM types
+     * (HTMLVideoElement, Event). ESNext is listed explicitly because naming `lib` at all replaces
+     * the default set that `target` would otherwise imply. */
+    "lib": ["ESNext", "DOM"],
     "composite": false,
     "module": "esnext",
     "moduleResolution": "bundler"

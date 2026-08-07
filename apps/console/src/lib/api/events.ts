@@ -10,7 +10,24 @@ import { http } from './http';
 type ListParams = Partial<
   Pick<
     EventQuery,
-    'type' | 'cameraId' | 'zoneId' | 'correlationId' | 'from' | 'to' | 'limit' | 'cursor'
+    | 'type'
+    | 'cameraId'
+    | 'zoneId'
+    | 'correlationId'
+    /**
+     * ⭐ **One analysis run's events** (P-8.6). Index-backed by `tenant_analysisSession_time`, and
+     * sparse in effect — live events carry no `analysisSessionId`, so they occupy no entry.
+     *
+     * ⛔ **`includeAnalyses` is deliberately NOT exposed here.** It removes the offline exclusion
+     * from an otherwise live read, which is both an unindexed shape and the exact mixing ADR-0047
+     * exists to prevent: an investigation of last month's footage must never land in the queue an
+     * operator is being dispatched from. Naming a run is precise; widening the live feed is not.
+     */
+    | 'analysisSessionId'
+    | 'from'
+    | 'to'
+    | 'limit'
+    | 'cursor'
   >
 >;
 

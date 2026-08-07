@@ -40,18 +40,53 @@ export const investigationsApi = {
    * attached. The URL is already signed, and adding a bearer token to a presigned request is how a
    * customer's JWT ends up in an object-store access log.
    */
-  upload: async (uploadUrl: string, file: File, contentType: string): Promise<void> => {
-    const res = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: { 'content-type': contentType },
-      body: file,
-    });
-    if (!res.ok) {
-      throw new Error(
-        `the upload was refused by the object store (${String(res.status)}) — the link may have expired`,
-      );
-    }
-  },
+  upload: (
+    uploadUrl: string,
+    file: File,
+    contentType: string,
+    onProgress?: (fraction: number, loaded: number, total: number) => void,
+  ): Promise<void> =>
+    /*
+     * ⛔ **`XMLHttpRequest`, not `fetch`, and only because of progress.**
+     *
+     * `fetch` cannot report upload progress in any shipping browser — the request-stream API is not
+     * available, so a `PUT` of a two-gigabyte recording is a single opaque promise. The product
+     * declares a **2 GB** ceiling, which on a customer's link is minutes of a spinner that could
+     * equally mean "working" or "hung". XHR's `upload.onprogress` is the only way to tell them apart,
+     * and being wrong about that is a support call every time.
+     *
+     * ⚠️ Everything else about the request is unchanged, including the reason it does not go through
+     * `http`: the URL is already signed and attaching an `Authorization` header is how a customer's
+     * JWT ends up in an object-store access log.
+     */
+    new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', uploadUrl);
+      xhr.setRequestHeader('content-type', contentType);
+
+      xhr.upload.onprogress = (e) => {
+        /* ⚠️ `lengthComputable` is false for a chunked body; reporting 0 % then would look stalled. */
+        if (e.lengthComputable && e.total > 0) onProgress?.(e.loaded / e.total, e.loaded, e.total);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          /* ⭐ Pinned to 1 on success: the last `progress` event can arrive before the final ack. */
+          onProgress?.(1, file.size, file.size);
+          resolve();
+          return;
+        }
+        reject(
+          new Error(
+            `the upload was refused by the object store (${String(xhr.status)}) — the link may have expired`,
+          ),
+        );
+      };
+      /* ⛔ Network failure and abort are distinct from a refusal, and say so. */
+      xhr.onerror = () =>
+        reject(new Error('the upload could not reach the object store — check the connection'));
+      xhr.onabort = () => reject(new Error('the upload was cancelled'));
+      xhr.send(file);
+    }),
 
   confirm: (id: string, input: { footageStartedAt?: string } = {}) =>
     http.post<VideoAnalysisDetail['analysis']>(`/media/analyses/${id}/confirm`, input),

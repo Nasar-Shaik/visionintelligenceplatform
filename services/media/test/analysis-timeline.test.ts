@@ -30,6 +30,7 @@ function event(over: {
   confidence?: number | undefined;
   zoneId?: string;
   label?: string;
+  bbox?: readonly [number, number, number, number];
 }): EventEnvelope {
   return {
     id: over.id ?? `ev_${String(over.offset)}`,
@@ -46,6 +47,7 @@ function event(over: {
       {
         class: over.label ?? 'person',
         ...(over.trackId === undefined ? {} : { trackId: over.trackId }),
+        ...(over.bbox === undefined ? {} : { bbox: over.bbox }),
       },
     ],
     payload: {},
@@ -103,6 +105,42 @@ describe('toEntry', () => {
     const entry = toEntry(event({ offset: 1 }), FOOTAGE_START);
     expect(entry).not.toHaveProperty('trackId');
     expect(entry).not.toHaveProperty('zoneId');
+  });
+
+  /**
+   * ⭐ **The box the console draws** (P-8.6). Stored on every event since P-8 Phase 2 and projected
+   * away until the capability audit found the renderer built and wired to nothing.
+   */
+  it('carries the subject’s bounding box through, normalised and unrescaled', () => {
+    const entry = toEntry(
+      event({ offset: 3, trackId: 'trk_1', bbox: [0.454124, 0.592513, 0.158532, 0.264006] }),
+      FOOTAGE_START,
+    );
+    expect(entry.bbox).toEqual([0.454124, 0.592513, 0.158532, 0.264006]);
+  });
+
+  /**
+   * ⛔ **Absent, not `[0,0,0,0]`.** A zeroed box is a real box at the top-left corner: it would
+   * render a marker over a part of the frame nothing was detected in, which is worse than no box.
+   */
+  it('omits the box when the subject had none', () => {
+    expect(toEntry(event({ offset: 1 }), FOOTAGE_START)).not.toHaveProperty('bbox');
+  });
+
+  /**
+   * ⛔ **The box must come from the same subject as the label and the track id.** Reading it off a
+   * different index attaches one person's outline to another's identity — a wrong answer that looks
+   * completely plausible on screen, and the reason this is asserted rather than assumed.
+   */
+  it('takes the box from the same subject the identity came from', () => {
+    const twoSubjects = event({ offset: 2, trackId: 'trk_1', bbox: [0.1, 0.1, 0.2, 0.2] });
+    twoSubjects.subjects = [
+      ...twoSubjects.subjects,
+      { class: 'person', trackId: 'trk_OTHER', bbox: [0.9, 0.9, 0.05, 0.05] },
+    ];
+    const entry = toEntry(twoSubjects, FOOTAGE_START);
+    expect(entry.trackId).toBe('trk_1');
+    expect(entry.bbox).toEqual([0.1, 0.1, 0.2, 0.2]);
   });
 });
 

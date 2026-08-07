@@ -593,6 +593,20 @@ export class AnalysisService {
           ...(incident.severity === undefined ? {} : { severity: incident.severity }),
           ...(incident.source.ruleId === undefined ? {} : { ruleId: incident.source.ruleId }),
           /*
+           * ⭐ **The provenance of the conclusion** (P-8.6). All four are already on the stored
+           * incident and were projected away, which left the console able to say only that *a* rule
+           * fired. An investigator's next question is always which one, at which version, off which
+           * event — and every one of those was a field away.
+           */
+          ...(incident.source.ruleName === undefined ? {} : { ruleName: incident.source.ruleName }),
+          ...(incident.source.ruleVersion === undefined
+            ? {}
+            : { ruleVersion: incident.source.ruleVersion }),
+          ...(incident.triggeredBy.eventId === undefined
+            ? {}
+            : { triggeredByEventId: incident.triggeredBy.eventId }),
+          ...(incident.matchedCount === undefined ? {} : { matchedCount: incident.matchedCount }),
+          /*
            * ⭐ The TRIGGERING EVENT's time, never `raisedAt`. `raisedAt` is when the analysis ran;
            * placing that on a footage timeline would put "today" on something that happened weeks
            * ago, which is the whole class of defect this milestone's three clocks exist to prevent.

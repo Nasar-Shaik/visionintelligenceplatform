@@ -3,7 +3,8 @@ import { http as mswHttp, HttpResponse } from 'msw';
 import { screen } from '@testing-library/react';
 import { server } from '@/test/server';
 import { renderWithProviders } from '@/test/render';
-import { InvestigationDetailPage, formatOffset } from './InvestigationDetailPage';
+import { InvestigationDetailPage } from './InvestigationDetailPage';
+import { formatOffset } from './format';
 
 const FOOTAGE_START = '2026-02-14T18:30:00.000Z';
 
@@ -64,6 +65,21 @@ function mock(opts: { sessions?: unknown[]; timeline?: Record<string, unknown> }
             updatedAt: FOOTAGE_START,
           },
           sessions: opts.sessions ?? [session()],
+        },
+      }),
+    ),
+    /*
+     * ⚠️ P-8.6: the page now fetches the recording itself. Without this handler the player's query
+     * fails, which is harmless on screen but fills the test log with MSW warnings that hide real
+     * ones — and `expiresAt` has to be in the future or `usePlayback` schedules an immediate refetch.
+     */
+    mswHttp.get('/api/media/analyses/:id/playback', () =>
+      HttpResponse.json({
+        success: true,
+        data: {
+          url: 'https://example.invalid/source.mp4?sig=x',
+          contentType: 'video/mp4',
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
         },
       }),
     ),
@@ -147,7 +163,16 @@ describe('Investigation detail', () => {
     });
     renderWithProviders(<InvestigationDetailPage />, { route: '/investigations/ana_1', path: '/investigations/:id' });
 
-    expect(await screen.findByText('—')).toBeInTheDocument();
+    /*
+     * ⚠️ Scoped to the runs table since P-8.6: the details panel renders "—" for every field the
+     * platform did not measure, so a page-wide `findByText('—')` now matches several nodes. Asserting
+     * on the SPEED CELL is also the stronger test — it names the column the rule is about, and would
+     * still fail if that cell alone regressed to "0.0×".
+     */
+    const speedCell = (await screen.findAllByRole('row'))
+      .map((row) => row.querySelectorAll('td'))
+      .find((cells) => cells.length > 0)?.[3];
+    expect(speedCell?.textContent).toBe('—');
     expect(screen.queryByText(/0\.0× real time/)).not.toBeInTheDocument();
   });
 
@@ -174,8 +199,9 @@ describe('Investigation detail', () => {
     mock({ sessions: [session({ speed: 1 })] });
     renderWithProviders(<InvestigationDetailPage />, { route: '/investigations/ana_1', path: '/investigations/:id' });
 
+    /* ⚠️ `findAllByText` since P-8.6 — the details panel reports the same measured rate. */
     expect(await screen.findByText('1× real time')).toBeInTheDocument();
-    expect(screen.getByText('9.7× real time')).toBeInTheDocument();
+    expect(screen.getAllByText(/9\.7× real time/).length).toBeGreaterThan(0);
   });
 
   /** ⛔ A partial timeline says so rather than presenting itself as the whole run. */

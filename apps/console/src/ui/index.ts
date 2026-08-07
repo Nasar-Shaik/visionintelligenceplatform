@@ -51,6 +51,8 @@ export {
   SheetTitle,
   SheetDescription,
 } from './sheet';
+export { Progress } from './progress';
+export type { ProgressProps } from './progress';
 export { Skeleton } from './skeleton';
 export { Switch } from './switch';
 export {

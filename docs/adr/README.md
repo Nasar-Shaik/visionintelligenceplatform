@@ -70,6 +70,7 @@ Any decision that changes: a **contract**, a **boundary/dependency rule**, a **t
 | [0046](ADR-0046-promotion-only-from-a-bundle.md) | A device's certification status changes only from a bundle, and the verdict is re-derived | Accepted |
 | [0047](ADR-0047-an-analysis-run-is-part-of-an-events-identity.md) | An analysis run is part of an event's identity | Accepted |
 | [0048](ADR-0048-a-tracked-stream-is-not-always-a-camera.md) | A tracked stream is not always a camera | Accepted |
+| [0049](ADR-0049-per-frame-perception-data-is-not-persisted.md) | Per-frame perception data is not persisted | Accepted |
 
 _Add new rows as ADRs are created. Never renumber; never delete._
 

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { AlertTriangle, Camera, MonitorPlay, Play } from 'lucide-react';
+import { AlertTriangle, Camera, Loader2, MonitorPlay, Play } from 'lucide-react';
 import {
   Button,
   EmptyState,
   PageHeader,
+  Progress,
   QueryBoundary,
   Table,
   TableBody,
@@ -17,20 +18,31 @@ import {
 import { formatTimestamp } from '@/lib/format';
 import {
   useInvestigation,
+  usePlayback,
   useSnapshot,
   useStartRun,
   useTimeline,
 } from './useInvestigations';
+import { AnalysisPlayer } from './AnalysisPlayer';
+import { AnalysisDetailsPanel } from './AnalysisDetailsPanel';
+import { TimelineLanes } from './TimelineLanes';
+import { ExportReportButton } from './ExportReportButton';
+import { formatOffset } from './format';
 
 /** Terminal session states — a run in one of these will never change again. */
 const TERMINAL = ['succeeded', 'failed', 'cancelled', 'expired'];
 
 /**
- * One investigation: its runs, the timeline of the selected run, and the incidents it raised.
+ * One investigation: the recording, its runs, and every lane the timeline computes (P-8.6).
  *
  * ⭐ **A run is selected explicitly and never merged.** Two runs of one recording are two answers,
  * possibly under different rules or a different model; overlaying them would show a picture
  * describing no run that ever happened.
+ *
+ * ⚠️ **This page shows STORED data, and its job is to be clear about the difference between "not
+ * detected" and "not kept."** The measured funnel on a real recording is 67 frames → 285 detections
+ * → 24 events → 10 tracks → 4 incidents; the lanes and the player each carry that caveat where it
+ * would otherwise mislead.
  */
 export function InvestigationDetailPage() {
   const { id = '' } = useParams();
@@ -38,53 +50,112 @@ export function InvestigationDetailPage() {
   const startRun = useStartRun(id);
   const snapshot = useSnapshot(id);
   const [sessionId, setSessionId] = useState<string | undefined>();
+  const [focusTrack, setFocusTrack] = useState<string | undefined>();
 
   const sessions = detail.data?.sessions ?? [];
   const selected = sessions.find((s) => s.id === sessionId) ?? sessions[0];
   const ready = selected !== undefined && TERMINAL.includes(selected.state);
   const timeline = useTimeline(id, selected?.id, ready);
+  const analysis = detail.data?.analysis;
+  const playback = usePlayback(id, analysis?.state === 'ready');
+
+  /*
+   * ⚠️ A nonce rather than a bare number: seeking to the offset you are already at must still move
+   * the playhead, and an effect keyed on the value alone would not fire for a repeat click.
+   */
+  /*
+   * ⚠️ Which of the two actions is in flight, from the mutation's own input. `speed: 1` is the
+   * real-time demonstration; anything else is the fast analysis. See the buttons for why this
+   * matters rather than reusing `isPending` for both.
+   */
+  const demonstrating = startRun.isPending && startRun.variables?.speed === 1;
+  const analysing = startRun.isPending && !demonstrating;
+
+  const nonce = useRef(0);
+  const [seekTo, setSeekTo] = useState<{ offsetSeconds: number; nonce: number }>();
+  const seek = useCallback((offsetSeconds: number) => {
+    nonce.current += 1;
+    setSeekTo({ offsetSeconds, nonce: nonce.current });
+  }, []);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={detail.data?.analysis.label ?? 'Investigation'}
+        title={analysis?.label ?? 'Investigation'}
         {...(detail.data === undefined
           ? {}
           : {
               description: `${detail.data.analysis.cameraName ?? detail.data.analysis.cameraId} · footage from ${formatTimestamp(detail.data.analysis.footageStartedAt)}`,
             })}
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {/* ⭐ P-8.6: the export endpoint has existed since slice 7 with no way to reach it. */}
+            <ExportReportButton
+              analysisId={id}
+              sessionId={selected?.id}
+              label={analysis?.label}
+              disabled={!ready}
+            />
             {/*
               ⭐ **Demonstration Mode** (slice 9) — and it is one parameter, not a second pipeline.
               `speed: 1` paces the recording to real time, so it plays through the *live* runtime,
-              tracker, rules and event path at the rate a camera would produce it. What an audience
-              watches is the production pipeline, not a simulation of it.
-
-              ⚠️ The parity run is what lets this be offered at all: 1× and 8× were measured to
-              produce byte-identical event streams, identical track identities and identical
-              confidences. A demonstration therefore shows exactly what an investigation would find.
+              tracker, rules and event path at the rate a camera would produce it.
+            */}
+            {/*
+              ⭐ **Both buttons say they are working.** Starting a run is a round trip that claims a
+              worker slot, and on a busy host it is not instant; a button that only greys out is
+              indistinguishable from one that did nothing, so an operator clicks again. The spinner
+              and the changed label are what stop a second run being queued by accident.
             */}
             <Button
               variant="outline"
               onClick={() => startRun.mutate({ speed: 1 })}
-              disabled={startRun.isPending || detail.data?.analysis.state !== 'ready'}
+              disabled={startRun.isPending || analysis?.state !== 'ready'}
               title="Plays the recording through the live pipeline at real time"
             >
-              <MonitorPlay className="mr-2 h-4 w-4" />
-              Demonstrate at real time
+              {/*
+                ⚠️ **Only the button that was clicked says "Starting…".** Both disable — a run claims
+                one worker slot and the second request would be refused — but labelling both would
+                tell an operator who asked for a fast analysis that a real-time demonstration is
+                starting, which is a different thing that takes as long as the recording.
+              */}
+              {demonstrating ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <MonitorPlay className="mr-2 h-4 w-4" aria-hidden />
+              )}
+              {demonstrating ? 'Starting…' : 'Demonstrate at real time'}
             </Button>
             <Button
               onClick={() => startRun.mutate({})}
-              disabled={startRun.isPending || detail.data?.analysis.state !== 'ready'}
+              disabled={startRun.isPending || analysis?.state !== 'ready'}
               title="Analyses as fast as the runtime allows"
             >
-              <Play className="mr-2 h-4 w-4" />
-              Run analysis
+              {analysing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <Play className="mr-2 h-4 w-4" aria-hidden />
+              )}
+              {analysing ? 'Starting…' : 'Run analysis'}
             </Button>
           </div>
         }
       />
+
+      {/* --- the recording itself --------------------------------------------------------- */}
+      {analysis === undefined ? null : (
+        <AnalysisPlayer
+          url={playback.data?.url}
+          contentType={playback.data?.contentType}
+          playbackWarning={playback.data?.playbackWarning}
+          entries={timeline.data?.entries ?? []}
+          analysisFrameRate={selected?.analysisFrameRate ?? 2}
+          width={analysis.asset?.width}
+          height={analysis.asset?.height}
+          seekTo={seekTo}
+          focusTrack={focusTrack}
+        />
+      )}
 
       {/* --- runs ------------------------------------------------------------------------- */}
       <QueryBoundary
@@ -133,7 +204,31 @@ export function InvestigationDetailPage() {
                   onClick={() => setSessionId(s.id)}
                 >
                   <TableCell>#{s.sequence}</TableCell>
-                  <TableCell>{s.state}</TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      <span className="flex items-center gap-1.5">
+                        {TERMINAL.includes(s.state) ? null : (
+                          <Loader2 className="h-3 w-3 animate-spin text-brand" aria-hidden />
+                        )}
+                        {s.state}
+                      </span>
+                      {/*
+                        ⭐ **How far through the FOOTAGE the run is** — `mediaOffsetSeconds` against
+                        the recording's duration. Both numbers have always been carried and neither
+                        reached a screen, so a four-hour analysis showed "running" and nothing else
+                        for the whole of it.
+
+                        ⛔ Indeterminate when the container declared no duration: a bar computed
+                        against an unknown total would be a fabricated percentage (ADR-0039).
+                      */}
+                      {TERMINAL.includes(s.state) ? null : (
+                        <Progress
+                          value={runFraction(s.progress.mediaOffsetSeconds, analysis?.asset?.durationSeconds)}
+                          label={`Run #${String(s.sequence)} progress`}
+                        />
+                      )}
+                    </div>
+                  </TableCell>
                   {/*
                     ⚠️ What was ASKED for, beside what was MEASURED in the next column. A demo that
                     could not keep up shows "real time" here and less than 1.0× there — which is the
@@ -176,6 +271,11 @@ export function InvestigationDetailPage() {
         </section>
       </QueryBoundary>
 
+      {/* --- what the run was, in full ---------------------------------------------------- */}
+      {analysis === undefined ? null : (
+        <AnalysisDetailsPanel analysis={analysis} session={selected} />
+      )}
+
       {/* --- timeline -------------------------------------------------------------------- */}
       {ready ? (
         <QueryBoundary
@@ -192,89 +292,71 @@ export function InvestigationDetailPage() {
             />
           }
         >
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Timeline</h2>
-              {timeline.data?.truncated === true ? (
-                /* ⛔ A partial timeline says so. "The first 2 000 events" is not "the events". */
-                <span className="text-xs text-amber-500">
-                  Showing the first {timeline.data.entries.length} events of a longer run.
-                </span>
-              ) : null}
-            </div>
+          {timeline.data === undefined ? null : (
+            <TimelineLanes
+              timeline={timeline.data}
+              session={selected}
+              onSeek={seek}
+              onCaptureStill={(offsetSeconds, incidentId) =>
+                snapshot.mutate(
+                  incidentId === undefined ? { offsetSeconds } : { offsetSeconds, incidentId },
+                )
+              }
+              captureDisabled={snapshot.isPending}
+              focusTrack={focusTrack}
+              onFocusTrack={setFocusTrack}
+            />
+          )}
 
-            {/* Incidents — the lane an investigator reads first. */}
-            {timeline.data?.incidentsAvailable === false ? (
-              /*
-                ⚠️ The fourth state, not an empty list. "We could not look" and "we looked and found
-                none" are opposite answers to the customer's question.
-              */
-              <p className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
-                Incidents could not be looked up for this run.
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>At</TableHead>
-                    <TableHead>Incident</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(timeline.data?.incidents ?? []).map((i) => (
-                    <TableRow key={i.incidentId}>
-                      {/* ⭐ Position in the FOOTAGE, which is what an operator scrubs to. */}
-                      <TableCell>{formatOffset(i.offsetSeconds)}</TableCell>
-                      <TableCell>{i.title}</TableCell>
-                      <TableCell>{i.status}</TableCell>
-                      <TableCell>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={snapshot.isPending}
-                          onClick={() =>
-                            snapshot.mutate({
-                              offsetSeconds: i.offsetSeconds,
-                              incidentId: i.incidentId,
-                            })
-                          }
-                        >
-                          Capture still
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-
-            {snapshot.data !== undefined ? (
-              <figure className="space-y-1">
-                <img
-                  src={snapshot.data.url}
-                  alt={`Frame at ${formatOffset(snapshot.data.offsetSeconds)} of the recording`}
-                  className="max-w-full rounded-md border border-border"
-                />
-                <figcaption className="text-xs text-muted-foreground">
-                  {/* ⭐ What the still is a picture OF — footage time, not when it was taken. */}
+          {snapshot.data !== undefined ? (
+            <figure className="space-y-1">
+              <img
+                src={snapshot.data.url}
+                alt={`Frame at ${formatOffset(snapshot.data.offsetSeconds)} of the recording`}
+                className="max-w-full rounded-md border border-border"
+              />
+              <figcaption className="space-y-0.5 text-xs text-muted-foreground">
+                {/* ⭐ What the still is a picture OF — footage time, not when it was taken. */}
+                <span>
                   {formatOffset(snapshot.data.offsetSeconds)} into the recording ·{' '}
                   {formatTimestamp(snapshot.data.occurredAt)}
-                </figcaption>
-              </figure>
-            ) : null}
-          </section>
+                </span>
+                {/*
+                  ⭐ "Which frame generated this evidence?" — the still names its own offset, its
+                  size, and ⛔ whether it is under evidence custody. `registeredAsEvidence: false`
+                  means it will not survive retention (TD-15), and a customer must not learn that
+                  from a support ticket.
+                */}
+                <span className="block text-2xs">
+                  {snapshot.data.width} × {snapshot.data.height} ·{' '}
+                  {snapshot.data.registeredAsEvidence
+                    ? 'under evidence custody'
+                    : '⚠️ not registered as evidence — no retention or chain of custody (TD-15)'}
+                </span>
+                <Button size="sm" variant="ghost" onClick={() => seek(snapshot.data.offsetSeconds)}>
+                  Play from here
+                </Button>
+              </figcaption>
+            </figure>
+          ) : null}
         </QueryBoundary>
       ) : null}
     </div>
   );
 }
 
-/** `mm:ss` from the start of the recording — the number a scrubber and an evidence clip both use. */
-export function formatOffset(seconds: number): string {
-  const whole = Math.floor(seconds);
-  const m = Math.floor(whole / 60);
-  const s = whole % 60;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+/**
+ * How far through the recording a run has read, or `null` when that cannot be known.
+ *
+ * ⛔ **`null` rather than 0 when the duration is unknown** (ADR-0039). A container that declared no
+ * duration makes the denominator unavailable, not zero — and a bar parked at the left edge reads as
+ * "stuck", which is a different and much more alarming claim than "running, distance unknown".
+ */
+export function runFraction(
+  mediaOffsetSeconds: number | null | undefined,
+  durationSeconds: number | undefined,
+): number | null {
+  if (durationSeconds === undefined || durationSeconds <= 0) return null;
+  if (mediaOffsetSeconds === null || mediaOffsetSeconds === undefined) return null;
+  return Math.min(1, Math.max(0, mediaOffsetSeconds / durationSeconds));
 }

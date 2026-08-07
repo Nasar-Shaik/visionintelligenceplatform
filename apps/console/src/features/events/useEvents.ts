@@ -4,7 +4,12 @@ import { eventsApi } from '@/lib/api/events';
 import { queryKeys } from '@/lib/queryKeys';
 
 type ListParams = Partial<
-  Pick<EventQuery, 'type' | 'cameraId' | 'zoneId' | 'from' | 'to' | 'limit' | 'cursor'>
+  Pick<
+    EventQuery,
+    /* ⭐ `analysisSessionId` added in P-8.6 — see the note in `lib/api/events.ts` for why
+     * `includeAnalyses` is not here. */
+    'type' | 'cameraId' | 'zoneId' | 'analysisSessionId' | 'from' | 'to' | 'limit' | 'cursor'
+  >
 >;
 
 /** Single-page event list (server state). */

@@ -16,7 +16,7 @@
  * arithmetic in three places instead of one.
  */
 import { z } from 'zod';
-import { IsoDateTime, TenantId } from '../common/primitives.js';
+import { BBox, IsoDateTime, TenantId } from '../common/primitives.js';
 
 /**
  * One thing that happened, placed in the footage.
@@ -39,6 +39,21 @@ export const AnalysisTimelineEntry = z.object({
   trackId: z.string().min(1).optional(),
   /** The detection zone the subject was inside, when it was inside one (ADR-0044). */
   zoneId: z.string().min(1).optional(),
+  /**
+   * ⭐ **Where in the frame** — normalised `[x, y, w, h]` in `[0,1]` (P-8.6).
+   *
+   * ⚠️ **Added because the data was already stored and unreachable.** Every persisted event carries
+   * `subjects[].bbox`; the timeline projected it away, so a console that wanted to draw a box had to
+   * make a second, differently-shaped call to the events service for data it had just been handed.
+   * The capability audit found the renderer (`DetectionOverlay`) already built and wired to nothing.
+   *
+   * ⚠️ **Normalised on purpose.** The first real upload was 2160×4096 portrait; a pixel box would
+   * have to be rescaled by every consumer against a resolution the timeline does not carry.
+   *
+   * ⚠️ Optional, so every pre-P-8.6 producer and every strict consumer parses unchanged. Absent
+   * means the subject had no box — not a box at the origin.
+   */
+  bbox: BBox.optional(),
 });
 export type AnalysisTimelineEntry = z.infer<typeof AnalysisTimelineEntry>;
 
@@ -100,6 +115,22 @@ export const AnalysisTimelineIncident = z.object({
   status: z.string().min(1).max(40),
   severity: z.string().min(1).max(40).optional(),
   ruleId: z.string().min(1).optional(),
+  /**
+   * ⭐ **The rule's NAME, not only its id** (P-8.6). Stored on every incident as
+   * `source.ruleName`; the timeline projected it away, so the only answer the console could give to
+   * "which rule created this incident?" was `rule_demo_retail_afterhours`.
+   */
+  ruleName: z.string().min(1).max(200).optional(),
+  /** The rule version that fired. ⚠️ A rule edited since is a different rule than the one that ran. */
+  ruleVersion: z.number().int().min(0).optional(),
+  /**
+   * ⭐ **The exact event that triggered this** — `triggeredBy.eventId`, stored and never surfaced.
+   * Without it "which events became incidents?" can only be answered by matching on the footage
+   * instant, which is a guess that happens to be right rather than the recorded link.
+   */
+  triggeredByEventId: z.string().min(1).optional(),
+  /** How many events the rule matched in the window that raised this. */
+  matchedCount: z.number().int().min(0).optional(),
   /** Footage-clock instant of the triggering event. */
   occurredAt: IsoDateTime,
   /** Seconds from the start of the recording. */

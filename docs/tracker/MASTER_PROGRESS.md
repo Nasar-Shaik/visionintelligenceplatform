@@ -254,6 +254,56 @@ _Last updated: 2026-08-07 · Claude_
   **1032** · contracts · import graph 0 violations.
   [ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md).
 
+- **P-8.6 · Product Surface ✅ complete, ⏳ awaiting review (2026-08-07)** — **no new AI, and no new
+  measurement.** The P-8.5 capability audit found the perception pipeline substantially ahead of the
+  product: bounding boxes stored on every event and reaching no screen, a `DetectionOverlay`
+  component wired only into the design-system gallery, three of four timeline lanes computed on every
+  request and displayed nowhere, and an export report with an endpoint, an API client method **and** a
+  React hook that no component called. This milestone exposed what was already there.
+
+  ⭐ **Two additive contract fields were all the backend work required.** `AnalysisTimelineEntry.bbox`
+  — the box was on `subjects[0]` all along and the timeline projected it away, so a console wanting to
+  draw one had to make a second, differently-shaped call for data it had just been handed. And four
+  fields on the incident projection (`ruleName`, `ruleVersion`, `triggeredByEventId`, `matchedCount`),
+  every one stored and dropped, which is why "which rule created this incident?" could only be
+  answered `rule_demo_retail_afterhours`. Both optional; every pre-P-8.6 producer and strict consumer
+  parses unchanged.
+
+  ⛔ **The surface's hardest job is being honest about what was NOT kept.** The measured funnel is
+  67 frames → **285 detections** → **24 events** → 10 tracks → 4 incidents, and events survive one per
+  track per ten-second bucket ([L-57]). So the overlay can outline a subject at **9 moments** in a
+  33-second recording, and gaps between them are *retention*, not blindness — the player says exactly
+  that, the density lane is labelled **persisted events** rather than detections, and the track lane
+  states that `observations` counts events that survived dedup and not the frames the tracker
+  followed (56 hits behind a span shown as 2). A lane captioned "detections" would have overstated the
+  platform's memory by roughly twelve to one on the one screen used to judge how busy a minute was.
+
+  ⭐ **Certified by comparing rendered DOM against an independently fetched payload**, not by checking
+  that an overlay is visible: every drawn box's `left/top/width/height` percentage is matched to the
+  stored normalised bbox to within 0.01 %, and a separate test asserts **zero** boxes at an instant
+  with no analysed frame. A box from the wrong frame, rescaled for the 2160×4096 source, or attached
+  to the wrong track renders perfectly and fails only this.
+
+  ⚠️ **Two defects found by the Architect mid-milestone, both fixed.** Upload and run-start changed a
+  label and disabled a button with no motion and no percentage — indistinguishable from a hung
+  request on a product that accepts 2 GB files. The upload `PUT` moved from `fetch` to
+  `XMLHttpRequest` (no shipping browser reports upload progress through `fetch`) and now shows real
+  bytes; runs show footage-relative progress from `mediaOffsetSeconds`, which the platform has always
+  carried and never displayed; and ⛔ only the button that was clicked says "Starting…", because
+  labelling both would tell an operator who asked for a fast analysis that a real-time demonstration
+  was beginning. Unmeasurable stages sweep rather than sitting at 0 % (ADR-0039 applied to a bar).
+
+  ⛔ **Trajectory and full-detection replay were deliberately not built** —
+  [ADR-0049](../adr/ADR-0049-per-frame-perception-data-is-not-persisted.md). The runtime computes a
+  full per-frame path (`history[]` with bbox and centroid) and holds it in process memory alone,
+  capped at 50 frames; the Architect's own run was already evicted while the audit was being written.
+  Persisting it is a schema, retention and cost decision — ~8.5 M rows per camera-day at 25 fps, of
+  records showing where identifiable people walked — not a screen, and ⚠️ nothing may interpolate
+  between two stored boxes and present the line as measurement.
+
+  **Closed:** TD-69 / V-7. **Gate:** 70/70 repo tasks · **512** console tests · 13/13 P-8.6 browser
+  specs plus the existing suite across Chromium, Edge, Firefox and WebKit.
+
 - **P-8.5 · Product Validation ✅ complete, ⏳ awaiting review (2026-08-07)** — **the first time
   this platform was used the way a customer will use it**, and the answer to what a 69-task green
   gate is worth. 37 generated recordings driven through upload → object storage → ffmpeg → ONNX →

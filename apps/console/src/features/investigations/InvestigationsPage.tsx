@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileVideo, Upload } from 'lucide-react';
+import { FileVideo, Loader2, Upload } from 'lucide-react';
 import {
   Button,
   EmptyState,
   PageHeader,
+  Progress,
   QueryBoundary,
   Select,
   SelectContent,
@@ -20,6 +21,7 @@ import {
   TableSkeleton,
 } from '@/ui';
 import { formatTimestamp, timeAgo } from '@/lib/format';
+import { formatBytes } from './format';
 import { useCameras } from '@/features/cameras/useCameras';
 import { useInvestigations, useUploadInvestigation } from './useInvestigations';
 
@@ -37,13 +39,29 @@ export function InvestigationsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [cameraId, setCameraId] = useState('');
   const [stage, setStage] = useState<string | null>(null);
-  const upload = useUploadInvestigation((s) => setStage(s));
+  /*
+   * ⭐ **Real bytes, not a spinner.** The product accepts files up to 2 GB, which on a customer's
+   * link is minutes during which "Uploading…" alone is indistinguishable from a hung request. The
+   * fraction comes from `XMLHttpRequest.upload.onprogress` — see `lib/api/investigations.ts` for why
+   * `fetch` cannot provide it.
+   */
+  const [sent, setSent] = useState<{ fraction: number; loaded: number; total: number } | null>(null);
+  const upload = useUploadInvestigation(
+    (s) => setStage(s),
+    (fraction, loaded, total) => setSent({ fraction, loaded, total }),
+  );
 
   const onPick = (file: File | undefined): void => {
     if (file === undefined || cameraId === '') return;
+    setSent({ fraction: 0, loaded: 0, total: file.size });
     upload.mutate(
       { file, cameraId, label: file.name },
-      { onSettled: () => setStage(null) },
+      {
+        onSettled: () => {
+          setStage(null);
+          setSent(null);
+        },
+      },
     );
   };
 
@@ -93,12 +111,42 @@ export function InvestigationsPage() {
           onClick={() => fileRef.current?.click()}
           disabled={cameraId === '' || upload.isPending}
         >
-          <Upload className="mr-2 h-4 w-4" />
+          {/* ⭐ A moving spinner, because a disabled button with changed text reads as "broken". */}
+          {upload.isPending ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            <Upload className="mr-2 h-4 w-4" aria-hidden />
+          )}
           {upload.isPending ? stageLabel(stage) : 'Upload a recording'}
         </Button>
 
         {/* ⚠️ Only MP4 is decodable today; the picker says so rather than failing at confirm. */}
         <p className="text-xs text-muted-foreground">MP4 only, up to 2 GB and 4 hours.</p>
+
+        {/*
+          ⛔ **The three stages are not equally measurable, and the bar says which is which.**
+          `uploading` reports real bytes; `creating` and `confirming` are single round trips whose
+          duration nothing can predict, so they show an indeterminate sweep rather than a fabricated
+          percentage (ADR-0039). Inventing "50 %" for a probe would be a number nobody measured.
+        */}
+        {upload.isPending ? (
+          <div className="w-full space-y-1" data-testid="upload-progress">
+            <Progress
+              value={stage === 'uploading' && sent !== null ? sent.fraction : null}
+              label={stageLabel(stage)}
+            />
+            <p className="text-xs text-muted-foreground">
+              {stage === 'uploading' && sent !== null && sent.total > 0 ? (
+                <>
+                  {stageLabel(stage)} {Math.round(sent.fraction * 100)} % ·{' '}
+                  {formatBytes(sent.loaded)} of {formatBytes(sent.total)}
+                </>
+              ) : (
+                <>{stageLabel(stage)} this usually takes a moment.</>
+              )}
+            </p>
+          </div>
+        ) : null}
 
         {upload.isError ? (
           <p className="w-full text-sm text-destructive" role="alert">

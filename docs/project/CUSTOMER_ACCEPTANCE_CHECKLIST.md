@@ -255,18 +255,51 @@ show `plannedCameras > 0`.)*
 
 ---
 
-## 4 · The timeline
+## 3b · ⭐ Watch the recording, with the AI's boxes on it *(new in P-8.6)*
 
 | ☐ | Do this | Expect |
 | --- | --- | --- |
-| ☐ | Scroll down to the **Timeline** section | A table with columns **At · Incident · Status**, and a **Capture still** button on each row |
-| ☐ | Look at the **At** column | Times like `00:00`, `00:24` — position **in the footage**, not clock time |
-| ☐ | Look for the text *"Incidents could not be looked up for this run"* | ⛔ It must **NOT** be there |
+| ☐ | Look just under the page title, at **Recording** | Your video, playing in the page. A portrait phone clip gets a tall stage, not a letterboxed stripe |
+| ☐ | Press ▶ and let it run | Blue outlines appear over people, labelled `person · #3` and a percentage |
+| ☐ | ⭐ Read the label on a box | The number after `#` is the **track id** — the same person keeps it |
+| ☐ | Watch the badge in the top-right of the video | Either `N stored at 00:06`, or **"no analysed frame at this instant"** |
+| ☐ | ⚠️ Notice the boxes are not on screen the whole time | **Expected — and the line under the player says why.** Boxes exist only where the platform *kept* a detection: one per person per ten seconds. The gaps are retention, not blindness **[L-68]** |
+| ☐ | Use the ⏮ ⏭ buttons instead of the scrubber | They jump between **analysed frames** — the moments that actually have something stored |
+| ☐ | Toggle **Detection overlay** off, then on | Boxes disappear and come back; the video keeps playing |
 
-> ⚠️ **Known gap — expect this and note it.** This section lists **incidents only**. The individual
-> detections, the identity tracks and the activity density *are* computed by the platform and are
-> **not yet displayed**. If you ask "where are the actual events?" — you have correctly found
-> **V-7**, the largest known gap, and the first thing scheduled to be fixed.
+> ⛔ **Say this out loud in a demo.** *"The boxes are what the system stored, not everything it saw.
+> It looked at 67 frames and found 285 detections; it kept 24 of them. Showing a box between those
+> would be us drawing something we did not measure."* That sentence is the difference between a
+> credible product and an overclaiming one.
+
+---
+
+## 3c · What the run actually was *(new in P-8.6)*
+
+| ☐ | Do this | Expect |
+| --- | --- | --- |
+| ☐ | Find the **Analysis details** panel below the Runs table | Resolution, codec, container, duration, file size, source frame rate |
+| ☐ | Read **Footage started** | The time **and** how much it can be trusted — e.g. *"⚠️ read from the file's own metadata, unconfirmed"* |
+| ☐ | Read the model row | `yolox-nano`, plus runtime version, pipeline version, capability and execution provider |
+| ☐ | Read **Analysis frame rate** | `2 fps`, and beneath it *"2 of every 25 source frames were examined"* |
+| ☐ | Read **Time remaining** on a finished run | `—` with a reason, never `0 s` |
+
+---
+
+## 4 · The timeline — all four lanes *(expanded in P-8.6)*
+
+| ☐ | Do this | Expect |
+| --- | --- | --- |
+| ☐ | Scroll to **Timeline** | A row of numbers first: **Frames analysed · Detections returned · Events persisted · Tracks · Incidents** |
+| ☐ | ⭐ Compare *Detections returned* with *Events persisted* | They differ a lot (e.g. 285 vs 24). That is the dedup window, and the page labels it |
+| ☐ | Read the line about tracks | *"Tracks are not a headcount"* — it must be there |
+| ☐ | Click the **Incidents** tab | Columns **At · Incident · Raised by · Status · From event**. "Raised by" names the **rule and version** |
+| ☐ | Click the **Events** tab | Every stored event with **confidence**, **track**, and the **bounding box numbers** |
+| ☐ | Find a row badged `incident` | That is the exact event that caused an incident — a recorded link, not a guess |
+| ☐ | Click the **Tracks** tab, then **Show me** on any row | The video seeks to that person's first appearance and outlines **only them** |
+| ☐ | Click the **Density** tab | A bar chart labelled **persisted events**, with a warning that it is *not* a detection histogram |
+| ☐ | Click any `▶ 00:16` time button | The video jumps to exactly that point |
+| ☐ | Look for *"Incidents could not be looked up for this run"* | ⛔ It must **NOT** be there |
 
 ---
 
@@ -299,6 +332,22 @@ show `plannedCameras > 0`.)*
 >
 > ⚠️ **Known limitation:** the still is not yet under evidence retention custody. It exists and it is
 > real; formal chain-of-custody is still to come (TD-15).
+
+---
+
+## 6b · Export the record *(new in P-8.6)*
+
+| ☐ | Do this | Expect |
+| --- | --- | --- |
+| ☐ | Click **Export report** at the top right | A `.json` file downloads, named for the recording **and the run** |
+| ☐ | Open it | Source file, footage start **and its source**, start/finish times, all six provenance fields, counts, findings, tracks, incidents |
+| ☐ | ⭐ Compare `counts.incidents` with the incidents listed inside | They must agree — a report that contradicts itself is worse than one that omits the number |
+
+> ⭐ Named for the **run**, not the recording: two analyses of one file are two different answers and
+> must never overwrite each other on disk.
+>
+> ⚠️ The export contains `tracks` and `incidents` but **not** the individual events. Note it if you
+> need them — the Events tab and the Events explorer have them.
 
 ---
 

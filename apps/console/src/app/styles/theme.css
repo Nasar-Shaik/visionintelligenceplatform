@@ -238,3 +238,22 @@
     transform: translateX(100%);
   }
 }
+
+/*
+ * ⚠️ Indeterminate progress — a sweep, never a bar parked at zero.
+ *
+ * "Running, and how far is unknown" and "running, 0 % done" look identical if both render an empty
+ * track, and only the second means something is wrong. Used by `ui/progress.tsx` whenever the
+ * platform genuinely cannot measure completion (ADR-0039 applied to a bar).
+ */
+@keyframes vip-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+.animate-indeterminate {
+  animation: vip-indeterminate 1.2s ease-in-out infinite;
+}
