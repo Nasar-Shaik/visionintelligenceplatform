@@ -1,0 +1,69 @@
+# RTSP source fixture for P-9 **staged probe** verification — NOT part of any deployment.
+#
+# ⚠️ Synthetic. Every result measured against it is a measurement of the platform's probe path, never
+# a claim about camera compatibility: L-1 stands until real hardware is connected in Track B.
+#
+# ### Why this fixture exists at all, when `rtsp-fixture.yml` already serves RTSP
+#
+# The staged probe's whole value is that it names **which stage failed** — `dns` sends an installer
+# to their DNS, `tcp` to their firewall, `authentication` to their password. An open fixture can only
+# ever exercise the success path and the two failures that need no server (an unresolvable name, a
+# closed port). **`authentication` cannot be provoked without a server that refuses credentials**, so
+# without this file that stage would be verified by reading the code and hoping.
+#
+# ⚠️ That matters more than it looks. `stream_probe.py` classifies an auth failure by pattern-matching
+# the transport error text (`_AUTH_MARKERS` = "401", "unauthorized", …). A pattern match against
+# strings produced by someone else's software is exactly the kind of thing that works until the day
+# the library rewords its errors — and nothing would notice, because the probe would keep returning a
+# well-formed report with `authentication: not-executed` instead of `fail`.
+logLevel: error
+rtspAddress: :8554
+rtmp: no
+hls: no
+webrtc: no
+srt: no
+
+# ⚠️ `any` needs `publish` unrestricted: the on-demand encoders publish from inside the container,
+# and a fixture whose own publisher is refused looks exactly like a camera that will not stream.
+# Read is granted per path, so `secure` is reachable only with credentials.
+authInternalUsers:
+  - user: any
+    permissions:
+      - action: publish
+      - action: read
+        path: p9probe
+      - action: read
+        path: blank
+  - user: vipcam
+    pass: Vip-Fixture-2026
+    permissions:
+      - action: read
+        path: secure
+
+pathDefaults:
+  # ⚠️ `-loop 1`, NOT `-stream_loop -1` — see `rtsp-fixture.yml`. `-stream_loop` restarts the demuxer
+  # and the stream ends within a second.
+  runOnDemand: >-
+    ffmpeg -re -loop 1 -framerate 15 -i /fixtures/media/scene-people.jpg
+    -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p -r 15
+    -f rtsp rtsp://localhost:8554/$MTX_PATH
+  runOnDemandRestart: yes
+  runOnDemandStartTimeout: 15s
+  runOnDemandCloseAfter: 5s
+
+paths:
+  # The success path: a real H.264 RTSP stream carrying a photograph of two people, so a probe that
+  # reaches `first-frame` has decoded something a detector could be right or wrong about.
+  p9probe:
+  # ⭐ The same stream behind credentials. Probing it with the WRONG password must fail at
+  # `authentication` and leave every later stage `not-executed`.
+  secure:
+  # The control case: a frame with nothing in it.
+  blank:
+    runOnDemand: >-
+      ffmpeg -re -f lavfi -i testsrc=size=640x360:rate=15
+      -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -pix_fmt yuv420p
+      -f rtsp rtsp://localhost:8554/blank
+    runOnDemandRestart: yes
+    runOnDemandStartTimeout: 15s
+    runOnDemandCloseAfter: 5s

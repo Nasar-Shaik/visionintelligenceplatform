@@ -356,6 +356,70 @@ def _default_connect(host: str, port: int, timeout: float) -> None:
         return None
 
 
+def _rtsp_auth_challenge(host: str, port: int, path: str, timeout: float) -> str:
+    """Ask the RTSP control channel whether this stream is gated on credentials.
+
+    Returns `"required"`, `"not-required"` or `"unknown"`. Never raises — an unknown answer must
+    leave the probe exactly where it was.
+
+    ### ⛔ Why this exists (P-9 A2)
+
+    The `authentication` stage was decided by **pattern-matching the transport's error text** for
+    "401"/"unauthorized". OpenCV's FFmpeg backend writes `method DESCRIBE failed: 401 Unauthorized`
+    to **stderr** and hands Python nothing, so `stream_source.open()` could only ever raise
+    `cannot open source: <uri>` — no marker, no match. Measured against a credentialed fixture with
+    a deliberately wrong password, the probe reported:
+
+        authentication=not-executed  stream-open=fail  failureCode=stream-interrupted  reachable=true
+
+    ⚠️ **A wrong password is the single most common camera installation fault**, and the report named
+    every stage except the one that was wrong. An installer is sent to the stream path or the network.
+
+    ### What this measures, and what it infers
+
+    An unauthenticated `DESCRIBE` **measures** whether the device demands credentials — that answer
+    is read off the wire, not guessed. Combined with a credentialed open that just failed, the
+    conclusion "the supplied credentials were rejected" is an **inference**, and the check's detail
+    says so in those words rather than asserting a certainty the probe does not have.
+
+    ⚠️ Deliberately not implementing RTSP Digest here. Completing the handshake would turn an
+    inference into a measurement, and it is protocol work inside a frozen runtime — recorded as a
+    Track B follow-up instead, where a real device can justify it.
+    """
+    import socket  # noqa: WPS433 - local, only the real path needs it
+
+    request = (
+        f"DESCRIBE rtsp://{host}:{port}{path} RTSP/1.0\r\n"
+        "CSeq: 1\r\n"
+        "Accept: application/sdp\r\n"
+        "User-Agent: VIP-StreamProbe\r\n\r\n"
+    )
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            sock.settimeout(timeout)
+            sock.sendall(request.encode("ascii", "ignore"))
+            # The status line is all that is needed and arrives in the first segment. Reading a
+            # bounded amount keeps a device that streams SDP forever from holding the probe open.
+            head = sock.recv(2048).decode("iso-8859-1", "replace")
+    except OSError:
+        return "unknown"
+    status = head.split("\r\n", 1)[0]
+    if "401" in status or "unauthorized" in status.lower():
+        return "required"
+    if status.startswith("RTSP/1.0 200") or " 200 " in status:
+        return "not-required"
+    return "unknown"
+
+
+def _path_of(uri: str) -> str:
+    """The path portion of a stream URI, `/` when it has none. Userinfo never reaches this."""
+    if "://" not in uri:
+        return "/"
+    remainder = uri.split("://", 1)[1]
+    slash = remainder.find("/")
+    return remainder[slash:] if slash >= 0 else "/"
+
+
 def _finalize(checks: List[ProbeCheck], detail: str, applicable: Tuple[str, ...]) -> List[ProbeCheck]:
     """Fill unreached stages, mark inapplicable ones `skipped`, and sort into `CHECK_ORDER`.
 
@@ -418,18 +482,20 @@ def probe_stream(
     now: Optional[Callable[[], str]] = None,
     resolve: Optional[Callable[[str], List[str]]] = None,
     connect: Optional[Callable[[str, int, float], None]] = None,
+    rtsp_challenge: Optional[Callable[[str, int, str, float], str]] = None,
     runtime_version: Optional[str] = None,
 ) -> ProbeReport:
     """Run the staged probe and report what was observed.
 
-    `build`, `clock`, `resolve` and `connect` are injected so unit tests run a deterministic simulated
-    source with a fake clock — no network, no camera, no sleeping. They default to `None` and resolve
-    at call time rather than being bound as default arguments, which keeps the seams patchable from
-    outside without a test-only branch inside the endpoint.
+    `build`, `clock`, `resolve`, `connect` and `rtsp_challenge` are injected so unit tests run a
+    deterministic simulated source with a fake clock — no network, no camera, no sleeping. They
+    default to `None` and resolve at call time rather than being bound as default arguments, which
+    keeps the seams patchable from outside without a test-only branch inside the endpoint.
     """
     build = build or build_source
     resolve = resolve or _default_resolve
     connect = connect or _default_connect
+    rtsp_challenge = rtsp_challenge or _rtsp_auth_challenge
     from datetime import datetime, timezone  # noqa: WPS433 - local, keeps import cost off the server
 
     timestamp = now() if now else datetime.now(timezone.utc).isoformat(timespec="milliseconds")
@@ -544,6 +610,30 @@ def probe_stream(
                 "not attempted — the device would not serve this stream",
                 "rtsp-negotiation-failure",
             )
+        # ⭐ The transport said nothing useful about WHY. Ask the control channel directly rather
+        # than reporting a generic open failure — see `_rtsp_auth_challenge`. This runs only on a
+        # path that was already going to `stream-interrupted`, so no probe that works today changes.
+        if "authentication" in applicable and scheme.startswith("rtsp") and host and port:
+            gated = rtsp_challenge(host, port, _path_of(uri), min(timeout_seconds, 5.0))
+            if gated == "required":
+                report.reachable = True
+                report.authentication = "failed"
+                credentialed = bool(config.get("_credentialed"))
+                checks.append(
+                    ProbeCheck(
+                        "authentication",
+                        FAIL,
+                        detail=(
+                            "the device requires credentials and rejected the ones supplied"
+                            if credentialed
+                            else "the device requires credentials and none were supplied"
+                        ),
+                        duration_ms=elapsed,
+                    )
+                )
+                return finish(
+                    "not attempted — the device rejected the credentials", "authentication-failure"
+                )
         checks.append(ProbeCheck("stream-open", FAIL, detail=message, duration_ms=elapsed))
         return finish("not attempted — the stream could not be opened", "stream-interrupted")
 

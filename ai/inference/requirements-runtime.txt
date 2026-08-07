@@ -13,3 +13,24 @@
 onnxruntime==1.19.2
 numpy==2.0.2
 pillow==11.3.0
+# ⛔ **Was missing, and its absence made two shipped endpoints unrunnable** (found in P-9 A2).
+#
+# `stream_source.py` and `video_decoder.py` both `import cv2` to open a live source. It was never
+# installed — not here, not in requirements.txt — so `POST /streams/validate` and every live
+# `certify_cli` session raised `ModuleNotFoundError` inside the request handler, killed the
+# connection, and surfaced to the camera service as **"the stream validator is unreachable"**. An
+# installer reading that goes to their network; the fault was a missing Python package.
+#
+# ⚠️ It stayed invisible for eight milestones because `CAMERA_DISCOVERY_URL` was unset (P-9 A1), so
+# nothing in a deployment ever called the endpoints that need it. Two absences, each concealing the
+# other: switching on discovery is what made this one reachable.
+#
+# ⚠️ `-headless`, not `opencv-python`: the GUI build pulls X11/GTK shared objects that a container
+# with no display can never use, and every one of them is a CVE row on a customer's scanner. The
+# headless wheel installs on `python:3.12-slim` with **no apt layer**, which is what keeps this
+# Dockerfile's "no apt at all" property intact. Verified: `FFMPEG: YES`, RTSP open + frame read.
+#
+# ⚠️ NOT a change to the frozen AI Runtime v1.0. The code that imports this is unchanged and stays
+# unchanged; installing a dependency that frozen code already requires restores its behaviour rather
+# than altering it.
+opencv-python-headless==4.10.0.84

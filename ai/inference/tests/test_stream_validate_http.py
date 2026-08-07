@@ -66,6 +66,11 @@ def _fake_build(config):
     BUILT_CONFIGS.append(config)
     if BUILD_BEHAVIOUR["mode"] == "unauthorized":
         return _Refusing()
+    if BUILD_BEHAVIOUR["mode"] == "explodes":
+        # ⛔ The real one, verbatim: `stream_source.open()` imports cv2 lazily, and cv2 was in
+        # neither requirements file until P-9 A2. Not a contrived exception — the exact class and
+        # message the deployed runtime raised on every single call to this endpoint.
+        raise ModuleNotFoundError("No module named 'cv2'")
     return SimulatedStreamSource(uri="sim://camera", total_frames=10)
 
 
@@ -119,6 +124,26 @@ class StreamValidateEndpointTests(unittest.TestCase):
         )
         self.assertEqual(status, 401)
         self.assertFalse(body["success"])
+
+    def test_an_unexpected_fault_is_a_500_and_not_a_dropped_connection(self):
+        """⛔ P-9 A2. `ModuleNotFoundError: No module named 'cv2'` escaped the handler, unwound
+        through `BaseHTTPRequestHandler`, and reset the socket. `HttpStreamProbe` resolves every
+        transport failure to `unavailable` rather than throwing — correctly — so the camera service
+        reported **"the stream validator is unreachable: fetch failed"**, and an installer reading
+        that goes to their switch. The fault was a missing Python package in a container.
+
+        ⚠️ This endpoint points at someone else's hardware, which is where unforeseen faults come
+        from: a camera that answers SOAP with HTML, a codec the decoder has never met. A crash must
+        be an ANSWER, so the layer above can say what actually happened.
+        """
+        BUILD_BEHAVIOUR["mode"] = "explodes"
+        status, body = _post(self.url(), {"streamUrl": "rtsp://cam.local/sub", "protocol": "rtsp"})
+        self.assertEqual(status, 500)
+        self.assertFalse(body["success"])
+        self.assertEqual(body["error"]["code"], "validation_error")
+        # The reason must survive: "unreachable" sends someone to the network, the class name does
+        # not. Naming the exception is what makes the next occurrence diagnosable from a log alone.
+        self.assertIn("ModuleNotFoundError", body["error"]["message"])
 
     def test_requires_a_stream_url(self):
         status, body = _post(self.url(), {"protocol": "rtsp"})

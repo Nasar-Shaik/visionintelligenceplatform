@@ -367,6 +367,11 @@ def make_handler(
 
         # --- helpers ---------------------------------------------------------------
         def _send(self, status: int, payload, content_type: str = "application/json") -> None:
+            # ⚠️ Set BEFORE anything is written, so `_guarded` can tell "the handler failed before
+            # answering" from "the handler answered and then failed". Appending a second response to
+            # an already-written one produces a body no client can parse, which would turn a clean
+            # 500 into a protocol error — a worse failure than the one being reported.
+            self._responded = True
             text = json.dumps(payload) if content_type == "application/json" else str(payload)
             body = text.encode("utf-8")
             self.send_response(status)
@@ -590,11 +595,39 @@ def make_handler(
             elif segs[:1] == ["sessions"]:
                 self._post_sessions(segs)
             elif path == "/discovery/onvif":
-                self._discover_onvif()
+                self._guarded(self._discover_onvif, "discovery_error")
             elif path == "/streams/validate":
-                self._validate_stream()
+                self._guarded(self._validate_stream, "validation_error")
             else:
                 self._err(404, "not_found", f"no route for POST {self.path}")
+
+        def _guarded(self, fn, code: str) -> None:  # noqa: ANN001 - a bound handler
+            """Run a device-facing handler so an unexpected fault is an ANSWER, not a dropped socket.
+
+            ⛔ **Found in P-9 A2.** `/streams/validate` raised `ModuleNotFoundError: No module named
+            'cv2'` inside the handler. With no `except` anywhere on the path the exception unwound
+            through `BaseHTTPRequestHandler`, the connection was reset, and the camera service — which
+            correctly resolves every transport failure to `unavailable` rather than throwing —
+            reported **"the stream validator is unreachable: fetch failed"**. An installer reading
+            that goes to their switch. The fault was a missing Python package in a container.
+
+            ⚠️ These two endpoints point at **someone else's hardware**, which is exactly where
+            unforeseen faults come from: a camera that answers SOAP with HTML, a codec the decoder
+            has never met, a device that closes the socket mid-DESCRIBE. Track B is made of those.
+            `/infer` already handles its own exceptions; this catches only what was previously
+            unhandled, so no path that works today changes shape.
+            """
+            self._responded = False
+            try:
+                fn()
+            except Exception as exc:  # noqa: BLE001 - the point is that nothing escapes
+                obslog.error(
+                    "device-facing handler failed",
+                    path=_split(self.path)[0],
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+                if not self._responded:
+                    self._err(500, code, f"{type(exc).__name__}: {exc}")
 
         # --- /streams/validate (P-2) -----------------------------------------------
         def _validate_stream(self) -> None:

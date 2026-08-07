@@ -246,6 +246,66 @@ class TestFailureTaxonomy(unittest.TestCase):
         self.assertEqual(checks["rtsp-negotiation"], "fail")
         self.assertEqual(checks["stream-open"], "not-executed")
 
+    def test_a_silent_open_failure_asks_the_control_channel_before_giving_up(self):
+        """⭐ P-9 A2. OpenCV's FFmpeg backend writes `401 Unauthorized` to **stderr** and hands
+        Python nothing, so the source can only ever raise `cannot open source: <uri>` — no marker for
+        `_looks_like_auth_failure` to match. Measured against a credentialed fixture with a wrong
+        password, the probe reported `authentication=not-executed`, `stream-open=fail`,
+        `failureCode=stream-interrupted`. A wrong password is the commonest installation fault and
+        the report named every stage except the one that was wrong."""
+        report = probe(
+            build=lambda _c: Refusing("cannot open source: rtsp://cam.local:554/sub"),
+            rtsp_challenge=lambda *_: "required",
+            config={"type": "rtsp", "uri": URI, "_credentialed": True},
+        )
+        checks = statuses(report)
+        self.assertEqual(report.failure_code, "authentication-failure")
+        self.assertEqual(report.authentication, "failed")
+        self.assertEqual(checks["authentication"], "fail")
+        self.assertEqual(checks["stream-open"], "not-executed")
+
+    def test_the_challenge_says_whether_credentials_were_supplied_at_all(self):
+        """"Wrong password" and "no password" are different visits: one is a typo, the other is a
+        camera nobody told the platform about."""
+        report = probe(
+            build=lambda _c: Refusing("cannot open source: rtsp://cam.local:554/sub"),
+            rtsp_challenge=lambda *_: "required",
+            config={"type": "rtsp", "uri": URI},
+        )
+        detail = {c.name: c.detail for c in report.checks}["authentication"]
+        self.assertIn("none were supplied", detail)
+
+    def test_a_stream_that_is_not_gated_keeps_the_generic_open_failure(self):
+        """⚠️ The challenge may only ADD information. A device that does not demand credentials must
+        land exactly where it landed before this seam existed, or a network fault starts being
+        reported as a password problem."""
+        for answer in ("not-required", "unknown"):
+            with self.subTest(answer=answer):
+                report = probe(
+                    build=lambda _c: Refusing("cannot open source: rtsp://cam.local:554/sub"),
+                    rtsp_challenge=lambda *_: answer,
+                )
+                self.assertEqual(report.failure_code, "stream-interrupted")
+                self.assertEqual(statuses(report)["stream-open"], "fail")
+                self.assertEqual(statuses(report)["authentication"], "not-executed")
+
+    def test_an_explicit_auth_error_never_reaches_the_control_channel(self):
+        """A transport that DOES name the failure is believed, and nothing is asked. The challenge
+        opens a socket; running it when the answer is already known would cost a round trip per
+        probe on the most common failure path."""
+        asked = []
+
+        def challenge(*args):
+            asked.append(args)
+            return "not-required"
+
+        report = probe(
+            build=lambda _c: Refusing("cannot open source: 401 Unauthorized"),
+            rtsp_challenge=challenge,
+        )
+        self.assertEqual(report.failure_code, "authentication-failure")
+        self.assertEqual(asked, [])
+
     def test_a_stream_that_opens_and_never_yields_is_a_timeout(self):
         report = probe(build=sim(total_frames=0))
         checks = statuses(report)

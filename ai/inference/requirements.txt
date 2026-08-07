@@ -6,6 +6,11 @@
 onnxruntime==1.19.2
 numpy==2.0.2
 pillow==11.3.0
+# ⛔ Live source decoding. `stream_source.py` and `video_decoder.py` import it; it was in neither
+# requirements file until P-9 A2 found `POST /streams/validate` crashing on `ModuleNotFoundError` in
+# the deployed image. Same pin as requirements-runtime.txt — two files, one set of versions, or the
+# deployed runtime is not the one that was tested.
+opencv-python-headless==4.10.0.84
 # Model Registry client — resolves + downloads model artifacts (aligned with ai/mlops).
 mlflow==3.14.0
 boto3==1.43.56
