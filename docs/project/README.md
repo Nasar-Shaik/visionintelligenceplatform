@@ -16,6 +16,19 @@ Human-facing program **policy, decisions, and reference** (governance suite, dep
 
 > **Phase 1 blueprint:** [`../architecture/phase1/`](../architecture/phase1/README.md) — full pre-implementation architecture (awaiting Architect approval).
 
+## Product engineering (2026-08-07 — the transition out of platform engineering)
+
+> Written at the close of [P-9 Track A](P9_TRACK_A_CLOSEOUT.md). **These plan work; they authorise
+> none of it.** Each milestone is still authorised at review, in sequence.
+
+| File                                                               | Purpose                                                                                                                              |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| [PRODUCT_READINESS.md](PRODUCT_READINESS.md)                       | What is production-ready, demo-ready, hardware-gated, verification-only — and what a customer can use today. Three deployment shapes |
+| [PRODUCT_IMPLEMENTATION_ORDER.md](PRODUCT_IMPLEMENTATION_ORDER.md) | **⭐ Start here.** Dependency graph, critical path, parallel lanes, durations, and the single recommendation                         |
+| [OFFLINE_VIDEO_PLAN.md](OFFLINE_VIDEO_PLAN.md)                     | P-8 Phase 8 — upload an MP4, get incidents. Closes C-21 / TD-9 G-2                                                                   |
+| [RETAIL_CAPABILITY_PACK.md](RETAIL_CAPABILITY_PACK.md)             | Nine retail capabilities against the primitives that exist, and the four that do not                                                 |
+| [DEMO_MODE_PLAN.md](DEMO_MODE_PLAN.md)                             | Runtime Preview vs Product Demonstration, and the two requested panels that do not exist                                             |
+
 ## Governance suite (Architect-mandated · append-only where noted)
 
 > Permanent engineering policy. Every slice updates the applicable files before it is [Done](DEFINITION_OF_DONE.md). See also the reusable [templates](../templates/).

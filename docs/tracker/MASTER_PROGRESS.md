@@ -254,6 +254,26 @@ _Last updated: 2026-08-07 · Claude_
   **1032** · contracts · import graph 0 violations.
   [ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md).
 
+- **Product engineering transition — planning complete, nothing implemented (2026-08-07).** Five
+  documents at the close of P-9 Track A: [PRODUCT_READINESS](../project/PRODUCT_READINESS.md),
+  [PRODUCT_IMPLEMENTATION_ORDER](../project/PRODUCT_IMPLEMENTATION_ORDER.md),
+  [OFFLINE_VIDEO_PLAN](../project/OFFLINE_VIDEO_PLAN.md),
+  [RETAIL_CAPABILITY_PACK](../project/RETAIL_CAPABILITY_PACK.md) and
+  [DEMO_MODE_PLAN](../project/DEMO_MODE_PLAN.md). ⚠️ **They plan work and authorise none of it.**
+  **Recommendation: P-8 Phase 8 · Offline Video Investigation**, two weeks, no new services — the only
+  work on the board that can validate the platform against real footage before hardware arrives, and
+  the instrument every capability in the retail pack needs for its verification.
+
+  ⛔ **Two findings came out of reading the code rather than the documents.** (1) **There is no schedule
+  primitive** — `Rule` has no schedule field, the rules service has no evaluation for one, and the word
+  appears in the contracts exactly once as an enum value nothing produces — yet
+  [VERTICALS](../customer-workflows/VERTICALS.md) listed it **✅ shipped** and five rows across four
+  verticals rested on it. Corrected in the same commit; its real cost is a **timezone**, which nothing
+  in this platform carries. (2) `InMemoryDwellStateStore` stamps its LRU with **wall clock** against an
+  **event-time** horizon, on one 50 000-entry budget shared by everything the service evaluates — so an
+  offline analysis could evict a live customer's in-progress dwell. Recorded as a design constraint
+  before it could be discovered under load.
+
 - **P-9 Track A · Real Camera Validation — pre-hardware engineering ✅ complete (2026-08-07).** The
   research changed the milestone's shape before a line was written: **almost all of P-9 was already
   built and switched off.** ONVIF discovery (`onvif.py`, 651 lines, 22 tests), `POST /discovery/onvif`,

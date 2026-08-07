@@ -36,7 +36,7 @@ hop — all five are _primitives inside_ an existing stage.
 | **Window**             | "≥ N matching events within W seconds", grouped            | ✅ shipped                                                                                     |
 | **Dwell**              | elapsed presence of one subject, in event time             | ✅ shipped                                                                                     |
 | **Identity**           | subject continuity across gaps, within a camera            | ✅ shipped                                                                                     |
-| **Schedule**           | when a rule is live                                        | ✅ shipped                                                                                     |
+| **Schedule**           | when a rule is live                                        | ⛔ **NOT BUILT — corrected 2026-08-07.** See the note below                                    |
 | **Dry run**            | evaluate fully, publish nothing                            | ✅ shipped                                                                                     |
 | **Evidence reference** | camera + interval + events, never bytes                    | ✅ shipped                                                                                     |
 | **Model registry**     | which model runs, per capability                           | ✅ shipped ([ADR-0037](../adr/ADR-0037-model-agnostic-runtime-and-registry-driven-loading.md)) |
@@ -45,6 +45,23 @@ hop — all five are _primitives inside_ an existing stage.
 a bag needs a _registered model that emits that class or attribute_. The runtime is model-agnostic and
 that is a configuration exercise; the **model itself is not a platform capability** and no row below
 pretends otherwise.
+
+> ⛔ **Correction, 2026-08-07 — `Schedule` was listed ✅ shipped and does not exist.** Found by reading
+> the code while planning the [Retail Capability Pack](../project/RETAIL_CAPABILITY_PACK.md): `Rule`
+> has no schedule field, the rules service has no schedule evaluation, and the word appears in the
+> contracts exactly once as a `RuleReferenceKind` value nothing produces. A **one-off absolute** time
+> range can be expressed as a condition on `occurredAt`; a **recurring** "every night 18:00–06:00"
+> cannot be expressed at all.
+>
+> ⚠️ **Five rows below rested on it** — out-of-hours presence, unauthorised entry, restricted corridor,
+> restricted aisle and staff presence — and each is downgraded to 🔶 with `schedule` named. The rows
+> that use zone scope **without** a schedule are unaffected and stay ✅.
+>
+> ⚠️ **Its real cost is a timezone.** "9 a.m." is a local claim and nothing in this platform carries a
+> timezone — not a tenant, not a node, not a camera. The only such field in the contracts package is on
+> `JobSchedule`, whose own comment says exactly this, and it is the precedent to follow. Specified in
+> [RETAIL_CAPABILITY_PACK §5.1](../project/RETAIL_CAPABILITY_PACK.md); recorded in
+> [PRODUCT_READINESS §7.1](../project/PRODUCT_READINESS.md).
 
 ---
 
@@ -55,22 +72,22 @@ Legend — **✅** expressible today with configuration only · **🔶** needs o
 
 ### Retail
 
-| Capability        | Expressed by                                      | Status                                                                                 |
-| ----------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| **Loitering**     | zone scope + dwell                                | ✅ **shipped**                                                                         |
-| Restricted area   | zone scope + dwell (short) or immediate           | ✅                                                                                     |
-| Shelf visit       | zone scope + dwell, short threshold               | ✅ ⚠️ but see the ~10 s sampling floor (L-57)                                          |
-| Staff presence    | zone scope + schedule + dwell                     | ✅ ⚠️ _presence_, not _identification_ — the platform cannot tell staff from customers |
-| Queue length      | zone + **count of distinct subjects**             | 🔶 count aggregation                                                                   |
-| Queue abandonment | queue length + a subject leaving before the front | 🔶 count + exit detection                                                              |
-| Tailgating        | **line crossing** + inter-arrival time            | 🔶 line geometry                                                                       |
-| Theft attempt     | composition of several weak signals               | ⛔ ⚠️ see §5                                                                           |
+| Capability        | Expressed by                                      | Status                                                                                              |
+| ----------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| **Loitering**     | zone scope + dwell                                | ✅ **shipped**                                                                                      |
+| Restricted area   | zone scope + dwell (short) or immediate           | ✅                                                                                                  |
+| Shelf visit       | zone scope + dwell, short threshold               | ✅ ⚠️ but see the ~10 s sampling floor (L-57)                                                       |
+| Staff presence    | zone scope + schedule + dwell                     | 🔶 **schedule** ⚠️ _presence_, not _identification_ — the platform cannot tell staff from customers |
+| Queue length      | zone + **count of distinct subjects**             | 🔶 count aggregation                                                                                |
+| Queue abandonment | queue length + a subject leaving before the front | 🔶 count + exit detection                                                                           |
+| Tailgating        | **line crossing** + inter-arrival time            | 🔶 line geometry                                                                                    |
+| Theft attempt     | composition of several weak signals               | ⛔ ⚠️ see §5                                                                                        |
 
 ### Hospital
 
 | Capability          | Expressed by                                      | Status                                                                       |
 | ------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Unauthorised entry  | zone scope + schedule                             | ✅                                                                           |
+| Unauthorised entry  | zone scope + schedule                             | 🔶 **schedule** — ✅ if the zone is restricted at **all** times              |
 | Patient wandering   | zone scope + dwell, **and cross-camera identity** | ⛔ ⚠️ a corridor is many cameras; the platform's identity does not span them |
 | Fall detection      | a pose/action model                               | 🔴                                                                           |
 | Bed-exit            | zone + absence ("the bed zone became empty")      | 🔶 absence stage                                                             |
@@ -98,7 +115,7 @@ only thing between a person and a machine. It is a **supervisory** signal beside
 
 | Capability        | Expressed by                           | Status                                                 |
 | ----------------- | -------------------------------------- | ------------------------------------------------------ |
-| Restricted aisle  | zone scope + schedule                  | ✅                                                     |
+| Restricted aisle  | zone scope + schedule                  | 🔶 **schedule** — ✅ if restricted at **all** times    |
 | Loading-bay dwell | zone scope + dwell, long threshold     | ✅                                                     |
 | Dock occupancy    | zone + count                           | 🔶 count aggregation                                   |
 | Vehicle movement  | a **vehicle class** + line crossing    | 🔴 + 🔶                                                |
@@ -106,12 +123,12 @@ only thing between a person and a machine. It is a **supervisory** signal beside
 
 ### Education
 
-| Capability            | Expressed by                       | Status               |
-| --------------------- | ---------------------------------- | -------------------- |
-| Restricted corridor   | zone scope + schedule              | ✅                   |
-| Out-of-hours presence | zone scope + schedule              | ✅                   |
-| Student crowding      | zone + count + threshold           | 🔶 count aggregation |
-| Exit-route blockage   | zone + dwell on a non-person class | 🔶 + 🔴              |
+| Capability            | Expressed by                       | Status                                                |
+| --------------------- | ---------------------------------- | ----------------------------------------------------- |
+| Restricted corridor   | zone scope + schedule              | 🔶 **schedule** — ✅ if restricted at **all** times   |
+| Out-of-hours presence | zone scope + schedule              | 🔶 **schedule** ⛔ "out of hours" **is** the schedule |
+| Student crowding      | zone + count + threshold           | 🔶 count aggregation                                  |
+| Exit-route blockage   | zone + dwell on a non-person class | 🔶 + 🔴                                               |
 
 ⚠️ **Education deployments involve minors.** Retention defaults, access control and what is recorded
 in an incident's explanation deserve an explicit customer decision before any rule is enabled. The
@@ -133,10 +150,13 @@ strongest evidence for the claim in §1 — and also the clearest illustration o
 
 ## 3 · ⚠️ The uncomfortable summary
 
-**Most of the ✅ rows are the same rule.** Zone scope plus dwell plus a schedule expresses restricted
-area, loitering, shelf visit, out-of-hours presence, loading-bay dwell, illegal parking and machine-
-guard breach. That is a real platform result and it should be stated plainly rather than presented as
-seven separate capabilities.
+**Most of the ✅ rows are the same rule.** Zone scope plus dwell expresses restricted area, loitering,
+shelf visit, loading-bay dwell, illegal parking and machine-guard breach. That is a real platform
+result and it should be stated plainly rather than presented as six separate capabilities.
+
+⛔ **Corrected 2026-08-07:** this paragraph said "plus a schedule" and listed **out-of-hours presence**
+among them. There is no schedule primitive (see the note in §1), so every _timed_ variant of these rows
+is 🔶 and out-of-hours presence is 🔶 outright. The untimed rows are unaffected.
 
 What it means commercially: **the first customer capability was expensive and the next six are cheap,
 but the seventh is expensive again** — because the seventh is the one that needs a primitive that does
@@ -145,17 +165,21 @@ table exists to prevent.
 
 ---
 
-## 4 · The five gaps, ranked by how many rows they unlock
+## 4 · The gaps, ranked by how many rows they unlock
 
-| #   | Missing primitive                                                 | Unlocks                                                                             | Shape of the work                                                                                              |
-| --- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| 1   | **Count aggregation** — distinct subjects in a zone at an instant | queue length, occupancy, crowding, dock occupancy, congestion (5 rows, 5 verticals) | a new stateful stage beside `dwell`, same shape                                                                |
-| 2   | **Line geometry + crossing test**                                 | tailgating, wrong-way, vehicle counting, entry/exit                                 | `line` is already declared in `ZoneShape` and marked **non-evaluable**; the geometry layer was designed for it |
-| 3   | **Non-person classes and attributes**                             | PPE, forklift, vehicle, abandoned object                                            | ⚠️ **model work, not platform work** — the registry already supports it                                        |
-| 4   | **Absence** — "this zone became empty"                            | bed-exit, unattended post, blocked-route clearance                                  | an inversion the rule engine cannot currently express: rules fire on events, and absence produces none         |
-| 5   | **Cross-camera identity**                                         | patient wandering, following someone through a building                             | ⛔ **research.** Everything above is engineering; this is not                                                  |
+⛔ **Six, not five — corrected 2026-08-07.** `Schedule` was believed shipped and was never built; it
+now sits at rank 2 because it is small and unlocks the timed variant of every ✅ row above.
 
-⚠️ **Gap 4 is subtler than it looks and is worth stating clearly**: a rule engine driven by events can
+| #   | Missing primitive                                                 | Unlocks                                                                                                    | Shape of the work                                                                                                                                     |
+| --- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Count aggregation** — distinct subjects in a zone at an instant | queue length, occupancy, crowding, dock occupancy, congestion (5 rows, 5 verticals)                        | a new stateful stage beside `dwell`, same shape                                                                                                       |
+| 2   | ⛔ **Schedule** — when a rule is live                             | out-of-hours presence, unauthorised entry, restricted corridor/aisle, staff presence (5 rows, 4 verticals) | a gate stage on the event's `occurredAt`. ⚠️ **Its real cost is a timezone** — nothing in this platform carries one; follow `JobSchedule`'s precedent |
+| 3   | **Line geometry + crossing test**                                 | tailgating, wrong-way, vehicle counting, entry/exit                                                        | `line` is already declared in `ZoneShape` and marked **non-evaluable**; the geometry layer was designed for it                                        |
+| 4   | **Non-person classes and attributes**                             | PPE, forklift, vehicle, abandoned object                                                                   | ⚠️ **model work, not platform work** — the registry already supports it                                                                               |
+| 5   | **Absence** — "this zone became empty"                            | bed-exit, unattended post, blocked-route clearance                                                         | an inversion the rule engine cannot currently express: rules fire on events, and absence produces none                                                |
+| 6   | **Cross-camera identity**                                         | patient wandering, following someone through a building                                                    | ⛔ **research.** Everything above is engineering; this is not                                                                                         |
+
+⚠️ **Gap 5 is subtler than it looks and is worth stating clearly**: a rule engine driven by events can
 only react to something happening. "Nobody is at the nurses' station" is the absence of events, and
 absence needs a clock the engine owns rather than a message it receives. It is the same trap
 [ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md) records one layer down —

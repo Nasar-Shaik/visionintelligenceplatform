@@ -374,6 +374,17 @@ justifies an architecture milestone of its own.
 
 ## Related
 
+- ⭐ **[PRODUCT_IMPLEMENTATION_ORDER](PRODUCT_IMPLEMENTATION_ORDER.md) — the sequencing decision of
+  2026-08-07**, taken at the close of P-9 Track A. It changes **three** things below and nothing else:
+  **C-46 background jobs moves from P-11 to now** (it acquires a demanded consumer instead of being
+  built speculatively, so P-11 gets shorter); **C-21 "upload a recording and analyse it" is promoted
+  out of the P-8 table into a milestone of its own** ([OFFLINE_VIDEO_PLAN](OFFLINE_VIDEO_PLAN.md)); and
+  **PHASE_8_PLAN §4.1/§4.2 are swapped**, because the capability pack's own stated risk — a capability
+  that is configurable and unverified — is closed by the offline path and by nothing else. P-7 through
+  P-14 keep their order and their reasons.
+- [PRODUCT_READINESS](PRODUCT_READINESS.md) — what can be sold, shown, piloted and deployed today, and
+  the five things that block a paid production deployment
+- [RETAIL_CAPABILITY_PACK](RETAIL_CAPABILITY_PACK.md) · [DEMO_MODE_PLAN](DEMO_MODE_PLAN.md)
 - [PHASE_8_PLAN](PHASE_8_PLAN.md) — ⚠️ **what follows P-8 Phase 7**: customer capabilities on two
   tracks (~20 % platform / ~80 % capability), and why the cost curve across capabilities is not flat
 - [customer-workflows/](../customer-workflows/) — the customer-facing reference architecture, one

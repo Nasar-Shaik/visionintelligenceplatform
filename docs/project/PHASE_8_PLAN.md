@@ -65,6 +65,20 @@ the seventh.
 
 Ordered by evidence, not by the order a customer asked:
 
+> ⭐ **Amended 2026-08-07 — §4.1 and §4.2 are preceded by Offline Video Investigation.**
+> [OFFLINE_VIDEO_PLAN](OFFLINE_VIDEO_PLAN.md) takes Phase 8; packaging (§4.1) becomes Phase 9 and
+> count aggregation (§4.2) follows inside it. **The reason is §4.1's own sentence**: the risk of
+> packaging is _"a capability that is configurable and unverified… five templates nobody has run are
+> five of those waiting"_ — and the thing that runs them, against real footage a human labelled first,
+> is the offline path. Packaging first ships five instances of exactly the risk §4.1 names.
+> ⚠️ Nothing else in this document changes: the two tracks, the 20 % ceiling, the cost curve in §3, the
+> ordering of §4.3, the exclusions in §4.4 and the eight deliverables in §6 all stand.
+> Full reasoning: [PRODUCT_IMPLEMENTATION_ORDER](PRODUCT_IMPLEMENTATION_ORDER.md) §6.
+>
+> ⛔ **One correction to §4.3 while it is open:** the schedule primitive that
+> [VERTICALS](../customer-workflows/VERTICALS.md) listed as shipped **does not exist**. It is now a
+> sixth gap, and it is the reason several "configuration only" rows are not.
+
 ### 4.1 Package what already works · Track B · ⚠️ do this first
 
 **Restricted Area · Shelf Visit · Staff Presence · Out-of-hours Presence · Loading-bay Dwell.**
