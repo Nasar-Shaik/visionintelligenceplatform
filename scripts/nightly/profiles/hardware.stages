@@ -7,6 +7,11 @@
 # aborted". Only the report uses it: an aborted night is the one that most needs a written summary.
 
 preflight | Pre-flight checks               | platform/preflight.sh   | RUN_PREFLIGHT |           | abort    | TIMEOUT_PREFLIGHT
+# ⭐ The one stage on this profile that IS implemented (P-9 A8). It runs the whole certification
+# procedure against the synthetic fixture in the deployed runtime image, and asserts the verdict is
+# still a REFUSAL. Registered here rather than on `nightly` because this is the hardware profile's
+# subject, and because the certification soak lands beside it the day real devices arrive.
+certification | Certification procedure, end to end | hardware/certification.sh | RUN_CERTIFICATION | preflight | continue | TIMEOUT_RUNTIME
 onvif     | ONVIF discovery against devices | hardware/onvif.sh          | RUN_ONVIF     | preflight | continue | TIMEOUT_RUNTIME
 vendors   | One camera per vendor family    | hardware/cameras.sh | RUN_VENDORS | preflight | continue | TIMEOUT_RUNTIME
 nvr       | Four-channel NVR ingest         | hardware/nvr.sh   | RUN_NVR       | preflight | continue | TIMEOUT_RUNTIME

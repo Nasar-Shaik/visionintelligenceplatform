@@ -347,6 +347,29 @@ class ShippedRegistryTest(unittest.TestCase):
         self.assertIn("reconnect-recovery", outstanding)
         self.assertIn("clean-shutdown", outstanding)
 
+    def test_the_committed_compatibility_matrix_matches_the_registry(self):
+        """⭐ P-9. The matrix is GENERATED, and this is what stops it being edited.
+
+        ⚠️ A hand-kept support matrix drifts, and it drifts optimistically — nobody edits a table to
+        downgrade a device. Regenerating and comparing means the only way to change what the matrix
+        claims is to change what the evidence says.
+        """
+        from camera_registry import render_markdown  # noqa: WPS433 - local to the assertion
+
+        path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+            "docs", "project", "CAMERA_COMPATIBILITY_MATRIX.md",
+        )
+        self.assertTrue(os.path.isfile(path), f"missing generated matrix: {path}")
+        with open(path, encoding="utf-8") as fh:
+            committed = fh.read()
+        self.assertEqual(
+            committed,
+            render_markdown(self.registry),
+            "CAMERA_COMPATIBILITY_MATRIX.md has drifted from the registry — regenerate it with "
+            "`python certify_cli.py --matrix --markdown`, never by editing the file",
+        )
+
     def test_the_matrix_spells_the_status_out_in_words(self):
         # A tick or a dash invites an optimistic reading; words do not.
         text = render_matrix(self.registry.matrix())

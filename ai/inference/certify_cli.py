@@ -39,7 +39,7 @@ import time
 from typing import List, Optional
 
 from benchmark import BenchmarkWorkload, environment_fingerprint, run_benchmark
-from camera_registry import CameraRegistry, RegistryError, render_matrix
+from camera_registry import CameraRegistry, RegistryError, render_markdown, render_matrix
 from certification import (
     CapabilityAccumulator,
     CertificationBudget,
@@ -378,8 +378,13 @@ def _print_summary(summary: dict, compatibility: dict, soak: Optional[dict]) -> 
 # --- reporting subcommands ------------------------------------------------------
 
 
-def matrix(_args: argparse.Namespace) -> int:
+def matrix(args: argparse.Namespace) -> int:
     registry = CameraRegistry(getattr(args, "registry_dir", None)).load()
+    if getattr(args, "markdown", False):
+        # ⭐ The committed matrix is generated from here and nowhere else. A hand-kept support matrix
+        # drifts optimistically — nobody edits a table to downgrade a device.
+        print(render_markdown(registry), end="")
+        return 0
     print(render_matrix(registry.matrix()))
     summary = registry.summary()
     print(f"\n{summary['devices']} devices · " + " · ".join(
@@ -459,6 +464,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--discover", action="store_true", help="probe the network for ONVIF devices")
     p.add_argument("--subnet-timeout", type=float, default=3.0)
     p.add_argument("--matrix", action="store_true", help="print the compatibility matrix and exit")
+    p.add_argument("--markdown", action="store_true",
+                   help="with --matrix: emit the committed CAMERA_COMPATIBILITY_MATRIX.md")
     p.add_argument("--sizing", help="print a hardware sizing guide for this deployment profile")
     p.add_argument("--cameras", type=int, default=0, help="camera count for --sizing")
     p.add_argument("--workload", nargs="*", help="behaviours enabled, for --sizing")

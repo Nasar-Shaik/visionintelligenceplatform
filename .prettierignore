@@ -16,3 +16,12 @@ docs/review/**/*-capacity.json
 docs/review/**/*-mutations.json
 docs/review/**/*-resilience.json
 docs/review/p8/tracking-truth.json
+docs/review/p9/h265-decode.json
+docs/review/p9/baseline/*.json
+
+# ⚠️ GENERATED, and two gates wanted to own it (P-9). `CAMERA_COMPATIBILITY_MATRIX.md` is emitted by
+# `certify_cli.py --matrix --markdown`, and a unit test regenerates it and demands a byte match — the
+# guard that stops a support matrix being edited by hand, which is the direction it always drifts.
+# Prettier realigns the table columns, so the two gates contradicted each other and the drift guard
+# lost. Generated documents are not prettier's to format.
+docs/project/CAMERA_COMPATIBILITY_MATRIX.md
