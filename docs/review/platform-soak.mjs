@@ -346,6 +346,20 @@ async function api(path, opts = {}) {
 }
 
 let H = {};
+let tokenExpiresAt = 0;
+
+/**
+ * ⚠️ **A long run MUST re-authenticate, and the first version of this file did not.**
+ *
+ * `JWT_ACCESS_TTL` is **15 minutes**. The 2026-08-07 soak logged in once and ran for 6.9 hours: at
+ * sample 3 — 17.6 minutes in — every API call began returning 401, and because the sample builder
+ * read `res.json?.data` behind `?? 0` fallbacks, **64 of 67 samples recorded zero** for camera
+ * health, recording continuity, dwell state, incidents and incident latency. Cleanup at the end of
+ * that run resolved **58 incidents** the run itself had reported as none.
+ *
+ * The token's own `exp` claim is the authority rather than a hard-coded interval, so a deployment
+ * that changes the TTL cannot silently reintroduce this.
+ */
 async function login() {
   const r = await api('/identity/auth/login', {
     method: 'POST',
@@ -356,10 +370,40 @@ async function login() {
   if (token === undefined)
     throw new Error(`login failed: HTTP ${r.status} ${r.text.slice(0, 200)}`);
   H = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+  try {
+    const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+    tokenExpiresAt = Number(claims.exp) * 1000;
+  } catch {
+    /* Unparseable claim: assume the documented 15 minutes rather than assume forever. */
+    tokenExpiresAt = Date.now() + 15 * 60_000;
+  }
+}
+
+/** Re-authenticate two minutes before expiry. Called at the top of every sample. */
+async function ensureAuth() {
+  if (Date.now() > tokenExpiresAt - 120_000) await login();
 }
 
 const listOf = (payload) =>
   payload?.items ?? payload?.incidents ?? payload?.cameras ?? payload ?? [];
+
+/**
+ * Read an API endpoint, distinguishing **"it said zero"** from **"it did not answer"**.
+ *
+ * ⚠️ **ADR-0039 applies to instruments, and this file broke it.** The 2026-08-07 soak turned 401s
+ * into `0` for two thirds of its signals — and a zero is worse than a gap, because a gap is visibly
+ * missing while a zero reads as a measurement. Worse, `streamsTotal: 0` made the check "no stream
+ * was ever down" pass **vacuously**: zero of zero streams were down. That is rule 4's `[].every()`
+ * trap arriving by a different road.
+ *
+ * Returns `{ ok, data }`. Callers record `null` for every derived field when `ok` is false, and the
+ * analysis reports those as *not measured* rather than counting them as zero.
+ */
+async function apiRead(path) {
+  const res = await api(path, { headers: H });
+  const ok = res.status >= 200 && res.status < 300 && res.json?.data !== undefined;
+  return { ok, data: ok ? res.json.data : undefined, status: res.status };
+}
 
 /**
  * Collect the items created since `sinceIso`, walking keyset pages newest-first.
@@ -532,6 +576,27 @@ const flush = (extra = {}) =>
   );
 
 try {
+  /*
+   * ⚠️ **A long soak on battery is a soak that ends when the battery does.**
+   *
+   * The 2026-08-07 run was force-slept for 74 minutes at 8 % battery, 5.5 hours in. `caffeinate -i`
+   * holds `PreventUserIdleSystemSleep` and does NOT prevent low-battery sleep — it was still holding
+   * its assertion when the machine went down. Checked rather than assumed, and only for runs long
+   * enough for it to matter, so a short smoke test on a laptop is unaffected.
+   */
+  if (MINUTES >= 60 && process.platform === 'darwin' && process.env.SOAK_ALLOW_BATTERY !== '1') {
+    const batt = shq('pmset', ['-g', 'batt']);
+    const onAc = /AC Power/.test(batt);
+    const pct = num((batt.match(/(\d+)%/) ?? [])[1], 100);
+    if (!onAc) {
+      throw new Error(
+        `refusing a ${MINUTES}-minute soak on battery power (${pct}%). ` +
+          'Connect AC. Set SOAK_ALLOW_BATTERY=1 to override with a stated reason.',
+      );
+    }
+    console.log(`  ✓ on AC power (battery ${pct}%)`);
+  }
+
   integrityBefore = fullIntegrity('before the run');
   if (!integrityBefore.ok) {
     throw new Error(`deployment integrity is not green before the run: ${integrityBefore.line}`);
@@ -676,6 +741,8 @@ try {
 
   for (let n = 1; n <= totalSamples; n += 1) {
     await sleep(SAMPLE_SECONDS * 1000);
+    /* ⚠️ Before anything is read: the token outlives 15 minutes only if this is here. */
+    await ensureAuth();
 
     const node = Object.fromEntries(
       Object.entries(NODE_SERVICES).map(([s, p]) => [s, scrapeNode(s, p)]),
@@ -710,17 +777,29 @@ try {
      * dwell rule can be seen: `dwellRules` counts it, `activeZones` says the zone reached the engine,
      * and `activeDwellTimers` says a clock is actually running for a subject.
      */
-    const live = (await api('/rules/rules/live', { headers: H })).json?.data ?? {};
-    const streamHealth = (await api('/media/streams/health', { headers: H })).json?.data ?? {};
+    const liveRead = await apiRead('/rules/rules/live');
+    const streamRead = await apiRead('/media/streams/health');
+    /*
+     * ⚠️ `apiOk` gates every field below. When the control plane did not answer, each derived value
+     * is `null` — "not measured" — never `0`. ADR-0039, applied to the instrument.
+     */
+    const apiOk = liveRead.ok && streamRead.ok;
+    const live = liveRead.data ?? {};
+    const streamHealth = streamRead.data ?? {};
     const allStreams = streamHealth.streams ?? [];
     const myStreams = allStreams.filter((s) => cameraIds.includes(s.cameraId));
-    const byHealth = (v) => myStreams.filter((s) => s.health === v).length;
+    const byHealth = (v) => (streamRead.ok ? myStreams.filter((s) => s.health === v).length : null);
+    const liveNum = (v) => (liveRead.ok ? num(v) : null);
 
     /* New segments and new incidents SINCE THE LAST SAMPLE — time-based, immune to the page cap. */
-    const newRecordings = (
-      await collectSince('/media/recordings', prev.atIso, { timeField: 'createdAt' })
-    ).filter((r) => cameraIds.includes(r.cameraId));
-    const recDurations = newRecordings.map((r) => num(r.durationSeconds)).filter((v) => v > 0);
+    const newRecordings = apiOk
+      ? (await collectSince('/media/recordings', prev.atIso, { timeField: 'createdAt' })).filter(
+          (r) => cameraIds.includes(r.cameraId),
+        )
+      : null;
+    const recDurations = (newRecordings ?? [])
+      .map((r) => num(r.durationSeconds))
+      .filter((v) => v > 0);
 
     /*
      * ⚠️ `raisedAt`, NOT `createdAt`. An incident has no `createdAt`, so the first version of this
@@ -729,18 +808,20 @@ try {
      * sample collecting the whole collection. It still returned the right answer for the TAG filter,
      * which is exactly why it survived a smoke test: a broken filter behind a correct total.
      */
-    const newIncidents = (
-      await collectSince('/workflow/incidents', prev.atIso, { timeField: 'raisedAt' })
-    ).filter((i) => `${i.title ?? ''} ${i.source?.ruleName ?? ''}`.includes(TAG));
+    const newIncidents = apiOk
+      ? (await collectSince('/workflow/incidents', prev.atIso, { timeField: 'raisedAt' })).filter(
+          (i) => `${i.title ?? ''} ${i.source?.ruleName ?? ''}`.includes(TAG),
+        )
+      : null;
     /* Incident latency: raised minus the event that triggered it. null, never 0, when unobserved. */
-    const incidentLatencies = newIncidents
+    const incidentLatencies = (newIncidents ?? [])
       .map((i) => {
         const occurred = Date.parse(i.triggeredBy?.occurredAt ?? '');
         const raised = Date.parse(i.raisedAt ?? '');
         return Number.isFinite(occurred) && Number.isFinite(raised) ? raised - occurred : null;
       })
       .filter((v) => v !== null && v >= 0);
-    incidentsAtStart += newIncidents.length;
+    incidentsAtStart += newIncidents?.length ?? 0;
 
     const ratio = (cKey, sKey) => {
       const cnt = d('rules', cKey);
@@ -771,10 +852,23 @@ try {
     const delivered = d('media', 'media_perception_frames_delivered_total');
     const detections = d('media', 'media_perception_detections_total');
 
+    /*
+     * ⚠️ **A sample whose wall clock far exceeds the cadence spans a SUSPEND, not a slow platform.**
+     *
+     * On 2026-08-07 the host force-slept for 74 minutes on a drained battery. The counters either
+     * side are real and monotonic, but dividing their delta by 4458 s of wall clock reported
+     * **0.26 fps** for a platform that was doing 4.0. Marked here so the analysis can exclude it from
+     * every rate and trend rather than have it dragged out by hand afterwards. Corroborated by the
+     * runtime's own uptime, which advanced 316 s across that gap — a frozen clock, not a restart.
+     */
+    const suspended = elapsedS > SAMPLE_SECONDS * 2;
+
     const sample = {
       n,
       minute: Math.round((Date.now() - startedAt.getTime()) / 60_000),
       at: new Date().toISOString(),
+      elapsedS: Math.round(elapsedS),
+      suspended,
 
       /* frame path */
       offered,
@@ -845,18 +939,20 @@ try {
         'rules_candidate_latency_seconds_sum',
       ),
 
-      /* the rule engine's own live view — attributable to THIS run's rules */
-      liveActiveRules: num(live.activeRules),
-      liveDwellRules: num(live.dwellRules),
-      liveActiveZones: num(live.activeZones),
-      liveDwellTimers: num(live.activeDwellTimers),
-      liveDwellStateEntries: num(live.dwellStateEntries),
-      liveDwellStateEvicted: num(live.dwellStateEvicted),
-      liveCandidatesPerSecond: num(live.candidatesPerSecond),
-      liveEventsPerSecond: num(live.eventsPerSecond),
+      /* ⚠️ the control-plane half — `null` when the API did not answer, NEVER 0 (ADR-0039) */
+      apiAvailable: apiOk,
+      apiStatus: apiOk ? 200 : `live=${liveRead.status} streams=${streamRead.status}`,
+      liveActiveRules: liveNum(live.activeRules),
+      liveDwellRules: liveNum(live.dwellRules),
+      liveActiveZones: liveNum(live.activeZones),
+      liveDwellTimers: liveNum(live.activeDwellTimers),
+      liveDwellStateEntries: liveNum(live.dwellStateEntries),
+      liveDwellStateEvicted: liveNum(live.dwellStateEvicted),
+      liveCandidatesPerSecond: liveNum(live.candidatesPerSecond),
+      liveEventsPerSecond: liveNum(live.eventsPerSecond),
 
       /* incidents — NEW since the previous sample, so this is throughput rather than a page size */
-      incidentCount: newIncidents.length,
+      incidentCount: newIncidents === null ? null : newIncidents.length,
       incidentLatencyMsAvg: incidentLatencies.length > 0 ? mean(incidentLatencies) : null,
       incidentLatencyMsMax: incidentLatencies.length > 0 ? Math.max(...incidentLatencies) : null,
 
@@ -870,17 +966,21 @@ try {
       mediaCycleFailures: d('media', 'media_assignment_cycle_failures_total'),
 
       /* camera health, reconnects and recording continuity — MY cameras only */
-      streamsTotal: myStreams.length,
+      streamsTotal: streamRead.ok ? myStreams.length : null,
       streamsHealthy: byHealth('healthy'),
       streamsDegraded: byHealth('degraded'),
       streamsDown: byHealth('down'),
-      streamsRecording: myStreams.filter((s) => s.recording === true).length,
-      reconnectAttempts: myStreams.reduce((a, s) => a + num(s.reconnectAttempts), 0),
-      framesReceived: myStreams.reduce((a, s) => a + num(s.framesReceived), 0),
+      streamsRecording: streamRead.ok ? myStreams.filter((s) => s.recording === true).length : null,
+      reconnectAttempts: streamRead.ok
+        ? myStreams.reduce((a, s) => a + num(s.reconnectAttempts), 0)
+        : null,
+      framesReceived: streamRead.ok
+        ? myStreams.reduce((a, s) => a + num(s.framesReceived), 0)
+        : null,
       /* ⚠️ Tenant-wide, recorded but never asserted: this run does not own those streams. */
-      tenantStreamsTotal: num(streamHealth.total),
-      tenantStreamsDown: num(streamHealth.down),
-      recordingNewSince: newRecordings.length,
+      tenantStreamsTotal: streamRead.ok ? num(streamHealth.total) : null,
+      tenantStreamsDown: streamRead.ok ? num(streamHealth.down) : null,
+      recordingNewSince: newRecordings === null ? null : newRecordings.length,
       recordingMedianDurationS:
         recDurations.length > 0
           ? recDurations.sort((a, b) => a - b)[Math.floor(recDurations.length / 2)]
@@ -974,11 +1074,21 @@ try {
     `analysis · ${samples.length} samples over ${samples[samples.length - 1]?.minute ?? 0} minutes\n`,
   );
 
-  const pick = (fn) => samples.map(fn).filter((v) => typeof v === 'number' && Number.isFinite(v));
-  const halfIdx = Math.floor(samples.length / 2);
+  /*
+   * ⚠️ **Rate and trend analysis runs over `rated`, not `samples`.** A suspended sample's counter
+   * deltas are real but its wall-clock window includes time the machine was asleep, so every rate
+   * derived from it is meaningless. Totals still use `samples` — those frames really were processed.
+   */
+  const suspendedSamples = samples.filter((x) => x.suspended);
+  const rated = samples.filter((x) => !x.suspended);
+  const pick = (fn) => rated.map(fn).filter((v) => typeof v === 'number' && Number.isFinite(v));
+  /** How many samples actually measured this signal — the guard against a vacuous pass. */
+  const measured = (fn) =>
+    samples.filter((x) => typeof fn(x) === 'number' && Number.isFinite(fn(x))).length;
+  const halfIdx = Math.floor(rated.length / 2);
   const drift = (fn) => {
-    const a = mean(samples.slice(0, halfIdx).map(fn).filter(Number.isFinite));
-    const b = mean(samples.slice(halfIdx).map(fn).filter(Number.isFinite));
+    const a = mean(rated.slice(0, halfIdx).map(fn).filter(Number.isFinite));
+    const b = mean(rated.slice(halfIdx).map(fn).filter(Number.isFinite));
     return { a, b, percent: a === 0 ? 0 : ((b - a) / a) * 100 };
   };
   /*
@@ -999,6 +1109,24 @@ try {
     'the run completed without tripping an abort condition',
     aborted ?? 'no abort',
   );
+
+  /*
+   * ⚠️ **The control-plane half must have been READ, not merely not-failed.** The 2026-08-07 run's
+   * token expired at minute 17 and two thirds of its signals were silently absent for five hours,
+   * recorded as zeros. This check exists so that can never again be discovered afterwards.
+   */
+  const apiSamples = samples.filter((x) => x.apiAvailable).length;
+  check(
+    apiSamples === samples.length,
+    '⚠️ the control plane answered at EVERY sample — camera, dwell, incident and recording signals were measured',
+    `${apiSamples}/${samples.length} samples had a live API`,
+  );
+  if (suspendedSamples.length > 0) {
+    finding(
+      `${suspendedSamples.length} sample(s) spanned a host SUSPEND and are excluded from rates and trends`,
+      suspendedSamples.map((x) => `n=${x.n} ${x.elapsedS}s`).join(', '),
+    );
+  }
 
   console.log('\n  memory');
   for (const svc of Object.keys(NODE_SERVICES)) {
@@ -1172,19 +1300,26 @@ try {
   );
 
   console.log('\n  cameras, reconnects and recording');
-  const down = samples.filter((s) => s.streamsDown > 0).length;
+  const downMeasured = measured((x) => x.streamsDown);
+  const down = samples.filter((x) => x.streamsDown > 0).length;
   check(
-    down === 0,
+    downMeasured === samples.length && down === 0,
     "no stream of this run's own cameras was ever reported down",
-    `${down} sample(s) with a stream down`,
+    downMeasured < samples.length
+      ? `⚠️ only ${downMeasured}/${samples.length} samples measured this — the rest are UNAVAILABLE, not zero`
+      : `${down} sample(s) with a stream down`,
   );
   const degraded = samples.filter((s) => s.streamsDegraded > 0).length;
   if (degraded > 0) finding('a stream was reported degraded', `${degraded} sample(s)`);
-  const reconnects = samples[samples.length - 1]?.reconnectAttempts ?? 0;
+  const reconnectSeries = pick((x) => x.reconnectAttempts);
+  const reconnects =
+    reconnectSeries.length > 0 ? reconnectSeries[reconnectSeries.length - 1] : null;
   check(
     reconnects === 0,
     'no camera reconnected during the run',
-    `${reconnects} reconnect attempt(s) across ${profile.cameras} cameras`,
+    reconnects === null
+      ? '⚠️ not measured — the control plane did not answer'
+      : `${reconnects} reconnect attempt(s) across ${profile.cameras} cameras`,
   );
   const recGrowth = samples.filter((s) => s.recordingNewSince > 0).length;
   check(
