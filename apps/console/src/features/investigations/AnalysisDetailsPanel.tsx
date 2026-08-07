@@ -9,7 +9,7 @@
  * ⛔ **A number that was never measured shows an em dash, never a zero** (ADR-0039) — see `orDash`.
  */
 import type { VideoAnalysisDetail } from '@vip/contracts';
-import { formatBytes, formatDuration, orDash } from './format';
+import { formatBytes, formatDuration, formatRate, orDash } from './format';
 import { formatTimestamp } from '@/lib/format';
 
 type Session = VideoAnalysisDetail['sessions'][number];
@@ -62,9 +62,15 @@ export function AnalysisDetailsPanel({ analysis, session }: AnalysisDetailsPanel
             value={asset === undefined ? '—' : formatDuration(asset.durationSeconds)}
           />
           <Row label="File size" value={asset === undefined ? '—' : formatBytes(asset.bytes)} />
+          {/*
+            ⚠️ **Rounded, because a real camera's frame rate is not a round number.** A phone
+            recording reports `27.00052530204868` fps — ffprobe's exact rational, and eighteen
+            digits of it on screen reads as a fault in the product rather than as 27 fps. Two
+            decimals keep a genuine 29.97 distinguishable from 30 while hiding the noise.
+          */}
           <Row
             label="Source frame rate"
-            value={asset?.sourceFrameRate === undefined ? '—' : `${String(asset.sourceFrameRate)} fps`}
+            value={asset?.sourceFrameRate === undefined ? '—' : `${formatRate(asset.sourceFrameRate)} fps`}
           />
 
           {/*
@@ -99,7 +105,7 @@ export function AnalysisDetailsPanel({ analysis, session }: AnalysisDetailsPanel
             }
             {...(asset?.sourceFrameRate !== undefined && session?.analysisFrameRate !== undefined
               ? {
-                  hint: `${String(session.analysisFrameRate)} of every ${String(asset.sourceFrameRate)} source frames were examined`,
+                  hint: `${String(session.analysisFrameRate)} of every ${formatRate(asset.sourceFrameRate)} source frames were examined`,
                 }
               : {})}
           />

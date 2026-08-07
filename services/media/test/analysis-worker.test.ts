@@ -102,6 +102,43 @@ describe('chunk planning', () => {
       durationSeconds: 120,
     });
   });
+
+  /**
+   * ⛔ **The tail that failed every real recording the platform was ever given.**
+   *
+   * `offsetSeconds` is where the last *sampled* frame was, not where the footage ends. A 19.07 s
+   * recording at 2 fps samples its last frame at 19.0, leaving 0.07 s — shorter than the 0.5 s
+   * between samples, so no further frame can exist. Asking for it made ffmpeg seek past the last
+   * frame, emit nothing and exit 234 "Conversion failed!", which the worker read as a decode failure
+   * and retried three times — on a run that had already analysed 38/38 frames and found 24
+   * detections.
+   *
+   * ⚠️ Every clip in the validation library is exactly 30.000 s, an exact multiple of the sample
+   * interval, so its final chunk always landed on a sample point and emitted one frame. The whole
+   * dataset was structurally blind to this. Reported by the Architect, 2026-08-08.
+   */
+  it('stops when the remaining footage is shorter than one frame interval', () => {
+    /* 19.07 s at 2 fps: last sample at 19.0, 0.07 s left, 0.5 s between samples. */
+    expect(nextChunk(19, 19.07, 120, 2)).toBeNull();
+    /* ⚠️ And the old `Math.max(1, remaining)` widened that 0.07 s request to a full second. */
+    expect(nextChunk(19, 19.07, 120)).toEqual({ fromOffsetSeconds: 19, durationSeconds: 1 });
+  });
+
+  /** ⭐ A tail that CAN still hold a sample is planned — this must not become an off-by-one. */
+  it('still plans a tail that can contain another sample', () => {
+    /* 0.6 s remaining at 2 fps is longer than the 0.5 s interval, so a frame can exist. */
+    expect(nextChunk(19, 19.6, 120, 2)).toEqual({ fromOffsetSeconds: 19, durationSeconds: 1 });
+    /* ⚠️ Exactly one interval remaining still counts — `29.5 → 30.0` emits the frame at 29.5. */
+    expect(nextChunk(29.5, 30, 120, 2)).toEqual({ fromOffsetSeconds: 29.5, durationSeconds: 1 });
+  });
+
+  /** ⚠️ An unknown duration cannot be reasoned about, so the frame rate must not change anything. */
+  it('ignores the frame rate when the duration is unknown', () => {
+    expect(nextChunk(480, undefined, 120, 2)).toEqual({
+      fromOffsetSeconds: 480,
+      durationSeconds: 120,
+    });
+  });
 });
 
 describe('resume honesty', () => {

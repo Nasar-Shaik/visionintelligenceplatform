@@ -141,6 +141,15 @@ export function useStartRun(id: string) {
   });
 }
 
+/** ⭐ Cancel a run. Invalidates the detail so the row's state moves without a manual refresh. */
+export function useCancelRun(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: string) => investigationsApi.cancel(sessionId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: keys.detail(id) }),
+  });
+}
+
 export function useSnapshot(id: string) {
   return useMutation({
     mutationFn: (input: { offsetSeconds: number; incidentId?: string }) =>

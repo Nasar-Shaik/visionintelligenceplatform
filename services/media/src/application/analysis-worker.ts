@@ -225,7 +225,13 @@ export class AnalysisWorker {
         if (controller.signal.aborted) {
           return this.#stop(scope, sessionId, 'cancelled', chunksCompleted, framesProcessed, counts);
         }
-        const chunk = nextChunk(offset, analysis.asset.durationSeconds);
+        /* ⚠️ The frame rate is what decides whether the tail can hold another sample — see `nextChunk`. */
+        const chunk = nextChunk(
+          offset,
+          analysis.asset.durationSeconds,
+          undefined,
+          session.analysisFrameRate,
+        );
         if (chunk === null) break;
 
         const startedMs = Date.now();

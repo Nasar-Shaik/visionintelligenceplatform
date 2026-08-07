@@ -569,6 +569,13 @@ this is a *coverage* gap rather than a defect, but no fixture would have caught 
 letterbox failure, an aspect-ratio bug in zone normalisation ([L-58] works in normalised coordinates)
 or a 4K decode-memory limit would all have passed the entire dataset. Recorded 2026-08-07.
 
+⛔ **And they are all exactly 30.000 s — which hid a defect that failed every real recording.**
+A duration that is an exact multiple of the analysis sample interval always lands its final chunk on
+a sample point. A 19.07 s phone clip does not, and **V-11** made every such run retry for ever after
+successfully analysing all of it. ⚠️ The lesson is not "add a 19 s clip": it is that a fixture library
+built from round numbers cannot exercise remainder arithmetic, and **duration should be deliberately
+irregular** — 19.07 s, 47.3 s, 121.6 s — precisely because real recordings are. Recorded 2026-08-08.
+
 
 ## L-64 · Six real-venue recordings are required and do not exist
 

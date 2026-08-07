@@ -111,4 +111,17 @@ export const investigationsApi = {
     http.post<AnalysisSnapshot>(`/media/analyses/${id}/snapshots`, input),
 
   playback: (id: string) => http.get<VideoAnalysisPlayback>(`/media/analyses/${id}/playback`),
+
+  /**
+   * ⛔ **Cancel a run** — the endpoint has existed since slice 3 and the console never called it.
+   *
+   * ⚠️ Without this a run stuck in `retrying` **blocks the analysis entirely**: `start` refuses with
+   * "already retrying for this analysis — cancel it before starting another", and there was no way
+   * to cancel from the product. An operator whose run wedged had no route forward at all.
+   */
+  cancel: (sessionId: string) =>
+    http.post<VideoAnalysisDetail['sessions'][number]>(
+      `/media/analysis-sessions/${sessionId}/cancel`,
+      {},
+    ),
 };

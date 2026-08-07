@@ -301,8 +301,36 @@ _Last updated: 2026-08-07 · Claude_
   records showing where identifiable people walked — not a screen, and ⚠️ nothing may interpolate
   between two stored boxes and present the line as measurement.
 
-  **Closed:** TD-69 / V-7. **Gate:** 70/70 repo tasks · **512** console tests · 13/13 P-8.6 browser
-  specs plus the existing suite across Chromium, Edge, Firefox and WebKit.
+  ⛔ **V-11 · every real recording failed, and the fixture library could not see it.** The Architect
+  uploaded a 19.07 s phone clip; the run analysed **38/38 frames and found 24 detections**, then
+  reported `retrying` for ever. `nextChunk` compares the offset of the **last sampled frame** against
+  the container duration — at 2 fps that is 19.0 against 19.07 — so it asked for the 0.07 s tail,
+  `Math.max(1, remaining)` widened it to a full second, ffmpeg seeked past the last frame, emitted
+  nothing and exited **234** (`-EINVAL`, "Conversion failed!"), and the worker read a non-zero exit as
+  a decode failure. ⚠️ **Every clip in the validation library is exactly 30.000 s** — an exact multiple
+  of the sample interval — so its final chunk always landed on a sample point and emitted one frame.
+  The defect was **structurally invisible to all 37 fixtures** and appeared on the first recording
+  with an ordinary duration. Fixed in the domain (`nextChunk` stops when the tail cannot hold another
+  sample) plus a narrow adapter defence, because a container's declared duration is a claim: a chunk
+  that emits **zero** frames from a non-zero start offset is end-of-recording, not a decode error, and
+  a corrupt file still fails at offset 0 as the corrupted fixtures assert.
+
+  ⛔ **V-12 · the run's own error reached no screen.** `session.error` held
+  *"ffmpeg exited with code 234 while decoding …"* in the payload the page had already fetched, and
+  only `findings` were rendered — so a wedged run was an unexplained spinner. Now shown, amber while
+  it may still recover and red once it cannot.
+
+  ⛔ **V-13 · a wedged run could not be escaped from inside the product.** `start` refuses while a
+  session is non-terminal ("cancel it before starting another") and **the console had no cancel at
+  all** — no button, no hook, no API client method, against an endpoint that has existed since slice
+  3. Found because it blocked this milestone's own re-verification.
+
+  ⚠️ **V-14 · `27.00052530204868 fps`** on the details panel — ffprobe's exact rational from a real
+  phone, printed verbatim, twice. Rounded to two decimals so a genuine 29.97 stays distinguishable
+  from 30.
+
+  **Closed:** TD-69 / V-7. **Gate:** 70/70 repo tasks · **520** console tests · 311 media tests ·
+  browser certification green across Chromium, Edge, Firefox and WebKit.
 
 - **P-8.5 · Product Validation ✅ complete, ⏳ awaiting review (2026-08-07)** — **the first time
   this platform was used the way a customer will use it**, and the answer to what a 69-task green

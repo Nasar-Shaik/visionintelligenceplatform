@@ -17,6 +17,7 @@ import {
 } from '@/ui';
 import { formatTimestamp } from '@/lib/format';
 import {
+  useCancelRun,
   useInvestigation,
   usePlayback,
   useSnapshot,
@@ -48,6 +49,7 @@ export function InvestigationDetailPage() {
   const { id = '' } = useParams();
   const detail = useInvestigation(id);
   const startRun = useStartRun(id);
+  const cancelRun = useCancelRun(id);
   const snapshot = useSnapshot(id);
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [focusTrack, setFocusTrack] = useState<string | undefined>();
@@ -194,6 +196,7 @@ export function InvestigationDetailPage() {
                 <TableHead>Frames</TableHead>
                 <TableHead>Detections</TableHead>
                 <TableHead>Model</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -249,6 +252,29 @@ export function InvestigationDetailPage() {
                   </TableCell>
                   <TableCell>{s.counts.detections}</TableCell>
                   <TableCell>{s.provenance.modelId ?? '—'}</TableCell>
+                  <TableCell>
+                    {/*
+                      ⛔ **A wedged run blocks the whole analysis, and this is the only way out.**
+                      `start` refuses while a session is non-terminal — "already retrying for this
+                      analysis — cancel it before starting another" — so before this button an
+                      operator whose run stuck had no route forward inside the product at all. The
+                      endpoint has existed since slice 3; nothing called it.
+                    */}
+                    {TERMINAL.includes(s.state) ? null : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={cancelRun.isPending}
+                        onClick={(e) => {
+                          /* ⚠️ The row itself selects a run; cancelling must not also re-select. */
+                          e.stopPropagation();
+                          cancelRun.mutate(s.id);
+                        }}
+                      >
+                        {cancelRun.isPending ? 'Cancelling…' : 'Cancel'}
+                      </Button>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -258,6 +284,30 @@ export function InvestigationDetailPage() {
             ⛔ Findings are shown next to the run that produced them, not tucked away. A run that
             examined nothing must not be read as a run that found nothing.
           */}
+          {/*
+            ⛔ **The run's own error, which no screen has ever shown.** The session carries `error`
+            — e.g. "ffmpeg exited with code 234 while decoding …" — and this page rendered only
+            `findings`. A run stuck in `retrying` therefore presented as an unexplained spinner
+            while the reason sat one field away in the payload it had already fetched. Reported by
+            the Architect, 2026-08-08.
+
+            ⚠️ Amber while the run may still recover, red once it cannot. The same sentence means
+            "this is being retried" and "this is why it stopped" depending only on the state.
+          */}
+          {selected?.error === undefined ? null : (
+            <p
+              className={
+                TERMINAL.includes(selected.state)
+                  ? 'rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive'
+                  : 'rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm text-amber-500'
+              }
+              role="alert"
+              data-testid="run-error"
+            >
+              {selected.error}
+            </p>
+          )}
+
           {(selected?.findings.length ?? 0) > 0 ? (
             <ul className="space-y-1 rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
               {selected?.findings.map((f, i) => (

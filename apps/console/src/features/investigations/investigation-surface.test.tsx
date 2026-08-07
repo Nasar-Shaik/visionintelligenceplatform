@@ -44,7 +44,7 @@ function analysis(over: Record<string, unknown> = {}) {
       codecTag: 'avc1',
       width: 2160,
       height: 4096,
-      sourceFrameRate: 25,
+      sourceFrameRate: 27.00052530204868,
       durationSeconds: 33.28,
     },
     createdBy: 'u',
@@ -329,6 +329,28 @@ describe('the analysis details panel', () => {
   });
 
   /**
+   * ⛔ **`27.00052530204868 fps` on screen reads as a fault in the product**, not as 27 fps. It is a
+   * real value from a real phone — ffprobe's exact rational — and it appeared twice on the details
+   * panel of the Architect's own upload. Reported 2026-08-08.
+   */
+  it('rounds a frame rate a camera really reports', async () => {
+    mock();
+    render();
+    const panel = await screen.findByTestId('analysis-details');
+    expect(within(panel).getByText('27 fps')).toBeInTheDocument();
+    expect(within(panel).queryByText(/27\.00052530204868/)).not.toBeInTheDocument();
+    expect(within(panel).getByText(/2 of every 27 source frames/)).toBeInTheDocument();
+  });
+
+  /** ⚠️ 29.97 must stay 29.97 — the rounding must not erase a difference that matters. */
+  it('keeps a genuine 29.97 distinguishable from 30', async () => {
+    mock({ analysis: { asset: { ...analysis().asset, sourceFrameRate: 29.97002997002997 } } });
+    render();
+    const panel = await screen.findByTestId('analysis-details');
+    expect(within(panel).getByText('29.97 fps')).toBeInTheDocument();
+  });
+
+  /**
    * ⛔ **An ETA nobody can estimate is an em dash with the reason beside it, never "0 s"**
    * (ADR-0039). This is the first screen to show `etaUnavailableReason` at all.
    */
@@ -444,5 +466,56 @@ describe('long operations show they are working', () => {
 
     const bar = await screen.findByRole('progressbar', { name: /run #1 progress/i });
     expect(bar).not.toHaveAttribute('aria-valuenow');
+  });
+});
+
+/**
+ * ⛔ **A run that wedges must be escapable and explainable.** Both reported by the Architect on
+ * 2026-08-08: a session stuck in `retrying` blocked every further run (`start` refuses while one is
+ * non-terminal) and the page showed a spinner with no reason, while `session.error` held
+ * *"ffmpeg exited with code 234 while decoding …"* in the payload it had already fetched.
+ */
+describe('a stuck run can be understood and escaped', () => {
+  it('shows the run’s own error rather than an unexplained spinner', async () => {
+    mock();
+    server.use(
+      mswHttp.get('/api/media/analyses/:id', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            analysis: analysis(),
+            sessions: [
+              session({
+                state: 'retrying',
+                error: 'ffmpeg exited with code 234 while decoding source.mp4: Conversion failed!',
+              }),
+            ],
+          },
+        }),
+      ),
+    );
+    render();
+    expect(await screen.findByTestId('run-error')).toHaveTextContent(/code 234/);
+  });
+
+  it('offers Cancel on a run that has not finished, and not on one that has', async () => {
+    mock();
+    server.use(
+      mswHttp.get('/api/media/analyses/:id', () =>
+        HttpResponse.json({
+          success: true,
+          data: { analysis: analysis(), sessions: [session({ state: 'retrying' })] },
+        }),
+      ),
+    );
+    render();
+    expect(await screen.findByRole('button', { name: /^cancel$/i })).toBeEnabled();
+  });
+
+  it('does not offer Cancel on a finished run', async () => {
+    mock();
+    render();
+    await screen.findByTestId('analysis-details');
+    expect(screen.queryByRole('button', { name: /^cancel$/i })).not.toBeInTheDocument();
   });
 });

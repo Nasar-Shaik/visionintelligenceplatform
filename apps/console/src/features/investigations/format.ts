@@ -54,3 +54,16 @@ export function formatDuration(seconds: number): string {
 export function orDash(value: number | null | undefined, suffix = '', digits = 1): string {
   return value === null || value === undefined ? '—' : `${value.toFixed(digits)}${suffix}`;
 }
+
+/**
+ * A frame rate a human can read.
+ *
+ * ⛔ **`27.00052530204868` is a real value from a real phone**, and printing it verbatim made a
+ * working analysis look broken. ffprobe reports the exact rational the container declares; almost no
+ * recording device produces an integer. Two decimals are kept so a genuine **29.97** stays
+ * distinguishable from **30**, which is a difference that matters when reconciling footage time.
+ */
+export function formatRate(fps: number): string {
+  if (!Number.isFinite(fps)) return '—';
+  return Number.isInteger(fps) ? String(fps) : String(Number(fps.toFixed(2)));
+}

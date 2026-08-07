@@ -247,7 +247,30 @@ export class StoredMediaFrameSource implements FrameSource {
                * cancellation reports 137, and treating that as a decode error would fail a session
                * an operator deliberately stopped.
                */
-              if (code !== 0 && code !== null) {
+              /*
+               * ⛔ **Seeking past the last frame is the END of a recording, not a decode failure.**
+               *
+               * `ffmpeg -ss <at-or-after-the-end>` emits nothing and exits **234** (`-EINVAL`) with
+               * "Conversion failed!". Treating that as an error failed a run that had already
+               * analysed every frame: the Architect's 19.07 s recording sampled its last frame at
+               * 19.0, `nextChunk` asked for the 0.07 s tail, and the session retried three times
+               * with 38/38 frames and 24 detections already in hand.
+               *
+               * `nextChunk` no longer asks for a tail that cannot hold a sample, which is the real
+               * fix. This stays because **a container's declared duration is a claim** — one that
+               * over-declares would put the seek past the end again, and no domain rule can see that
+               * from the metadata.
+               *
+               * ⚠️ **Narrow on purpose.** Only when the chunk produced **zero** frames *and* started
+               * somewhere other than the beginning. A corrupt or undecodable file fails at offset 0
+               * and still rejects, which is what the corrupted fixtures assert. A chunk that yields
+               * nothing reports `reachedEnd`, so the worker's own "did not advance" guard ends the
+               * run rather than looping.
+               */
+              const seekedPastTheEnd =
+                code !== 0 && framesEmitted === 0 && request.fromOffsetSeconds > 0;
+
+              if (code !== 0 && code !== null && !seekedPastTheEnd) {
                 reject(
                   new Error(
                     `ffmpeg exited with code ${String(code)} while decoding ${this.#input.assetKey}: ${lastError(stderrTail)}`,

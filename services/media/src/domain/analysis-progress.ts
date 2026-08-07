@@ -108,9 +108,30 @@ export function nextChunk(
   offsetSeconds: number,
   durationSeconds: number | undefined,
   chunkSeconds: number = ANALYSIS_LIMITS.chunkSeconds,
+  frameRate?: number,
 ): { fromOffsetSeconds: number; durationSeconds: number } | null {
   if (durationSeconds !== undefined && durationSeconds > 0 && offsetSeconds >= durationSeconds) {
     return null;
+  }
+  /*
+   * ⛔ **A tail too short to contain another sample is the END, not a chunk** — and getting this
+   * wrong failed every real recording the platform was ever given.
+   *
+   * `offsetSeconds` is where the *last emitted frame* was, not where the footage ends. At 2 fps a
+   * 19.07 s recording samples its last frame at 19.0, leaving 0.07 s — so `offset >= duration` is
+   * false and the old code asked for one more chunk. `Math.max(1, …)` then widened that 0.07 s
+   * request to a full second, ffmpeg seeked past the last frame, emitted **nothing**, and exited
+   * 234 "Conversion failed!". The worker read a non-zero exit as a decode failure and retried three
+   * times, so a run that had already analysed **every frame** and found what it was looking for
+   * presented as `retrying` for ever.
+   *
+   * ⚠️ **Every fixture in the validation library is exactly 30.000 s**, an exact multiple of the
+   * sample interval, so its final chunk always landed on a sample point and emitted one frame. The
+   * defect was structurally invisible to the entire dataset and appeared on the first recording
+   * with an ordinary duration. Reported by the Architect, 2026-08-08.
+   */
+  if (durationSeconds !== undefined && durationSeconds > 0 && frameRate !== undefined && frameRate > 0) {
+    if (durationSeconds - offsetSeconds < 1 / frameRate) return null;
   }
   const remaining =
     durationSeconds === undefined || durationSeconds <= 0
