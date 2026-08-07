@@ -149,6 +149,18 @@ export function memoryObjectStore(): ObjectStore & { keys(): string[]; failPut: 
     async presignGet(key: string, ttl: number) {
       return `https://signed/${key}?ttl=${ttl}`;
     },
+    /**
+     * ⭐ **A DIFFERENT host from `presignGet`, deliberately.**
+     *
+     * A double returning the same URL for both would make every call site look correct whichever it
+     * called — which is exactly how the real defect shipped: `confirmUpload` handed ffprobe a
+     * browser-facing `https://localhost` URL and got `Connection refused` in every deployment, while
+     * passing every test here. Different hosts mean a test can assert *which audience* a URL was
+     * minted for, so getting it wrong is visible.
+     */
+    async presignInternalGet(key: string, ttl: number) {
+      return `https://internal-signed/${key}?ttl=${ttl}`;
+    },
     async presignPut(key: string, ttl: number, contentType: string) {
       return `https://signed-put/${key}?ttl=${ttl}&ct=${encodeURIComponent(contentType)}`;
     },

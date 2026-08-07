@@ -96,6 +96,28 @@ export interface ServiceConfig extends AppConfig {
   nats?: NatsConfig;
   /** Signed playback-URL lifetime (seconds). */
   playbackTtlSeconds: number;
+  analysis: AnalysisConfig;
+}
+
+/** Offline video investigation (P-8 Phase 8). */
+export interface AnalysisConfig {
+  /**
+   * ⛔ Sessions decoded at once. Default **1** — see `AnalysisRunner`.
+   *
+   * L-41 measured this host at two cameras at 2 fps. Offline analysis competes with them for the
+   * same runtime, so a second concurrent session does not halve the wall clock: it doubles the
+   * latency of both and starves the live cameras recording a customer's premises right now.
+   */
+  maxConcurrent: number;
+  /**
+   * Lifetime of the signed URL ffmpeg reads the recording through.
+   *
+   * ⚠️ It has to outlive the whole run, not one chunk. A URL that expires mid-analysis fails the
+   * next chunk, which the worker correctly treats as transient and retries — twice — before failing
+   * a session whose only problem was a clock. Four hours is the longest recording the platform
+   * accepts, so the default covers the worst case with margin.
+   */
+  sourceUrlTtlSeconds: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
@@ -112,6 +134,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       FFMPEG_BINARY: z.string().min(1).default('ffmpeg'),
       FFPROBE_BINARY: z.string().min(1).default('ffprobe'),
       MEDIA_PLAYBACK_TTL_SECONDS: z.coerce.number().int().min(30).max(86_400).default(900),
+      MEDIA_ANALYSIS_MAX_CONCURRENT: z.coerce.number().int().min(1).max(8).default(1),
+      MEDIA_ANALYSIS_SOURCE_TTL_SECONDS: z.coerce
+        .number()
+        .int()
+        .min(600)
+        .max(86_400)
+        .default(6 * 3600),
       // ⚠️ Blank by default: no URL, no perception, and the deployment behaves exactly as before.
       INFERENCE_URL: z.string().default(''),
       INFERENCE_CAPABILITY_ID: z.string().min(1).default('perception.person-detection'),
@@ -177,5 +206,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
      */
     ...(ing.MEDIA_EVENT_BRIDGE_ENABLED ? { nats: loadNatsConfig(env) } : {}),
     playbackTtlSeconds: ing.MEDIA_PLAYBACK_TTL_SECONDS,
+    analysis: {
+      maxConcurrent: ing.MEDIA_ANALYSIS_MAX_CONCURRENT,
+      sourceUrlTtlSeconds: ing.MEDIA_ANALYSIS_SOURCE_TTL_SECONDS,
+    },
   };
 }

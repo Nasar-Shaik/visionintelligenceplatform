@@ -75,6 +75,15 @@ export class TenantObjectStore {
   }
 
   /**
+   * ⚠️ Tenant-prefixed exactly like `presignGet` — the *audience* differs, never the scoping. A
+   * server-side consumer reaching outside its tenant's prefix would be the same isolation failure
+   * whatever host the URL names.
+   */
+  async presignInternalGet(relKey: string, ttlSeconds: number): Promise<string> {
+    return this.#inner.presignInternalGet(this.#abs(relKey), ttlSeconds);
+  }
+
+  /**
    * ⭐ **The only place a browser-writable URL should ever be minted**, because `#abs` is what makes
    * the signed key tenant-prefixed and traversal-free. A presigned PUT built from a hand-assembled
    * key is a URL that can write into whatever prefix the caller managed to spell.

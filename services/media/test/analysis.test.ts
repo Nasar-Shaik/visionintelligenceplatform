@@ -288,7 +288,10 @@ class FakeProbe implements MediaProbe {
     durationSeconds: 60,
   };
   error: Error | null = null;
-  async probe(): Promise<ProbeResult> {
+  /** ⭐ Every URL the service handed this probe — see the audience test below. */
+  readonly urls: string[] = [];
+  async probe(url: string): Promise<ProbeResult> {
+    this.urls.push(url);
     if (this.error !== null) throw this.error;
     return this.result;
   }
@@ -378,6 +381,53 @@ describe('AnalysisService — the upload lifecycle', () => {
     expect(confirmed.asset?.codec).toBe('hevc');
     expect(confirmed.asset?.width).toBe(1920);
     expect(confirmed.asset?.bytes).toBe(1024);
+  });
+
+  /**
+   * ⛔ **The test that was missing, and its absence shipped a defect to every deployment.**
+   *
+   * `confirmUpload` presigns a URL and hands it to `ffprobe`, which runs **inside the media
+   * container**. It was signed with `presignGet` — the *browser-facing* endpoint — so the deployed
+   * service asked ffprobe to fetch `https://localhost/...`, which inside the container is the
+   * container itself. Measured on the deployed stack:
+   *
+   * ```
+   * ffprobe exited 1: Connection to tcp://localhost:443 failed: Connection refused
+   * ```
+   *
+   * Every unit test passed throughout, because the double returned one URL shape for both methods
+   * and no test asserted **which audience** the URL was for. ⭐ That is the general lesson: a double
+   * that cannot tell two things apart makes the distinction between them untestable.
+   */
+  it('probes through an INTERNAL url — ffprobe runs in the container, not in a browser', async () => {
+    const { service, objectStore, probe, scope } = build();
+    const out = await service.createUpload(scope, 'usr_1', create);
+    await objectStore.put({ key: `tnt_a/analyses/ana_1/source.mp4`, body: new Uint8Array(1024) });
+
+    await service.confirmUpload(scope, out.analysis.id, {});
+
+    expect(probe.urls).toHaveLength(1);
+    expect(probe.urls[0]).toContain('internal-signed');
+    /* ⛔ Never the browser-facing host — that is the URL that was `Connection refused`. */
+    expect(probe.urls[0]).not.toContain('https://signed/');
+    /* …and still tenant-prefixed: the audience changed, the isolation did not. */
+    expect(probe.urls[0]).toContain('tnt_a/analyses/');
+  });
+
+  /**
+   * ⭐ The mirror of the above: a **playback** url is for a browser and must stay public. Fixing one
+   * audience by breaking the other would have been an equal and opposite defect.
+   */
+  it('signs playback for the BROWSER, which is the opposite audience', async () => {
+    const { service, objectStore, scope } = build();
+    const out = await service.createUpload(scope, 'usr_1', create);
+    await objectStore.put({ key: `tnt_a/analyses/ana_1/source.mp4`, body: new Uint8Array(1024) });
+    await service.confirmUpload(scope, out.analysis.id, {});
+
+    const playback = await service.playback(scope, out.analysis.id);
+
+    expect(playback.url).toContain('https://signed/');
+    expect(playback.url).not.toContain('internal-signed');
   });
 
   it('refuses to confirm before any bytes have arrived', async () => {

@@ -5,9 +5,10 @@
  * touches the process/network and constructs concrete adapters.
  */
 import { randomUUID } from 'node:crypto';
+import { hostname } from 'node:os';
 import type { FastifyBaseLogger } from 'fastify';
 import { loadDotEnv } from '@vip/config';
-import { S3ObjectStore } from '@vip/storage';
+import { S3ObjectStore, TenantObjectStore } from '@vip/storage';
 import { loadConfig } from './config/env.js';
 import { connectMongo } from './adapters/mongo.js';
 import { ReadinessRegistry } from './application/readiness.js';
@@ -22,6 +23,9 @@ import { BufferedEventPublisher } from './adapters/event-publisher.js';
 import { AssignmentGate } from './application/assignment-gate.js';
 import { AssignmentClient } from './adapters/assignment-client.js';
 import { AnalysisService } from './application/analysis-service.js';
+import { AnalysisWorker, defaultWorkerId } from './application/analysis-worker.js';
+import { AnalysisRunner } from './application/analysis-runner.js';
+import { StoredMediaFrameSourceFactory } from './adapters/stored-media-frame-source.js';
 import { FfprobeMediaProbe } from './adapters/ffprobe.js';
 import { CameraSourceDirectory } from './adapters/camera-source-directory.js';
 import { NatsEventBus } from '@vip/messaging';
@@ -193,6 +197,42 @@ async function main(): Promise<void> {
    * store recordings use, the same camera resolve the supervisor uses, and the frame rate the live
    * path is configured with. Nothing here is a second ingestion design.
    */
+  /*
+   * ⭐ **The stored-media source, signing with the SAME store recordings use** (slice 3).
+   *
+   * ⛔ **`presignInternalGet`, never `presignGet`.** This URL is read by **ffmpeg inside this
+   * container**, so it must name the endpoint this process itself talks to. `presignGet` signs
+   * against the *public* endpoint because a browser has to resolve it — handed to a container that
+   * is `Connection refused`, which is exactly how the confirm step failed in deployment while
+   * passing every unit test.
+   *
+   * ⚠️ Wrapped per tenant so a session can only ever address its own prefix.
+   */
+  const frameSources = new StoredMediaFrameSourceFactory(
+    async (tenantId, key) =>
+      new TenantObjectStore(objectStore, tenantId).presignInternalGet(
+        key,
+        config.analysis.sourceUrlTtlSeconds,
+      ),
+    { binary: config.ingestion.ffmpegBinary },
+  );
+
+  const analysisWorker = new AnalysisWorker({
+    store: mongo.analyses,
+    sources: frameSources,
+    /* ⭐ The SAME sink every camera pushes to. Not a copy of it, not a second configuration of it. */
+    sink: frameSink,
+    clock: { now: () => new Date() },
+    workerId: defaultWorkerId(hostname(), process.pid),
+    onLog: (level, msg, fields) => loggerRef.current?.[level]({ ...fields }, msg),
+  });
+
+  const analysisRunner = new AnalysisRunner({
+    worker: analysisWorker,
+    maxConcurrent: config.analysis.maxConcurrent,
+    onLog: (level, msg, fields) => loggerRef.current?.[level]({ ...fields }, msg),
+  });
+
   const analyses = new AnalysisService({
     store: mongo.analyses,
     objectStore,
@@ -206,6 +246,7 @@ async function main(): Promise<void> {
     capabilityId: config.perception.capabilityId,
     defaultFrameRate: config.ingestion.frameRate,
     playbackTtlSeconds: config.playbackTtlSeconds,
+    runner: analysisRunner,
   });
 
   const supervisor = new StreamSupervisor({
@@ -276,6 +317,12 @@ async function main(): Promise<void> {
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     app.log.info({ signal }, 'shutdown signal received, draining');
     assignmentClient?.stop();
+    /*
+     * ⚠️ Analyses are cancelled BEFORE the supervisor stops, and never waited for. A deploy must not
+     * be held open by a four-hour analysis; each session checkpoints every chunk, so it resumes from
+     * where it stopped rather than from the beginning — which is what the checkpoint is for.
+     */
+    await analysisRunner.stop();
     await supervisor.stopAll();
     await app.close();
     await mongo.close();

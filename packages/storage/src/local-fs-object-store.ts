@@ -109,6 +109,16 @@ export class LocalFsObjectStore implements ObjectStore {
   }
 
   /**
+   * ⚠️ **Identical to `presignGet` here, and deliberately so.** This provider has one base URL —
+   * there is no second endpoint for it to be wrong about, which is precisely why it could never have
+   * exposed the defect the S3 provider had. It implements the method so the port stays honest and
+   * a caller can be written once against both.
+   */
+  async presignInternalGet(key: string, ttlSeconds: number): Promise<string> {
+    return this.presignGet(key, ttlSeconds);
+  }
+
+  /**
    * The same deterministic shape as `presignGet`, plus the content type the upload must declare.
    *
    * ⚠️ **Nothing enforces any of it here**, and that is true of this whole provider — there is no

@@ -183,6 +183,16 @@ export const AnalysisFindingKind = z.enum([
   'bounded-by-limit',
   /** ⚠️ Dwell thresholds below the event dedup window are bounded by sampling, not by policy (L-57). */
   'dwell-below-dedup-window',
+  /**
+   * ⭐ **The container's own timestamps and the derived footage offsets disagree** (P-8 Phase 8, 3/9).
+   *
+   * Every event time in an offline analysis is derived as `(seq − 1) / analysisFrameRate`, which is
+   * exactly right for constant-frame-rate footage and wrong for anything else — variable frame rate,
+   * a recording with a gap where the NVR dropped out, a concatenated export. The decoder reads the
+   * presentation timestamp ffmpeg reports and compares the two, so a divergence is **measured and
+   * reported** rather than silently shifting every incident in the file.
+   */
+  'timestamps-diverged',
 ]);
 export type AnalysisFindingKind = z.infer<typeof AnalysisFindingKind>;
 
@@ -480,6 +490,16 @@ export const AnalysisLease = z.object({
 });
 export type AnalysisLease = z.infer<typeof AnalysisLease>;
 
+/**
+ * Replay speed, as a multiple of real time.
+ *
+ * ⚠️ Bounded at both ends for honest reasons rather than defensive ones. Below `0.1` a four-hour
+ * recording takes forty hours and the session outlives any plausible lease; above `256` the number
+ * stops describing anything, because no runtime on any hardware this platform targets can consume
+ * frames that fast and the session would simply run unpaced while claiming a figure.
+ */
+export const ANALYSIS_SPEED = z.number().min(0.1).max(256);
+
 /** ⛔ **Immutable once terminal.** One execution of one analysis. */
 export const AnalysisSession = z.object({
   id: z.string().min(1),
@@ -494,6 +514,22 @@ export const AnalysisSession = z.object({
   jobId: z.string().min(1).optional(),
   /** Frames per second **of footage** handed to perception. */
   analysisFrameRate: z.number().min(0.1).max(30),
+  /**
+   * ⭐ **Footage seconds per wall-clock second, or `null` for as fast as the runtime allows.**
+   *
+   * ⚠️ **This changes when the answer arrives and never what the answer is**, and that is not a
+   * hope — it is the milestone's central acceptance criterion. Every downstream decision (dedup,
+   * `window`, `dwell`, every cool-down) is keyed on `occurredAt`, which is **footage** time derived
+   * from the frame's position in the file. Wall clock reaches nothing that decides anything.
+   *
+   * ⛔ The verification that holds this true is a byte-for-byte comparison of two runs of the same
+   * file at different speeds — detections, tracks, identities, dwell state, rule evaluations, events
+   * and incidents. Any divergence is a defect in this platform, not a tolerance to be widened.
+   *
+   * `1` is real time, which is what Demonstration Mode watches; `null` is what an investigation
+   * wants, because an operator waiting on four hours of footage does not want it to take four hours.
+   */
+  speed: ANALYSIS_SPEED.nullable(),
   provenance: AnalysisProvenance,
   ruleSet: z.array(AnalysisRuleSnapshot).max(200),
   progress: AnalysisProgress,
@@ -557,6 +593,13 @@ export type ConfirmVideoAnalysisInput = z.infer<typeof ConfirmVideoAnalysisInput
 export const StartAnalysisSessionInput = z.object({
   /** Frames per second of footage. Omitted → the deployment's configured rate. */
   analysisFrameRate: z.number().min(0.1).max(30).optional(),
+  /**
+   * How fast to work through the footage. Omitted → as fast as the runtime allows.
+   *
+   * ⚠️ Sent as `null` for "unpaced" so the field can be set back to it explicitly; see
+   * `AnalysisSession.speed` for why this changes **when** an answer arrives and never **what** it is.
+   */
+  speed: ANALYSIS_SPEED.nullable().optional(),
 });
 export type StartAnalysisSessionInput = z.infer<typeof StartAnalysisSessionInput>;
 

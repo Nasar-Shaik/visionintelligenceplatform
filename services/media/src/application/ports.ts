@@ -22,11 +22,79 @@ export interface CameraSource {
   resolve(tenantId: string, cameraId: string): Promise<StreamConnection>;
 }
 
+/**
+ * ⭐ **Where a frame came from, carried with the frame** (P-8 Phase 8, slice 3).
+ *
+ * A live camera *is* its own provenance: the camera id and the wall-clock capture time say
+ * everything there is to know, and both are already on the frame. A frame decoded out of a stored
+ * recording is not — the same camera id can be re-analysed from five different files, twice from the
+ * same file, and resumed halfway through. Without this, "which run produced this detection, from
+ * which file, at which point in it" is unanswerable, and every later slice (timeline, incident
+ * review, evidence extraction, the export report) needs the answer.
+ *
+ * ⚠️ **`mediaOffsetSeconds` is derived; `ptsSeconds` is measured.** The derivation is
+ * `(seq − 1) / frameRate`, which is exact for constant-frame-rate footage and wrong for anything
+ * else. Keeping both is what lets the decoder *notice* when a file disagrees with the arithmetic
+ * rather than shifting every incident in it — see the `timestamps-diverged` finding.
+ */
+export interface FrameProvenance {
+  /** ⚠️ What kind of thing produced it, so a consumer never has to infer it from absent fields. */
+  sourceKind: 'live-stream' | 'stored-media';
+  /** The media it was decoded from: the object key for stored media, the stream url's host for live. */
+  sourceId: string;
+  /** The analysis and the session this frame belongs to. Absent for live. */
+  analysisId?: string;
+  sessionId?: string;
+  /** ⭐ The chunk that produced it — the unit a resume restarts from, so a gap is attributable. */
+  chunkId?: string;
+  chunkIndex?: number;
+  /** Position in the footage, seconds. **Derived** from `seq` and `frameRate`. */
+  mediaOffsetSeconds: number;
+  /**
+   * The container's own presentation timestamp, seconds.
+   *
+   * ⛔ `null` when the decoder could not read one — never `0`, which is a real and very different
+   * answer (ADR-0039). A null here means the divergence check could not run, not that it passed.
+   */
+  ptsSeconds: number | null;
+  /** The rate the source was asked to emit at. Needed to reproduce `mediaOffsetSeconds`. */
+  frameRate: number;
+  /** What decoded it, with its version — a decoder upgrade can change a result on its own. */
+  decoder: string;
+}
+
 /** A decoded video frame handed to perception. In P1-4 `data` may be a JPEG; P1-6 consumes it. */
 export interface Frame {
   seq: number;
   at: Date;
   data?: Uint8Array;
+  /**
+   * Where this frame came from (P-8 Phase 8, slice 3).
+   *
+   * ⚠️ Optional, and the live decoder deliberately does not set it. A camera frame's provenance is
+   * already complete in `cameraId` + `at`; inventing a record that adds nothing would be one more
+   * thing to keep true on the hot path of every camera in the estate.
+   */
+  provenance?: FrameProvenance;
+}
+
+/**
+ * What happened to one frame that was **delivered rather than pushed** (P-8 Phase 8, slice 3).
+ *
+ * ⚠️ Returned rather than counted, because the offline caller has to act on it: a frame the runtime
+ * refused is a hole in an investigation and has to become a finding on the session, where the live
+ * path can legitimately settle for a metric that says how many were lost.
+ */
+export interface FrameDelivery {
+  outcome: 'delivered' | 'failed' | 'skipped-unassigned' | 'skipped-held' | 'no-image';
+  /** Detections the runtime returned. `0` is a real answer here — the frame was analysed. */
+  detections: number;
+  /** Present when `outcome` is not `delivered` — the operator-facing reason. */
+  reason?: string;
+  /** ⭐ What the runtime said it ran. The session's provenance is captured from this, not assumed. */
+  runtimeVersion?: string;
+  modelId?: string;
+  executionProvider?: string;
 }
 
 /** A finalized recording segment emitted by the decoder, ready to persist. */
@@ -68,9 +136,44 @@ export interface Decoder {
   open(conn: StreamConnection, opts: DecodeOptions, cb: DecoderCallbacks): DecoderSession;
 }
 
-/** Where extracted frames go for perception. P1-4 ships a null sink; P1-6 wires the pipeline. */
+/**
+ * Where extracted frames go for perception. P1-4 ships a null sink; P1-6 wires the pipeline.
+ *
+ * ### ⭐ One delivery path, two admission policies (P-8 Phase 8, slice 3)
+ *
+ * `push` and `deliver` reach the **same** runtime through the same request, the same assignment
+ * gate, the same zone capture and the same publisher. They differ only in what happens at the door
+ * when the runtime cannot keep up, and the two answers are opposites for good reasons:
+ *
+ * - **`push` drops.** A live frame is perishable. Blocking would apply back-pressure to the process
+ *   writing MP4 segments, so a slow runtime would become missing evidence. The oldest frame goes and
+ *   the freshest is kept, because only the freshest can still matter.
+ * - **`deliver` waits.** ⛔ There is no such thing as a stale frame in a *recording*. Every frame is
+ *   evidence a customer uploaded and expects to have been looked at, nothing downstream of it is
+ *   waiting in real time, and a dropped one is a hole in an investigation that no counter can fill.
+ *
+ * ⚠️ **`deliver` is also what makes offline results reproducible**, which is the less obvious half.
+ * The live path keeps four requests in flight, so responses arrive out of order — and the runtime's
+ * tracker *skips* a frame older than the last one it saw, exactly as this service's event publisher
+ * drops a stale result. Under concurrency, which frames get skipped depends on scheduling, so two
+ * runs of one file would disagree. Awaiting each frame in turn makes the offline path strictly
+ * ordered, and strict ordering is what turns "the same file twice" into the same answer twice.
+ */
 export interface FrameSink {
   push(tenantId: string, cameraId: string, frame: Frame): void;
+  /**
+   * Deliver one frame and wait for its outcome. Absent ⇒ the sink offers no lossless path.
+   *
+   * ⚠️ Optional on the port because `NullFrameSink` is a legitimate deployment, and a caller that
+   * needs losslessness must fail loudly on a sink that cannot provide it rather than fall back to
+   * `push` and silently start dropping the customer's evidence.
+   */
+  deliver?(
+    tenantId: string,
+    cameraId: string,
+    frame: Frame,
+    signal: AbortSignal,
+  ): Promise<FrameDelivery>;
 }
 
 /**

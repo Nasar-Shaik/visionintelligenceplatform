@@ -185,6 +185,22 @@ export class S3ObjectStore implements ObjectStore {
   }
 
   /**
+   * Signed with `#client` — the **internal** endpoint, the one this process itself talks to.
+   *
+   * ⭐ This is the same client that already performs every `put`, `get` and `head`, so if the
+   * service can reach the object store at all, a URL signed here is reachable by definition. That
+   * property is the whole point: it cannot drift from the connection the service is actually using,
+   * whereas the public endpoint is a separate setting that can be right for a browser and wrong for
+   * everything else — which is exactly how `confirmUpload` came to fail in every deployment while
+   * passing every test. See {@link ObjectStore.presignInternalGet}.
+   */
+  async presignInternalGet(key: string, ttlSeconds: number): Promise<string> {
+    return getSignedUrl(this.#client, new GetObjectCommand({ Bucket: this.#bucket, Key: key }), {
+      expiresIn: ttlSeconds,
+    });
+  }
+
+  /**
    * Signed against the public endpoint for the same reason `presignGet` is — the browser performs
    * this PUT.
    *

@@ -74,6 +74,15 @@ const DEFAULT_MAX_INFLIGHT = 4;
 /** A queued publish that waited longer than this is counted as `delayed`. */
 const DELAY_BUDGET_MS = 1_000;
 
+/**
+ * Ordering gates held at once — live cameras plus offline analysis sessions.
+ *
+ * ⚠️ Generous, because evicting a *live* camera's gate would let a genuinely stale result through.
+ * Bounded anyway, because analysis sessions are unbounded over a deployment's life and this process
+ * also writes the recordings.
+ */
+const MAX_TRACKED_STREAMS = 2_000;
+
 export interface EventPublisherStats {
   enabled: boolean;
   /** Results handed to `publish()`. */
@@ -313,7 +322,7 @@ export class BufferedEventPublisher {
     const correlated =
       result.correlationId === undefined ? { ...result, correlationId: frameId } : result;
 
-    const key = `${result.tenantId} ${result.cameraId}`;
+    const key = `${result.tenantId}\0${result.cameraId}`;
 
     /*
      * ⚠️ The ordering gate. Responses arrive out of order because the sink runs four in flight; a
@@ -334,8 +343,32 @@ export class BufferedEventPublisher {
      * stale when the capture time also went backwards; otherwise it is a new session and the gate
      * resets. No threshold to tune, and no cross-service call to remember to make.
      */
-    const last = this.#lastSeq.get(key);
-    const lastAt = this.#lastCapturedAt.get(key);
+    /*
+     * ⛔ **The gate is keyed by the STREAM, not by the camera — and this was a measured defect.**
+     *
+     * The heuristic above resolves a *live* camera restart, where the frames really are newer. It
+     * cannot resolve an offline **rerun**, and P-8 Phase 8 slice 3 measured exactly that: the same
+     * recording analysed twice on one camera published 60 results the first time and dropped all 60
+     * the second, `droppedOutOfOrder: 60`, `sessionResets: 0`. The session still reported
+     * `succeeded` with 120 detections, so an operator would have seen a completed analysis with an
+     * empty timeline and nothing anywhere saying why.
+     *
+     * ⭐ The reason it cannot be resolved by any heuristic is worth stating: an offline analysis
+     * stamps **footage** time, so a rerun replays *identical* `(seq, capturedAt)` pairs. They are
+     * not newer and not older; they are the same instants, being examined again. No amount of
+     * comparing timestamps can separate "a stale redelivery" from "a legitimate second look".
+     *
+     * So the identity of the ordered stream is made explicit instead. For a live camera that is
+     * still the camera — `correlationId` is absent, the key is unchanged, and live behaviour is
+     * byte-identical. For an analysis session it is the session, which the runtime echoes back on
+     * `correlationId` because the frame sink sent it. Each run then gets its own gate, ordering is
+     * still enforced strictly within a run, and two runs cannot silence each other.
+     */
+    const streamKey =
+      result.correlationId === undefined ? key : `${key}\0${result.correlationId}`;
+
+    const last = this.#lastSeq.get(streamKey);
+    const lastAt = this.#lastCapturedAt.get(streamKey);
     const capturedAt = Date.parse(result.frame.capturedAt);
     if (last !== undefined && result.frame.seq <= last) {
       const restarted = lastAt !== undefined && Number.isFinite(capturedAt) && capturedAt > lastAt;
@@ -345,8 +378,21 @@ export class BufferedEventPublisher {
       }
       this.#sessionResets += 1;
     }
-    this.#lastSeq.set(key, result.frame.seq);
-    if (Number.isFinite(capturedAt)) this.#lastCapturedAt.set(key, capturedAt);
+    /*
+     * ⚠️ Bounded. One entry per analysis session, and analyses are unbounded over a deployment's
+     * life — an unbounded map here would be a slow leak in the one process that must not run out of
+     * memory. Live cameras are few and are evicted only after every offline entry, because `Map`
+     * preserves insertion order and a camera's entry is refreshed on every frame it publishes.
+     */
+    if (!this.#lastSeq.has(streamKey) && this.#lastSeq.size >= MAX_TRACKED_STREAMS) {
+      const oldest = this.#lastSeq.keys().next().value;
+      if (oldest !== undefined) {
+        this.#lastSeq.delete(oldest);
+        this.#lastCapturedAt.delete(oldest);
+      }
+    }
+    this.#lastSeq.set(streamKey, result.frame.seq);
+    if (Number.isFinite(capturedAt)) this.#lastCapturedAt.set(streamKey, capturedAt);
 
     let q = this.#queues.get(key);
     if (q === undefined) {
@@ -389,21 +435,31 @@ export class BufferedEventPublisher {
    * per-camera metrics view has to be able to say which.
    */
   publishedFor(tenantId: string, cameraId: string): number | null {
-    return this.#publishedByCamera.get(`${tenantId} ${cameraId}`) ?? null;
+    return this.#publishedByCamera.get(`${tenantId}\0${cameraId}`) ?? null;
   }
 
   /** Whether a tracked detection has ever been published for this camera. */
   trackingFor(tenantId: string, cameraId: string): boolean {
-    return this.#trackingByCamera.has(`${tenantId} ${cameraId}`);
+    return this.#trackingByCamera.has(`${tenantId}\0${cameraId}`);
   }
 
-  /** Cameras this publisher is holding state for. Used by the camera-assignment verification. */
+  /**
+   * Cameras this publisher is holding state for. Used by the camera-assignment verification.
+   *
+   * ⚠️ **Only the camera segment**, deduplicated. Ordering-gate keys gained a third segment for
+   * offline sessions (see the gate); returning them whole would have reported
+   * `cam_1\0ases_abc` as a camera id to the assignment verification, which reads these as real
+   * camera identifiers.
+   */
   cameras(tenantId: string): string[] {
-    const prefix = `${tenantId} `;
-    return [...this.#lastSeq.keys()]
-      .filter((k) => k.startsWith(prefix))
-      .map((k) => k.slice(prefix.length))
-      .sort();
+    const prefix = `${tenantId}\0`;
+    const out = new Set<string>();
+    for (const k of this.#lastSeq.keys()) {
+      if (!k.startsWith(prefix)) continue;
+      out.add(k.slice(prefix.length).split('\0')[0] ?? '');
+    }
+    out.delete('');
+    return [...out].sort();
   }
 
   /**
@@ -416,10 +472,18 @@ export class BufferedEventPublisher {
    * offering, and the queue drains. It is here so assignment plugs in without a redesign.
    */
   release(tenantId: string, cameraId: string): void {
-    const key = `${tenantId} ${cameraId}`;
+    const key = `${tenantId}\0${cameraId}`;
     this.#queues.delete(key);
-    this.#lastSeq.delete(key);
-    this.#lastCapturedAt.delete(key);
+    /*
+     * ⚠️ The camera's own gate **and** every analysis session's gate on it. A prefix sweep, not a
+     * single delete, because the key gained a third segment — leaving session gates behind would
+     * make release() quietly incomplete, which is the same silent-drop failure it exists to prevent.
+     */
+    for (const k of [...this.#lastSeq.keys()]) {
+      if (k !== key && !k.startsWith(`${key}\0`)) continue;
+      this.#lastSeq.delete(k);
+      this.#lastCapturedAt.delete(k);
+    }
   }
 
   stats(): EventPublisherStats {
@@ -529,7 +593,7 @@ export class BufferedEventPublisher {
           msgId: `${item.tenantId}:${item.cameraId}:${item.seq}`,
         });
         this.#published += 1;
-        const cameraKey = `${item.tenantId} ${item.cameraId}`;
+        const cameraKey = `${item.tenantId}\0${item.cameraId}`;
         this.#publishedByCamera.set(cameraKey, (this.#publishedByCamera.get(cameraKey) ?? 0) + 1);
         if (item.tracked) this.#trackingByCamera.add(cameraKey);
         this.#detectionsPublished += item.detections;

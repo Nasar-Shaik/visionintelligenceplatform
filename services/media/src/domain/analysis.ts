@@ -68,6 +68,8 @@ export interface AnalysisSessionDoc extends TenantScoped {
   state: AnalysisSessionState;
   jobId?: string;
   analysisFrameRate: number;
+  /** Footage seconds per wall second, or `null` for unpaced. ⭐ Changes timing, never the answer. */
+  speed: number | null;
   provenance: AnalysisSession['provenance'];
   ruleSet: AnalysisSession['ruleSet'];
   progress: AnalysisSession['progress'];
@@ -205,6 +207,8 @@ export interface NewSessionInput {
   cameraId: string;
   sequence: number;
   analysisFrameRate: number;
+  /** ⚠️ Explicit, including `null`. A default buried here would be a rate nobody chose. */
+  speed: number | null;
   capabilityId: string;
   ruleSet: AnalysisSession['ruleSet'];
   findings: AnalysisFinding[];
@@ -230,6 +234,7 @@ export function newSession(input: NewSessionInput): AnalysisSessionDoc {
     sequence: input.sequence,
     state: 'queued',
     analysisFrameRate: input.analysisFrameRate,
+    speed: input.speed,
     provenance: {
       capabilityId: input.capabilityId,
       pipelineVersion: ANALYSIS_PIPELINE_VERSION,
@@ -266,6 +271,7 @@ export function toSession(doc: AnalysisSessionDoc): AnalysisSession {
     state: doc.state,
     ...(doc.jobId === undefined ? {} : { jobId: doc.jobId }),
     analysisFrameRate: doc.analysisFrameRate,
+    speed: doc.speed,
     provenance: doc.provenance,
     ruleSet: doc.ruleSet,
     progress: doc.progress,

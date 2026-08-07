@@ -254,7 +254,58 @@ _Last updated: 2026-08-07 · Claude_
   **1032** · contracts · import graph 0 violations.
   [ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md).
 
-- **P-8 Phase 8 · Offline Video Investigation — 🚧 IN PROGRESS (2026-08-07). Slice 1 of 9 complete.**
+- **P-8 Phase 8 · Offline Video Investigation — 🚧 IN PROGRESS (2026-08-07). Slices 1–3 of 9 complete.**
+
+  **Slice 3 · Pipeline execution — ⭐ offline footage now runs through the LIVE runtime.** A frame
+  decoded from an uploaded MP4 reaches `/infer` through the same request, the same assignment gate,
+  the same zones and the same publisher as a camera's. No second inference engine, tracker, rule
+  engine or event path. `StoredMediaFrameSource` is the `FrameSource` slice 2 was written for — real
+  ffmpeg over a presigned object URL, input-side `-ss` so a resume issues a range request rather than
+  re-decoding the file. Full frame provenance (number, footage offset, container PTS, source, session,
+  chunk, decoder version) travels with every frame. **No frozen contract changed**: the runtime is
+  told which analysis a frame belongs to through `frame.correlationId`, the one field AI Runtime v1.0
+  already echoes, which already reaches the indexed `EventEnvelope.correlationId`.
+
+  ⭐ **One delivery path, two admission policies.** `push` drops the oldest frame — right for a live
+  camera, catastrophic for a recording. `deliver` waits: there is no such thing as a stale frame in a
+  recording, and awaiting each frame in turn also makes the stream **strictly ordered**, which is what
+  makes two runs of one file agree (the runtime's tracker skips frames older than the last it saw, so
+  under concurrency *which* frames get skipped depends on scheduling). A sink that can only `push`
+  **fails the session** rather than silently degrading.
+
+  ⭐ **Deployed 1× vs 8× parity, exact rather than within tolerance** (real ffmpeg, MinIO, runtime,
+  events): 60/60 frames analysed and 0 dropped both times, 120 detections each, **byte-identical event
+  streams**, identical footage timestamps, identical track identities, identical confidences and
+  bounding boxes to six decimal places — while `speedFactor` measured **1.01 vs 7.86** and wall clock
+  30 s vs 4 s. ⚠️ Rule evaluations and incidents were 0 on both sides and that is recorded as an
+  **absence**, not a pass: no enabled rule covers those cameras.
+
+  ⛔ **Three deployed defects, none findable from unit tests.** (1) Five source files contained raw
+  **NUL bytes**, so `file` called them `data` and **`grep` silently skipped them** — including the
+  media hot path, and one feeds the sha1 that derives recording ids. (2) `confirmUpload` presigned a
+  **browser-facing** URL and handed it to `ffprobe` *inside the container*: `Connection refused`.
+  Slice 1's confirm step had never worked in a deployment, because its double returned one URL shape
+  for both audiences. Closed with `presignInternalGet` and a test that asserts **which audience** each
+  URL is for. (3) The event publisher's ordering gate dropped **every rerun** — keyed on
+  `(tenant, camera)`, and its restart heuristic needs capture time to move forward, but a rerun
+  replays *identical* footage timestamps. Now keyed by the **stream**, an analysis session being its
+  own stream; live is byte-identical.
+
+  ⛔ **Blocked, Architect decision required — [L-61](../project/KNOWN_LIMITATIONS.md).** A *second*
+  analysis of the same footage on the same camera produces **no events**: the events service dedups on
+  `tenant + type + camera + zone + track + time-bucket`, and footage time never moves, so the
+  collision is permanent rather than windowed. Measured `deduped +120 / persisted +0` against a
+  session reporting `succeeded / 120 detections`. It cannot be fixed inside media —
+  `correlationId` is stamped **per frame** on the live path, so using it as a dedup input would
+  disable deduplication for every camera. The fix is an additive field on the frozen `EventEnvelope`
+  (ADR-0040) plus a `dedupKey` change: the `analysisSessionId` ADR-0047 already proposes, one layer
+  earlier. Detail: [P-8-PHASE-8-SLICE-3](P-8-PHASE-8-SLICE-3-PIPELINE-EXECUTION.md).
+
+  Verification: **256 media tests**, 24 storage, turbo lint + typecheck green (48 tasks), plus the
+  deployed run above. ⚠️ **C-21 moves ⛔ → ⚠️** — a *first* analysis of a recording works end to end;
+  a rerun is silent until L-61 is closed.
+
+  **Slice 1 of 9 (upload + session record):**
   Upload → probe → analysis + **session** record. ⭐ The Architect's **Analysis Session** refinement
   was adopted before any code: `VideoAnalysis` owns the bytes, `AnalysisSession` owns one immutable
   execution, so a rerun after a rule is tuned never overwrites the first answer. Containers follow

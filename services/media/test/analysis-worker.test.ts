@@ -182,6 +182,43 @@ describe('session state maps onto the frozen job vocabulary', () => {
 
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * ⭐ A sink that **delivers losslessly**, as the real one does for offline frames.
+ *
+ * ⚠️ It implements `deliver`, not just `push`, and that is what makes these tests meaningful. The
+ * worker refuses a sink that can only `push`, because pushing drops frames under load — so a double
+ * offering only `push` would have every one of these tests exercise the refusal path instead of the
+ * behaviour they are named for.
+ */
+class FakeSink implements FrameSink {
+  readonly delivered: Array<{ cameraId: string; frame: Frame }> = [];
+  /** Outcome for the nth delivery, so a refusal can be driven deterministically. */
+  outcomeFor: ((index: number) => FrameDelivery) | null = null;
+
+  push(): void {
+    throw new Error('an offline session must never reach the lossy push path');
+  }
+
+  async deliver(
+    _tenantId: string,
+    cameraId: string,
+    frame: Frame,
+    _signal: AbortSignal,
+  ): Promise<FrameDelivery> {
+    const index = this.delivered.length;
+    this.delivered.push({ cameraId, frame });
+    return (
+      this.outcomeFor?.(index) ?? {
+        outcome: 'delivered',
+        detections: 0,
+        runtimeVersion: '1.0.0',
+        modelId: 'yolov8n',
+        executionProvider: 'cpu',
+      }
+    );
+  }
+}
+
 class FakeSource implements FrameSource {
   readonly requests: FrameRequest[] = [];
   closed = 0;
@@ -193,7 +230,7 @@ class FakeSource implements FrameSource {
 
   async read(
     request: FrameRequest,
-    onFrame: (frame: Frame) => void,
+    onFrame: (frame: Frame) => Promise<void>,
     signal: AbortSignal,
   ): Promise<FrameChunkResult> {
     this.requests.push(request);
@@ -205,7 +242,30 @@ class FakeSource implements FrameSource {
     let emitted = 0;
     for (let i = 0; i < frames; i += 1) {
       if (signal.aborted) break;
-      onFrame({ seq: i + 1, at: new Date(T0.getTime() + i * 500), data: new Uint8Array([1]) });
+      /*
+       * ⚠️ Frames carry provenance, exactly as the real source stamps them. A fake that omitted it
+       * would make the pacer a no-op and the offset-derived assertions vacuous — the double would
+       * pass tests the real thing fails.
+       */
+      const seq = Math.round(request.fromOffsetSeconds * request.frameRate) + i + 1;
+      const mediaOffsetSeconds = (seq - 1) / request.frameRate;
+      await onFrame({
+        seq,
+        at: new Date(T0.getTime() + mediaOffsetSeconds * 1000),
+        data: new Uint8Array([1]),
+        provenance: {
+          sourceKind: 'stored-media',
+          sourceId: 'analyses/ana_1/source.mp4',
+          analysisId: 'ana_1',
+          sessionId: 'ases_1',
+          chunkId: `ases_1#${String(this.requests.length - 1)}`,
+          chunkIndex: this.requests.length - 1,
+          mediaOffsetSeconds,
+          ptsSeconds: mediaOffsetSeconds - request.fromOffsetSeconds,
+          frameRate: request.frameRate,
+          decoder: 'fake/1.0.0',
+        },
+      });
       emitted += 1;
       if (this.abortAfterFrames !== null && emitted === this.abortAfterFrames) this.onAbort?.();
     }
@@ -287,10 +347,12 @@ async function seed(store: InMemoryAnalysisStore, durationSeconds = 300) {
   return { analysis, session };
 }
 
-function build(opts: { workerId?: string; source?: FakeSource; now?: () => Date } = {}) {
+function build(
+  opts: { workerId?: string; source?: FakeSource; now?: () => Date; sink?: FakeSink } = {},
+) {
   const store = new InMemoryAnalysisStore();
   const source = opts.source ?? new FakeSource();
-  const pushed: Array<{ cameraId: string; frame: Frame }> = [];
+  const sink = opts.sink ?? new FakeSink();
   const worker = new AnalysisWorker({
     store,
     sources: {
@@ -298,11 +360,11 @@ function build(opts: { workerId?: string; source?: FakeSource; now?: () => Date 
         return source;
       },
     },
-    sink: { push: (_t, cameraId, frame) => pushed.push({ cameraId, frame }) },
+    sink,
     clock: { now: opts.now ?? (() => T0) },
     workerId: opts.workerId ?? 'worker-a',
   });
-  return { store, worker, source, pushed };
+  return { store, worker, source, sink, pushed: sink.delivered };
 }
 
 describe('AnalysisWorker — running a session', () => {
@@ -362,7 +424,7 @@ describe('AnalysisWorker — running a session', () => {
             return new FakeSource();
           },
         },
-        sink: { push: () => {} },
+        sink: new FakeSink(),
         clock: { now: () => T0 },
         workerId: id,
       });
@@ -384,7 +446,7 @@ describe('AnalysisWorker — running a session', () => {
           return new FakeSource();
         },
       },
-      sink: { push: () => {} },
+      sink: new FakeSink(),
       clock: { now: () => T0 },
       workerId: 'worker-a',
     });
@@ -395,7 +457,7 @@ describe('AnalysisWorker — running a session', () => {
           return new FakeSource();
         },
       },
-      sink: { push: () => {} },
+      sink: new FakeSink(),
       clock: { now: () => T0 },
       workerId: 'worker-b',
     });
@@ -418,7 +480,7 @@ describe('AnalysisWorker — running a session', () => {
     const store = new InMemoryAnalysisStore();
     const { session } = await seed(store, 600);
     const source = new FakeSource(600);
-    const pushed: Frame[] = [];
+    const sink = new FakeSink();
     const worker = new AnalysisWorker({
       store,
       sources: {
@@ -426,7 +488,7 @@ describe('AnalysisWorker — running a session', () => {
           return source;
         },
       },
-      sink: { push: (_t, _c, frame) => pushed.push(frame) },
+      sink,
       clock: { now: () => T0 },
       workerId: 'worker-a',
     });
@@ -441,8 +503,8 @@ describe('AnalysisWorker — running a session', () => {
     const after = await store.getSession(scope, 'ases_1');
     expect(after?.state).toBe('cancelled');
     /* ⭐ It stopped INSIDE the chunk: far fewer than the 240 frames one 120 s chunk would give. */
-    expect(pushed.length).toBeGreaterThan(0);
-    expect(pushed.length).toBeLessThan(240);
+    expect(sink.delivered.length).toBeGreaterThan(0);
+    expect(sink.delivered.length).toBeLessThan(240);
   });
 
   it('reports a permanent failure without retrying it', async () => {
@@ -455,7 +517,7 @@ describe('AnalysisWorker — running a session', () => {
           throw new Error('the file contains no video stream');
         },
       },
-      sink: { push: () => {} },
+      sink: new FakeSink(),
       clock: { now: () => T0 },
       workerId: 'worker-a',
     });
@@ -487,7 +549,7 @@ describe('AnalysisWorker — running a session', () => {
           throw new Error('socket hang up');
         },
       },
-      sink: { push: () => {} },
+      sink: new FakeSink(),
       clock: { now: () => T0 },
       workerId: 'worker-a',
     });
@@ -520,7 +582,7 @@ describe('AnalysisWorker — running a session', () => {
           return new FakeSource();
         },
       },
-      sink: { push: () => {} },
+      sink: new FakeSink(),
       clock: { now: () => tick },
       workerId: 'worker-b',
     });
@@ -541,7 +603,7 @@ describe('AnalysisWorker — running a session', () => {
           return new FakeSource(600);
         },
       },
-      sink: { push: () => {} },
+      sink: new FakeSink(),
       clock: { now: () => T0 },
       workerId: 'worker-a',
     });

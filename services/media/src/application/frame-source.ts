@@ -66,17 +66,49 @@ export interface FrameChunkResult {
  * whole of the position.
  */
 export interface FrameSource {
-  /** Produce one chunk, handing each frame to `onFrame` as it is decoded. */
+  /**
+   * Produce one chunk, handing each frame to `onFrame` as it is decoded.
+   *
+   * ⭐ **`onFrame` is awaited, and the source must not decode ahead of it** (slice 3). This is the
+   * whole of the back-pressure design and it buys two separate things:
+   *
+   * 1. **Bounded memory.** Four hours at 2 fps is 28 800 frames; a source that decoded as fast as
+   *    ffmpeg can go while the runtime consumed them at its own pace would buffer gigabytes of JPEG
+   *    in the one process that must not run out of memory.
+   * 2. **Strict ordering.** The caller awaits each frame's delivery, so exactly one frame is in
+   *    flight — which is what makes two runs of the same file produce the same tracking identities.
+   *    See `FrameSink.deliver`.
+   */
   read(
     request: FrameRequest,
-    onFrame: (frame: Frame) => void,
+    onFrame: (frame: Frame) => Promise<void>,
     signal: AbortSignal,
   ): Promise<FrameChunkResult>;
   /** Release anything held. Safe to call more than once. */
   close(): Promise<void>;
 }
 
+/**
+ * What a source needs to open one session's media and to stamp what it produces.
+ *
+ * ⚠️ **`footageStartedAt` is here rather than at the caller**, and that placement is deliberate. The
+ * source is the only thing that knows a frame's true position in the file — it holds the seek offset
+ * and reads the container's presentation timestamps — so it is the only thing that can turn a
+ * position into an event time honestly. A caller stamping frames from a counter would be inventing
+ * the one number the entire milestone rests on.
+ */
+export interface FrameSourceInput {
+  tenantId: string;
+  assetKey: string;
+  contentType: string;
+  /** Footage-clock time of offset 0. Every frame's `at` is derived from this. */
+  footageStartedAt: string;
+  /** For provenance — which investigation and which run these frames belong to. */
+  analysisId: string;
+  sessionId: string;
+}
+
 /** Opens a `FrameSource` for a session's media. One implementation per `AnalysisSourceKind`. */
 export interface FrameSourceFactory {
-  open(input: { tenantId: string; assetKey: string; contentType: string }): Promise<FrameSource>;
+  open(input: FrameSourceInput): Promise<FrameSource>;
 }

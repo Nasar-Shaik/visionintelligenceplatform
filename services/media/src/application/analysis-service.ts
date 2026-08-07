@@ -38,6 +38,7 @@ import {
   type AnalysisDoc,
   type AnalysisSessionDoc,
 } from '../domain/analysis.js';
+import { stateAfterLeaseLapse } from '../domain/analysis-lease.js';
 import { assetFromProbe, type MediaProbe } from '../adapters/ffprobe.js';
 import { badRequest, conflict, DuplicateSessionError, notFound } from './errors.js';
 import type { AnalysisStore, CameraDirectory } from './ports.js';
@@ -60,6 +61,20 @@ export interface AnalysisServiceDeps {
   defaultFrameRate: number;
   /** Signed playback-URL lifetime (seconds). */
   playbackTtlSeconds: number;
+  /**
+   * What actually executes a session. Absent ⇒ sessions are recorded and sit `queued`.
+   *
+   * ⚠️ Absent is a real deployment, not a broken one: a media replica configured without a
+   * perception runtime still accepts uploads and records the intent to analyse. It must say so by
+   * leaving the session visibly `queued` rather than by silently reporting it as finished.
+   */
+  runner?: SessionRunner;
+}
+
+/** The seam between recording the intent to run and running it. Implemented by `AnalysisRunner`. */
+export interface SessionRunner {
+  submit(scope: TenantScope, sessionId: string): void;
+  cancel(sessionId: string): boolean;
 }
 
 export class AnalysisService {
@@ -72,6 +87,7 @@ export class AnalysisService {
   readonly #capabilityId: string;
   readonly #defaultFrameRate: number;
   readonly #playbackTtl: number;
+  readonly #runner: SessionRunner | undefined;
 
   constructor(deps: AnalysisServiceDeps) {
     this.#store = deps.store;
@@ -83,6 +99,7 @@ export class AnalysisService {
     this.#capabilityId = deps.capabilityId;
     this.#defaultFrameRate = deps.defaultFrameRate;
     this.#playbackTtl = deps.playbackTtlSeconds;
+    this.#runner = deps.runner;
   }
 
   /**
@@ -203,7 +220,16 @@ export class AnalysisService {
      * ⚠️ Probed through a signed URL rather than by downloading. A two-gigabyte read into a service
      * that only needs a header is the shape that makes one big upload take the whole host down.
      */
-    const url = await tenantStore.presignGet(pending.key, 900);
+    /*
+     * ⛔ **Internal, not public — and this was a deployed defect, not a precaution.**
+     *
+     * `ffprobe` runs inside this container. A URL signed against the *public* endpoint names the
+     * host a browser resolves, which under this deployment is `https://localhost` — and inside the
+     * container that is the container itself. Measured: `Connection to tcp://localhost:443 failed:
+     * Connection refused`, so confirming an upload failed in every real deployment while passing
+     * every unit test, because the tests supply a fake probe.
+     */
+    const url = await tenantStore.presignInternalGet(pending.key, 900);
     let probed;
     try {
       probed = await this.#probe.probe(url);
@@ -291,6 +317,12 @@ export class AnalysisService {
       cameraId: doc.cameraId,
       sequence: existing.length + 1,
       analysisFrameRate: input.analysisFrameRate ?? this.#defaultFrameRate,
+      /*
+       * ⭐ Unpaced unless the caller asks otherwise. An investigation wants its answer as fast as the
+       * hardware can produce it; real-time playback is what Demonstration Mode asks for explicitly,
+       * and defaulting to it would make every investigation take as long as the footage.
+       */
+      speed: input.speed ?? null,
       capabilityId: this.#capabilityId,
       /*
        * ⚠️ Empty until the slice that reads the rule plane. An empty snapshot means "not captured",
@@ -326,6 +358,16 @@ export class AnalysisService {
       updatedAt: now.toISOString(),
     });
 
+    /*
+     * ⭐ **Handed to the runner only after the session is durable**, and the order is load-bearing.
+     * Submitting first opens a window where the worker claims a session the store has not accepted —
+     * it would fail its conditional write, look like a lost race, and the operator would be told the
+     * run started when nothing did.
+     *
+     * ⚠️ Fire-and-forget on purpose: this is an HTTP request, and the analysis may take hours.
+     */
+    this.#runner?.submit(scope, session._id);
+
     return toSession(session);
   }
 
@@ -336,6 +378,15 @@ export class AnalysisService {
     if (isTerminalSessionState(session.state)) {
       throw conflict(`session '${sessionId}' is already ${session.state}`);
     }
+    /*
+     * ⚠️ **The decode in progress is stopped first.** A cancel that only writes `cancelled` leaves
+     * ffmpeg running and frames still arriving at the runtime — the session looks stopped and the
+     * host does not. `cancelLocal` returns false when the session is running on another replica,
+     * which is not an error: that worker's next conditional write will fail against the `cancelled`
+     * state below and it will stop on its own.
+     */
+    this.#runner?.cancel(sessionId);
+
     const now = this.#clock.now().toISOString();
     const updated: AnalysisSessionDoc = {
       ...session,
@@ -358,7 +409,57 @@ export class AnalysisService {
   async detail(scope: TenantScope, id: string): Promise<VideoAnalysisDetail> {
     const doc = await this.#require(scope, id);
     const sessions = await this.#store.listSessions(scope, id);
-    return { analysis: toAnalysis(doc), sessions: sessions.map(toSession) };
+    const repaired = await Promise.all(sessions.map((s) => this.#repairLapsed(scope, s)));
+    return { analysis: toAnalysis(doc), sessions: repaired.map(toSession) };
+  }
+
+  /**
+   * ⭐ **Read-time repair of a session whose worker vanished** (P-8 Phase 8, slice 3).
+   *
+   * A media process restarted mid-analysis leaves a session `running` with a lease nobody will ever
+   * renew. It is not wrong for a moment — the lease has to be allowed to lapse before anyone can say
+   * the worker is gone — but after that it is a session claiming to be running that is not, and it
+   * would claim it for ever.
+   *
+   * ⚠️ **Repaired here rather than by a sweeper, and that is a Law 5 consequence, not a preference.**
+   * Every store read needs a `TenantScope`; a background sweeper would need to enumerate tenants,
+   * and inventing a cross-tenant read to serve a loop would put a hole in the isolation guarantee for
+   * the convenience of a timer. A caller entitled to see the session asks for it, and the repair
+   * happens inside their scope — which is also the only moment the answer matters to anybody.
+   *
+   * ⚠️ The decision itself is `stateAfterLeaseLapse`, unchanged from slice 2, so `retrying` while
+   * attempts remain and `expired` once they are exhausted. `expired` is deliberately not `failed`:
+   * nobody can account for what happened to the worker, and reporting that as a failed analysis
+   * would blame the customer's recording for a hosting event.
+   */
+  async #repairLapsed(
+    scope: TenantScope,
+    session: AnalysisSessionDoc,
+  ): Promise<AnalysisSessionDoc> {
+    if (isTerminalSessionState(session.state)) return session;
+    if (session.lease === undefined) return session;
+    const now = this.#clock.now();
+    if (Date.parse(session.lease.expiresAt) > now.getTime()) return session;
+
+    const { state, reason } = stateAfterLeaseLapse(session.lease.attempt);
+    const repaired: AnalysisSessionDoc = {
+      ...session,
+      state,
+      error: reason,
+      ...(isTerminalSessionState(state) ? { finishedAt: now.toISOString() } : {}),
+    };
+    /*
+     * ⚠️ Conditional, so a worker that is in fact alive and renews between the read and this write
+     * keeps its session. Losing the race here is the correct outcome and needs no handling — the
+     * session stays as the live worker left it, and the caller is told what the store says.
+     */
+    const landed = await this.#store.compareAndSetSession(
+      scope,
+      session._id,
+      { state: session.state, workerId: session.lease.workerId },
+      repaired,
+    );
+    return landed ? repaired : ((await this.#store.getSession(scope, session._id)) ?? session);
   }
 
   /** A signed URL for the source recording, so an operator can watch what was analysed. */

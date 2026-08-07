@@ -30,8 +30,38 @@ export interface ObjectStore {
   list(prefix: string): Promise<ObjectSummary[]>;
   head(key: string): Promise<ObjectSummary | null>;
   delete(key: string): Promise<void>;
-  /** A short-lived pre-signed GET URL (media access is signed-URL only — never public). */
+  /**
+   * A short-lived pre-signed GET URL **for a browser** (media access is signed-URL only — never
+   * public).
+   *
+   * ⚠️ It carries the object store's *public* endpoint, which is the name a browser can resolve. A
+   * process running inside the compose network cannot reach it — see {@link presignInternalGet}.
+   */
   presignGet(key: string, ttlSeconds: number): Promise<string>;
+  /**
+   * A short-lived pre-signed GET URL **for a server-side consumer** — ffprobe, ffmpeg, anything
+   * inside the deployment (P-8 Phase 8, slice 3).
+   *
+   * ### ⛔ Why this is a separate method rather than a flag
+   *
+   * This was a real, deployed defect and it is worth stating plainly. `presignGet` signs against the
+   * *public* endpoint, because a browser has to resolve the host — so under the deployment's own
+   * configuration it returns `https://localhost/...`. Handed to `ffprobe` **inside the media
+   * container**, `localhost:443` is the container itself, and the measured result was:
+   *
+   * ```
+   * Connection to tcp://localhost:443 failed: Connection refused
+   * ```
+   *
+   * Confirming an uploaded recording therefore failed in every real deployment while passing every
+   * unit test, because the tests supplied a fake probe. ⭐ The two audiences have genuinely different
+   * failure modes — a browser fails on DNS or CORS, a container fails on connection-refused — so
+   * they get different methods. A boolean parameter would be one more thing to get right at each
+   * call site, and the wrong value produces a URL that looks perfectly valid.
+   *
+   * ⚠️ Same signature, same expiry semantics, same tenant scoping. **Only the host differs.**
+   */
+  presignInternalGet(key: string, ttlSeconds: number): Promise<string>;
   /**
    * A short-lived pre-signed **PUT** URL, scoped to exactly one key and one content type
    * (P-8 Phase 8, offline video upload).

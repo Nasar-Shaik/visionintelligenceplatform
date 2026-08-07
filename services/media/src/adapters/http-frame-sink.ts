@@ -24,7 +24,7 @@
  * dropped to make room for it. Retrying frames trades fresh data for stale data and costs twice.
  */
 import type { PlanZone, ZoneEvaluationStats } from '@vip/contracts';
-import type { Frame, FrameSink } from '../application/ports.js';
+import type { Frame, FrameDelivery, FrameSink } from '../application/ports.js';
 import type { AssignmentGate } from '../application/assignment-gate.js';
 import { ResolveTimer, resolveZones } from '../application/zone-resolver.js';
 
@@ -278,9 +278,21 @@ export class HttpFrameSink implements FrameSink {
     this.#gate = opts.gate;
   }
 
-  push(tenantId: string, cameraId: string, frame: Frame): void {
+  /**
+   * ⭐ **The admission decision, shared by both policies** (P-8 Phase 8, slice 3).
+   *
+   * Counting, the no-pixels refusal and the assignment gate are identical for a live frame and an
+   * offline one — only what happens *afterwards* differs. Factored out rather than duplicated,
+   * because a second copy of the gate would be a second place for a camera to be analysed after an
+   * operator switched it off, and that divergence would stay invisible until a customer found it.
+   */
+  #admit(
+    tenantId: string,
+    cameraId: string,
+    frame: Frame,
+  ): Queued | { refused: 'no-image' | 'skipped-unassigned' | 'skipped-held'; reason: string } {
     this.#offered += 1;
-    const key = `${tenantId} ${cameraId}`;
+    const key = `${tenantId}\0${cameraId}`;
     const per = this.#camera(key);
     per.offered += 1;
     /*
@@ -291,7 +303,7 @@ export class HttpFrameSink implements FrameSink {
      */
     if (frame.data === undefined || frame.data.byteLength === 0) {
       this.#droppedNoImage += 1;
-      return;
+      return { refused: 'no-image', reason: 'the decoder produced a frame with no pixels' };
     }
 
     /*
@@ -305,6 +317,11 @@ export class HttpFrameSink implements FrameSink {
      * ⚠️ No gate ⇒ every camera is analysed, exactly as before P-8 Phase 6. An upgrade that
      * silently switched AI off across a customer estate until somebody found a new control plane
      * would be a worse failure than the one the gate prevents.
+     *
+     * ⚠️ It governs **offline analysis too**, and that is the honest answer to L-54 rather than an
+     * oversight. A recording pushed through a camera whose AI is switched off must produce nothing,
+     * *loudly* — the alternative is an investigation that quietly analyses footage the operator
+     * believes is excluded. The offline caller turns this refusal into a session finding.
      */
     let runtimeUrl = this.#url;
     let capabilityId = this.#capabilityId;
@@ -317,11 +334,17 @@ export class HttpFrameSink implements FrameSink {
         if (decision.reason === 'unassigned') {
           this.#skippedUnassigned += 1;
           per.skippedUnassigned += 1;
-        } else {
-          this.#skippedHeld += 1;
-          per.skippedHeld += 1;
+          return {
+            refused: 'skipped-unassigned',
+            reason: `camera ${cameraId} has no AI processing assignment, so no frame from it is analysed`,
+          };
         }
-        return;
+        this.#skippedHeld += 1;
+        per.skippedHeld += 1;
+        return {
+          refused: 'skipped-held',
+          reason: `AI processing is paused for camera ${cameraId} by an operator`,
+        };
       }
       runtimeUrl = decision.runtimeUrl.replace(/\/+$/, '');
       capabilityId = decision.capabilityId;
@@ -329,12 +352,7 @@ export class HttpFrameSink implements FrameSink {
       zones = decision.zones;
     }
 
-    let q = this.#queues.get(key);
-    if (q === undefined) {
-      q = [];
-      this.#queues.set(key, q);
-    }
-    q.push({
+    return {
       tenantId,
       cameraId,
       frame,
@@ -343,7 +361,21 @@ export class HttpFrameSink implements FrameSink {
       capabilityId,
       runtimeId,
       zones,
-    });
+    };
+  }
+
+  push(tenantId: string, cameraId: string, frame: Frame): void {
+    const admitted = this.#admit(tenantId, cameraId, frame);
+    if ('refused' in admitted) return;
+    const key = `${tenantId}\0${cameraId}`;
+    const per = this.#camera(key);
+
+    let q = this.#queues.get(key);
+    if (q === undefined) {
+      q = [];
+      this.#queues.set(key, q);
+    }
+    q.push(admitted);
     /*
      * ⚠️ Drop the **oldest**, keep the newest. A perception pipeline that catches up by processing a
      * backlog is looking at what happened a minute ago; the freshest frame is the only one whose
@@ -365,7 +397,7 @@ export class HttpFrameSink implements FrameSink {
    * of its assignment. Only the things that would be wrong to carry into a new session are cleared.
    */
   release(tenantId: string, cameraId: string): void {
-    const key = `${tenantId} ${cameraId}`;
+    const key = `${tenantId}\0${cameraId}`;
     this.#queues.delete(key);
     const per = this.#perCameraStats.get(key);
     if (per !== undefined) {
@@ -376,7 +408,7 @@ export class HttpFrameSink implements FrameSink {
 
   /** Per-camera measurements. ⚠️ Tenant-scoped API only — never Prometheus labels. */
   cameraStats(tenantId: string, cameraId: string): CameraFrameStats | undefined {
-    const key = `${tenantId} ${cameraId}`;
+    const key = `${tenantId}\0${cameraId}`;
     const per = this.#perCameraStats.get(key);
     if (per === undefined) return undefined;
     const cutoff = Date.now() - 10_000;
@@ -400,7 +432,7 @@ export class HttpFrameSink implements FrameSink {
 
   /** Cameras this sink holds any measurement for, within a tenant. */
   cameras(tenantId: string): string[] {
-    const prefix = `${tenantId} `;
+    const prefix = `${tenantId}\0`;
     return [...this.#perCameraStats.keys()]
       .filter((k) => k.startsWith(prefix))
       .map((k) => k.slice(prefix.length))
@@ -520,6 +552,29 @@ export class HttpFrameSink implements FrameSink {
     return undefined;
   }
 
+  /**
+   * ⭐ **Deliver one frame and wait for the answer** (P-8 Phase 8, slice 3) — see `FrameSink`.
+   *
+   * Deliberately **not** queued. A queue here is a drop policy, and an offline analysis must not
+   * drop: back-pressure to the caller is the whole point, and the caller awaiting one frame at a
+   * time is what makes the runtime's tracker see the footage in order.
+   */
+  async deliver(
+    tenantId: string,
+    cameraId: string,
+    frame: Frame,
+    signal: AbortSignal,
+  ): Promise<FrameDelivery> {
+    const admitted = this.#admit(tenantId, cameraId, frame);
+    if ('refused' in admitted) {
+      return { outcome: admitted.refused, detections: 0, reason: admitted.reason };
+    }
+    if (signal.aborted) {
+      return { outcome: 'failed', detections: 0, reason: 'the analysis was cancelled' };
+    }
+    return this.#send(admitted, signal);
+  }
+
   async #pump(): Promise<void> {
     if (this.#pumping) return;
     this.#pumping = true;
@@ -537,9 +592,17 @@ export class HttpFrameSink implements FrameSink {
       this.#pumping = false;
     }
   }
-  async #send(item: Queued): Promise<void> {
+  /**
+   * The one delivery path. Both `push` (via the pump) and `deliver` reach the runtime through here.
+   *
+   * ⚠️ The returned `FrameDelivery` is what `deliver` needs and what the pump ignores. Returning it
+   * rather than keeping a second copy of this method is deliberate: two request builders would be
+   * two places for the offline and live paths to drift about what they send the runtime, and a
+   * divergence there is precisely what would break offline/live parity without failing a test.
+   */
+  async #send(item: Queued, signal?: AbortSignal): Promise<FrameDelivery> {
     const started = Date.now();
-    const key = `${item.tenantId} ${item.cameraId}`;
+    const key = `${item.tenantId}\0${item.cameraId}`;
     const per = this.#camera(key);
     try {
       /*
@@ -558,16 +621,42 @@ export class HttpFrameSink implements FrameSink {
             seq: item.frame.seq,
             capturedAt: item.frame.at.toISOString(),
             source: 'media',
+            /*
+             * ⭐ **The session's correlation key, and the one channel the frozen runtime echoes.**
+             *
+             * `AI Runtime v1.0` is closed, so nothing new can be added to the frame it accepts. It
+             * already reads `frame.correlationId`, carries it onto `DetectionResult.correlationId`,
+             * and `services/events` puts that on `EventEnvelope.correlationId` — which is indexed
+             * (`tenant_correlation_time`) and queryable. So an offline session's every event is
+             * findable by session id through contracts that already exist, with nothing widened.
+             *
+             * ⚠️ **Absent for a live frame, and that is what keeps live behaviour byte-identical.**
+             * The event publisher stamps `tenant:camera:seq` when a result carries none, which is
+             * frame grain and right for a camera that never ends. An investigation is a bounded run,
+             * so its useful grouping is the run; frame grain survives in `payload.frameSeq`.
+             */
+            ...(item.frame.provenance?.sessionId === undefined
+              ? {}
+              : { correlationId: item.frame.provenance.sessionId }),
           },
           imageBase64: Buffer.from(item.frame.data ?? new Uint8Array()).toString('base64'),
         }),
-        signal: AbortSignal.timeout(this.#timeoutMs),
+        /*
+         * ⚠️ The caller's cancellation is merged with the timeout, never replaced by it. An offline
+         * session cancelled mid-run must abandon the request in flight; dropping the timeout to
+         * honour the signal would let a hung runtime pin a worker for ever.
+         */
+        signal:
+          signal === undefined
+            ? AbortSignal.timeout(this.#timeoutMs)
+            : AbortSignal.any([signal, AbortSignal.timeout(this.#timeoutMs)]),
       });
       if (!res.ok) {
         // Drain the body so the socket is reusable, then record why.
         const text = await res.text().catch(() => '');
-        this.#fail(`runtime answered ${res.status}: ${text.slice(0, 200)}`, item, per);
-        return;
+        const reason = `runtime answered ${res.status}: ${text.slice(0, 200)}`;
+        this.#fail(reason, item, per);
+        return { outcome: 'failed', detections: 0, reason };
       }
       const body = await res.text();
       const now = Date.now();
@@ -581,9 +670,11 @@ export class HttpFrameSink implements FrameSink {
       /* Bounded: the fps window is 10 s, so anything older can never be counted again. */
       if (per.recent.length > 200) per.recent.splice(0, per.recent.length - 200);
       this.#gate?.delivered(item.tenantId, item.cameraId);
-      this.#record(body, item.zones);
+      return { outcome: 'delivered', ...this.#record(body, item.zones) };
     } catch (err) {
-      this.#fail(err instanceof Error ? err.message : String(err), item, per);
+      const reason = err instanceof Error ? err.message : String(err);
+      this.#fail(reason, item, per);
+      return { outcome: 'failed', detections: 0, reason };
     }
   }
 
@@ -593,15 +684,22 @@ export class HttpFrameSink implements FrameSink {
    * ⚠️ **Never throws, and a body it cannot read is not a delivery failure.** The frame *was*
    * delivered; only our accounting of the answer failed. Counting that as `failed` would report a
    * transport problem that did not happen and hide the parsing one that did.
+   *
+   * ⚠️ Returns what it observed about **this** frame, for `deliver`. The instance counters it also
+   * updates are lifetime totals across every camera, so an offline session cannot read its own
+   * detection count out of them — see `AnalysisCounts`.
    */
-  #record(body: string, zones: readonly PlanZone[] = []): void {
+  #record(
+    body: string,
+    zones: readonly PlanZone[] = [],
+  ): { detections: number; runtimeVersion?: string; modelId?: string; executionProvider?: string } {
     let data: unknown;
     try {
       data = (JSON.parse(body) as { data?: unknown }).data;
     } catch {
-      return;
+      return { detections: 0 };
     }
-    if (typeof data !== 'object' || data === null) return;
+    if (typeof data !== 'object' || data === null) return { detections: 0 };
 
     /*
      * ⚠️ **Zones are stamped BEFORE the publish**, and this ordering is load-bearing rather than
@@ -644,6 +742,7 @@ export class HttpFrameSink implements FrameSink {
       inferenceMs?: unknown;
       frameLatencyMs?: unknown;
       executionProvider?: unknown;
+      runtimeVersion?: unknown;
       model?: { id?: unknown; name?: unknown };
     };
     if (typeof result.inferenceMs === 'number') this.#inferenceMs.add(result.inferenceMs);
@@ -654,7 +753,22 @@ export class HttpFrameSink implements FrameSink {
     const modelId = result.model?.id ?? result.model?.name;
     if (typeof modelId === 'string') this.#modelId = modelId;
 
-    if (!Array.isArray(result.detections) || result.detections.length === 0) return;
+    /*
+     * ⭐ This frame's provenance, read from what the runtime SAID it ran (P-8 Phase 8, slice 3).
+     * Never assumed from configuration: a session's report must be able to name the model that
+     * actually produced its incidents, and configuration is what somebody intended, not what ran.
+     */
+    const observed = {
+      ...(typeof result.runtimeVersion === 'string' ? { runtimeVersion: result.runtimeVersion } : {}),
+      ...(typeof modelId === 'string' ? { modelId } : {}),
+      ...(typeof result.executionProvider === 'string'
+        ? { executionProvider: result.executionProvider }
+        : {}),
+    };
+
+    if (!Array.isArray(result.detections) || result.detections.length === 0) {
+      return { detections: 0, ...observed };
+    }
     this.#detections += result.detections.length;
     this.#framesWithDetections += 1;
     this.#lastDetectionAt = new Date().toISOString();
@@ -669,6 +783,7 @@ export class HttpFrameSink implements FrameSink {
       if (!this.#byLabel.has(label) && this.#byLabel.size >= 128) continue;
       this.#byLabel.set(label, (this.#byLabel.get(label) ?? 0) + 1);
     }
+    return { detections: result.detections.length, ...observed };
   }
 
   #fail(message: string, item?: Queued, per?: MutableCameraStats): void {

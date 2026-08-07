@@ -199,6 +199,97 @@ describe('ordering', () => {
     expect(publisher.stats().droppedOutOfOrder).toBe(1);
   });
 
+  /**
+   * ⛔ **The defect the deployed 1×/8× parity run found** (P-8 Phase 8, slice 3).
+   *
+   * The same recording analysed twice on one camera: run A published 60 results, run B dropped all
+   * 60 — `droppedOutOfOrder: 60`, `sessionResets: 0`, measured on the deployed stack. The session
+   * still said `succeeded` with 120 detections, so an operator would have seen a completed analysis
+   * with an empty timeline and nothing anywhere explaining it.
+   *
+   * ⭐ No heuristic could have fixed it. An offline analysis stamps **footage** time, so a rerun
+   * replays *identical* `(seq, capturedAt)` pairs — not newer, not older, the same instants examined
+   * again. The stream's identity has to be explicit, and `correlationId` carries it.
+   */
+  it('⭐ a rerun of the same footage is its own stream, not a stale redelivery', async () => {
+    const { publisher, published } = make();
+    const footage = { seq: 1, capturedAt: '2026-02-14T18:30:00.000Z' };
+
+    /* Run A: two frames of the recording. */
+    publisher.publish(result({ correlationId: 'ases_A', frame: footage }));
+    publisher.publish(
+      result({ correlationId: 'ases_A', frame: { seq: 2, capturedAt: '2026-02-14T18:30:00.500Z' } }),
+    );
+    /* Run B: the SAME file, the SAME sequences, the SAME footage timestamps. */
+    publisher.publish(result({ correlationId: 'ases_B', frame: footage }));
+    publisher.publish(
+      result({ correlationId: 'ases_B', frame: { seq: 2, capturedAt: '2026-02-14T18:30:00.500Z' } }),
+    );
+    await settle();
+
+    expect(published).toHaveLength(4);
+    expect(publisher.stats().droppedOutOfOrder).toBe(0);
+  });
+
+  /** ⚠️ …and ordering is still enforced strictly WITHIN a run. Fixing one must not disable the other. */
+  it('still drops a stale result inside one analysis session', async () => {
+    const { publisher, published } = make();
+    publisher.publish(
+      result({ correlationId: 'ases_A', frame: { seq: 5, capturedAt: '2026-02-14T18:30:02.000Z' } }),
+    );
+    publisher.publish(
+      result({ correlationId: 'ases_A', frame: { seq: 3, capturedAt: '2026-02-14T18:30:01.000Z' } }),
+    );
+    await settle();
+
+    expect(published).toHaveLength(1);
+    expect(publisher.stats().droppedOutOfOrder).toBe(1);
+  });
+
+  /**
+   * ⚠️ **Live behaviour must be byte-identical.** A live result carries no `correlationId` — the
+   * publisher stamps one per frame *after* the gate — so the key is unchanged and a genuinely stale
+   * live response is still dropped. If this ever fails, the fix above has widened past its purpose.
+   */
+  it('leaves the live path exactly as it was', async () => {
+    const { publisher, published } = make();
+    publisher.publish(result({ frame: { seq: 5, capturedAt: '2026-08-06T09:00:02.000Z' } }));
+    publisher.publish(result({ frame: { seq: 4, capturedAt: '2026-08-06T09:00:01.000Z' } }));
+    await settle();
+
+    expect(published).toHaveLength(1);
+    expect(publisher.stats().droppedOutOfOrder).toBe(1);
+  });
+
+  /** ⚠️ Releasing a camera must clear its analysis-session gates too, not just its own. */
+  it('release clears every stream on the camera, sessions included', async () => {
+    const { publisher, published } = make();
+    publisher.publish(
+      result({ correlationId: 'ases_A', frame: { seq: 9, capturedAt: '2026-02-14T18:30:04.000Z' } }),
+    );
+    await settle();
+    publisher.release('tnt_a', 'cam_1');
+    /* The same session, restarting at sequence 1 — it must not meet a stale gate. */
+    publisher.publish(
+      result({ correlationId: 'ases_A', frame: { seq: 1, capturedAt: '2026-02-14T18:30:00.000Z' } }),
+    );
+    await settle();
+
+    expect(published).toHaveLength(2);
+    expect(publisher.stats().droppedOutOfOrder).toBe(0);
+  });
+
+  /** ⚠️ A session-keyed gate must not turn up in `cameras()`, which reports real camera ids. */
+  it('reports the camera, never the session-suffixed key', async () => {
+    const { publisher } = make();
+    publisher.publish(result({ correlationId: 'ases_A' }));
+    publisher.publish(result({ correlationId: 'ases_B' }));
+    publisher.publish(result({ cameraId: 'cam_2' }));
+    await settle();
+
+    expect(publisher.cameras('tnt_a')).toEqual(['cam_1', 'cam_2']);
+  });
+
   it('⚠️ orders per camera, not globally — one camera cannot gate another', async () => {
     const { publisher, published } = make();
     publisher.publish(
