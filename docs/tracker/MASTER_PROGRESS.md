@@ -305,6 +305,27 @@ _Last updated: 2026-08-07 · Claude_
   deployed run above. ⚠️ **C-21 moves ⛔ → ⚠️** — a *first* analysis of a recording works end to end;
   a rerun is silent until L-61 is closed.
 
+  **Slice 8 · Customer Investigation UI — ⚠️ shipped, browser verification OUTSTANDING.**
+  `/investigations` (list + upload) and `/investigations/:id` (runs, timeline, incidents, capture a
+  still) over the APIs slices 1–7 shipped, plus the nav entry gated on `stream:read` — the media
+  permission, not `event:read`, so nobody is navigated to a 403.
+
+  Design decisions carried into the UI rather than left to the API: the **camera is chosen before
+  the file and is required** (it carries the zones and the rule scope, so the wrong one gives a
+  confident wrong answer, and the form says so *before* the operator picks a file); the upload names
+  its **three stages** (create → PUT straight to the object store → confirm) because one
+  "uploading…" spinner hides a rejected codec behind a slow network; a run's **findings sit beside
+  the run**; `speedFactor: null` renders "—" and never "0×"; a truncated timeline says so; and
+  `incidentsAvailable: false` renders "could not be looked up" rather than an empty table.
+
+  ⚠️ **Verified: 5 component tests driving the real components against mocked APIs** (the four
+  honesty rules above, plus the offset formatter), 467 console tests total, 68/68 repo gate, and the
+  console image is deployed with `/investigations` serving 200. ⛔ **Not verified: the screens in a
+  real browser against the deployment.** Playwright is not installed in this workspace and the
+  edge's self-signed CA blocks the MCP browser, so the P-5.8 pattern could not be reused. Until that
+  runs, this slice is **shipped but not certified** — the same distinction P-5.8 was created to
+  enforce, and it is recorded here rather than assumed away.
+
   **Slice 7 · Export report — ✅ deployed.** `GET /analyses/:id/report` assembles one defensible
   record of one run: the source **as measured** (never as the uploader described it), both clocks
   labelled with `footageStartSource` saying whether the footage start was measured, claimed or

@@ -34,6 +34,16 @@ const RulesListPage = lazy(() =>
 const RuleEditorPage = lazy(() =>
   import('@/features/rules/RuleEditorPage').then((m) => ({ default: m.RuleEditorPage })),
 );
+const InvestigationsPage = lazy(() =>
+  import('@/features/investigations/InvestigationsPage').then((m) => ({
+    default: m.InvestigationsPage,
+  })),
+);
+const InvestigationDetailPage = lazy(() =>
+  import('@/features/investigations/InvestigationDetailPage').then((m) => ({
+    default: m.InvestigationDetailPage,
+  })),
+);
 const IncidentsPage = lazy(() =>
   import('@/features/incidents/IncidentsPage').then((m) => ({ default: m.IncidentsPage })),
 );
@@ -179,6 +189,9 @@ export const router = createBrowserRouter([
           { path: 'tracking/:trackId', element: route(<TrackDetailPage />) },
           { path: 'tracking/:trackId/timeline', element: route(<TrackTimelinePage />) },
           { path: 'incidents', element: route(<IncidentsPage />) },
+          /* ⭐ Offline video investigation (P-8 Phase 8, slice 8). */
+          { path: 'investigations', element: route(<InvestigationsPage />) },
+          { path: 'investigations/:id', element: route(<InvestigationDetailPage />) },
           // P-5.2 — the Investigation Workspace. `/workspace/:incidentId` is the deep link an
           // alert, a report or a colleague's message points at.
           { path: 'workspace', element: route(<InvestigationWorkspace />) },

@@ -1,4 +1,5 @@
 import {
+  FileVideo,
   MapPin,
   Activity,
   Bell,
@@ -56,6 +57,12 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Investigate',
     items: [
       { to: '/events', label: 'Events', icon: Activity, permission: 'event:read' },
+      /*
+       * ⚠️ `stream:read`, not `event:read`. The investigation surface is served by the media
+       * service and gated on the stream permissions, so navigating a user here who cannot open it
+       * would show them a link straight to a 403.
+       */
+      { to: '/investigations', label: 'Investigations', icon: FileVideo, permission: 'stream:read' },
       /*
        * P-8 Phase 4 — object tracking. Gated on `track:read`, the permission the route requires.
        *
