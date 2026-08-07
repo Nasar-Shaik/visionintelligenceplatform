@@ -254,6 +254,28 @@ _Last updated: 2026-08-07 · Claude_
   **1032** · contracts · import graph 0 violations.
   [ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md).
 
+- **P-8 Phase 8 · Offline Video Investigation — 🚧 IN PROGRESS (2026-08-07). Slice 1 of 9 complete.**
+  Upload → probe → analysis + **session** record. ⭐ The Architect's **Analysis Session** refinement
+  was adopted before any code: `VideoAnalysis` owns the bytes, `AnalysisSession` owns one immutable
+  execution, so a rerun after a rule is tuned never overwrites the first answer. Containers follow
+  the `ZONE_EVALUATION` pattern — mp4/mkv/mov/avi all storable, `ANALYSIS_CONTAINER_SUPPORT` says
+  which are **decodable**, and only mp4 is; `AnalysisSourceKind` holds the seam open for camera
+  recordings and NVR exports without an architecture change.
+
+  ⛔ **Two findings, both from measuring rather than assuming.** (1) `presignPut` with a content type
+  set on the command signs **`host` alone** — two URLs for `video/mp4` and `application/zip` came out
+  byte-identical, so a "video upload" URL accepted anything. Forcing `signableHeaders` makes it
+  `403 SignatureDoesNotMatch`, verified against real MinIO; the SDK also hoists a CRC32 of an **empty
+  payload** into every presigned PUT, removed via a dedicated presign client so `put()` and
+  `presignGet()` stay byte-for-byte unchanged. (2) Session creation is a **read-then-write** — two
+  operators pressing "run" together both claim run number 1, and no re-reading makes it atomic.
+  Closed with a **unique index**, surfaced as a 409, and pinned by a two-in-one-tick test that the
+  in-memory store can fail because it enforces the same constraint.
+
+  Verification: 177 media tests, 26 storage (4 against real MinIO), 528 contract; turbo lint +
+  typecheck green (48 tasks). ⚠️ **C-21 stays ⛔ in the capability matrix** — nothing analyses
+  anything yet; the worker is slice 2 and a session honestly sits `queued`.
+
 - **Product engineering transition — planning complete, nothing implemented (2026-08-07).** Five
   documents at the close of P-9 Track A: [PRODUCT_READINESS](../project/PRODUCT_READINESS.md),
   [PRODUCT_IMPLEMENTATION_ORDER](../project/PRODUCT_IMPLEMENTATION_ORDER.md),
