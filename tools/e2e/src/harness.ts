@@ -270,7 +270,16 @@ export class PlatformHarness {
   // --- Read model (what the Operations Console dashboard fetches via the gateway) ----------------
 
   async events(tenantId: string): Promise<EventEnvelope[]> {
-    const page = await this.eventStore.query(TenantScope.fromTenantId(tenantId), { limit: 500 });
+    const page = await this.eventStore.query(TenantScope.fromTenantId(tenantId), {
+      limit: 500,
+      /*
+       * ⚠️ **Live only, and stated rather than inherited** (ADR-0047). This method is the console
+       * dashboard's read, so it wants what an operator would see: live observations, never an
+       * offline analysis replaying six-week-old footage. The default is the same, but a harness that
+       * asserts platform behaviour should not depend on a default it does not name.
+       */
+      includeAnalyses: false,
+    });
     return page.events;
   }
 

@@ -81,4 +81,12 @@ export const EVENT_INDEXES: readonly IndexSpec[] = [
     descending: CURSOR_DESC,
     serves: 'the correlation spine — every event belonging to one incident’s chain',
   },
+  {
+    name: 'tenant_analysis_time',
+    keys: ['tenantId', 'analysisSessionId', 'occurredAt', 'id'],
+    descending: CURSOR_DESC,
+    serves:
+      'the investigation timeline — every event one offline analysis run produced (ADR-0047). ' +
+      'Sparse in effect: live events carry no analysisSessionId, so they occupy no entry',
+  },
 ] as const;

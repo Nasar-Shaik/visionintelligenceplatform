@@ -121,6 +121,43 @@ describe('publishing', () => {
     expect((published[0]?.data as { correlationId?: string }).correlationId).toBe('from-upstream');
   });
 
+  /**
+   * ⛔ **The third place the platform identified a stream by `(tenant, camera)` + a number** — and
+   * the deepest, because JetStream discards a duplicate `msgId` **at the broker**.
+   *
+   * Measured on the deployed stack *after* the envelope and dedup-key fixes were in place and
+   * believed sufficient: media reported `published: 120` for two runs of one recording, while the
+   * events service reported `deduped 0, persisted 0`. It had never been handed them. Without the run
+   * in the msgId, ADR-0047 would have looked correct in every unit test and changed nothing in
+   * production.
+   */
+  it('⭐ a rerun gets its own msgId, so the broker cannot swallow it', async () => {
+    const { publisher, published } = make();
+    const frame = { seq: 7, capturedAt: '2026-02-14T18:30:03.000Z' };
+
+    publisher.publish(result({ correlationId: 'ases_A', analysisSessionId: 'ases_A', frame }));
+    publisher.publish(result({ correlationId: 'ases_B', analysisSessionId: 'ases_B', frame }));
+    await settle();
+
+    expect(published).toHaveLength(2);
+    expect(published[0]?.msgId).toBe('tnt_a:cam_1:7:ases_A');
+    expect(published[1]?.msgId).toBe('tnt_a:cam_1:7:ases_B');
+    expect(published[0]?.msgId).not.toBe(published[1]?.msgId);
+  });
+
+  /**
+   * ⚠️ **Live keeps the exact three-part id it has always had.** A changed shape would make every
+   * live camera's in-flight retries stop collapsing on the deploy — the idempotency this field
+   * exists to provide, lost at the moment of a rollout.
+   */
+  it('leaves the live msgId byte-identical', async () => {
+    const { publisher, published } = make();
+    publisher.publish(result({ frame: { seq: 42, capturedAt: '2026-08-06T09:00:00.000Z' } }));
+    await settle();
+    expect(published[0]?.msgId).toBe('tnt_a:cam_1:42');
+    expect(published[0]?.msgId?.split(':')).toHaveLength(3);
+  });
+
   it('sets a msgId identifying the frame, so a retry cannot become a duplicate', async () => {
     const { publisher, published } = make();
     publisher.publish(result({ frame: { seq: 42, capturedAt: '2026-08-06T09:00:00.000Z' } }));

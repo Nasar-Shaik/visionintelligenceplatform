@@ -28,6 +28,31 @@ export const EventQuery = z.object({
    * incident". Backed by `tenant_correlation_time`; see `services/events/src/adapters/indexes.ts`.
    */
   correlationId: z.string().min(1).optional(),
+  /**
+   * ⭐ **Every event one offline analysis run produced** (ADR-0047).
+   *
+   * The join key for the investigation timeline, evidence extraction and the export report — and the
+   * only field that can answer it. `correlationId` cannot: on the live path it is stamped **per
+   * frame**, and a rerun of one recording reproduces every other field exactly. Backed by
+   * `tenant_analysis_time`.
+   */
+  analysisSessionId: z.string().min(1).max(120).optional(),
+  /**
+   * ⛔ **Include offline-analysis events in an otherwise unfiltered read. Default `false`.**
+   *
+   * Every event on this platform was a live observation until offline analysis existed, so every
+   * existing caller — the console's Events page, every dashboard, every export written before this
+   * milestone — asks its question meaning *live*. Returning analysis events to them would put
+   * six-week-old footage, replayed on demand, into a view an operator reads as "what is happening".
+   * That is the pollution ADR-0047 has to prevent, and a default is the only thing that prevents it
+   * for callers that have not been changed.
+   *
+   * ⚠️ **Defaulting is a behaviour change made deliberately, and it is the conservative one.** It
+   * cannot hide a live event: analysis events are exactly the ones carrying an `analysisSessionId`,
+   * and nothing else acquires one. Setting `analysisSessionId` selects a single run regardless of
+   * this flag, because naming a run is already an unambiguous request for it.
+   */
+  includeAnalyses: z.coerce.boolean().default(false),
   /** Inclusive lower bound on `occurredAt`. */
   from: IsoDateTime.optional(),
   /** Exclusive upper bound on `occurredAt`. */

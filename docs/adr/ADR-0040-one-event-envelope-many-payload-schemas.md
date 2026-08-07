@@ -4,6 +4,10 @@
 - **Date:** 2026-08-06
 - **Milestone:** P-8 Phase 5 (Live Event Bridge)
 - **Scope:** **platform-wide and permanent** — binds every current and future producer
+- **Amended by:** [ADR-0047](ADR-0047-an-analysis-run-is-part-of-an-events-identity.md) — adds the
+  optional `analysisSessionId`, because an offline analysis stamps **footage** time and a rerun
+  therefore reproduces every other identity field exactly. ⚠️ Additive and absent on every live
+  event, so live dedup keys are byte-identical to the ones this ADR froze.
 - **Related:** [ADR-0016](ADR-0016-nats-jetstream-event-backbone.md) (event backbone),
   [ADR-0038](ADR-0038-track-identity-across-gaps.md) (track identity),
   [ADR-0039](ADR-0039-absent-metrics-are-unavailable-never-zero.md) (absent metrics)

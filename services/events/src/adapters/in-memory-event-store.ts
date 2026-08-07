@@ -48,6 +48,16 @@ export class InMemoryEventStore implements EventStore {
       .filter((e) => (q.cameraId ? e.cameraId === q.cameraId : true))
       .filter((e) => (q.zoneId ? e.zoneId === q.zoneId : true))
       .filter((e) => (q.correlationId ? e.correlationId === q.correlationId : true))
+      .filter((e) => (q.analysisSessionId ? e.analysisSessionId === q.analysisSessionId : true))
+      /*
+       * ⛔ Live-only unless asked otherwise — see `EventQuery.includeAnalyses`. Naming a run is
+       * already an unambiguous request for it, so the flag does not gate that case.
+       */
+      .filter((e) =>
+        q.analysisSessionId !== undefined || q.includeAnalyses
+          ? true
+          : e.analysisSessionId === undefined,
+      )
       .filter((e) => (q.from ? e.occurredAt >= q.from : true))
       .filter((e) => (q.to ? e.occurredAt < q.to : true))
       .sort((a, b) =>

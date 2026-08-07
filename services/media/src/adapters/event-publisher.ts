@@ -177,6 +177,13 @@ interface Queued {
   detections: number;
   /** Whether any detection in this result carries a track id — computed where the result is typed. */
   tracked: boolean;
+  /**
+   * ⭐ The offline analysis run, when there is one (ADR-0047). Absent ⇒ live.
+   *
+   * ⚠️ Held on the item rather than read back off `result`, which has widened to `unknown` by the
+   * time the publish happens — the same reason `tracked` is here.
+   */
+  analysisSessionId?: string;
   queuedAt: number;
 }
 
@@ -275,7 +282,7 @@ export class BufferedEventPublisher {
    * ⚠️ **Synchronous, never throws, never awaits.** It is called from the frame-response path on the
    * process that writes recordings. Everything expensive happens on the pump.
    */
-  publish(raw: unknown): void {
+  publish(raw: unknown, analysisSessionId?: string): void {
     if (!this.#enabled) return;
     this.#offered += 1;
 
@@ -293,7 +300,22 @@ export class BufferedEventPublisher {
       });
       return;
     }
-    const result = parsed.data;
+    /*
+     * ⭐ **Analysis provenance is stamped HERE, by media, not by the runtime** (ADR-0047).
+     *
+     * AI Runtime v1.0 is frozen and closed; it neither knows nor needs to know that offline analysis
+     * exists. The frame sink holds the frame's provenance, so it is the only thing that can say this
+     * truthfully — and it says it on the way to the broker, after the runtime has answered.
+     *
+     * ⚠️ Stamped **after** validation rather than before, so the contract check still sees exactly
+     * what the runtime produced. A result that fails to parse is a runtime fault, and folding our own
+     * field in first would put media's name on it.
+     *
+     * ⚠️ Absent for every live frame, which is the whole of the backward-compatibility argument:
+     * the envelope field stays absent, and `dedupKey` appends nothing.
+     */
+    const result =
+      analysisSessionId === undefined ? parsed.data : { ...parsed.data, analysisSessionId };
     if (result.schemaVersion !== undefined) this.#payloadSchemaVersion = result.schemaVersion;
 
     /*
@@ -412,6 +434,14 @@ export class BufferedEventPublisher {
        * type the contract already guaranteed once.
        */
       tracked: result.detections.some((d) => d.trackingId !== undefined),
+      /*
+       * ⚠️ Captured HERE, where `result` is still a parsed `DetectionResult`, for exactly the reason
+       * `tracked` is: at the publish site the queue item has widened to `unknown`, and casting it
+       * back would re-assert a type the contract already guaranteed once.
+       */
+      ...(result.analysisSessionId === undefined
+        ? {}
+        : { analysisSessionId: result.analysisSessionId }),
       queuedAt: this.#now(),
     });
     /*
@@ -588,9 +618,22 @@ export class BufferedEventPublisher {
          * ⚠️ `msgId` makes a redelivery idempotent at the broker. Tenant, camera and frame sequence
          * identify one observation exactly — a retry after an ambiguous failure republishes the same
          * id and JetStream collapses it, so a retry cannot become a duplicate event.
+         *
+         * ⛔ **…and the analysis run, when there is one** (ADR-0047). This is the *third* place the
+         * platform identified a stream by `(tenant, camera)` plus a forward-moving number, and it is
+         * the deepest: JetStream discards a duplicate `msgId` **at the broker**, so a rerun's
+         * messages never reach `services/events` at all. Measured after the dedup-key fix was
+         * already in place and believed sufficient: media reported `published: 120`, while the
+         * events service reported `deduped 0, persisted 0` — it had been handed nothing.
+         *
+         * ⚠️ Live is byte-identical: no run ⇒ the same three-part id this has always produced. The
+         * suffix goes last so the shape only ever grows, never re-orders.
          */
         await this.#bus.publish(subject, item.result, {
-          msgId: `${item.tenantId}:${item.cameraId}:${item.seq}`,
+          msgId:
+            item.analysisSessionId === undefined
+              ? `${item.tenantId}:${item.cameraId}:${item.seq}`
+              : `${item.tenantId}:${item.cameraId}:${item.seq}:${item.analysisSessionId}`,
         });
         this.#published += 1;
         const cameraKey = `${item.tenantId}\0${item.cameraId}`;

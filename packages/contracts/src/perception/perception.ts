@@ -184,6 +184,19 @@ export const DetectionResult = z.object({
   frameLatencyMs: z.number().nonnegative().optional(),
   /** Correlation id propagated from the frame (threads detections → events). */
   correlationId: z.string().min(1).optional(),
+  /**
+   * ⭐ **The offline analysis run this result belongs to** (ADR-0047, additive).
+   *
+   * ⚠️ **Stamped by the media service, never by the AI runtime.** AI Runtime v1.0 is frozen and
+   * closed; it neither knows nor needs to know that offline analysis exists. Media holds the frame's
+   * provenance, so media is the only thing that can say this truthfully — and it attaches it on the
+   * way to the broker, after the runtime has answered.
+   *
+   * ⚠️ Absent for every live camera frame, which is what keeps live behaviour unchanged. It is
+   * deliberately **not** `correlationId`: that is stamped per frame on the live path, so it cannot
+   * carry a run identity. See `EventEnvelope.analysisSessionId`.
+   */
+  analysisSessionId: z.string().min(1).max(120).optional(),
   at: IsoDateTime,
 });
 export type DetectionResult = z.infer<typeof DetectionResult>;

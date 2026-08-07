@@ -142,11 +142,45 @@ describe('the events index set (G-5)', () => {
     ]);
   });
 
+  /**
+   * ⭐ **It now checks what its name claims.**
+   *
+   * It used to assert only that the *list* of filters matched a literal — so adding a filter failed
+   * the test (which is right) but adding a filter **and** updating the literal passed it without any
+   * index existing (which is not). ADR-0047 added `analysisSessionId` and this test would have gone
+   * green on a one-word edit while the investigation timeline did a collection scan on every read.
+   *
+   * ⚠️ The literal is kept as well, because it is what forces a *deliberate* decision when someone
+   * adds a filter — the two assertions catch different mistakes.
+   */
   it('has one declared index per EventQuery filter', () => {
+    /*
+     * ⚠️ `limit`/`cursor`/`from`/`to` are paging and range, served by the cursor suffix every index
+     * carries. `includeAnalyses` is excluded for a different reason worth naming: it is a **mode**,
+     * not a filter. It selects `{$exists: false}` on a field the other indexes already lead with, so
+     * it needs no index of its own — and demanding one would mean adding an index that serves no
+     * query, which is a cost with no reader.
+     */
     const filters = Object.keys(EventQuery.shape).filter(
-      (key) => !['limit', 'cursor', 'from', 'to'].includes(key),
+      (key) => !['limit', 'cursor', 'from', 'to', 'includeAnalyses'].includes(key),
     );
-    expect(filters.sort()).toEqual(['cameraId', 'correlationId', 'type', 'zoneId']);
+    expect(filters.sort()).toEqual([
+      'analysisSessionId',
+      'cameraId',
+      'correlationId',
+      'type',
+      'zoneId',
+    ]);
+
+    for (const filter of filters) {
+      const serving = EVENT_INDEXES.filter((i) => i.keys.includes(filter));
+      expect(serving.length, `no index serves the '${filter}' filter — reads would scan`).toBeGreaterThan(0);
+      /* ⚠️ …and it must be a cursor index, or paging the filtered result scans anyway. */
+      expect(
+        serving.some((i) => i.keys.slice(-2).join(',') === EVENT_CURSOR.join(',')),
+        `no index serving '${filter}' ends in (occurredAt, id), so paging it cannot use the index`,
+      ).toBe(true);
+    }
   });
 
   it('declares no duplicate names and no duplicate key sets', () => {

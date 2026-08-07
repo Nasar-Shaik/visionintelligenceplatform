@@ -305,6 +305,30 @@ _Last updated: 2026-08-07 · Claude_
   deployed run above. ⚠️ **C-21 moves ⛔ → ⚠️** — a *first* analysis of a recording works end to end;
   a rerun is silent until L-61 is closed.
 
+  **ADR-0047 · An analysis run is part of an event's identity — ✅ verified on the deployed stack.**
+  `analysisSessionId` added to `EventEnvelope` and `DetectionResult`, additive and absent on every
+  live event. Appended to the dedup key **only when present**, so live keys are byte-identical to the
+  strings ADR-0040 froze — which matters because dedup state outlives a deployment and a re-shaped
+  key would make every camera miss its window once on rollout.
+
+  ⛔ **Three layers had the same defect, each hidden behind the last.** (1) The media publisher's
+  ordering gate, fixed in slice 3. (2) The events dedup key — the one the ADR was written for. (3) ⭐
+  **JetStream's `msgId`**, which is `tenant:camera:seq` and therefore discarded a rerun's every
+  message **at the broker**. That third one was found only because the deployment verification
+  measured both ends: media reported `published: 120` while the events service reported
+  `deduped 0, persisted 0` — it had never been handed them. With only the first two fixes, ADR-0047
+  passed every unit test and changed nothing in production.
+
+  ⭐ **Live/offline isolation is a default, not a convention.** `EventQuery.includeAnalyses` defaults
+  to `false`, so the console's Events page and every dashboard written before this milestone keep
+  returning live events with no change to the caller — six-week-old footage replayed on demand can
+  never appear in a view an operator reads as "now".
+
+  Deployed verification (19 193 pre-existing events in the database): a rerun of the same footage on
+  the same camera now persists **5 events, matching run 1** (was 0); both runs analytically identical
+  and independently queryable; the default camera query returns **13 live events and zero analyses**;
+  all 19 193 pre-ADR events read back unchanged; `tenant_analysis_time` created on start.
+
   **Slice 1 of 9 (upload + session record):**
   Upload → probe → analysis + **session** record. ⭐ The Architect's **Analysis Session** refinement
   was adopted before any code: `VideoAnalysis` owns the bytes, `AnalysisSession` owns one immutable

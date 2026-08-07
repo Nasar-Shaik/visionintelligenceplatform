@@ -184,7 +184,7 @@ export interface HttpFrameSinkOptions {
    * ⚠️ The sink hands the result over and moves on. It never awaits the publisher and never lets a
    * publishing problem reach this path — recording outranks publishing, always.
    */
-  publisher?: { publish(result: unknown): void };
+  publisher?: { publish(result: unknown, analysisSessionId?: string): void };
   /**
    * The assignment gate (P-8 Phase 6). Absent ⇒ **every camera is analysed**, using the configured
    * URL and capability — the pre-Phase-6 behaviour, and a valid deployment.
@@ -670,7 +670,15 @@ export class HttpFrameSink implements FrameSink {
       /* Bounded: the fps window is 10 s, so anything older can never be counted again. */
       if (per.recent.length > 200) per.recent.splice(0, per.recent.length - 200);
       this.#gate?.delivered(item.tenantId, item.cameraId);
-      return { outcome: 'delivered', ...this.#record(body, item.zones) };
+      return {
+        outcome: 'delivered',
+        /*
+         * ⭐ The frame's analysis run, handed on so the published result carries it (ADR-0047).
+         * Taken from the QUEUED ITEM's frame, like the zones and the runtime url — it is a property
+         * of the frame that was sent, not of the sink as it stands now.
+         */
+        ...this.#record(body, item.zones, item.frame.provenance?.sessionId),
+      };
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       this.#fail(reason, item, per);
@@ -692,6 +700,7 @@ export class HttpFrameSink implements FrameSink {
   #record(
     body: string,
     zones: readonly PlanZone[] = [],
+    analysisSessionId?: string,
   ): { detections: number; runtimeVersion?: string; modelId?: string; executionProvider?: string } {
     let data: unknown;
     try {
@@ -735,7 +744,7 @@ export class HttpFrameSink implements FrameSink {
      * anything that does not parse. Passing the narrow view would have quietly stripped the tracking
      * identity that ADR-0041 exists to carry.
      */
-    this.#publisher?.publish(data);
+    this.#publisher?.publish(data, analysisSessionId);
 
     const result = data as {
       detections?: unknown;

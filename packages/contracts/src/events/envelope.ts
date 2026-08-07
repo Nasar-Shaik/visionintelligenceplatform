@@ -93,6 +93,39 @@ export const EventEnvelope = z.object({
   correlationId: z.string().optional(),
   causationId: z.string().optional(),
 
+  /**
+   * ⭐ **Which offline analysis run produced this event** (ADR-0047, amending ADR-0040).
+   *
+   * ### ⛔ Why a platform-wide envelope field, when almost nothing sets it
+   *
+   * It is part of an event's **identity**, not a detail about it. The events service deduplicates on
+   * `tenant + type + camera + zone + track + time-bucket`, and every one of those is derived from
+   * the observation itself. An offline analysis stamps `occurredAt` in **footage** time, so
+   * re-analysing one recording on one camera reproduces all six exactly — and because footage time
+   * never advances, the collision is **permanent** rather than windowed. Measured on the deployed
+   * stack (L-61): 120 detections offered, `deduped +120`, `persisted +0`, against a session
+   * reporting `succeeded` with 120 detections. The rerun the product is built around returned
+   * nothing, and said nothing.
+   *
+   * Nothing already on the envelope can separate the two runs. `correlationId` cannot: the live path
+   * stamps it **per frame** (`tenant:camera:seq`), so feeding it to the dedup key would give every
+   * live frame a unique key and switch deduplication off for every camera on the platform.
+   *
+   * ### ⚠️ Absent means live, and absent is the default
+   *
+   * A live camera has no analysis run — it is one unbounded stream — so this is **absent** on every
+   * event any existing producer emits. `dedupKey` appends nothing when it is absent, so live keys
+   * stay **byte-identical** to the ones computed before this field existed. That is the whole of the
+   * backward-compatibility argument, and there is a test that holds it.
+   *
+   * ### What it is for beyond dedup
+   *
+   * It is the join key for the investigation timeline, evidence extraction, the export report and any
+   * future comparison of two models over the same footage — all of which need "the events **this
+   * run** produced", which no other field can answer.
+   */
+  analysisSessionId: z.string().min(1).max(120).optional(),
+
   // --- type-specific body (kept opaque here; validated per-type by the catalog) ---
   payload: z.record(z.string(), z.unknown()).default({}),
 

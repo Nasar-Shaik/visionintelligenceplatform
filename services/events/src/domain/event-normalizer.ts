@@ -152,6 +152,19 @@ function toEnvelope(
   // when present, else anchor the chain to this event's own id so every downstream artifact
   // (candidate → incident → notification) shares a correlation key.
   envelope.correlationId = result.correlationId ?? envelope.id;
+  /*
+   * ⭐ **Analysis provenance, carried through** (ADR-0047).
+   *
+   * ⚠️ Copied verbatim and never defaulted. Absent on the result means a live camera produced it,
+   * and absent on the envelope is what keeps its dedup key byte-identical to the pre-ADR one. A
+   * placeholder here would have quietly re-shaped the key for every event on the platform.
+   *
+   * It is what makes "the events **this run** produced" answerable — for the investigation timeline,
+   * evidence extraction, the export report, and comparing two models over the same footage.
+   */
+  if (result.analysisSessionId !== undefined) {
+    envelope.analysisSessionId = result.analysisSessionId;
+  }
   return envelope;
 }
 
@@ -232,5 +245,31 @@ export function dedupKey(envelope: EventEnvelope, windowMs: number): string {
   const camera = envelope.cameraId ?? '-';
   const bucket =
     windowMs > 0 ? Math.floor(Date.parse(envelope.occurredAt) / windowMs) : envelope.id;
-  return [envelope.tenantId, envelope.type, camera, zone, track, bucket].join('|');
+  const parts: (string | number)[] = [envelope.tenantId, envelope.type, camera, zone, track, bucket];
+  /*
+   * ⭐ **The analysis run, appended ONLY when there is one** (ADR-0047).
+   *
+   * ### Why offline needs it
+   *
+   * Every other part of this key is derived from the observation, and an offline analysis stamps
+   * `occurredAt` in **footage** time — so re-analysing one recording on one camera reproduces all six
+   * exactly. Because footage time never advances, the collision is **permanent** rather than
+   * windowed: measured on the deployed stack (L-61), a second run offered 120 detections and
+   * persisted 0, while its session reported `succeeded` with 120 detections.
+   *
+   * ### ⛔ Why it is appended rather than always present
+   *
+   * A live event has no analysis run, so nothing is appended and its key is **byte-identical** to the
+   * one this function produced before ADR-0047 existed. That matters beyond tidiness: dedup state
+   * outlives a deployment, so a key whose *shape* changed would make every live camera miss its
+   * window once on the rollout — a burst of duplicate events at exactly the moment an operator is
+   * watching a deploy. `join` with a placeholder would have done precisely that.
+   *
+   * ### ⚠️ Within one run, dedup is unchanged
+   *
+   * Two observations of the same subject in the same bucket of the *same* session still collapse, so
+   * an analysis does not multiply its own events. Only *different runs* are separated.
+   */
+  if (envelope.analysisSessionId !== undefined) parts.push(envelope.analysisSessionId);
+  return parts.join('|');
 }

@@ -77,6 +77,17 @@ export class MongoEventStore implements EventStore {
     if (q.cameraId) match['cameraId'] = q.cameraId;
     if (q.zoneId) match['zoneId'] = q.zoneId;
     if (q.correlationId) match['correlationId'] = q.correlationId;
+    /* ⭐ Served by `tenant_analysis_time` (ADR-0047) — the investigation timeline's read. */
+    if (q.analysisSessionId) match['analysisSessionId'] = q.analysisSessionId;
+    /*
+     * ⛔ **Live-only unless asked otherwise** — see `EventQuery.includeAnalyses`. Every caller
+     * written before offline analysis existed means "live", and returning replayed footage to a
+     * dashboard an operator reads as "now" is the pollution ADR-0047 exists to prevent.
+     *
+     * ⚠️ `$exists: false` rather than `$eq: null`: the field is absent on a live event, never null.
+     * Matching null would return nothing, which is the silent-empty-dashboard failure inverted.
+     */
+    else if (!q.includeAnalyses) match['analysisSessionId'] = { $exists: false };
     if (q.from || q.to) {
       const range: PlainObject = {};
       if (q.from) range['$gte'] = q.from;
