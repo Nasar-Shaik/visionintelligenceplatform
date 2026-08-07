@@ -108,6 +108,20 @@ export class LocalFsObjectStore implements ObjectStore {
     return `${this.#publicBaseUrl}/${key}?expires=${expires}`;
   }
 
+  /**
+   * The same deterministic shape as `presignGet`, plus the content type the upload must declare.
+   *
+   * ⚠️ **Nothing enforces any of it here**, and that is true of this whole provider — there is no
+   * signature, so the "signed" URL is a convention. It exists so the local path exercises the same
+   * call sequence as S3, not so it provides the same guarantee. `EVIDENCE_STORAGE_PROVIDER=local`
+   * is for development and deterministic tests, and this method does not change that.
+   */
+  async presignPut(key: string, ttlSeconds: number, contentType: string): Promise<string> {
+    this.#resolve(key); // fail-closed on traversal, exactly as a real write would
+    const expires = Math.floor(this.#now() / 1000) + ttlSeconds;
+    return `${this.#publicBaseUrl}/${key}?expires=${expires}&contentType=${encodeURIComponent(contentType)}`;
+  }
+
   /** Resolve a key under baseDir, refusing any path that escapes it (fail-closed). */
   #resolve(key: string): string {
     if (typeof key !== 'string' || key === '') {

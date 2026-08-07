@@ -55,6 +55,9 @@ export class FakeObjectStore implements ObjectStore {
   async delete(key: string): Promise<void> {
     this.objects.delete(key);
   }
+  async presignPut(key: string, ttlSeconds: number, contentType: string): Promise<string> {
+    return `signed-put://${key}?ttl=${ttlSeconds}&ct=${contentType}`;
+  }
   async presignGet(key: string, ttlSeconds: number): Promise<string> {
     return `signed://${key}?ttl=${ttlSeconds}`;
   }

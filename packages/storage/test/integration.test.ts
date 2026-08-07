@@ -89,4 +89,44 @@ describe.skipIf(!online)('tenant-isolated storage against real MinIO', () => {
     expect(new TextDecoder().decode((await b.get('cam_1/y.mp4')).body)).toBe('B-DATA');
     expect(await b.head('cam_1/x.mp4')).toBeNull();
   });
+
+  /*
+   * ⭐ The upload path a browser actually takes (P-8 Phase 8). Offline signature tests prove what
+   * the URL *says*; only a real store proves what it *does* — and the two disagreed until
+   * `signableHeaders` was forced, which is exactly why this runs against MinIO.
+   */
+  it('a presigned PUT stores the bytes, and only under the signing tenant’s prefix', async () => {
+    const a = new TenantObjectStore(store, 'tnt_a');
+    const key = a.keyFor('analyses', 'an_1', 'source.mp4');
+    const url = await a.presignPut(key, 300, 'video/mp4');
+
+    const res = await fetch(url, {
+      method: 'PUT',
+      body: new TextEncoder().encode('PRESIGNED-BODY'),
+      headers: { 'content-type': 'video/mp4' },
+    });
+    expect(res.status).toBe(200);
+
+    expect(new TextDecoder().decode((await a.get(key)).body)).toBe('PRESIGNED-BODY');
+    // The object landed inside the tenant prefix, not at the bare relative key.
+    expect(await store.head(`tnt_a/${key}`)).not.toBeNull();
+    expect(await store.head(key)).toBeNull();
+  });
+
+  /*
+   * ⛔ Without this the URL is "somewhere to put anything". Measured before the fix: the SDK signed
+   * `host` alone and two URLs for different content types were byte-identical.
+   */
+  it('refuses an upload that declares a different content type than it was signed for', async () => {
+    const a = new TenantObjectStore(store, 'tnt_a');
+    const url = await a.presignPut(a.keyFor('analyses', 'an_2', 'source.mp4'), 300, 'video/mp4');
+
+    const res = await fetch(url, {
+      method: 'PUT',
+      body: new TextEncoder().encode('MZ\x90\x00'),
+      headers: { 'content-type': 'application/octet-stream' },
+    });
+    expect(res.status).toBe(403);
+    expect(await res.text()).toContain('SignatureDoesNotMatch');
+  });
 });

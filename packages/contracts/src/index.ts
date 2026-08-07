@@ -33,6 +33,10 @@ export * from './assignment/assignment.js';
 
 // media / ingestion (P1-4)
 export * from './media/media.js';
+// offline video investigation — an uploaded recording analysed by the LIVE pipeline (P-8 Phase 8).
+// ⚠️ `AnalysisSession` is the Media context's execution record; it is NOT the AI runtime's live
+// session (`POST /sessions`). Two words, two meanings — see the header, and ADR-0044's discipline.
+export * from './media/analysis.js';
 
 // evidence (P2-2 G-4)
 export * from './evidence/evidence.js';

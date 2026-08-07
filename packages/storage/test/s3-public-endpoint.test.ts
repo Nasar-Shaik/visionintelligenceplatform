@@ -79,3 +79,54 @@ describe('S3ObjectStore.presignGet — public vs internal endpoint', () => {
     expect(url.startsWith('http://localhost:49000/vip-recordings/k.mp4')).toBe(true);
   });
 });
+
+/**
+ * ⚠️ A presigned **PUT** grants strictly more than a GET: it is a URL that writes. Three properties
+ * make it safe to hand to a browser, and all three are decidable offline from the URL itself —
+ * which is the same reason the GET tests above exist.
+ *
+ * ⛔ **What none of this establishes is that the bytes are a video.** Presigning says where bytes may
+ * land, never what they are. The object is untrusted until the service has probed it.
+ */
+describe('S3ObjectStore.presignPut — offline video upload (P-8 Phase 8)', () => {
+  it('signs against the public endpoint, exactly as presignGet does', async () => {
+    const store = new S3ObjectStore({
+      ...base,
+      endpoint: 'http://minio:9000',
+      publicEndpoint: 'https://vip.example.com',
+    });
+    const url = await store.presignPut('tnt_a/analyses/an_1/source.mp4', 3600, 'video/mp4');
+    expect(
+      url.startsWith('https://vip.example.com/vip-recordings/tnt_a/analyses/an_1/source.mp4'),
+    ).toBe(true);
+    expect(url).not.toContain('minio:9000');
+  });
+
+  /*
+   * ⭐ The property that turns "somewhere to put a video" into "somewhere to put anything" if it is
+   * missing. `content-type` must appear in SignedHeaders, so an uploader that sends a different one
+   * is refused by the store rather than trusted by us.
+   */
+  it('covers content-type in the signature, so the upload cannot store something else', async () => {
+    const store = new S3ObjectStore({ ...base, endpoint: 'http://localhost:49000' });
+    const params = new URL(await store.presignPut('k.mp4', 60, 'video/mp4')).searchParams;
+    expect(params.get('X-Amz-SignedHeaders')).toContain('content-type');
+    expect(params.get('X-Amz-Signature')).toBeTruthy();
+    expect(params.get('X-Amz-Expires')).toBe('60');
+  });
+
+  it('a different content type is a different signature', async () => {
+    const store = new S3ObjectStore({ ...base, endpoint: 'http://localhost:49000' });
+    const a = new URL(await store.presignPut('k.mp4', 60, 'video/mp4')).searchParams;
+    const b = new URL(await store.presignPut('k.mp4', 60, 'application/zip')).searchParams;
+    expect(a.get('X-Amz-Signature')).not.toBe(b.get('X-Amz-Signature'));
+  });
+
+  /* ⚠️ A PUT URL that also worked as a GET would leak every uploaded recording to anyone holding it. */
+  it('a different key is a different signature', async () => {
+    const store = new S3ObjectStore({ ...base, endpoint: 'http://localhost:49000' });
+    const a = new URL(await store.presignPut('a.mp4', 60, 'video/mp4')).searchParams;
+    const b = new URL(await store.presignPut('b.mp4', 60, 'video/mp4')).searchParams;
+    expect(a.get('X-Amz-Signature')).not.toBe(b.get('X-Amz-Signature'));
+  });
+});

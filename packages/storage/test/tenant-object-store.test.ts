@@ -44,6 +44,9 @@ function memoryStore(): ObjectStore & { keys(): string[] } {
     async presignGet(key, ttl) {
       return `https://signed.example/${key}?ttl=${ttl}`;
     },
+    async presignPut(key, ttl, contentType) {
+      return `https://signed.example/${key}?ttl=${ttl}&ct=${encodeURIComponent(contentType)}`;
+    },
   };
 }
 
@@ -78,6 +81,24 @@ describe('prefixing', () => {
   it('presigned URLs are for the prefixed key', async () => {
     const store = new TenantObjectStore(memoryStore(), 'tnt_a');
     expect(await store.presignGet('cam1/x.mp4', 60)).toContain('tnt_a/cam1/x.mp4');
+  });
+
+  /*
+   * ⚠️ A presigned PUT grants strictly more than a GET, so the prefix is not a convenience here —
+   * it is the whole isolation. A URL minted for an un-prefixed key is a URL that can write into
+   * another tenant's storage, and nothing downstream would notice.
+   */
+  it('a presigned PUT is scoped to the tenant prefix AND to a content type', async () => {
+    const store = new TenantObjectStore(memoryStore(), 'tnt_a');
+    const url = await store.presignPut('analyses/an_1/source.mp4', 60, 'video/mp4');
+    expect(url).toContain('tnt_a/analyses/an_1/source.mp4');
+    expect(url).toContain('video%2Fmp4');
+  });
+
+  it('refuses to presign a PUT for a key that escapes the tenant prefix', async () => {
+    const store = new TenantObjectStore(memoryStore(), 'tnt_a');
+    await expect(store.presignPut('../tnt_b/x.mp4', 60, 'video/mp4')).rejects.toThrow(StorageError);
+    await expect(store.presignPut('/absolute.mp4', 60, 'video/mp4')).rejects.toThrow(StorageError);
   });
 });
 

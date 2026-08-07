@@ -49,10 +49,34 @@ export interface S3ObjectStoreOptions {
   requestTimeoutMs?: number;
 }
 
+/**
+ * ⚠️ `requestChecksumCalculation` is honoured at runtime by `@aws-sdk/client-s3` 3.1096 but is not
+ * in its exported config type. Declared here rather than cast away at the call site, so the reason
+ * it is being passed survives the next SDK bump.
+ */
+type PresignClientConfig = S3ClientConfig & {
+  requestChecksumCalculation?: 'WHEN_SUPPORTED' | 'WHEN_REQUIRED';
+};
+
 export class S3ObjectStore implements ObjectStore {
   readonly #client: S3Client;
   /** Signs browser-facing URLs. Same credentials, different endpoint; never sends a request. */
   readonly #signer: S3Client;
+  /**
+   * Signs browser-facing **PUT** URLs. A third client, for one measured reason.
+   *
+   * ⚠️ By default the SDK hoists `x-amz-checksum-crc32=AAAAAA%3D%3D` — the CRC32 of an **empty**
+   * payload — into the signed query string of a presigned PUT. MinIO accepts it (measured: 200 OK
+   * with a non-empty body), so this is not a live defect here; but it is a signed assertion about
+   * the bytes that is false for every upload, and an S3 implementation that validates it would
+   * reject every one. `WHEN_REQUIRED` removes the parameter instead of relying on a server to
+   * ignore it.
+   *
+   * ⛔ It is a **separate client** so that `put()` and `presignGet()` are byte-for-byte unchanged.
+   * `presignGet` is verified against a deployment (ADR-0036: 206 on a range, 403 on tamper, expiry
+   * enforced) and recording is the contractual obligation — neither changes to fix an upload path.
+   */
+  readonly #putSigner: S3Client;
   readonly #bucket: string;
 
   constructor(opts: S3ObjectStoreOptions) {
@@ -77,6 +101,12 @@ export class S3ObjectStore implements ObjectStore {
       opts.publicEndpoint === undefined || opts.publicEndpoint === opts.endpoint
         ? this.#client
         : new S3Client({ ...config, endpoint: opts.publicEndpoint });
+    const putConfig: PresignClientConfig = {
+      ...config,
+      endpoint: opts.publicEndpoint ?? opts.endpoint,
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+    };
+    this.#putSigner = new S3Client(putConfig);
     this.#bucket = opts.bucket;
   }
 
@@ -152,6 +182,30 @@ export class S3ObjectStore implements ObjectStore {
     return getSignedUrl(this.#signer, new GetObjectCommand({ Bucket: this.#bucket, Key: key }), {
       expiresIn: ttlSeconds,
     });
+  }
+
+  /**
+   * Signed against the public endpoint for the same reason `presignGet` is — the browser performs
+   * this PUT.
+   *
+   * ⭐ **`signableHeaders` is what makes the content type mean anything, and leaving it out is a
+   * silent hole.** Measured against MinIO before this was written: with `ContentType` set on the
+   * command and nothing else, the SDK emits `X-Amz-SignedHeaders=host` and **drops the content type
+   * entirely** — two URLs signed for `video/mp4` and `application/zip` came out byte-identical, and
+   * a presigned "video upload" URL would have accepted an executable. Forcing `content-type` into
+   * the signed set makes the signature cover it: a mismatched upload is
+   * **`403 SignatureDoesNotMatch`**, measured against a real MinIO, which is the correct failure.
+   *
+   * ⛔ **This still does not make the object a video.** Presigning says where bytes may land, never
+   * what they are; the content type is what the uploader *declared*, and the store enforces only
+   * that they declare the same thing twice. Nothing is trusted until it has been probed.
+   */
+  async presignPut(key: string, ttlSeconds: number, contentType: string): Promise<string> {
+    return getSignedUrl(
+      this.#putSigner,
+      new PutObjectCommand({ Bucket: this.#bucket, Key: key, ContentType: contentType }),
+      { expiresIn: ttlSeconds, signableHeaders: new Set(['content-type']) },
+    );
   }
 
   /** Readiness probe: the bucket is reachable + accessible. */

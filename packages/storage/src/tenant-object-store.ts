@@ -74,6 +74,15 @@ export class TenantObjectStore {
     return this.#inner.presignGet(this.#abs(relKey), ttlSeconds);
   }
 
+  /**
+   * ⭐ **The only place a browser-writable URL should ever be minted**, because `#abs` is what makes
+   * the signed key tenant-prefixed and traversal-free. A presigned PUT built from a hand-assembled
+   * key is a URL that can write into whatever prefix the caller managed to spell.
+   */
+  async presignPut(relKey: string, ttlSeconds: number, contentType: string): Promise<string> {
+    return this.#inner.presignPut(this.#abs(relKey), ttlSeconds, contentType);
+  }
+
   /** Resolve a relative key to its absolute, tenant-prefixed form (fail-closed on escape). */
   #abs(relKey: string, opts: { allowPrefix?: boolean } = {}): string {
     if (typeof relKey !== 'string' || relKey === '') {
