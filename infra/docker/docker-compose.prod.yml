@@ -185,6 +185,16 @@ services:
       # ⚠️ Read ONLY for the capability matrix's `rules` fact, with the CALLER's token forwarded.
       # Unset is valid: the fact reads `unknown` rather than `false`.
       RULES_URL: ${RULES_SERVICE_URL:-http://rules:8086}
+      # ══ ONVIF discovery + staged stream probing — the seam, connected (P-9 A1) ═══════════════
+      # ⛔ This was UNSET in every deployment from P-1 to P-8. Both ends were built, tested and
+      # ADR'd (ADR-0023): `ai/inference/onvif.py`, `POST /discovery/onvif`, `POST /streams/validate`,
+      # `HttpDiscoveryProvider`, `HttpStreamProbe`. All of it fell back to the `Unavailable*`
+      # implementations because this one variable had no value — so "Scan network" and "Test
+      # connection" have never once run in a deployed product. Same shape as L-56.
+      # ⚠️ Unset remains a SUPPORTED deployment, not a broken one: an estate onboarded from a list
+      # of RTSP URLs needs neither. That is why the service reports `unavailable` with a reason
+      # instead of failing to start, and why this carries a default rather than `:?`.
+      CAMERA_DISCOVERY_URL: ${CAMERA_DISCOVERY_URL:-http://inference:8085}
     depends_on: *infra-deps
 
   media:
