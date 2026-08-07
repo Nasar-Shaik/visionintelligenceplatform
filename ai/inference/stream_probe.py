@@ -524,6 +524,13 @@ def probe_stream(
         return report
 
     # --- configuration -------------------------------------------------------------------------
+    # ⭐ The probe's budget travels DOWN to the capture (P-9 A11). Without this the open is bounded
+    # by the source's own 10s default, the camera service's transport ceiling fires first, and a
+    # device that accepts TCP and then stalls is reported as "the stream validator is unreachable" —
+    # "we could not test this camera" — instead of "this camera does not serve RTSP".
+    if not (config.get("options") or {}).get("readTimeoutMs"):
+        config = {**config, "options": {**(config.get("options") or {}),
+                                        "readTimeoutMs": max(1000.0, timeout_seconds * 1000.0)}}
     try:
         source = build(config)
     except ConfigurationFailure as exc:

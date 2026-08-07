@@ -567,10 +567,44 @@ class OpenCvStreamSource:
         self._cap = None
 
     def open(self) -> None:
+        """Open the source, bounded.
+
+        ⛔ **The open and the read are both bounded, and neither was** (P-9 A3 and A11, from opposite
+        directions). Two independent findings pointed at the same missing property:
+
+        - A3: teardown released the decoder while the pump was inside a native `read()`, because the
+          join timed out — and it timed out because `read()` on a stalled source never returns.
+        - A11: a listener that accepts TCP and then says nothing held `cv2.VideoCapture()` open past
+          the probe's own budget. The camera service's transport ceiling fired first, so the answer
+          came back **"the stream validator is unreachable"** — "we could not test this camera" —
+          when the truth was "we tested it and it does not serve RTSP". That sends an installer to
+          the platform instead of to the device.
+
+        ⚠️ A camera that accepts a connection and then stalls is not an exotic case; it is an
+        overloaded NVR, and it is one of the commonest faults on a real site. Without these two
+        properties the platform's answer for the commonest fault is the one answer that blames the
+        wrong component.
+
+        ⚠️ Passed in the constructor's params array rather than `cap.set()` afterwards: the FFmpeg
+        backend reads them while opening, so setting them on an already-open capture is too late.
+        """
         import cv2  # noqa: WPS433 - HEAVY, integration-only
 
         target = self._device_index if self._device_index is not None else self.uri
-        cap = cv2.VideoCapture(target)
+        if self._device_index is not None:
+            # A local device has no network to stall on, and the timeout properties are not
+            # meaningful for it.
+            cap = cv2.VideoCapture(target)
+        else:
+            open_ms = int(max(1000.0, self._read_timeout_ms))
+            cap = cv2.VideoCapture(
+                target,
+                cv2.CAP_ANY,
+                [
+                    cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, open_ms,
+                    cv2.CAP_PROP_READ_TIMEOUT_MSEC, int(self._read_timeout_ms),
+                ],
+            )
         if not cap.isOpened():
             cap.release()
             # Redacted: the URI may embed camera credentials.
@@ -751,6 +785,10 @@ def build_source(config: dict) -> StreamSource:
             source_type=source_type,
             transport=str(options.get("transport") or options.get("rtspTransport") or "tcp"),
             resize_long_side=_opt_int(options.get("resizeLongSide")),
+            # ⚠️ Honoured so a CALLER with its own budget — the staged probe has one — can bound the
+            # open. Without it a stalled device holds the capture open past the caller's ceiling and
+            # the caller reports "unreachable" for a device it did in fact reach (P-9 A11).
+            **({"read_timeout_ms": float(options["readTimeoutMs"])} if options.get("readTimeoutMs") else {}),
         )
     if source_type in ("http", "usb", "file", "cloud", "webrtc"):
         return OpenCvStreamSource(
@@ -758,6 +796,7 @@ def build_source(config: dict) -> StreamSource:
             source_type=source_type,
             device_index=_opt_int(options.get("deviceIndex")),
             resize_long_side=_opt_int(options.get("resizeLongSide")),
+            **({"read_timeout_ms": float(options["readTimeoutMs"])} if options.get("readTimeoutMs") else {}),
         )
     raise ConfigurationFailure(f"unsupported source type '{source_type}'")
 
