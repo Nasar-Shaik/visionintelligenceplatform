@@ -103,3 +103,8 @@ infra/docker/fixtures/media/validation/large/
 # P-8.5 validation and browser-certification artefacts (runs, screenshots, traces).
 artifacts/
 tools/e2e-browser/artifacts/
+
+# Release-soak run artefacts (JSONL streams, several MB per run). The harness is tracked; its
+# output is not — SOAK_REPORT.md and its siblings carry the conclusions into the repo.
+.soak*/
+.soak-real.mp4
