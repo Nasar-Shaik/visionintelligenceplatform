@@ -4,10 +4,17 @@
  * substitute fakes. This is what keeps the ingestion lifecycle fully unit-testable without ffmpeg,
  * a camera, or a network.
  */
-import type { ClipQuery, RecordingQuery, RecordingSegment, StreamConnection } from '@vip/contracts';
+import type {
+  ClipQuery,
+  RecordingQuery,
+  RecordingSegment,
+  StreamConnection,
+  VideoAnalysisQuery,
+} from '@vip/contracts';
 import type { TenantScope } from '@vip/tenancy';
 import type { RecordingDoc } from '../domain/recording.js';
 import type { ClipDoc } from '../domain/clip.js';
+import type { AnalysisDoc, AnalysisSessionDoc } from '../domain/analysis.js';
 
 /** Resolves a camera's connection descriptor (with decrypted credentials) from the Camera context. */
 export interface CameraSource {
@@ -110,6 +117,41 @@ export interface MediaCatalogStore {
   getClip(scope: TenantScope, id: string): Promise<ClipDoc | null>;
   /** Delete a clip within scope; returns whether a document was removed. */
   deleteClip(scope: TenantScope, id: string): Promise<boolean>;
+}
+
+/**
+ * Persistence port for offline video investigation (P-8 Phase 8). Tenant-scoped like everything
+ * else here; a Mongo adapter backs production and an in-memory one backs unit tests.
+ *
+ * ⚠️ **Sessions are appended and updated, never replaced.** A terminal session is immutable — the
+ * service enforces it, and the store offers no operation that would let a caller rewrite one.
+ */
+export interface AnalysisStore {
+  putAnalysis(scope: TenantScope, doc: AnalysisDoc): Promise<void>;
+  getAnalysis(scope: TenantScope, id: string): Promise<AnalysisDoc | null>;
+  listAnalyses(
+    scope: TenantScope,
+    q: VideoAnalysisQuery,
+  ): Promise<{ items: AnalysisDoc[]; nextCursor?: string }>;
+  deleteAnalysis(scope: TenantScope, id: string): Promise<boolean>;
+
+  putSession(scope: TenantScope, doc: AnalysisSessionDoc): Promise<void>;
+  getSession(scope: TenantScope, id: string): Promise<AnalysisSessionDoc | null>;
+  /** Every session of one analysis, newest first. */
+  listSessions(scope: TenantScope, analysisId: string): Promise<AnalysisSessionDoc[]>;
+  /** Sessions in a non-terminal state, across analyses — what a worker claims from. */
+  listActiveSessions(scope: TenantScope): Promise<AnalysisSessionDoc[]>;
+}
+
+/**
+ * Confirms a camera is real and belongs to this tenant.
+ *
+ * ⚠️ **Existence, not identity.** It deliberately does not offer a display name: nothing internal
+ * carries one, and a port that returned the id as a "name" would put an id in a field that means a
+ * name — which is how `cam_a1b2c3` ends up printed on a customer's report.
+ */
+export interface CameraDirectory {
+  exists(tenantId: string, cameraId: string): Promise<boolean>;
 }
 
 /** Deferred timer, injectable so reconnect scheduling is deterministic under test. */

@@ -31,6 +31,8 @@ export interface IngestionConfig {
   segmentSeconds: number;
   /** ffmpeg binary name/path. */
   ffmpegBinary: string;
+  /** ffprobe binary name/path — measures an uploaded recording (P-8 Phase 8). */
+  ffprobeBinary: string;
 }
 
 /**
@@ -108,6 +110,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       MEDIA_FRAME_RATE: z.coerce.number().int().min(1).max(60).default(2),
       MEDIA_SEGMENT_SECONDS: z.coerce.number().int().min(1).max(3600).default(6),
       FFMPEG_BINARY: z.string().min(1).default('ffmpeg'),
+      FFPROBE_BINARY: z.string().min(1).default('ffprobe'),
       MEDIA_PLAYBACK_TTL_SECONDS: z.coerce.number().int().min(30).max(86_400).default(900),
       // ⚠️ Blank by default: no URL, no perception, and the deployment behaves exactly as before.
       INFERENCE_URL: z.string().default(''),
@@ -147,6 +150,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       frameRate: ing.MEDIA_FRAME_RATE,
       segmentSeconds: ing.MEDIA_SEGMENT_SECONDS,
       ffmpegBinary: ing.FFMPEG_BINARY,
+      ffprobeBinary: ing.FFPROBE_BINARY,
     },
     perception: {
       url: ing.INFERENCE_URL.trim(),

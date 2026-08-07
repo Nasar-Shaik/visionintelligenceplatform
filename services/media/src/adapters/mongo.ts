@@ -7,12 +7,16 @@
 import { MongoClient, type Db } from 'mongodb';
 import type { RecordingDoc } from '../domain/recording.js';
 import type { ClipDoc } from '../domain/clip.js';
+import type { AnalysisDoc, AnalysisSessionDoc } from '../domain/analysis.js';
 import { MongoMediaCatalog } from './mongo-media-catalog.js';
+import { MongoAnalysisStore } from './mongo-analysis-store.js';
 
 export interface MongoAdapter {
   client: MongoClient;
   db: Db;
   catalog: MongoMediaCatalog;
+  /** Offline video investigation (P-8 Phase 8). */
+  analyses: MongoAnalysisStore;
   ping(): Promise<void>;
   close(): Promise<void>;
 }
@@ -34,10 +38,16 @@ export async function connectMongo(opts: ConnectMongoOptions): Promise<MongoAdap
   const clips = db.collection<ClipDoc>('clips');
   const catalog = new MongoMediaCatalog(recordings, clips);
   await catalog.ensureIndexes();
+  const analyses = new MongoAnalysisStore(
+    db.collection<AnalysisDoc>('analyses'),
+    db.collection<AnalysisSessionDoc>('analysisSessions'),
+  );
+  await analyses.ensureIndexes();
   return {
     client,
     db,
     catalog,
+    analyses,
     async ping() {
       await db.command({ ping: 1 });
     },

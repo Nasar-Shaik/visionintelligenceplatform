@@ -14,6 +14,7 @@ import type { CameraFrameStats, FrameSinkStats } from '../adapters/http-frame-si
 import type { AssignmentClient } from '../adapters/assignment-client.js';
 import type { AssignmentGate } from '../application/assignment-gate.js';
 import type { EventPublisherStats } from '../adapters/event-publisher.js';
+import type { AnalysisService } from '../application/analysis-service.js';
 import { registerSecurity } from './plugins/security.js';
 import {
   registerMetrics,
@@ -34,6 +35,7 @@ import { registerPerceptionRoutes } from './routes/perception.js';
 import { registerTrackingRoutes } from './routes/tracking.js';
 import { registerEventBridgeRoutes } from './routes/event-bridge.js';
 import { registerAssignmentRoutes } from './routes/assignment.js';
+import { registerAnalysisRoutes } from './routes/analyses.js';
 
 export interface BuildServerOptions {
   config: ServiceConfig;
@@ -47,6 +49,14 @@ export interface BuildServerOptions {
   eventPublisher?: { stats(): EventPublisherStats };
   /** Injected so the tracking proxy can be driven without a runtime (tests only). */
   trackingFetch?: typeof fetch;
+  /**
+   * Offline video investigation (P-8 Phase 8).
+   *
+   * ⚠️ **Optional, like every capability added to this service since Phase 2.** A media deployment
+   * without it behaves exactly as it did — the routes are simply absent rather than present and
+   * answering errors, because a route that exists and always fails is indistinguishable from a bug.
+   */
+  analyses?: AnalysisService;
   /**
    * Camera Processing Assignment (P-8 Phase 6). Present only when the gate is enabled — absent is a
    * valid deployment that analyses every camera, and the routes say so rather than reporting zeroes.
@@ -127,6 +137,7 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
     auth,
     ...(opts.eventPublisher === undefined ? {} : { publisher: opts.eventPublisher }),
   });
+  if (opts.analyses !== undefined) registerAnalysisRoutes(app, { analyses: opts.analyses, auth });
   registerAssignmentRoutes(app, {
     auth,
     runtimeUrl: config.perception.url,

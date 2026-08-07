@@ -1,0 +1,120 @@
+/**
+ * Transport: offline video investigation routes (P-8 Phase 8).
+ *
+ * Permissions follow the media service's existing split — creating, confirming, running, cancelling
+ * and deleting are actions (`stream:control`); listing, reading and playback are reads
+ * (`stream:read`). The tenant comes from the validated access token, so a principal only ever
+ * addresses its own tenant's analyses and another tenant's is a `404` (no existence leak).
+ *
+ * ⚠️ **The bytes never pass through here.** `POST /analyses` hands back a presigned URL and the
+ * browser writes straight to object storage; `POST /analyses/:id/confirm` is how the service learns
+ * the upload landed. Routing a multi-gigabyte body through the edge, the gateway and this service
+ * would buffer a customer's video three times and hold an authenticated connection open for a
+ * quarter of an hour.
+ */
+import type { FastifyInstance } from 'fastify';
+import {
+  ConfirmVideoAnalysisInput,
+  CreateVideoAnalysisInput,
+  StartAnalysisSessionInput,
+  VideoAnalysisQuery,
+} from '@vip/contracts';
+import { TenantScope } from '@vip/tenancy';
+import type { AnalysisService } from '../../application/analysis-service.js';
+import type { Auth } from '../plugins/auth.js';
+import { parseBody, success } from '../http.js';
+
+export interface AnalysisRoutesDeps {
+  analyses: AnalysisService;
+  auth: Auth;
+}
+
+interface IdParams {
+  id: string;
+}
+
+export function registerAnalysisRoutes(app: FastifyInstance, deps: AnalysisRoutesDeps): void {
+  const { analyses, auth } = deps;
+  const scopeOf = (tenantId: string): TenantScope => TenantScope.fromTenantId(tenantId);
+
+  app.post(
+    '/analyses',
+    { preHandler: auth.authorize('stream:control') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const input = parseBody(CreateVideoAnalysisInput, request.body);
+      const upload = await analyses.createUpload(scope, request.principal!.principalId, input);
+      return reply.status(201).send(success(upload));
+    },
+  );
+
+  app.get('/analyses', { preHandler: auth.authorize('stream:read') }, async (request, reply) => {
+    const scope = scopeOf(request.principal!.tenantId);
+    const query = parseBody(VideoAnalysisQuery, request.query ?? {});
+    return reply.send(success(await analyses.list(scope, query)));
+  });
+
+  app.get<{ Params: IdParams }>(
+    '/analyses/:id',
+    { preHandler: auth.authorize('stream:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      return reply.send(success(await analyses.detail(scope, request.params.id)));
+    },
+  );
+
+  app.post<{ Params: IdParams }>(
+    '/analyses/:id/confirm',
+    { preHandler: auth.authorize('stream:control') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const input = parseBody(ConfirmVideoAnalysisInput, request.body ?? {});
+      return reply.send(success(await analyses.confirmUpload(scope, request.params.id, input)));
+    },
+  );
+
+  /** ⭐ Called again on the same analysis, this is a rerun — a new session, not a replacement. */
+  app.post<{ Params: IdParams }>(
+    '/analyses/:id/sessions',
+    { preHandler: auth.authorize('stream:control') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const input = parseBody(StartAnalysisSessionInput, request.body ?? {});
+      const session = await analyses.startSession(
+        scope,
+        request.params.id,
+        request.principal!.principalId,
+        input,
+      );
+      return reply.status(201).send(success(session));
+    },
+  );
+
+  app.post<{ Params: { sessionId: string } }>(
+    '/analysis-sessions/:sessionId/cancel',
+    { preHandler: auth.authorize('stream:control') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      return reply.send(success(await analyses.cancelSession(scope, request.params.sessionId)));
+    },
+  );
+
+  app.get<{ Params: IdParams }>(
+    '/analyses/:id/playback',
+    { preHandler: auth.authorize('stream:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      return reply.send(success(await analyses.playback(scope, request.params.id)));
+    },
+  );
+
+  app.delete<{ Params: IdParams }>(
+    '/analyses/:id',
+    { preHandler: auth.authorize('stream:control') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      await analyses.remove(scope, request.params.id);
+      return reply.status(204).send();
+    },
+  );
+}

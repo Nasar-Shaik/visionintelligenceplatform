@@ -149,6 +149,9 @@ export function memoryObjectStore(): ObjectStore & { keys(): string[]; failPut: 
     async presignGet(key: string, ttl: number) {
       return `https://signed/${key}?ttl=${ttl}`;
     },
+    async presignPut(key: string, ttl: number, contentType: string) {
+      return `https://signed-put/${key}?ttl=${ttl}&ct=${encodeURIComponent(contentType)}`;
+    },
   };
   return store;
 }

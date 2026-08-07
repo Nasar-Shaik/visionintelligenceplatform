@@ -21,6 +21,9 @@ import { HttpFrameSink } from './adapters/http-frame-sink.js';
 import { BufferedEventPublisher } from './adapters/event-publisher.js';
 import { AssignmentGate } from './application/assignment-gate.js';
 import { AssignmentClient } from './adapters/assignment-client.js';
+import { AnalysisService } from './application/analysis-service.js';
+import { FfprobeMediaProbe } from './adapters/ffprobe.js';
+import { CameraSourceDirectory } from './adapters/camera-source-directory.js';
 import { NatsEventBus } from '@vip/messaging';
 import { buildServer } from './transport/server.js';
 
@@ -180,11 +183,33 @@ async function main(): Promise<void> {
           onLog: (level, msg, fields) => loggerRef.current?.[level]({ ...fields }, msg),
         });
 
+  const cameraSource = new HttpCameraSource({
+    baseUrl: config.ingestion.cameraUrl,
+    internalKey: config.internal.apiKey,
+  });
+
+  /*
+   * ⚠️ Offline video investigation (P-8 Phase 8). Built from what already exists: the same object
+   * store recordings use, the same camera resolve the supervisor uses, and the frame rate the live
+   * path is configured with. Nothing here is a second ingestion design.
+   */
+  const analyses = new AnalysisService({
+    store: mongo.analyses,
+    objectStore,
+    probe: new FfprobeMediaProbe({ binary: config.ingestion.ffprobeBinary }),
+    cameras: new CameraSourceDirectory(cameraSource),
+    clock: { now: () => new Date() },
+    ids: {
+      analysisId: () => `ana_${randomUUID().replace(/-/g, '')}`,
+      sessionId: () => `ases_${randomUUID().replace(/-/g, '')}`,
+    },
+    capabilityId: config.perception.capabilityId,
+    defaultFrameRate: config.ingestion.frameRate,
+    playbackTtlSeconds: config.playbackTtlSeconds,
+  });
+
   const supervisor = new StreamSupervisor({
-    cameraSource: new HttpCameraSource({
-      baseUrl: config.ingestion.cameraUrl,
-      internalKey: config.internal.apiKey,
-    }),
+    cameraSource,
     decoder: new FfmpegDecoder({ binary: config.ingestion.ffmpegBinary }),
     objectStore,
     frameSink,
@@ -203,6 +228,7 @@ async function main(): Promise<void> {
     config,
     supervisor,
     catalog,
+    analyses,
     readiness,
     ...(frameSink instanceof HttpFrameSink ? { perception: frameSink } : {}),
     ...(eventPublisher === undefined ? {} : { eventPublisher }),
