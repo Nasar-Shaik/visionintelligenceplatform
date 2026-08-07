@@ -39,7 +39,7 @@ import time
 from typing import List, Optional
 
 from benchmark import BenchmarkWorkload, environment_fingerprint, run_benchmark
-from camera_registry import CameraRegistry, render_matrix
+from camera_registry import CameraRegistry, RegistryError, render_matrix
 from certification import (
     CapabilityAccumulator,
     CertificationBudget,
@@ -76,7 +76,7 @@ def discover(args: argparse.Namespace) -> int:
     if not devices:
         print("no devices answered. ONVIF may be disabled, or multicast may not cross this segment.")
         return 1
-    registry = CameraRegistry().load()
+    registry = CameraRegistry(getattr(args, "registry_dir", None)).load()
     for device in devices:
         username = os.environ.get("VIP_CAMERA_USERNAME")
         password = os.environ.get("VIP_CAMERA_PASSWORD")
@@ -107,7 +107,7 @@ def discover(args: argparse.Namespace) -> int:
 
 
 def certify(args: argparse.Namespace) -> int:
-    registry = CameraRegistry().load()
+    registry = CameraRegistry(args.registry_dir).load()
     entry = registry.get(args.target)
     if entry is None:
         print(f"error: no registry entry '{args.target}'. Known targets:", file=sys.stderr)
@@ -199,7 +199,15 @@ def certify(args: argparse.Namespace) -> int:
 
     _print_summary(summary, compatibility, soak_report)
     if args.write_registry:
-        registry.certify(entry.id, summary, certification_version=CERTIFICATION_VERSION)
+        # ⭐ Through `promote_from_bundle`, not `certify` (P-9 A6). One promotion path, and it is the
+        # one that re-derives the verdict from the bundle's own checks instead of reading the status
+        # it claims. Routing the CLI around its own guard would leave the guard protecting only the
+        # callers who did not need protecting.
+        try:
+            registry.promote_from_bundle(bundle, certification_version=CERTIFICATION_VERSION)
+        except RegistryError as exc:
+            print(f"\nregistry NOT updated: {exc}", file=sys.stderr)
+            return 1
         registry.save()
         print(f"registry updated: status '{registry.get(entry.id).status}'")
 
@@ -371,7 +379,7 @@ def _print_summary(summary: dict, compatibility: dict, soak: Optional[dict]) -> 
 
 
 def matrix(_args: argparse.Namespace) -> int:
-    registry = CameraRegistry().load()
+    registry = CameraRegistry(getattr(args, "registry_dir", None)).load()
     print(render_matrix(registry.matrix()))
     summary = registry.summary()
     print(f"\n{summary['devices']} devices · " + " · ".join(
@@ -442,6 +450,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--site", help="deployment/site label for the validation bundle")
     p.add_argument("--notes", help="free-text notes for the bundle")
     p.add_argument("--output", default="certification-output")
+    # ⚠️ Where the registry is READ from and WRITTEN to. The deployed image is not writable by the
+    # process that runs in it, so a certification on a customer site writes to a mounted volume.
+    p.add_argument("--registry-dir", default=None,
+                   help="registry directory (default: VIP_CAMERA_REGISTRY_DIR, else the shipped one)")
     p.add_argument("--write-registry", action="store_true",
                    help="apply the result to the camera compatibility registry")
     p.add_argument("--discover", action="store_true", help="probe the network for ONVIF devices")

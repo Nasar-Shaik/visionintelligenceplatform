@@ -161,6 +161,114 @@ class CertifyTest(unittest.TestCase):
         self.assertEqual(entry.recommended_settings["rtspTransport"], "tcp")
 
 
+class PromotionRefusalTest(unittest.TestCase):
+    """⭐ P-9 A6. Promotion happens from a bundle or it does not happen.
+
+    These are the tests the milestone exists for. A device is promoted at most a handful of times in
+    its life and the cost of one wrong promotion is a support matrix that lies to a customer — so the
+    refusals matter more than the successes, and there are more of them here for that reason.
+    """
+
+    def setUp(self):
+        self.registry = CameraRegistry(tempfile.mkdtemp())
+        self.registry.add(_entry())
+
+    @staticmethod
+    def _checks(evidence="hardware", status="pass"):
+        return [
+            {"name": n, "status": status, "mandatory": True, "evidenceClass": evidence}
+            for n in ("connect", "stream-acquisition", "credential-redaction",
+                      "frame-accounting", "reconnect-recovery", "clean-shutdown")
+        ]
+
+    def _bundle(self, *, status="certified", checks=None, target="acme-x1"):
+        return {
+            "summary": {**_summary(status=status), "target": {"id": target}},
+            "compatibility": {"checks": self._checks() if checks is None else checks},
+        }
+
+    # --- the one that must work ---------------------------------------------
+
+    def test_a_hardware_bundle_promotes_the_entry(self):
+        entry = self.registry.promote_from_bundle(self._bundle())
+        self.assertEqual(entry.status, "certified")
+        self.assertEqual(entry.evidence_class, "hardware")
+        self.assertTrue(entry.evidence, "a certified row must point at its evidence")
+
+    # --- the ones that must not ---------------------------------------------
+
+    def test_a_simulated_bundle_cannot_promote_anything(self):
+        """CONSTRAINTS §18 in code rather than in prose."""
+        bundle = self._bundle(checks=self._checks(evidence="simulated"))
+        with self.assertRaises(RegistryError) as caught:
+            self.registry.promote_from_bundle(bundle)
+        self.assertIn("pending-validation", str(caught.exception))
+        self.assertEqual(self.registry.get("acme-x1").status, "pending-validation")
+
+    def test_a_status_typed_into_a_json_file_is_refused(self):
+        """⭐ The forgery this is really for. Every field says `certified`; the checks underneath it
+        are simulated, so the verdict is recomputed as `pending-validation` and both values are
+        named in the refusal."""
+        bundle = self._bundle(checks=self._checks(evidence="simulated"))
+        bundle["summary"]["status"] = "certified"
+        bundle["summary"]["evidenceClass"] = "hardware"
+        with self.assertRaises(RegistryError) as caught:
+            self.registry.promote_from_bundle(bundle)
+        self.assertIn("claims status 'certified'", str(caught.exception))
+
+    def test_a_bundle_with_no_checks_cannot_promote(self):
+        with self.assertRaises(RegistryError) as caught:
+            self.registry.promote_from_bundle(self._bundle(checks=[]))
+        self.assertIn("no checks", str(caught.exception))
+
+    def test_a_bundle_missing_its_required_checks_cannot_promote(self):
+        """`reconnect-recovery` and `clean-shutdown` are the two no software can produce."""
+        partial = [c for c in self._checks() if c["name"] not in ("reconnect-recovery", "clean-shutdown")]
+        partial += [
+            {"name": n, "status": "not-executed", "mandatory": True, "evidenceClass": "simulated"}
+            for n in ("reconnect-recovery", "clean-shutdown")
+        ]
+        with self.assertRaises(RegistryError):
+            self.registry.promote_from_bundle(self._bundle(checks=partial))
+        self.assertEqual(self.registry.get("acme-x1").status, "pending-validation")
+
+    def test_a_bundle_for_another_camera_cannot_promote_this_one(self):
+        with self.assertRaises(RegistryError) as caught:
+            self.registry.promote_from_bundle(self._bundle(target="some-other-camera"))
+        self.assertIn("not a registry entry", str(caught.exception))
+
+    def test_a_bundle_without_a_summary_or_compatibility_is_refused(self):
+        for bundle in ({}, {"summary": {}}, {"compatibility": {"checks": self._checks()}}):
+            with self.assertRaises(RegistryError):
+                self.registry.promote_from_bundle(bundle)
+
+    # --- ⛔ and the refusal must not leave damage behind ---------------------
+
+    def test_a_refused_promotion_leaves_the_entry_and_the_file_untouched(self):
+        """⛔ P-9 A6, measured. `certify()` mutated the entry, THEN re-ran the invariants — so a
+        summary claiming `certified` on `simulated` evidence raised correctly and left the entry
+        holding exactly that. `save()` wrote `"status": "certified"` with
+        `"evidenceClass": "simulated"` to disk, and the next `load()` refused the whole registry. A
+        caught-and-ignored refusal became a corrupted profile that bricked the registry on the
+        following start.
+
+        ⚠️ A guard that reports the right answer and causes the damage it exists to prevent is worse
+        than no guard, because the report is what stops anyone looking further.
+        """
+        with self.assertRaises(RegistryError):
+            self.registry.certify("acme-x1", _summary(evidence_class="simulated"))
+
+        entry = self.registry.get("acme-x1")
+        self.assertEqual(entry.status, "pending-validation")
+        self.assertEqual(entry.evidence_class, "simulated")
+        self.assertEqual(entry.evidence, [])
+
+        # And what reaches disk must be loadable — the real consequence of the original defect.
+        self.registry.save()
+        again = CameraRegistry(self.registry.directory).load()
+        self.assertEqual(again.get("acme-x1").status, "pending-validation")
+
+
 class PersistenceTest(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()

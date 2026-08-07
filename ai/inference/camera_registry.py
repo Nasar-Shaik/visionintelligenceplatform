@@ -27,7 +27,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence
 
-from certification import CERTIFICATION_STATUSES, is_hardware, weakest
+from certification import CERTIFICATION_STATUSES, is_hardware, verdict_for, weakest
 
 REGISTRY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles", "cameras")
 
@@ -133,7 +133,15 @@ class CameraRegistry:
     """The permanent record. Loads `profiles/cameras/*.json`; writes back on certification."""
 
     def __init__(self, directory: Optional[str] = None) -> None:
-        self.directory = directory or REGISTRY_DIR
+        # ⛔ `VIP_CAMERA_REGISTRY_DIR` exists because the deployed image cannot be written to (P-9 A6).
+        # The container runs as non-root and `/app` is owned by root — deliberately, since gate 0
+        # compares the container's `/app` byte-for-byte against `ai/inference` and a runtime that
+        # rewrites its own files stops matching the image it was built from. So `--write-registry`
+        # inside the deployed container raised `PermissionError` on the first profile it tried to
+        # save, which is the exact command a field engineer runs after certifying a real camera.
+        #
+        # ⚠️ The fix is a writable location, never a writable image. Point this at a mounted volume.
+        self.directory = directory or os.environ.get("VIP_CAMERA_REGISTRY_DIR") or REGISTRY_DIR
         self._entries: Dict[str, CameraRegistryEntry] = {}
 
     def load(self) -> "CameraRegistry":
@@ -226,27 +234,111 @@ class CameraRegistry:
                 evidence.append(str(summary[key]))
         evidence.extend(str(b) for b in summary.get("benchmarkIds") or [])
 
-        entry.status = status
-        entry.evidence_class = evidence_class
-        entry.evidence = sorted(set(evidence)) if status != "pending-validation" else []
-        entry.certification_version = certification_version if status == "certified" else None
-        entry.certified_at = _now_iso() if status == "certified" else None
+        # ⛔ Built as a CANDIDATE and validated BEFORE anything is committed (P-9 A6).
+        #
+        # This used to mutate `entry` in place and re-run the invariants at the end. The invariants
+        # fired correctly on a summary claiming `certified` from `simulated` evidence — and left the
+        # entry mutated to exactly that. Measured: `save()` then wrote `"status": "certified"` with
+        # `"evidenceClass": "simulated"` to `profiles/cameras/*.json`, and the next `load()` refused
+        # the whole registry. A caught-and-ignored refusal became a corrupted profile that bricked
+        # the registry on the following start.
+        #
+        # ⚠️ A refusal must leave the world exactly as it found it. Anything else means the guard
+        # reports the right answer and causes the damage it was written to prevent.
+        candidate = _as_kwargs(entry)
+        candidate["status"] = status
+        candidate["evidence_class"] = evidence_class
+        candidate["evidence"] = sorted(set(evidence)) if status != "pending-validation" else []
+        candidate["certification_version"] = certification_version if status == "certified" else None
+        candidate["certified_at"] = _now_iso() if status == "certified" else None
+        candidate["updated_at"] = _now_iso()
+
+        issues = list(entry.known_issues)
         for issue in known_issues:
-            if issue not in entry.known_issues:
-                entry.known_issues.append(issue)
-        if recommended_settings:
-            entry.recommended_settings.update(recommended_settings)
+            if issue not in issues:
+                issues.append(issue)
         # Blockers are the most useful thing a failed run produces; keeping them on the entry means
         # the next engineer reads "needs firmware ≥ 5.7" instead of rediscovering it.
         blockers = [str(b) for b in summary.get("blockers") or []]
         if blockers and status in ("failed", "not-supported"):
             for blocker in blockers:
-                if blocker not in entry.known_issues:
-                    entry.known_issues.append(blocker)
-        entry.updated_at = _now_iso()
-        # Re-run the constructor invariants: certified-without-evidence must be impossible even here.
-        CameraRegistryEntry(**_as_kwargs(entry))
-        return entry
+                if blocker not in issues:
+                    issues.append(blocker)
+        candidate["known_issues"] = issues
+        candidate["recommended_settings"] = {
+            **entry.recommended_settings,
+            **(recommended_settings or {}),
+        }
+
+        # Raises before a single field of the live entry has moved.
+        validated = CameraRegistryEntry(**candidate)
+        return self.add(validated)
+
+    def promote_from_bundle(
+        self,
+        bundle: dict,
+        *,
+        certification_version: str = "1.0.0",
+        recommended_settings: Optional[dict] = None,
+    ) -> CameraRegistryEntry:
+        """⭐ **The only supported way a device's status changes.** Promotion from a bundle, or not
+        at all.
+
+        `certify()` accepts a bare summary dict, which is fine for the CLI that just produced one and
+        is not a provenance check: a hand-written dict with the right keys is indistinguishable from
+        a measured one. This reads the **whole bundle** and refuses anything that does not hang
+        together.
+
+        ### What is checked, and why each one is not redundant
+
+        | Check                                              | The forgery it stops                                     |
+        | -------------------------------------------------- | -------------------------------------------------------- |
+        | the bundle carries a `summary` and a `compatibility` | a summary invented without the run behind it            |
+        | the summary's target matches the registry entry     | a bundle for one camera promoting another                |
+        | ⭐ the verdict is RECOMPUTED from the bundle's own checks | `"status": "certified"` typed into a JSON file      |
+        | the recomputed verdict equals the claimed one       | a bundle whose checks and conclusion disagree            |
+
+        ⚠️ **The recomputation is the load-bearing one.** Every other check can be satisfied by
+        someone careful with a text editor; this one cannot, because it derives the answer from the
+        checks rather than reading it. A hand-written `certified` with no hardware checks under it
+        comes back `pending-validation` and the promotion is refused with both values named.
+
+        ⛔ It is still not a cryptographic signature. Someone determined can write a bundle whose
+        checks all claim `hardware`. Closing that needs signed bundles — Track B, and worth it only
+        once bundles start arriving from field engineers rather than from this repository.
+        """
+        if not isinstance(bundle, dict):
+            raise RegistryError("a certification bundle must be an object")
+        summary = bundle.get("summary")
+        compatibility = bundle.get("compatibility")
+        if not isinstance(summary, dict):
+            raise RegistryError("bundle has no `summary` — nothing to promote from")
+        if not isinstance(compatibility, dict):
+            raise RegistryError("bundle has no `compatibility` report — its checks cannot be re-read")
+
+        target_id = str((summary.get("target") or {}).get("id") or "")
+        if not target_id:
+            raise RegistryError("bundle summary names no target")
+        if self._entries.get(target_id) is None:
+            raise RegistryError(f"bundle targets '{target_id}', which is not a registry entry")
+
+        checks = compatibility.get("checks")
+        if not isinstance(checks, list) or not checks:
+            raise RegistryError(f"bundle for '{target_id}' carries no checks to derive a verdict from")
+
+        claimed = str(summary.get("status", "pending-validation"))
+        derived = verdict_for(checks)
+        if derived != claimed:
+            raise RegistryError(
+                f"bundle for '{target_id}' claims status '{claimed}' but its own checks support "
+                f"'{derived}' — refusing to promote"
+            )
+        return self.certify(
+            target_id,
+            summary,
+            certification_version=certification_version,
+            recommended_settings=recommended_settings,
+        )
 
     # --- persistence + reporting -------------------------------------------
 

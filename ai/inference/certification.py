@@ -78,6 +78,34 @@ def is_hardware(evidence_class: str) -> bool:
     return evidence_class == "hardware"
 
 
+def verdict_for(checks: Iterable[dict]) -> str:
+    """Derive a certification status from **serialised** checks, as `CertificationHarness._status_for`
+    derives it from live ones (P-9 A6).
+
+    ⭐ The point is to be able to re-read a bundle that arrived from somewhere else and work out what
+    it actually supports, rather than believing the `status` field it carries. A hand-written bundle
+    can say `"status": "certified"`; it cannot make nine checks say `hardware` without someone
+    writing nine lies, and the ones that matter are the two no software can produce at all.
+
+    ⚠️ The rule is deliberately identical to `_status_for`, including the order: no hardware evidence
+    means `pending-validation` **whatever the checks say**. Two implementations of one rule is how
+    the rule starts having two answers, so if either moves the other must move with it — that is what
+    `test_certification.py::VerdictParityTest` is for.
+    """
+    rows = list(checks)
+    if not rows:
+        return "pending-validation"
+    if not is_hardware(weakest(str(c.get("evidenceClass", "simulated")) for c in rows)):
+        return "pending-validation"
+    blocking = any(
+        bool(c.get("mandatory", True))
+        and str(c.get("status")) != "pass"
+        and str(c.get("status")) != "warn"
+        for c in rows
+    )
+    return "failed" if blocking else "certified"
+
+
 # --- checks ---------------------------------------------------------------------
 
 

@@ -24,6 +24,7 @@ from certification import (  # noqa: E402
     evidence_for_source,
     is_hardware,
     redact_config,
+    verdict_for,
     weakest,
 )
 
@@ -380,6 +381,64 @@ class BundleTest(unittest.TestCase):
         self.assertEqual(bundle["logs"], [])
         self.assertNotIn("soak", bundle)
         self.assertEqual(bundle["bundleVersion"], "1.0.0")
+
+
+class VerdictParityTest(unittest.TestCase):
+    """⭐ P-9 A6. `verdict_for()` re-derives a status from SERIALISED checks so a bundle that arrived
+    from elsewhere can be judged on what it contains rather than on what it claims. That makes two
+    implementations of one rule, and two implementations of one rule is how a rule starts having two
+    answers.
+
+    ⚠️ This is the test that keeps them one rule. If `_status_for` moves and `verdict_for` does not,
+    a bundle the harness would refuse becomes a bundle the registry accepts — and promotion is the
+    one place in the platform where being wrong is permanent.
+    """
+
+    def _both(self, checks):
+        harness = CertificationHarness(_target(), now_iso=AT)
+        for check in checks:
+            harness.record(check)
+        live = harness.summary()["status"]
+        serialised = verdict_for([c.to_dict() for c in checks])
+        return live, serialised
+
+    def _required(self, *, status="pass", evidence="hardware"):
+        return [
+            Check(name=n, status=status, evidence_class=evidence)
+            for n in CertificationHarness.REQUIRED_CHECKS
+        ]
+
+    def test_a_complete_hardware_run_agrees(self):
+        live, serialised = self._both(self._required())
+        self.assertEqual(live, "certified")
+        self.assertEqual(live, serialised)
+
+    def test_a_simulated_run_agrees(self):
+        live, serialised = self._both(self._required(evidence="simulated"))
+        self.assertEqual(live, "pending-validation")
+        self.assertEqual(live, serialised)
+
+    def test_a_failed_hardware_check_agrees(self):
+        checks = self._required()
+        checks[0] = Check(name="connect", status="fail", evidence_class="hardware")
+        live, serialised = self._both(checks)
+        self.assertEqual(live, "failed")
+        self.assertEqual(live, serialised)
+
+    def test_an_empty_check_list_agrees(self):
+        """⚠️ `[].every()` is true and `any([])` is false — an empty list is exactly where two
+        implementations of one rule diverge without anyone noticing."""
+        self.assertEqual(verdict_for([]), "pending-validation")
+        live, serialised = self._both([])
+        self.assertEqual(live, serialised)
+
+    def test_one_simulated_check_among_hardware_ones_agrees(self):
+        """The weakest link, on both sides."""
+        checks = self._required()
+        checks[-1] = Check(name="clean-shutdown", status="pass", evidence_class="simulated")
+        live, serialised = self._both(checks)
+        self.assertEqual(live, "pending-validation")
+        self.assertEqual(live, serialised)
 
 
 class HelpersTest(unittest.TestCase):
