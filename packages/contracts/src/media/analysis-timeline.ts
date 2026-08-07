@@ -147,3 +147,53 @@ export const AnalysisTimelineQuery = z.object({
   sessionId: z.string().min(1).optional(),
 });
 export type AnalysisTimelineQuery = z.infer<typeof AnalysisTimelineQuery>;
+
+// ---------------------------------------------------------------------------------------------
+// Evidence snapshots (slice 6 — TD-15 for offline analysis)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Ask for a still from a point in the analysed recording.
+ *
+ * ⭐ **The offset is footage time, like everything else on the timeline.** An operator clicks a
+ * moment on the scrubber, and that is the number that travels — no clock conversion in the browser.
+ */
+export const AnalysisSnapshotInput = z.object({
+  /** Seconds from the start of the recording. */
+  offsetSeconds: z.number().min(0),
+  /** The incident this still is evidence for, when it is evidence for one. */
+  incidentId: z.string().min(1).max(120).optional(),
+  /** Longest edge, bounded so evidence cannot become a 4K still per incident. */
+  maxWidth: z.number().int().min(160).max(3840).optional(),
+});
+export type AnalysisSnapshotInput = z.infer<typeof AnalysisSnapshotInput>;
+
+export const AnalysisSnapshot = z.object({
+  analysisId: z.string().min(1),
+  sessionId: z.string().min(1),
+  cameraId: z.string().min(1),
+  /** Object key of the stored still. ⚠️ Tenant-prefixed, like every other object this service writes. */
+  key: z.string().min(1),
+  /** Signed URL a browser can open. ⚠️ Expires — see `expiresAt`. */
+  url: z.string().min(1),
+  expiresAt: IsoDateTime,
+  /** Where in the footage it came from. */
+  offsetSeconds: z.number().min(0),
+  /** Footage-clock instant of that offset. ⭐ What the still is a picture OF, not when it was taken. */
+  occurredAt: IsoDateTime,
+  bytes: z.number().int().min(1),
+  width: z.number().int().min(0),
+  height: z.number().int().min(0),
+  /** The incident it was captured for, when it was captured for one. */
+  incidentId: z.string().min(1).optional(),
+  /**
+   * ⚠️ Whether it was also registered with the evidence service (custody, retention, export).
+   *
+   * `false` means the still exists and is signed but is **not** under evidence custody — a
+   * deployment without an evidence service, or one that refused it. Reported rather than implied,
+   * because "there is a picture" and "there is a picture that will survive retention and appear in
+   * an export" are different promises.
+   */
+  registeredAsEvidence: z.boolean(),
+});
+export type AnalysisSnapshot = z.infer<typeof AnalysisSnapshot>;

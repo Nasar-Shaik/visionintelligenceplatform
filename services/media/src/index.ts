@@ -28,6 +28,7 @@ import { AnalysisRunner } from './application/analysis-runner.js';
 import { StoredMediaFrameSourceFactory } from './adapters/stored-media-frame-source.js';
 import { HttpAnalysisEvents } from './adapters/http-analysis-events.js';
 import { HttpAnalysisIncidents } from './adapters/http-analysis-incidents.js';
+import { FfmpegSnapshotExtractor } from './adapters/ffmpeg-snapshot.js';
 import { FfprobeMediaProbe } from './adapters/ffprobe.js';
 import { CameraSourceDirectory } from './adapters/camera-source-directory.js';
 import { NatsEventBus } from '@vip/messaging';
@@ -262,6 +263,13 @@ async function main(): Promise<void> {
     ...(config.workflowUrl === ''
       ? {}
       : { incidents: new HttpAnalysisIncidents({ baseUrl: config.workflowUrl }) }),
+    snapshots: new FfmpegSnapshotExtractor({ binary: config.ingestion.ffmpegBinary }),
+    /* ⛔ INTERNAL, like the frame source: ffmpeg runs in this container, not in a browser. */
+    signSource: async (tenantId, key) =>
+      new TenantObjectStore(objectStore, tenantId).presignInternalGet(
+        key,
+        config.analysis.sourceUrlTtlSeconds,
+      ),
   });
 
   const supervisor = new StreamSupervisor({

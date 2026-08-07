@@ -13,6 +13,8 @@ import {
   ANALYSIS_LIMITS,
   isTerminalSessionState,
   TIMELINE_MAX_EVENTS,
+  type AnalysisSnapshot,
+  type AnalysisSnapshotInput,
   type AnalysisTimeline,
   type AnalysisTimelineQuery,
   type AnalysisSession,
@@ -99,6 +101,19 @@ export interface AnalysisServiceDeps {
    * say which lane it could not fill rather than showing an empty one.
    */
   incidents?: AnalysisIncidentSource;
+  /** Extracts one frame from stored media (slice 6). Absent ⇒ snapshots are refused, not faked. */
+  snapshots?: SnapshotExtractor;
+  /** Signs an INTERNAL url for ffmpeg. ⚠️ Never the browser-facing one — see `presignInternalGet`. */
+  signSource?: (tenantId: string, key: string) => Promise<string>;
+}
+
+/** One frame out of stored media. Implemented by `FfmpegSnapshotExtractor`. */
+export interface SnapshotExtractor {
+  capture(input: { url: string; offsetSeconds: number; maxWidth?: number }): Promise<{
+    jpeg: Uint8Array;
+    width: number;
+    height: number;
+  }>;
 }
 
 /** The seam between recording the intent to run and running it. Implemented by `AnalysisRunner`. */
@@ -120,6 +135,8 @@ export class AnalysisService {
   readonly #runner: SessionRunner | undefined;
   readonly #events: AnalysisEventSource | undefined;
   readonly #incidents: AnalysisIncidentSource | undefined;
+  readonly #snapshots: SnapshotExtractor | undefined;
+  readonly #signSource: ((tenantId: string, key: string) => Promise<string>) | undefined;
 
   constructor(deps: AnalysisServiceDeps) {
     this.#store = deps.store;
@@ -134,6 +151,8 @@ export class AnalysisService {
     this.#runner = deps.runner;
     this.#events = deps.events;
     this.#incidents = deps.incidents;
+    this.#snapshots = deps.snapshots;
+    this.#signSource = deps.signSource;
   }
 
   /**
@@ -597,6 +616,87 @@ export class AnalysisService {
        */
       incidentsAvailable,
       generatedAt: this.#clock.now().toISOString(),
+    };
+  }
+
+  /**
+   * ⭐ **A still from a moment in the analysed recording** (slice 6 — TD-15, for offline).
+   *
+   * ⚠️ **This closes TD-15 for offline analysis only, and says so.** A live incident's past is not
+   * stored frame by frame, so capturing it needs a ring buffer — a different piece of work with its
+   * own memory budget. An offline recording is sitting in the object store and the incident's
+   * footage offset says exactly where to look.
+   */
+  async snapshot(
+    scope: TenantScope,
+    analysisId: string,
+    input: AnalysisSnapshotInput,
+  ): Promise<AnalysisSnapshot> {
+    const doc = await this.#require(scope, analysisId);
+    if (doc.asset === undefined) throw conflict('this analysis has no file yet');
+    const extractor = this.#snapshots;
+    const sign = this.#signSource;
+    if (extractor === undefined || sign === undefined) {
+      throw conflict(
+        'this deployment cannot extract stills — no decoder is configured, and an empty image is not evidence',
+      );
+    }
+
+    /*
+     * ⛔ Refused past the end of the recording, before ffmpeg is spawned. ffmpeg exits 0 having
+     * produced nothing in that case, and a zero-byte object registered as a customer's evidence is
+     * the worst available outcome.
+     */
+    if (input.offsetSeconds > doc.asset.durationSeconds) {
+      throw badRequest(
+        `the recording is ${doc.asset.durationSeconds.toFixed(1)}s long, so there is no frame at ${input.offsetSeconds.toFixed(1)}s`,
+      );
+    }
+
+    const sessions = await this.#store.listSessions(scope, analysisId);
+    const session = sessions[0];
+    if (session === undefined) {
+      throw conflict('this analysis has not been run, so there is nothing to take a still from');
+    }
+
+    const sourceUrl = await sign(scope.tenantId, doc.asset.key);
+    const shot = await extractor.capture({
+      url: sourceUrl,
+      offsetSeconds: input.offsetSeconds,
+      ...(input.maxWidth === undefined ? {} : { maxWidth: input.maxWidth }),
+    });
+
+    const now = this.#clock.now();
+    /* ⚠️ Keyed by the RUN, so two analyses of one recording cannot overwrite each other's stills. */
+    const key = `analyses/${analysisId}/snapshots/${session._id}-${String(Math.round(input.offsetSeconds * 1000))}.jpg`;
+    const tenantStore = new TenantObjectStore(this.#objectStore, scope.tenantId);
+    await tenantStore.put(key, shot.jpeg, 'image/jpeg');
+    const url = await tenantStore.presignGet(key, this.#playbackTtl);
+
+    return {
+      analysisId,
+      sessionId: session._id,
+      cameraId: doc.cameraId,
+      key,
+      url,
+      expiresAt: new Date(now.getTime() + this.#playbackTtl * 1000).toISOString(),
+      offsetSeconds: input.offsetSeconds,
+      /* ⭐ What the still is a picture OF — footage time, never the wall clock it was taken at. */
+      occurredAt: new Date(
+        Date.parse(doc.footageStartedAt) + input.offsetSeconds * 1000,
+      ).toISOString(),
+      bytes: shot.jpeg.byteLength,
+      width: shot.width,
+      height: shot.height,
+      ...(input.incidentId === undefined ? {} : { incidentId: input.incidentId }),
+      /*
+       * ⚠️ **Not yet under evidence custody, and it says so.** Registering it with the evidence
+       * service gives it retention, chain-of-custody and a place in an export; that wiring is the
+       * remaining half of TD-15 and is not done here. "There is a picture" and "there is a picture
+       * that will survive retention" are different promises, so the field is `false` rather than
+       * absent.
+       */
+      registeredAsEvidence: false,
     };
   }
 

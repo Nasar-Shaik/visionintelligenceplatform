@@ -14,6 +14,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import {
+  AnalysisSnapshotInput,
   AnalysisTimelineQuery,
   ConfirmVideoAnalysisInput,
   CreateVideoAnalysisInput,
@@ -85,6 +86,22 @@ export function registerAnalysisRoutes(app: FastifyInstance, deps: AnalysisRoute
        */
       const caller = { authorization: request.headers.authorization ?? '' };
       return reply.send(success(await analyses.timeline(scope, request.params.id, query, caller)));
+    },
+  );
+
+  /**
+   * ⭐ A still from a moment in the analysed recording (slice 6 — TD-15, offline).
+   *
+   * ⚠️ `stream:control`, not `stream:read`: it **writes** an object into the customer's storage and
+   * spawns a decode. A read permission should never be able to make the platform do work.
+   */
+  app.post<{ Params: IdParams }>(
+    '/analyses/:id/snapshots',
+    { preHandler: auth.authorize('stream:control') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const input = parseBody(AnalysisSnapshotInput, request.body);
+      return reply.status(201).send(success(await analyses.snapshot(scope, request.params.id, input)));
     },
   );
 

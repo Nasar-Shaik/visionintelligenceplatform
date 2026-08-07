@@ -305,6 +305,32 @@ _Last updated: 2026-08-07 · Claude_
   deployed run above. ⚠️ **C-21 moves ⛔ → ⚠️** — a *first* analysis of a recording works end to end;
   a rerun is silent until L-61 is closed.
 
+  **Slice 6 · Evidence snapshots — ✅ deployed, TD-15 partially closed.**
+  `POST /analyses/:id/snapshots` decodes the **real frame** at a footage offset out of the analysed
+  recording and stores it signed. ⭐ Verified deployed: a 57 793-byte 640×360 JPEG at the incident's
+  offset, showing the two people the runtime detected, dated `2026-02-14T18:30:00Z` — **footage time,
+  not the wall clock it was extracted at**.
+
+  ⚠️ **`-ss` goes AFTER `-i` here, the opposite of the chunked decoder**, and the difference is what
+  the customer sees: before the input it is a fast index seek onto the preceding key-frame, which is
+  right for a decoder about to consume two minutes and wrong for a still — the evidence would show a
+  moment up to a GOP *before* the thing that caused the incident.
+
+  ⛔ **What this does NOT close, stated rather than implied.** A live incident still cannot be
+  extracted (its past is not stored frame-by-frame; that needs a ring buffer), and the still is not
+  yet under evidence custody — `registeredAsEvidence: false` is a field rather than an omission,
+  because "there is a picture" and "there is a picture that will survive retention and appear in an
+  export" are different promises.
+
+  Refusals that matter: an offset past the end is refused **before ffmpeg is spawned** (it exits 0
+  having produced nothing, and a zero-byte object registered as evidence is the worst available
+  outcome); a deployment with no decoder refuses rather than returning a placeholder. Dimensions are
+  **measured from the JPEG's own SOF marker**, never assumed from the request — `scale` does not
+  apply to a source already narrower than the bound. Fixed while writing the tests: the SOF scan's
+  bound was off by one and would have missed a marker at the very end of a buffer.
+
+  296 media tests; 68/68 repo gate.
+
   **Slice 5 · Incident review — ✅ deployed.** ADR-0047 extended from events to findings:
   `analysisSessionId` is additive on `IncidentCandidate` and `Incident`, carried event → candidate →
   incident, and **⛔ the live queue excludes offline findings by default**
