@@ -34,6 +34,15 @@ authInternalUsers:
         path: p9probe
       - action: read
         path: blank
+      # ⚠️ A distinct path PER CAMERA for the multi-camera ladder (A4.5), matched by regex. Pointing
+      # every camera at one path means one publisher and many readers, so the ladder measures a
+      # single stream while reporting four — the P-8.6 defect. It is also why the camera service
+      # refuses a duplicate stream URL with 409, which is the same lesson enforced one layer up.
+      # ⚠️ `path` with a `~` prefix, NOT `pathRegexp` — the latter is rejected outright by
+      # mediamtx 1.19 (`json: unknown field`), and a rejected config means the container starts,
+      # exits immediately, and `docker run -d` still returns 0.
+      - action: read
+        path: '~^cam[0-9]+$'
   - user: vipcam
     pass: Vip-Fixture-2026
     permissions:
@@ -55,6 +64,10 @@ paths:
   # The success path: a real H.264 RTSP stream carrying a photograph of two people, so a probe that
   # reaches `first-frame` has decoded something a detector could be right or wrong about.
   p9probe:
+  # ⭐ One independent encoder per camera for the 1 → 2 → 4 ladder. `cam01`, `cam02`, … each start
+  # their own ffmpeg on first read, which is what real cameras are: separate sources, not readers of
+  # a shared one.
+  '~^cam[0-9]+$':
   # ⭐ The same stream behind credentials. Probing it with the WRONG password must fail at
   # `authentication` and leave every later stage `not-executed`.
   secure:

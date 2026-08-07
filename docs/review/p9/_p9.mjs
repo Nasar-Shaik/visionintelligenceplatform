@@ -145,6 +145,18 @@ export async function read(path) {
 
 /* ── fixture ──────────────────────────────────────────────────────────────────────────────────── */
 
+/**
+ * Start the RTSP fixture **and prove it is running**.
+ *
+ * ⛔ `docker run -d` returns 0 for a container that starts and exits immediately, which is exactly
+ * what mediamtx does when it rejects its config (`json: unknown field "…pathRegexp"`, found in
+ * A4.5). The first version of this helper returned happily, and the ladder above it then reported
+ * `0/4 cameras decoded` — a plausible measurement of a fixture that did not exist.
+ *
+ * ⚠️ That is [absence-hides-defects](../../project/KNOWN_LIMITATIONS.md): when a check reports an
+ * absence, ask what else produces it. A number moving the wrong way is worse than no number,
+ * because it gets believed.
+ */
 export function startFixture(config = 'rtsp-fixture.yml') {
   shq('docker', ['rm', '-f', FIXTURE]);
   sh('docker', [
@@ -161,6 +173,11 @@ export function startFixture(config = 'rtsp-fixture.yml') {
     `${ROOT}infra/docker/fixtures/media:/fixtures/media:ro`,
     'bluenviron/mediamtx:latest-ffmpeg',
   ]);
+  const running = shq('docker', ['inspect', FIXTURE, '--format', '{{.State.Running}}']);
+  if (running !== 'true') {
+    const why = shq('docker', ['logs', FIXTURE]) || '(no logs — the container is already gone)';
+    throw new Error(`the RTSP fixture (${config}) did not stay up:\n${why.slice(0, 400)}`);
+  }
 }
 
 export function stopFixture() {
