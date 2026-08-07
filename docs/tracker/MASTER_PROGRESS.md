@@ -305,6 +305,29 @@ _Last updated: 2026-08-07 · Claude_
   deployed run above. ⚠️ **C-21 moves ⛔ → ⚠️** — a *first* analysis of a recording works end to end;
   a rerun is silent until L-61 is closed.
 
+  **Slice 7 · Export report — ✅ deployed.** `GET /analyses/:id/report` assembles one defensible
+  record of one run: the source **as measured** (never as the uploader described it), both clocks
+  labelled with `footageStartSource` saying whether the footage start was measured, claimed or
+  defaulted, the full provenance, the counts, **every finding verbatim**, the incidents at their
+  footage offsets, the track spans, and who generated it.
+
+  ⭐ **What makes it defensible is the provenance and the gaps, not the findings.** Six months on,
+  "why did this run find three and the rerun find one?" is answerable only from the runtime version,
+  model and pipeline version; "did it look at all of it?" only from the counts and findings. ⛔ A
+  report that quietly dropped `assignment-missing` would present "no incidents" from footage nothing
+  looked at as though it were "nothing happened" — the single most damaging thing this platform
+  could tell a customer. Assembled on top of the timeline rather than beside it, so a report and the
+  screen an operator was looking at can never disagree.
+
+  ⛔ **A defect the first deployed report showed:** `counts.incidents: 0` printed directly above a
+  listed incident. The worker counts frames and detections because that is what it does; events and
+  incidents happen downstream and asynchronously, so those two session counters were never
+  populated. Now counted from what the report actually contains — deployed and confirmed
+  self-consistent: 60 decoded → 60 analysed → 120 detections → **5 events** (collapsed by the dedup
+  window, L-57) → **1 incident**.
+
+  301 media tests; 68/68 repo gate.
+
   **Slice 6 · Evidence snapshots — ✅ deployed, TD-15 partially closed.**
   `POST /analyses/:id/snapshots` decodes the **real frame** at a footage offset out of the analysed
   recording and stores it signed. ⭐ Verified deployed: a 57 793-byte 640×360 JPEG at the incident's

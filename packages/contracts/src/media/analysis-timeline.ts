@@ -197,3 +197,78 @@ export const AnalysisSnapshot = z.object({
   registeredAsEvidence: z.boolean(),
 });
 export type AnalysisSnapshot = z.infer<typeof AnalysisSnapshot>;
+
+// ---------------------------------------------------------------------------------------------
+// The export report (slice 7)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * ⭐ **A defensible record of one run**, assembled at the moment it is asked for.
+ *
+ * ### ⚠️ What makes a report defensible rather than merely informative
+ *
+ * Not the findings — the **provenance and the gaps**. Six months from now, "why did this run find
+ * three and the rerun find one?" is answerable only from the runtime version, the model, the
+ * pipeline version and the rules that were in force; and "did it look at all of it?" is answerable
+ * only from the counts and the findings. A report that lists incidents and omits those is a claim
+ * nobody can check.
+ *
+ * ⛔ **Every gap the session recorded is carried through verbatim.** A report that quietly drops
+ * `assignment-missing` presents "no incidents" from footage nothing looked at as though it were
+ * "nothing happened".
+ */
+export const AnalysisReport = z.object({
+  analysisId: z.string().min(1),
+  sessionId: z.string().min(1),
+  tenantId: TenantId,
+  cameraId: z.string().min(1),
+  cameraName: z.string().max(200).optional(),
+  label: z.string().max(200).optional(),
+  /** The file, as measured — never as the uploader described it. */
+  source: z.object({
+    originalName: z.string().min(1),
+    bytes: z.number().int().min(0),
+    container: z.string().min(1),
+    codec: z.string().min(1),
+    width: z.number().int().min(0),
+    height: z.number().int().min(0),
+    durationSeconds: z.number().min(0),
+  }),
+  /**
+   * ⚠️ Both clocks, side by side and labelled, because they answer different questions and a report
+   * that shows one is routinely misread as the other.
+   */
+  footageStartedAt: IsoDateTime,
+  /** ⭐ How the footage start was arrived at — an operator's claim, the file's metadata, or a default. */
+  footageStartSource: z.string().min(1),
+  analysisStartedAt: IsoDateTime.optional(),
+  analysisFinishedAt: IsoDateTime.optional(),
+  /** ⭐ What produced this answer. Without it the result is not reproducible and not defensible. */
+  provenance: z.object({
+    runtimeVersion: z.string().optional(),
+    capabilityId: z.string().min(1),
+    modelId: z.string().optional(),
+    executionProvider: z.string().optional(),
+    pipelineVersion: z.string().min(1),
+    analysisFrameRate: z.number().min(0),
+  }),
+  counts: z.object({
+    framesDecoded: z.number().int().min(0),
+    framesAnalysed: z.number().int().min(0),
+    framesDropped: z.number().int().min(0),
+    detections: z.number().int().min(0),
+    events: z.number().int().min(0),
+    incidents: z.number().int().min(0),
+  }),
+  /** ⛔ Carried verbatim from the session. A report that drops these overstates what was examined. */
+  findings: z.array(z.object({ kind: z.string(), detail: z.string(), atOffsetSeconds: z.number().optional() })),
+  incidents: z.array(AnalysisTimelineIncident).max(500),
+  tracks: z.array(AnalysisTrackSpan).max(500),
+  /** ⛔ `true` ⇒ the timeline behind this report was capped, so the report is a partial view. */
+  truncated: z.boolean(),
+  /** ⚠️ `false` ⇒ incidents could not be looked up; the empty list means nothing. */
+  incidentsAvailable: z.boolean(),
+  generatedAt: IsoDateTime,
+  generatedBy: z.string().min(1).max(200),
+});
+export type AnalysisReport = z.infer<typeof AnalysisReport>;

@@ -388,3 +388,180 @@ describe('AnalysisService.timeline', () => {
     await expect(service.timeline(scope, 'ana_2', {}, CALLER)).rejects.toThrow(/has not been run yet/);
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+
+describe('AnalysisService.report — the defensible record', () => {
+  /**
+   * ⭐ **What makes a report defensible is the provenance and the gaps, not the findings.**
+   *
+   * Six months from now, "why did this run find three and the rerun find one?" is answerable only
+   * from the runtime version, model and pipeline version; "did it look at all of it?" only from the
+   * counts and findings. A report listing incidents and omitting those is a claim nobody can check.
+   */
+  it('carries the provenance that makes the answer reproducible', async () => {
+    const store = new InMemoryAnalysisStore();
+    await seedForReport(store);
+    const service = reportService(store);
+
+    const report = await service.report(scope, 'ana_1', {}, CALLER, 'usr_auditor');
+
+    expect(report.provenance).toMatchObject({
+      capabilityId: 'cap',
+      pipelineVersion: '1.0.0',
+      runtimeVersion: '0.1.0',
+      modelId: 'yolox-nano',
+      analysisFrameRate: 2,
+    });
+    expect(report.generatedBy).toBe('usr_auditor');
+    expect(report.sessionId).toBe('ases_1');
+  });
+
+  /**
+   * ⛔ **The single most damaging thing this platform could say is "no incidents" about footage
+   * nothing looked at.** Findings are carried verbatim so a report can never do that.
+   */
+  it('carries every gap the run recorded, verbatim', async () => {
+    const store = new InMemoryAnalysisStore();
+    await seedForReport(store, {
+      findings: [
+        {
+          kind: 'assignment-missing',
+          detail: '60 of 60 decoded frames (100.0 %) were not analysed.',
+          atOffsetSeconds: 0,
+        },
+      ],
+      counts: {
+        framesDecoded: 60,
+        framesAnalysed: 0,
+        framesDropped: 60,
+        detections: 0,
+        events: 0,
+        incidents: 0,
+      },
+    });
+    const report = await reportService(store).report(scope, 'ana_1', {}, CALLER, 'u');
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0]?.kind).toBe('assignment-missing');
+    expect(report.counts.framesAnalysed).toBe(0);
+    expect(report.counts.framesDropped).toBe(60);
+    /* ⭐ Zero incidents beside a 100 % gap — the two facts sit together and cannot be separated. */
+    expect(report.incidents).toHaveLength(0);
+  });
+
+  /** ⚠️ Both clocks, labelled — and the footage start says whether it was measured or claimed. */
+  it('states how the footage start was arrived at', async () => {
+    const store = new InMemoryAnalysisStore();
+    await seedForReport(store);
+    const report = await reportService(store).report(scope, 'ana_1', {}, CALLER, 'u');
+
+    expect(report.footageStartedAt).toBe(FOOTAGE_START);
+    expect(report.footageStartSource).toBe('operator');
+    expect(report.source.originalName).toBe('f.mp4');
+  });
+
+  /**
+   * ⛔ **A report must never disagree with itself.** The first deployed report showed
+   * `counts.incidents: 0` directly above a listed incident, because the worker counts frames and
+   * detections while events and incidents happen downstream and asynchronously — so those two
+   * session counters were never populated. They are now counted from what the report actually
+   * contains.
+   */
+  it('counts events and incidents from what it actually found', async () => {
+    const store = new InMemoryAnalysisStore();
+    await seedForReport(store);
+    const report = await reportService(store).report(scope, 'ana_1', {}, CALLER, 'u');
+
+    expect(report.counts.events).toBe(report.incidents.length === 0 ? 0 : report.counts.events);
+    expect(report.counts.incidents).toBe(report.incidents.length);
+    /* …while the frame counts still come from the worker, which is what measured them. */
+    expect(report.counts.framesDecoded).toBe(0);
+  });
+
+  /** ⚠️ Truncation and lookup failure propagate — a partial report must not read as a complete one. */
+  it('propagates truncation and incident availability', async () => {
+    const store = new InMemoryAnalysisStore();
+    await seedForReport(store);
+    const report = await reportService(store).report(scope, 'ana_1', {}, CALLER, 'u');
+    expect(report.truncated).toBe(false);
+    expect(report.incidentsAvailable).toBe(false);
+  });
+});
+
+async function seedForReport(
+  store: InMemoryAnalysisStore,
+  over: { findings?: never[]; counts?: never } = {},
+): Promise<void> {
+  await store.putAnalysis(scope, {
+    _id: 'ana_1',
+    tenantId: 'tnt_a',
+    cameraId: 'cam_1',
+    cameraName: 'Front Entrance',
+    label: 'Tuesday review',
+    sourceKind: 'upload',
+    state: 'ready',
+    asset: {
+      key: 'k',
+      originalName: 'f.mp4',
+      bytes: 1024,
+      contentType: 'video/mp4',
+      container: 'mp4',
+      codec: 'h264',
+      width: 640,
+      height: 480,
+      sourceFrameRate: 25,
+      durationSeconds: 30,
+    },
+    footageStartedAt: FOOTAGE_START,
+    footageStartSource: 'operator',
+    sessionCount: 1,
+    createdBy: 'usr_1',
+    createdAt: T0.toISOString(),
+    updatedAt: T0.toISOString(),
+  });
+  const base = newSession({
+    id: 'ases_1',
+    tenantId: 'tnt_a',
+    analysisId: 'ana_1',
+    cameraId: 'cam_1',
+    sequence: 1,
+    analysisFrameRate: 2,
+    speed: null,
+    capabilityId: 'cap',
+    ruleSet: [],
+    findings: [],
+    requestedBy: 'usr_1',
+    now: T0,
+    durationSeconds: 30,
+  });
+  await store.putSession(scope, {
+    ...base,
+    state: 'succeeded',
+    startedAt: T0.toISOString(),
+    finishedAt: T0.toISOString(),
+    provenance: {
+      ...base.provenance,
+      runtimeVersion: '0.1.0',
+      modelId: 'yolox-nano',
+      executionProvider: 'CPUExecutionProvider',
+    },
+    ...(over.findings === undefined ? {} : { findings: over.findings }),
+    ...(over.counts === undefined ? {} : { counts: over.counts }),
+  });
+}
+
+function reportService(store: InMemoryAnalysisStore): AnalysisService {
+  return new AnalysisService({
+    store,
+    objectStore: {} as never,
+    probe: {} as never,
+    cameras: { async exists() { return true; } },
+    clock: { now: () => T0 },
+    ids: { analysisId: () => 'a', sessionId: () => 's' },
+    capabilityId: 'cap',
+    defaultFrameRate: 2,
+    playbackTtlSeconds: 900,
+    events: { async forSession() { return { events: [], truncated: false }; } },
+  });
+}

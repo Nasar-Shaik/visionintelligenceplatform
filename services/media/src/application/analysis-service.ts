@@ -13,6 +13,7 @@ import {
   ANALYSIS_LIMITS,
   isTerminalSessionState,
   TIMELINE_MAX_EVENTS,
+  type AnalysisReport,
   type AnalysisSnapshot,
   type AnalysisSnapshotInput,
   type AnalysisTimeline,
@@ -697,6 +698,91 @@ export class AnalysisService {
        * absent.
        */
       registeredAsEvidence: false,
+    };
+  }
+
+  /**
+   * ⭐ **The export report** (slice 7) — one defensible record of one run.
+   *
+   * ⚠️ **Assembled, never stored.** Same reasoning as the timeline: a stored report can disagree
+   * with the run it describes. It is built from the session (provenance, counts, findings) and the
+   * timeline (incidents, tracks) at the moment it is asked for.
+   *
+   * ⛔ **Every gap is carried through verbatim.** A report that quietly drops `assignment-missing`
+   * presents "no incidents" from footage nothing looked at as though it were "nothing happened" —
+   * which is the single most damaging thing this platform could tell a customer.
+   */
+  async report(
+    scope: TenantScope,
+    analysisId: string,
+    query: AnalysisTimelineQuery,
+    caller: AnalysisEventCaller,
+    generatedBy: string,
+  ): Promise<AnalysisReport> {
+    const doc = await this.#require(scope, analysisId);
+    if (doc.asset === undefined) throw conflict('this analysis has no file yet');
+
+    /*
+     * ⚠️ Built on the timeline rather than beside it, so a report and the screen an operator was
+     * looking at can never disagree. Two assemblers over one set of events is two chances to differ.
+     */
+    const timeline = await this.timeline(scope, analysisId, query, caller);
+    const sessions = await this.#store.listSessions(scope, analysisId);
+    const session = sessions.find((s) => s._id === timeline.sessionId);
+    if (session === undefined) throw notFound(`run '${timeline.sessionId}' is no longer available`);
+
+    return {
+      analysisId,
+      sessionId: session._id,
+      tenantId: scope.tenantId,
+      cameraId: doc.cameraId,
+      ...(doc.cameraName === undefined ? {} : { cameraName: doc.cameraName }),
+      ...(doc.label === undefined ? {} : { label: doc.label }),
+      source: {
+        originalName: doc.asset.originalName,
+        bytes: doc.asset.bytes,
+        container: doc.asset.container,
+        codec: doc.asset.codec,
+        width: doc.asset.width,
+        height: doc.asset.height,
+        durationSeconds: doc.asset.durationSeconds,
+      },
+      footageStartedAt: doc.footageStartedAt,
+      /* ⭐ Says whether the footage start was measured, claimed, or defaulted. */
+      footageStartSource: doc.footageStartSource,
+      ...(session.startedAt === undefined ? {} : { analysisStartedAt: session.startedAt }),
+      ...(session.finishedAt === undefined ? {} : { analysisFinishedAt: session.finishedAt }),
+      provenance: { ...session.provenance, analysisFrameRate: session.analysisFrameRate },
+      /*
+       * ⛔ **`events` and `incidents` are counted from what was FOUND, not from the session's
+       * counters** — and this was a contradiction on a customer's own report.
+       *
+       * The worker counts frames and detections, because those are what it does. Events and
+       * incidents happen downstream and asynchronously, so the session's copies of those two were
+       * never populated: the first deployed report showed `incidents: 0` directly above a listed
+       * incident. A report that disagrees with itself is worse than one that omits the number.
+       *
+       * ⚠️ `events` is the count of persisted events, which is deliberately **not** the detection
+       * count: the events service collapses observations into its dedup window (L-57), so the two
+       * legitimately differ and a reader must not be led to expect them to match.
+       */
+      counts: {
+        ...session.counts,
+        events: timeline.entries.length,
+        incidents: timeline.incidents.length,
+      },
+      /* ⛔ Verbatim. See the method's own note. */
+      findings: session.findings.map((f) => ({
+        kind: f.kind,
+        detail: f.detail,
+        ...(f.atOffsetSeconds === undefined ? {} : { atOffsetSeconds: f.atOffsetSeconds }),
+      })),
+      incidents: timeline.incidents,
+      tracks: timeline.tracks,
+      truncated: timeline.truncated,
+      incidentsAvailable: timeline.incidentsAvailable,
+      generatedAt: this.#clock.now().toISOString(),
+      generatedBy,
     };
   }
 

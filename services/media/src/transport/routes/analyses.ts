@@ -95,6 +95,30 @@ export function registerAnalysisRoutes(app: FastifyInstance, deps: AnalysisRoute
    * ⚠️ `stream:control`, not `stream:read`: it **writes** an object into the customer's storage and
    * spawns a decode. A read permission should never be able to make the platform do work.
    */
+  /**
+   * ⭐ The export report (slice 7). ⚠️ `stream:read` — it reads and assembles, and writes nothing.
+   */
+  app.get<{ Params: IdParams }>(
+    '/analyses/:id/report',
+    { preHandler: auth.authorize('stream:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const query = parseBody(AnalysisTimelineQuery, request.query ?? {});
+      const caller = { authorization: request.headers.authorization ?? '' };
+      return reply.send(
+        success(
+          await analyses.report(
+            scope,
+            request.params.id,
+            query,
+            caller,
+            request.principal!.principalId,
+          ),
+        ),
+      );
+    },
+  );
+
   app.post<{ Params: IdParams }>(
     '/analyses/:id/snapshots',
     { preHandler: auth.authorize('stream:control') },
