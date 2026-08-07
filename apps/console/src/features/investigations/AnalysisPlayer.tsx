@@ -19,7 +19,7 @@ import { Crosshair, Pause, Play, SkipBack, SkipForward } from 'lucide-react';
 import type { AnalysisTimeline } from '@vip/contracts';
 import { Button, DetectionOverlay, Switch, VideoPlayerContainer, type PlayerAspect } from '@/ui';
 import { formatOffset } from './format';
-import { analysedInstants, boxesAt } from './overlay';
+import { OVERLAY_SAMPLE_MS, analysedInstants, boxesAt, overlayStatus } from './overlay';
 
 export interface AnalysisPlayerProps {
   url: string | undefined;
@@ -48,6 +48,28 @@ export function aspectFor(width?: number, height?: number): PlayerAspect {
   return height > width ? 'portrait' : 'video';
 }
 
+/**
+ * Scroll the player into view and start it — the two halves of V-16.
+ *
+ * ⚠️ Both calls are wrapped because **jsdom implements neither**: `scrollIntoView` is absent and
+ * `play()` throws `Not implemented`. Letting either escape would break the seek itself, which is the
+ * part that already worked. `play()` also rejects under a browser's autoplay policy when the click
+ * that caused this is too far in the past — the seek is still correct in that case, so the rejection
+ * is swallowed rather than surfaced.
+ */
+export function revealAndPlay(el: Pick<HTMLVideoElement, 'scrollIntoView' | 'play'>): void {
+  try {
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  } catch {
+    /* no layout in jsdom — the seek below is what matters */
+  }
+  try {
+    void el.play().catch(() => undefined);
+  } catch {
+    /* no media element in jsdom, and autoplay may be refused in a browser */
+  }
+}
+
 export function AnalysisPlayer({
   url,
   contentType,
@@ -72,12 +94,46 @@ export function AnalysisPlayer({
   );
   const instants = useMemo(() => analysedInstants(entries), [entries]);
 
-  /* ⚠️ Seeks come from the timeline. The nonce is what lets the same offset be re-requested. */
+  /*
+   * ⚠️ Seeks come from the timeline. The nonce is what lets the same offset be re-requested.
+   *
+   * ⛔ **"Play from here" moved the playhead and did nothing else** (V-16). Two independent
+   * omissions, and either alone was enough to make the button read as broken:
+   *
+   *   1. It never called `play()`. A button whose label is a verb has to do the verb.
+   *   2. The player sits above the runs table, the details panel and the funnel, so by the time an
+   *      operator reaches the timeline lanes it is **~1000 px off the top of the scroll container**
+   *      (measured in Chrome on the reported recording: `getBoundingClientRect().top === -1031`).
+   *      The seek worked perfectly, off-screen, where nobody could see it.
+   *
+   * Reported as "'play from here' button is not working", which is exactly what it looks like.
+   */
   useEffect(() => {
-    if (seekTo === undefined || video.current === null) return;
-    video.current.currentTime = seekTo.offsetSeconds;
+    const el = video.current;
+    if (seekTo === undefined || el === null) return;
+    el.currentTime = seekTo.offsetSeconds;
     setAt(seekTo.offsetSeconds);
+    revealAndPlay(el);
   }, [seekTo]);
+
+  /*
+   * ⭐ **While it plays, read the clock on a timer rather than waiting to be told** (V-17).
+   *
+   * `timeupdate` is the natural event and it is far too coarse: 266 ms between ticks against a
+   * 500 ms tolerance window means a stored box was painted for one tick, sometimes two, sometimes —
+   * when the ticks straddled the window — for no frame at all. See `OVERLAY_SAMPLE_MS`.
+   *
+   * ⚠️ Runs only while playing. A paused player cannot move its own clock, so a timer would be 20
+   * renders a second describing a number that is not changing.
+   */
+  useEffect(() => {
+    if (!playing) return;
+    const id = setInterval(() => {
+      const el = video.current;
+      if (el !== null) setAt(el.currentTime);
+    }, OVERLAY_SAMPLE_MS);
+    return () => clearInterval(id);
+  }, [playing]);
 
   const step = useCallback(
     (direction: -1 | 1) => {
@@ -136,11 +192,10 @@ export function AnalysisPlayer({
               {/*
                 ⛔ **The overlay says what it is drawing and what it is not.** "No boxes" and "no
                 analysed frame at this instant" are different statements, and only the second is
-                true here — see this file's header for the 285 → 24 measurement.
+                true here — see this file's header for the 285 → 24 measurement. V-17: and when it
+                is the second, it now names the nearest stored frame instead of stopping there.
               */}
-              {inFrame && sample !== undefined
-                ? `${String(boxes.length)} stored at ${formatOffset(sample.offsetSeconds)}`
-                : 'no analysed frame at this instant'}
+              {overlayStatus(boxes.length, inFrame, sample, at)}
             </span>
           ) : null
         }
@@ -166,6 +221,44 @@ export function AnalysisPlayer({
           onPause={() => setPlaying(false)}
         />
       </VideoPlayerContainer>
+
+      {/*
+        ⭐ **Where the stored moments ARE** (V-17). Until this strip existed the only way to find
+        them was the tables three sections down the page; on screen the recording looked like an
+        ordinary video that occasionally flickered a box. Now the 5 moments in 19 seconds are
+        visible as 5 marks, the playhead moves against them, and each one is a click away.
+      */}
+      <div
+        className="relative h-6 w-full rounded-xs border bg-muted/40"
+        data-testid="analysed-moments"
+        aria-label={`${String(instants.length)} analysed moments in this recording`}
+      >
+        {duration > 0 &&
+          instants.map((offset) => (
+            <button
+              key={offset}
+              type="button"
+              className="absolute top-0 h-full w-1.5 -translate-x-1/2 rounded-xs bg-brand hover:w-2 focus-visible:outline-2"
+              style={{ left: `${String((offset / duration) * 100)}%` }}
+              title={`Play from ${formatOffset(offset)}`}
+              aria-label={`Play from ${formatOffset(offset)}`}
+              onClick={() => {
+                const el = video.current;
+                if (el === null) return;
+                el.currentTime = offset;
+                setAt(offset);
+                revealAndPlay(el);
+              }}
+            />
+          ))}
+        {duration > 0 && (
+          <div
+            className="pointer-events-none absolute top-0 h-full w-px bg-foreground"
+            style={{ left: `${String(Math.min(100, (at / duration) * 100))}%` }}
+            data-testid="playhead"
+          />
+        )}
+      </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <Button

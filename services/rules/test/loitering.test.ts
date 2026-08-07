@@ -211,6 +211,19 @@ describe('the candidate a loiter produces', () => {
     updatedAt: new Date(T0).toISOString(),
   };
 
+  /**
+   * ⭐ The ordinary match rule — no dwell, no `window.groupBy`. This is the shape the demo tenant's
+   * "Person detected — any camera" uses and the one V-15 was found on; its group key is `'-'`, so
+   * without a subject its dedup key is `[tenant, rule, '-', bucket]` for every person on earth.
+   */
+  const matchRule: Rule = {
+    ...loiterRule,
+    id: 'rule-person',
+    name: 'Person detected — any camera',
+    scope: { nodeIds: [], cameraIds: [], groupIds: [], zoneIds: [] },
+  };
+  delete (matchRule as { dwell?: RuleDwell }).dwell;
+
   /** A 90-second visit sampled every 15 seconds, with one identity re-link partway through. */
   function visit(): DwellOutcome {
     let outcome: DwellOutcome | undefined;
@@ -355,6 +368,61 @@ describe('the candidate a loiter produces', () => {
     const key = (over: Partial<EventEnvelope>) =>
       candidateDedupKey(loiterRule, envelope(over), 60_000);
     expect(key({ analysisSessionId: 'ases_A' })).not.toBe(key({ analysisSessionId: 'ases_B' }));
+  });
+
+  /**
+   * ⛔ **V-15 — the subject reasoning above was applied to the dwell branch only.**
+   *
+   * "Two people … would share a dedup key and the second would silently vanish" is what this file
+   * has said since Phase 7, and the bucketed branch carried no subject at all, so it was true of
+   * every ordinary match rule the whole time. Found on the Architect's own 19-second recording: three
+   * walk-pasts, three tracker subjects, three persisted `perception.person.detected` events, **one**
+   * incident — the recording is shorter than one 60 s bucket, so `[tenant, rule, '-', bucket]` was
+   * constant across all three.
+   *
+   * The 37 validation clips are all 30 s, which also fits inside one bucket, so every fixture in the
+   * library produced exactly one incident and that looked like the right answer. Same shape as
+   * [L-63]: the dataset agreed with itself.
+   */
+  it('⛔ gives three appearances by three tracked subjects three dedup keys', () => {
+    const key = (trackId: string) =>
+      candidateDedupKey(
+        matchRule,
+        envelope({ subjects: [{ trackId, class: 'person' }], analysisSessionId: 'ases_A' }),
+        60_000,
+      );
+    /* The three tracks the tracker actually produced for the reported recording. */
+    expect(new Set([key('trk_a_2'), key('trk_a_3'), key('trk_a_5')]).size).toBe(3);
+  });
+
+  /** The same subject twice in one bucket is still one incident — dedup's actual job. */
+  it('still collapses one subject seen twice inside the window', () => {
+    const key = () =>
+      candidateDedupKey(matchRule, envelope({ subjects: [{ trackId: 'trk-1', class: 'person' }] }), 60_000);
+    expect(key()).toBe(key());
+  });
+
+  /**
+   * ⭐ An envelope that names no subject keeps the pre-V-15 key exactly. Dedup state outlives a
+   * deployment, so anything whose key *shape* moved would miss its window once on rollout.
+   */
+  it('⭐ leaves a subjectless candidate key byte-identical', () => {
+    const bare = envelope({ subjects: [] });
+    expect(candidateDedupKey(matchRule, bare, 60_000)).toBe(
+      ['t-1', matchRule.id, '-', Math.floor(T0 / 60_000)].join('|'),
+    );
+  });
+
+  /**
+   * ⚠️ `class` is `'person'` for everybody. Falling back to it would look like the subject had been
+   * accounted for while bucketing every human being together — worse than an honest absence.
+   */
+  it('does not key on the class when there is no track id', () => {
+    const key = (identityId: string) =>
+      candidateDedupKey(matchRule, envelope({ subjects: [{ identityId, class: 'person' }] }), 60_000);
+    expect(key('id-1')).toBe(key('id-2'));
+    /* And it stays the pre-V-15 four-part key rather than gaining a class-shaped fifth part. */
+    expect(key('id-1').split('|')).toHaveLength(4);
   });
 
   /**

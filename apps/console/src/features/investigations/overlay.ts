@@ -8,6 +8,7 @@
  */
 import type { AnalysisTimeline } from '@vip/contracts';
 import type { DetectionBox } from '@/ui';
+import { formatOffset } from './format';
 
 type Entry = AnalysisTimeline['entries'][number];
 
@@ -108,3 +109,42 @@ export function shortTrack(trackId: string): string {
 export function analysedInstants(entries: readonly Entry[]): number[] {
   return [...new Set(entries.map((e) => e.offsetSeconds))].sort((a, b) => a - b);
 }
+
+/**
+ * What the overlay badge says, in words.
+ *
+ * ⛔ **"no analysed frame at this instant" was a dead end** (V-17). It is a true statement and it
+ * leaves the operator with nowhere to go — the recording that prompted this has stored boxes at 5 of
+ * its 19 seconds, so it is the message on screen for **97 % of playback**, and it reads as "the AI
+ * found nothing" no matter how carefully it is worded. Naming the nearest stored moment and how far
+ * away it is turns the same fact into an instruction.
+ */
+export function overlayStatus(
+  boxCount: number,
+  inFrame: boolean,
+  sample: FrameSample | undefined,
+  at: number,
+): string {
+  if (inFrame && sample !== undefined) {
+    return `${String(boxCount)} stored at ${formatOffset(sample.offsetSeconds)}`;
+  }
+  if (sample === undefined) return 'nothing stored for this run';
+  const ahead = sample.offsetSeconds > at;
+  return `nearest stored frame ${formatOffset(sample.offsetSeconds)} · ${sample.deltaSeconds.toFixed(1)} s ${ahead ? 'ahead' : 'back'}`;
+}
+
+/**
+ * How often to re-read `currentTime` while the recording plays, in milliseconds.
+ *
+ * ⛔ **`timeupdate` alone made the overlay a strobe** (V-17). Measured in Chrome on the reported
+ * recording: the event fires every **266 ms** (median and max, 74 samples over 19 s), while the
+ * tolerance window around an analysed frame is 500 ms wide. So one or two ticks land inside it and a
+ * box was drawn for somewhere between 266 ms and 532 ms — *if* the ticks happened to straddle it.
+ * The Architect saw the box on one of their three appearances and reported the other two as
+ * undetected. They had been detected; the paint was shorter than a blink.
+ *
+ * ⚠️ 50 ms, not a frame callback. Ten samples inside the narrowest window is enough to make the
+ * paint deterministic, and it costs 20 renders a second instead of 60 — `requestVideoFrameCallback`
+ * would tie the render rate to the source's 27 fps for no additional certainty.
+ */
+export const OVERLAY_SAMPLE_MS = 50;

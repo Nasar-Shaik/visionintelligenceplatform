@@ -1,0 +1,283 @@
+- generic [ref=f2e2]:
+  - generic [ref=f2e6]:
+    - complementary [ref=f2e7]:
+      - generic [ref=f2e8]: VIP Console
+      - navigation [ref=f2e14]:
+        - generic [ref=f2e15]:
+          - paragraph [ref=f2e16]: Monitor
+          - link "Dashboard" [ref=f2e17] [cursor=pointer]:
+            - /url: /
+          - link "Live Monitoring" [ref=f2e24] [cursor=pointer]:
+            - /url: /live
+          - link "Cameras" [ref=f2e29] [cursor=pointer]:
+            - /url: /cameras
+          - link "Locations" [ref=f2e34] [cursor=pointer]:
+            - /url: /locations
+        - generic [ref=f2e40]:
+          - paragraph [ref=f2e41]: Investigate
+          - link "Events" [ref=f2e42] [cursor=pointer]:
+            - /url: /events
+          - link "Recorded Video" [ref=f2e46] [cursor=pointer]:
+            - /url: /investigations
+          - link "Live Tracks" [ref=f2e52] [cursor=pointer]:
+            - /url: /tracking
+          - link "Incidents" [ref=f2e61] [cursor=pointer]:
+            - /url: /incidents
+          - link "Incident Workspace" [ref=f2e65] [cursor=pointer]:
+            - /url: /workspace
+          - link "Inbox" [ref=f2e75] [cursor=pointer]:
+            - /url: /alerts
+        - generic [ref=f2e80]:
+          - paragraph [ref=f2e81]: Configure
+          - link "Rules" [ref=f2e82] [cursor=pointer]:
+            - /url: /rules
+          - link "Detection Zones" [ref=f2e85] [cursor=pointer]:
+            - /url: /zones
+          - link "Rule Status" [ref=f2e90] [cursor=pointer]:
+            - /url: /rules/live
+          - link "Users" [ref=f2e94] [cursor=pointer]:
+            - /url: /users
+          - link "Settings" [ref=f2e101] [cursor=pointer]:
+            - /url: /settings
+        - generic [ref=f2e106]:
+          - paragraph [ref=f2e107]: AI Assignment
+          - link "Camera Assignment" [ref=f2e108] [cursor=pointer]:
+            - /url: /assignment
+          - link "Runtimes" [ref=f2e113] [cursor=pointer]:
+            - /url: /assignment/runtimes
+          - link "Profiles" [ref=f2e118] [cursor=pointer]:
+            - /url: /assignment/profiles
+          - link "Capacity" [ref=f2e124] [cursor=pointer]:
+            - /url: /assignment/capacity
+          - link "Runtime Health" [ref=f2e129] [cursor=pointer]:
+            - /url: /assignment/health
+          - link "History" [ref=f2e133] [cursor=pointer]:
+            - /url: /assignment/history
+        - generic [ref=f2e139]:
+          - paragraph [ref=f2e140]: System
+          - link "System Health" [ref=f2e141] [cursor=pointer]:
+            - /url: /system
+          - link "AI Runtime" [ref=f2e146] [cursor=pointer]:
+            - /url: /system/ai-runtime
+          - link "Event Bridge" [ref=f2e151] [cursor=pointer]:
+            - /url: /system/event-bridge
+      - button "Collapse sidebar" [ref=f2e160]:
+        - generic [ref=f2e164]: Collapse
+    - generic [ref=f2e165]:
+      - banner [ref=f2e166]:
+        - generic "tnt_demo_retail" [ref=f2e172]: Northgate Retail Group
+        - textbox "Global search" [ref=f2e174]:
+          - /placeholder: Search cameras, incidents, events…
+        - generic [ref=f2e175]:
+          - link "Inbox — 25 or more incidents waiting" [ref=f2e176] [cursor=pointer]:
+            - /url: /alerts
+            - generic [ref=f2e177]: 25+
+          - generic "Current time" [ref=f2e178]: 01:20:59
+          - generic [ref=f2e179]: Live
+          - button "security.manager@northgate.demo" [ref=f2e184]
+      - main [ref=f2e187]:
+        - generic [ref=f2e188]:
+          - generic [ref=f2e189]:
+            - generic [ref=f2e190]:
+              - heading "movie101.mp4" [level=1] [ref=f2e191]
+              - paragraph [ref=f2e192]: cam_retail_entrance · footage from Aug 07, 2026, 23:57:00
+            - generic [ref=f2e194]:
+              - button "Export report" [ref=f2e196]
+              - button "Demonstrate at real time" [ref=f2e197]
+              - button "Run analysis" [ref=f2e198]
+          - generic [ref=f2e199]:
+            - generic [ref=f2e200]:
+              - heading "Recording" [level=2] [ref=f2e201]
+              - generic [ref=f2e202]:
+                - generic [ref=f2e205]: Detection overlay
+                - switch "Detection overlay" [checked] [ref=f2e206] [cursor=pointer]
+            - generic [ref=f2e207]:
+              - generic [ref=f2e209]: 00:10 / 00:19
+              - generic [ref=f2e211]: nearest stored frame 00:10 · 0.8 s back
+            - generic "5 analysed moments in this recording" [ref=f2e213]:
+              - button "Play from 00:00" [ref=f2e214]
+              - button "Play from 00:02" [ref=f2e215]
+              - button "Play from 00:10" [ref=f2e216]
+              - button "Play from 00:12" [ref=f2e217]
+              - button "Play from 00:16" [ref=f2e218]
+            - generic [ref=f2e219]:
+              - button "Pause" [ref=f2e408]
+              - button "Previous analysed frame" [ref=f2e222]
+              - button "Next analysed frame" [ref=f2e223]
+              - paragraph [ref=f2e224]:
+                - text: Boxes are drawn only on frames this run stored a detection for —
+                - strong [ref=f2e225]: "5"
+                - text: moment(s) in this recording. Gaps are retention, not blindness.
+          - generic [ref=f2e226]:
+            - heading "Runs" [level=2] [ref=f2e227]
+            - table [ref=f2e229]:
+              - rowgroup [ref=f2e230]:
+                - row [ref=f2e231]:
+                  - columnheader "Run" [ref=f2e232]
+                  - columnheader "State" [ref=f2e233]
+                  - columnheader "Pacing" [ref=f2e234]
+                  - columnheader "Speed" [ref=f2e235]
+                  - columnheader "Frames" [ref=f2e236]
+                  - columnheader "Detections" [ref=f2e237]
+                  - columnheader "Model" [ref=f2e238]
+                  - columnheader [ref=f2e239]
+              - rowgroup [ref=f2e240]:
+                - row [ref=f2e241]:
+                  - cell "#4" [ref=f2e242]
+                  - cell "succeeded" [ref=f2e243]
+                  - cell "As fast as possible" [ref=f2e246]
+                  - cell "5.3× real time" [ref=f2e247]
+                  - cell "38 / 38" [ref=f2e248]
+                  - cell "24" [ref=f2e249]
+                  - cell "yolox-nano" [ref=f2e250]
+                  - cell [ref=f2e251]
+                - row [ref=f2e252] [cursor=pointer]:
+                  - cell "#3" [ref=f2e253]
+                  - cell "succeeded" [ref=f2e254]
+                  - cell "As fast as possible" [ref=f2e257]
+                  - cell "5.6× real time" [ref=f2e258]
+                  - cell "38 / 38" [ref=f2e259]
+                  - cell "24" [ref=f2e260]
+                  - cell "yolox-nano" [ref=f2e261]
+                  - cell [ref=f2e262]
+                - row [ref=f2e263] [cursor=pointer]:
+                  - cell "#2" [ref=f2e264]
+                  - cell "succeeded" [ref=f2e265]
+                  - cell "As fast as possible" [ref=f2e268]
+                  - cell "5.5× real time" [ref=f2e269]
+                  - cell "38 / 38" [ref=f2e270]
+                  - cell "24" [ref=f2e271]
+                  - cell "yolox-nano" [ref=f2e272]
+                  - cell [ref=f2e273]
+                - row [ref=f2e274] [cursor=pointer]:
+                  - cell "#1" [ref=f2e275]
+                  - cell "cancelled" [ref=f2e276]
+                  - cell "As fast as possible" [ref=f2e279]
+                  - cell "5.5× real time" [ref=f2e280]
+                  - cell "38 / 38" [ref=f2e281]
+                  - cell "24" [ref=f2e282]
+                  - cell "yolox-nano" [ref=f2e283]
+                  - cell [ref=f2e284]
+            - list [ref=f2e285]:
+              - listitem [ref=f2e286]:
+                - generic [ref=f2e289]: the footage start time was taken from the file's own metadata and has not been confirmed by an operator; every incident time in this analysis depends on it
+          - generic [ref=f2e290]:
+            - heading "Analysis details" [level=2] [ref=f2e291]
+            - generic [ref=f2e293]:
+              - generic [ref=f2e294]:
+                - term [ref=f2e295]: Resolution
+                - definition [ref=f2e296]: 1080 × 1920
+                - paragraph [ref=f2e297]: portrait source
+              - generic [ref=f2e298]:
+                - term [ref=f2e299]: Codec
+                - definition [ref=f2e300]: h264 (avc1)
+              - generic [ref=f2e301]:
+                - term [ref=f2e302]: Container
+                - definition [ref=f2e303]: mp4
+              - generic [ref=f2e304]:
+                - term [ref=f2e305]: Duration
+                - definition [ref=f2e306]: 19.0 s
+              - generic [ref=f2e307]:
+                - term [ref=f2e308]: File size
+                - definition [ref=f2e309]: 21.7 MiB
+              - generic [ref=f2e310]:
+                - term [ref=f2e311]: Source frame rate
+                - definition [ref=f2e312]: 27 fps
+              - generic [ref=f2e313]:
+                - term [ref=f2e314]: Footage started
+                - definition [ref=f2e315]: Aug 07, 2026, 23:57:00
+                - paragraph [ref=f2e316]: ⚠️ read from the file's own metadata, unconfirmed
+              - generic [ref=f2e317]:
+                - term [ref=f2e318]: Model
+                - definition [ref=f2e319]: yolox-nano
+              - generic [ref=f2e320]:
+                - term [ref=f2e321]: Runtime version
+                - definition [ref=f2e322]: 0.1.0
+              - generic [ref=f2e323]:
+                - term [ref=f2e324]: Pipeline version
+                - definition [ref=f2e325]: 1.0.0
+              - generic [ref=f2e326]:
+                - term [ref=f2e327]: Capability
+                - definition [ref=f2e328]: perception.person-detection
+              - generic [ref=f2e329]:
+                - term [ref=f2e330]: Execution provider
+                - definition [ref=f2e331]: CPUExecutionProvider
+                - paragraph [ref=f2e332]: CPU — no GPU acceleration on this host
+              - generic [ref=f2e333]:
+                - term [ref=f2e334]: Analysis frame rate
+                - definition [ref=f2e335]: 2 fps
+                - paragraph [ref=f2e336]: 2 of every 27 source frames were examined
+              - generic [ref=f2e337]:
+                - term [ref=f2e338]: Throughput
+                - definition [ref=f2e339]: 10.58 fps
+              - generic [ref=f2e340]:
+                - term [ref=f2e341]: Speed factor
+                - definition [ref=f2e342]: 5.3× real time
+              - generic [ref=f2e343]:
+                - term [ref=f2e344]: Time remaining
+                - definition [ref=f2e345]: —
+                - paragraph [ref=f2e346]: not enough of the recording has been analysed yet to estimate honestly (1 of 2 samples)
+          - generic [ref=f2e347]:
+            - heading "Timeline" [level=2] [ref=f2e349]
+            - generic [ref=f2e350]:
+              - generic [ref=f2e351]:
+                - term [ref=f2e352]: Frames analysed
+                - definition [ref=f2e353]: "38"
+              - generic [ref=f2e354]:
+                - term [ref=f2e355]: Detections returned
+                - definition [ref=f2e356]: "24"
+              - generic [ref=f2e357]:
+                - term [ref=f2e358]: Events persisted
+                - definition [ref=f2e359]: "5"
+                - paragraph [ref=f2e360]: one per track per 10 s (L-57)
+              - generic [ref=f2e361]:
+                - term [ref=f2e362]: Tracks
+                - definition [ref=f2e363]: "5"
+                - paragraph [ref=f2e364]: distinct subjects followed
+              - generic [ref=f2e365]:
+                - term [ref=f2e366]: Incidents
+                - definition [ref=f2e367]: "2"
+            - paragraph [ref=f2e368]:
+              - text: ⚠️
+              - strong [ref=f2e369]: Tracks are not a headcount.
+              - text: One person who leaves the frame and returns may be counted twice, and two people who cross may briefly merge. It is the number of identities the tracker followed, which is the honest figure the platform can support.
+            - generic [ref=f2e370]:
+              - tablist [ref=f2e371]:
+                - tab "Incidents (2)" [selected] [ref=f2e372]
+                - tab "Events (5)" [ref=f2e373]
+                - tab "Tracks (5)" [ref=f2e374]
+                - tab "Density" [ref=f2e375]
+              - tabpanel "Incidents (2)" [ref=f2e376]:
+                - table [ref=f2e378]:
+                  - rowgroup [ref=f2e379]:
+                    - row [ref=f2e380]:
+                      - columnheader "At" [ref=f2e381]
+                      - columnheader "Incident" [ref=f2e382]
+                      - columnheader "Raised by" [ref=f2e383]
+                      - columnheader "Status" [ref=f2e384]
+                      - columnheader "From event" [ref=f2e385]
+                      - columnheader [ref=f2e386]
+                  - rowgroup [ref=f2e387]:
+                    - row [ref=f2e388]:
+                      - cell [ref=f2e389]:
+                        - button "Play from 00:16" [ref=f2e390]: 00:16
+                      - 'cell "Person detected — any camera: perception.person.detected" [ref=f2e391]'
+                      - cell "Person detected — any camera · v2" [ref=f2e392]:
+                        - text: Person detected — any camera
+                        - generic [ref=f2e393]: · v2
+                      - cell "raised" [ref=f2e394]
+                      - cell "a43d0ca9" [ref=f2e395]
+                      - cell [ref=f2e396]:
+                        - button "Capture still" [ref=f2e397]
+                    - row [ref=f2e398]:
+                      - cell [ref=f2e399]:
+                        - button "Play from 00:10" [active] [ref=f2e400]: 00:10
+                      - 'cell "Person detected — any camera: perception.person.detected" [ref=f2e401]'
+                      - cell "Person detected — any camera · v2" [ref=f2e402]:
+                        - text: Person detected — any camera
+                        - generic [ref=f2e403]: · v2
+                      - cell "raised" [ref=f2e404]
+                      - cell "257cb025" [ref=f2e405]
+                      - cell [ref=f2e406]:
+                        - button "Capture still" [ref=f2e407]
+  - region "Notifications alt+T"

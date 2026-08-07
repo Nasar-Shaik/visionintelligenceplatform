@@ -17,6 +17,7 @@ import userEvent from '@testing-library/user-event';
 import { server } from '@/test/server';
 import { renderWithProviders } from '@/test/render';
 import { InvestigationDetailPage } from './InvestigationDetailPage';
+import { revealAndPlay } from './AnalysisPlayer';
 
 const FOOTAGE_START = '2021-12-22T20:18:44.000Z';
 const TRACK = 'trk_cam_1-tnt_a-cam_1-ases_1_7';
@@ -223,6 +224,65 @@ describe('the recording is on the page', () => {
     mock();
     render();
     expect(await screen.findByText(/gaps are retention, not blindness/i)).toBeInTheDocument();
+  });
+
+  /**
+   * ⛔ **V-17 — a sentence saying "9 moments" is not the same as being able to find them.** The only
+   * way to locate a stored moment was the tables three sections further down the page; on screen the
+   * recording looked like an ordinary video that occasionally flickered a box. The strip puts the
+   * moments where the recording is.
+   */
+  it('marks every analysed moment on a strip under the recording', async () => {
+    mock();
+    render();
+    const strip = await screen.findByTestId('analysed-moments');
+    expect(strip).toHaveAttribute('aria-label', expect.stringMatching(/analysed moments/i));
+  });
+});
+
+/**
+ * ⛔ **V-16 — the button said "Play from 00:10" and only moved the playhead.**
+ *
+ * `revealAndPlay` is asserted directly rather than through a click because jsdom implements no media
+ * element: it has no `play()` and no layout, so a component-level test could observe neither half of
+ * the fix. The browser certification (`tools/e2e-browser/test/surface.spec.ts`) is what proves it end
+ * to end; this proves the two calls are made and that neither can throw the seek away.
+ */
+describe('a seek reveals and plays', () => {
+  it('scrolls the player into view and starts it', () => {
+    const calls: string[] = [];
+    revealAndPlay({
+      scrollIntoView: () => calls.push('scroll'),
+      play: () => {
+        calls.push('play');
+        return Promise.resolve();
+      },
+    });
+    expect(calls).toEqual(['scroll', 'play']);
+  });
+
+  /** ⚠️ Autoplay refusal is a rejected promise, and the seek that already happened is still right. */
+  it('swallows a refused autoplay rather than failing the seek', () => {
+    expect(() =>
+      revealAndPlay({
+        scrollIntoView: () => undefined,
+        play: () => Promise.reject(new Error('NotAllowedError')),
+      }),
+    ).not.toThrow();
+  });
+
+  /** ⚠️ jsdom throws from both. Neither may take the seek down with it. */
+  it('survives an environment that implements neither call', () => {
+    expect(() =>
+      revealAndPlay({
+        scrollIntoView: () => {
+          throw new Error('Not implemented');
+        },
+        play: () => {
+          throw new Error('Not implemented');
+        },
+      }),
+    ).not.toThrow();
   });
 });
 

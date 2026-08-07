@@ -43,10 +43,22 @@ export function groupKeyFor(rule: Rule, envelope: EventEnvelope): string {
 }
 
 /**
- * Dedup key for an incident candidate: identical (tenant, rule, group, time-bucket) candidates
- * collapse within `windowMs`, so a burst of matches raises one incident, not hundreds.
+ * The subject an incident candidate is about, when the observation identifies one.
  *
- * ### ⚠️ A dwell rule keys on the SUBJECT, and getting this wrong loses incidents
+ * ⚠️ **`trackId` only — never a fallback to the class.** `class` is `'person'` for everybody, so
+ * keying on it would put every person in one bucket: identical to having no subject at all, but
+ * looking as though the subject had been accounted for. Absent means *this observation names no
+ * subject*, and the key then behaves exactly as it did before subjects were considered.
+ */
+function subjectKeyOf(envelope: EventEnvelope): string | undefined {
+  return envelope.subjects[0]?.trackId;
+}
+
+/**
+ * Dedup key for an incident candidate: identical (tenant, rule, group, subject, time-bucket)
+ * candidates collapse within `windowMs`, so a burst of matches raises one incident, not hundreds.
+ *
+ * ### ⚠️ The SUBJECT is part of the key, and getting this wrong loses incidents
  *
  * The time-bucket dedup exists to collapse a burst from one rule. For a dwell rule the natural group
  * is `'-'` (no window), so **two different people loitering in the same minute would share a dedup
@@ -56,6 +68,28 @@ export function groupKeyFor(rule: Rule, envelope: EventEnvelope): string {
  *
  * So the subject is part of the key whenever there is one. The cool-down, not dedup, is what stops a
  * single subject firing repeatedly — dedup's job here is only to make a redelivery idempotent.
+ *
+ * ### ⛔ That reasoning was written for dwell rules and applied only to dwell rules (V-15)
+ *
+ * The bucketed branch below carried **no subject at all**, so the failure the paragraph above
+ * describes was live in the ordinary match path the whole time. Found on the Architect's own
+ * 19-second recording: they walked past the camera three times, the tracker followed three separate
+ * subjects (`…_2`, `…_3`, `…_5`), the events tier persisted three `perception.person.detected`
+ * events — and the rules tier raised **one** incident, because `[tenant, rule, '-', bucket]` cannot
+ * tell three people apart and the whole recording is shorter than one 60 s bucket.
+ *
+ * ⚠️ **The two tiers of one pipeline disagreed about what a duplicate is.** `dedupKey` in
+ * `services/events` has keyed on `subjects[0].trackId` since it was written; this key did not. Three
+ * events collapsing to one incident is the exact arithmetic of that disagreement.
+ *
+ * ### ⚠️ What this changes for a live camera
+ *
+ * A live match rule now raises one incident per *subject* per window instead of one per *group* per
+ * window, so a camera that sees thirty people a minute can raise thirty incidents where it used to
+ * raise one. That is the correct answer to "how many people triggered this rule" and it is a real
+ * increase in volume: `RULES_CANDIDATE_DEDUP_WINDOW_MS` is the knob, and the ceiling is bounded by
+ * the events tier already emitting at most one event per track per `EVENTS_DEDUP_WINDOW_MS`. See
+ * [L-69].
  *
  * ### ⛔ The analysis run is part of the key — ADR-0047, and the layer it missed
  *
@@ -104,6 +138,19 @@ export function candidateDedupKey(
           dwell.outcome.record.firedAtMs ?? bucket,
         ]
       : [envelope.tenantId, rule.id, groupKeyFor(rule, envelope), bucket];
+  /*
+   * ⚠️ **Appended, and only when the observation names a subject** — the same discipline the
+   * analysis run below is held to, for the same reason. An envelope with no `trackId` (a system
+   * event, a rule-on-rule signal, anything the perception tier did not produce) keeps a key that is
+   * byte-identical to the one this function returned before V-15, so nothing that was deduping
+   * correctly starts double-firing on the deploy that ships this.
+   *
+   * The dwell branch already carries `dwell.subject` and must not be given a second one.
+   */
+  if (dwell === undefined) {
+    const subject = subjectKeyOf(envelope);
+    if (subject !== undefined) parts.push(subject);
+  }
   if (envelope.analysisSessionId !== undefined) parts.push(envelope.analysisSessionId);
   return parts.join('|');
 }

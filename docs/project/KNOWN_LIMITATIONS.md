@@ -633,6 +633,42 @@ irregular** — 19.07 s, 47.3 s, 121.6 s — precisely because real recordings a
 
 ---
 
+## L-69 · One incident per rule per subject, not per rule — live alert volume rises
+
+|                       |                                                                                                                                                                                                                                                                                                          |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | V-15 put `subjects[0].trackId` into the incident-candidate dedup key. Before it, the key was `[tenant, rule, group, bucket]` for a non-dwell rule — **no subject at all** — so every person matching one rule inside one `RULES_CANDIDATE_DEDUP_WINDOW_MS` (60 s) collapsed into a single incident         |
+| **Customer impact**   | ⭐ Correct: three people entering in one minute now raise three incidents, not one. ⚠️ And a real volume increase — a camera that sees thirty people a minute can raise thirty incidents where it raised one. That is the honest count and it will feel like a regression to anyone tuned to the old number |
+| **Exposure**          | Any tenant-wide `raise-incident` rule on a busy camera. Bounded above by the events tier, which already emits at most one event per track per `EVENTS_DEDUP_WINDOW_MS` (10 s)                                                                                                                            |
+| **How to see it**     | Measured on a 19.04 s recording with three walk-pasts: **1 incident before, 2 after** (the third appearance is stored at 51 % and the rule requires ≥ 75 % — see [L-70])                                                                                                                                  |
+| **Planned**           | `RULES_CANDIDATE_DEDUP_WINDOW_MS` is the knob if a venue needs the volume lower. Raising it suppresses repeats of the *same* subject, which is the intended control; it no longer merges *different* subjects, which was the defect                                                                       |
+
+---
+
+## L-70 · The event kept from a dedup bucket is the first observation, not the strongest
+
+|                       |                                                                                                                                                                                                                                                                                                          |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | Within one ten-second bucket the **first** event for a track is persisted and the rest are dropped ([L-57]). Nothing compares their confidences                                                                                                                                                          |
+| **Customer impact**   | ⛔ **This changes rule outcomes, not just detail.** Measured on the reported recording: one appearance was detected on six consecutive frames at 53 / 89 / 93 / 91 / 88 / 74 %, and the event stored for it is the **51 %** first frame. The tenant's rule requires ≥ 75 %, so that appearance raised no incident — it would have at any of the other five frames |
+| **Exposure**          | Every confidence-thresholded rule on every offline analysis, and every live camera whose subject is weakest at the moment it is first seen — which is the usual case, since a subject enters at the frame edge                                                                                            |
+| **How to see it**     | The Tracks lane's **peak confidence** is the peak of what survived dedup, not of what was observed. It read 51 % for a track the model peaked at 93 % on                                                                                                                                                 |
+| **Planned**           | Not fixed. Keeping the strongest observation means buffering a bucket before emitting, which changes the streaming contract; it belongs with [ADR-0049](../adr/ADR-0049-per-frame-perception-data-is-not-persisted.md), not ahead of it                                                                    |
+
+---
+
+## L-71 · Non-person COCO classes are persisted as findings and read as detections
+
+|                       |                                                                                                                                                                                                                                                                                                          |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | `yolox-nano` is an 80-class COCO model. Everything outside the known map becomes `perception.object.detected` ([event-normalizer.ts]) and appears in the Events and Tracks lanes beside real findings                                                                                                     |
+| **Customer impact**   | ⚠️ Measured on the reported recording: a **clothes rail** was detected as `tie` on **20 of 38 frames** at 50–60 %, and two of those became stored events at 0 s and 12 s. Two of the five rows in that recording's Events lane are furniture                                                              |
+| **Exposure**          | Any indoor scene. Earlier runs produced `kite` and `keyboard` the same way                                                                                                                                                                                                                              |
+| **How to see it**     | Filter the Events lane by type: `perception.object.detected` rows carry the raw COCO label                                                                                                                                                                                                               |
+| **Planned**           | Not a runtime change — AI Runtime v1.0 is closed. The product answer is a per-tenant label allow-list at the normalizer, which is a rules/config decision and is not scheduled                                                                                                                          |
+
+---
+
 ## Related
 
 - [PRODUCT_CAPABILITY_MATRIX](PRODUCT_CAPABILITY_MATRIX.md) — the state behind each limitation

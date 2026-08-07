@@ -332,6 +332,44 @@ _Last updated: 2026-08-07 · Claude_
   **Closed:** TD-69 / V-7. **Gate:** 70/70 repo tasks · **520** console tests · 311 media tests ·
   browser certification green across Chromium, Edge, Firefox and WebKit.
 
+- **P-8.6 follow-up 2 · three appearances, one incident (2026-08-08)** — the Architect walked past
+  the camera three times in a 19.04 s recording and the platform reported it once. ⭐ **The pipeline
+  was right and three separate layers each hid part of the answer.** Settled by replaying the exact
+  38 sampled frames through the deployed runtime's own `/infer`, which detected a person on **12** of
+  them in three clean runs — 2.0–4.5 s (peak 93 %), 10.0–11.0 s (peak 92 %), 16.0–17.0 s (peak 91 %).
+
+  ⛔ **V-15 · the incident dedup key had no subject, and its own docstring said it must.**
+  `candidateDedupKey` reads *"two different people … would share a dedup key and the second candidate
+  would be silently collapsed … the platform would simply have decided that two loiterers were one"* —
+  and applied that only to the **dwell** branch. The bucketed branch was `[tenant, rule, group,
+  bucket]`, so three tracked subjects inside one 60 s window were one incident. ⚠️ **The two tiers of
+  one pipeline disagreed about what a duplicate is:** `services/events` has keyed on
+  `subjects[0].trackId` since it was written. Measured on the deployment: **1 incident → 2** (the
+  third appearance is stored at 51 % against a rule requiring ≥ 75 % — [L-70]). Live volume rises;
+  [L-69] states by how much and names the knob.
+
+  ⛔ **V-16 · "Play from here" moved the playhead and did nothing else.** Two independent omissions,
+  either sufficient: it never called `play()`, and the player sits above the runs table, the details
+  panel and the funnel — measured at `getBoundingClientRect().top === -1031` when the button is
+  clicked, so the seek worked perfectly **off-screen**.
+
+  ⛔ **V-17 · the overlay was a strobe.** `timeupdate` fires every **266 ms** in Chrome (median and
+  max over 74 samples) against a 500 ms tolerance window, so a stored box painted for one tick,
+  sometimes two, sometimes — when the ticks straddled the window — none. The Architect caught one of
+  their three appearances and reported the other two as undetected; they had been detected. Now
+  sampled at 50 ms while playing: **all five boxes paint for the full 0.48 s**, measured in Chrome.
+  A marker strip under the video shows where the stored moments are, and the badge names the nearest
+  one instead of saying only "no analysed frame at this instant".
+
+  ⚠️ **Recorded, not fixed:** [L-70] the kept event is the bucket's *first* observation, not its
+  strongest, which **changes rule outcomes** (51 % stored where the model peaked at 93 %); [L-71] a
+  clothes rail was detected as `tie` on 20 of 38 frames and two of those are stored events.
+
+  ⛔ **A method note.** The first per-frame replay used `/playground/analyze`, whose `engine` defaults
+  to a **fake adapter**; it reported a person on 38 of 38 frames, including frames that are visibly an
+  empty wall. Caught by looking at the frames before believing the numbers. Simulation never
+  certifies — the figures above are from the real capability over the internal-key path.
+
 - **P-8.5 · Product Validation ✅ complete, ⏳ awaiting review (2026-08-07)** — **the first time
   this platform was used the way a customer will use it**, and the answer to what a 69-task green
   gate is worth. 37 generated recordings driven through upload → object storage → ffmpeg → ONNX →

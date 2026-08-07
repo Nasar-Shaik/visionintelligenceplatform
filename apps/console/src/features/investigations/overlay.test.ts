@@ -8,7 +8,15 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { AnalysisTimeline } from '@vip/contracts';
-import { analysedInstants, boxesAt, nearestFrame, shortTrack, toleranceFor } from './overlay';
+import {
+  OVERLAY_SAMPLE_MS,
+  analysedInstants,
+  boxesAt,
+  nearestFrame,
+  overlayStatus,
+  shortTrack,
+  toleranceFor,
+} from './overlay';
 
 type Entry = AnalysisTimeline['entries'][number];
 
@@ -148,5 +156,56 @@ describe('analysedInstants', () => {
       entry({ offsetSeconds: 16 }),
     ];
     expect(analysedInstants(entries)).toEqual([0, 6, 16]);
+  });
+});
+
+describe('overlayStatus', () => {
+  const entries = [entry({ offsetSeconds: 2, trackId: 'a' }), entry({ offsetSeconds: 10, trackId: 'b' })];
+
+  it('counts what it is drawing when the playhead is on an analysed frame', () => {
+    const { boxes, inFrame, sample } = boxesAt(entries, 10, 2);
+    expect(overlayStatus(boxes.length, inFrame, sample, 10)).toBe('0 stored at 00:10');
+  });
+
+  /**
+   * ⛔ **V-17 — "no analysed frame at this instant" is true and useless.** The reported recording
+   * stores boxes at 5 of its 19 seconds, so that string was on screen for 97 % of playback and read
+   * as "the AI found nothing". The nearest stored moment is the thing the operator can act on.
+   */
+  it('names the nearest stored frame and how far ahead it is', () => {
+    const { boxes, inFrame, sample } = boxesAt(entries, 8.2, 2);
+    expect(overlayStatus(boxes.length, inFrame, sample, 8.2)).toBe(
+      'nearest stored frame 00:10 · 1.8 s ahead',
+    );
+  });
+
+  it('says back when the nearest stored frame is behind the playhead', () => {
+    const { boxes, inFrame, sample } = boxesAt(entries, 14, 2);
+    expect(overlayStatus(boxes.length, inFrame, sample, 14)).toBe(
+      'nearest stored frame 00:10 · 4.0 s back',
+    );
+  });
+
+  /** ⚠️ A run that stored nothing is a different statement from a gap between stored frames. */
+  it('distinguishes a run with nothing stored from a gap', () => {
+    expect(overlayStatus(0, false, undefined, 3)).toBe('nothing stored for this run');
+  });
+});
+
+describe('OVERLAY_SAMPLE_MS', () => {
+  /**
+   * ⛔ **The guard on V-17.** Chrome fires `timeupdate` every 266 ms (measured, 74 samples over the
+   * reported 19 s recording) against a 500 ms tolerance window, so a box was painted for one tick or
+   * none. The sampling interval must divide the *narrowest* window several times over or the overlay
+   * goes back to being a strobe.
+   */
+  it('fits at least eight samples inside the narrowest tolerance window', () => {
+    const narrowestWindowMs = toleranceFor(30) * 2 * 1000;
+    expect(narrowestWindowMs / OVERLAY_SAMPLE_MS).toBeGreaterThanOrEqual(8);
+  });
+
+  /** ⚠️ And is not so fine that it costs 60 renders a second for no extra certainty. */
+  it('stays coarser than a display frame', () => {
+    expect(OVERLAY_SAMPLE_MS).toBeGreaterThan(1000 / 60);
   });
 });
