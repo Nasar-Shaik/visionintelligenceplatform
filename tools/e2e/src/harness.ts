@@ -284,7 +284,16 @@ export class PlatformHarness {
   }
 
   async incidents(tenantId: string): Promise<Incident[]> {
-    const page = await this.incidentStore.list(TenantScope.fromTenantId(tenantId), { limit: 200 });
+    const page = await this.incidentStore.list(TenantScope.fromTenantId(tenantId), {
+      limit: 200,
+      /*
+       * ⚠️ **The live queue, and stated rather than inherited** (ADR-0047). This is the operator's
+       * work list: an incident replayed out of old footage is a real finding and not something
+       * anybody is dispatched to now. The default is the same, but a harness that asserts platform
+       * behaviour should not depend on a default it does not name.
+       */
+      includeAnalyses: false,
+    });
     return page.items;
   }
 

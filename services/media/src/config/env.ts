@@ -104,6 +104,13 @@ export interface ServiceConfig extends AppConfig {
    * timeline reports itself unavailable rather than empty.
    */
   eventsUrl: string;
+  /**
+   * Base URL of the workflow service, for the timeline's incident lane (slice 5).
+   *
+   * ⚠️ Independent of `eventsUrl`: a deployment can have one and not the other, and the timeline
+   * says which lane it could not fill rather than showing an empty one.
+   */
+  workflowUrl: string;
 }
 
 /** Offline video investigation (P-8 Phase 8). */
@@ -142,6 +149,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
       FFPROBE_BINARY: z.string().min(1).default('ffprobe'),
       MEDIA_PLAYBACK_TTL_SECONDS: z.coerce.number().int().min(30).max(86_400).default(900),
       EVENTS_URL: z.string().default(''),
+      WORKFLOW_URL: z.string().default(''),
       MEDIA_ANALYSIS_MAX_CONCURRENT: z.coerce.number().int().min(1).max(8).default(1),
       MEDIA_ANALYSIS_SOURCE_TTL_SECONDS: z.coerce
         .number()
@@ -215,6 +223,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
     ...(ing.MEDIA_EVENT_BRIDGE_ENABLED ? { nats: loadNatsConfig(env) } : {}),
     playbackTtlSeconds: ing.MEDIA_PLAYBACK_TTL_SECONDS,
     eventsUrl: ing.EVENTS_URL,
+    workflowUrl: ing.WORKFLOW_URL,
     analysis: {
       maxConcurrent: ing.MEDIA_ANALYSIS_MAX_CONCURRENT,
       sourceUrlTtlSeconds: ing.MEDIA_ANALYSIS_SOURCE_TTL_SECONDS,

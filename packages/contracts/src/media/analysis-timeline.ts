@@ -87,6 +87,26 @@ export const TIMELINE_BUCKETS = 120;
  */
 export const TIMELINE_MAX_EVENTS = 2000;
 
+/**
+ * An incident this run raised, placed in the footage.
+ *
+ * ⚠️ **`raisedAt` is deliberately absent.** An incident carries a wall-clock `raisedAt` — when the
+ * analysis was executed — and putting it beside a footage-time offset on one row is how somebody
+ * reads "18:30" as the time of day something happened. The timeline speaks one clock.
+ */
+export const AnalysisTimelineIncident = z.object({
+  incidentId: z.string().min(1),
+  title: z.string().min(1).max(300),
+  status: z.string().min(1).max(40),
+  severity: z.string().min(1).max(40).optional(),
+  ruleId: z.string().min(1).optional(),
+  /** Footage-clock instant of the triggering event. */
+  occurredAt: IsoDateTime,
+  /** Seconds from the start of the recording. */
+  offsetSeconds: z.number().min(0),
+});
+export type AnalysisTimelineIncident = z.infer<typeof AnalysisTimelineIncident>;
+
 export const AnalysisTimeline = z.object({
   analysisId: z.string().min(1),
   /** ⭐ The **run** this timeline describes. A rerun has its own, and they never merge (ADR-0047). */
@@ -100,6 +120,8 @@ export const AnalysisTimeline = z.object({
   entries: z.array(AnalysisTimelineEntry).max(TIMELINE_MAX_EVENTS),
   tracks: z.array(AnalysisTrackSpan).max(500),
   density: z.array(AnalysisDensityBucket).max(TIMELINE_BUCKETS),
+  /** ⭐ What this run raised. ⚠️ Meaningless unless `incidentsAvailable` is `true`. */
+  incidents: z.array(AnalysisTimelineIncident).max(500).default([]),
   /**
    * ⛔ **`true` means this timeline is incomplete.** The analysis produced more events than one
    * timeline reads, so what is shown is the earliest `TIMELINE_MAX_EVENTS` of them. Reported rather

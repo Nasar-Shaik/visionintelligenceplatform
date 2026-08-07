@@ -243,10 +243,21 @@ describe('the incident index set (G-4)', () => {
    * list is asserted here and a new one fails until its index and its row above exist.
    */
   it('has one declared index per frozen IncidentQuery filter', () => {
+    /*
+     * ⚠️ `includeAnalyses` is excluded because it is a **mode**, not a filter: it selects
+     * `{$exists:false}` on `analysisSessionId`, which `tenant_analysis_time` already leads with. An
+     * index of its own would serve no query.
+     */
     const filters = Object.keys(IncidentQuery.shape).filter(
-      (key) => key !== 'limit' && key !== 'cursor' && key !== 'from' && key !== 'to',
+      (key) =>
+        key !== 'limit' &&
+        key !== 'cursor' &&
+        key !== 'from' &&
+        key !== 'to' &&
+        key !== 'includeAnalyses',
     );
     expect(filters.sort()).toEqual([
+      'analysisSessionId',
       'assignee',
       'cameraId',
       'category',

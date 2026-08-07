@@ -57,6 +57,16 @@ export class InMemoryIncidentStore implements IncidentStore {
       (query.zoneId === undefined || i.triggeredBy.zoneId === query.zoneId) &&
       (query.ruleId === undefined || i.source.ruleId === query.ruleId) &&
       (query.correlationId === undefined || i.correlationId === query.correlationId) &&
+      (query.analysisSessionId === undefined ||
+        i.analysisSessionId === query.analysisSessionId) &&
+      /*
+       * ⛔ **The live queue is a work list** (ADR-0047). An incident replayed out of six-week-old
+       * footage is a real finding and not something anybody is dispatched to now, so it stays out
+       * unless asked for. Naming a run is already an unambiguous request for it.
+       */
+      (query.analysisSessionId !== undefined ||
+        query.includeAnalyses ||
+        i.analysisSessionId === undefined) &&
       (query.assignee === undefined || i.assignee === query.assignee) &&
       (query.from === undefined || i.raisedAt >= query.from) &&
       (query.to === undefined || i.raisedAt < query.to)

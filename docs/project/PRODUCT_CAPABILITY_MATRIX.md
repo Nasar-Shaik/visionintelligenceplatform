@@ -190,7 +190,7 @@ references them rather than restating what a capability is.
 | **C-18** | Object tracking (⚠️ zones · counting NOT built)            |            ✅            |   ✅ tracking only (C-14d)   |         ✅          |  ✅  |  ⬜   |  ✅  | **P-8 Phase 4** | C-19               | ai/inference |
 | **C-19** | **Media → inference frame bus**                            |            ✅            |  ✅ `HttpFrameSink` (C-14b)  |         n/a         |  ✅  |  ⬜   |  ✅  | **P-8 Phase 2** | —                  | media        |
 | **C-20** | **Behaviour analytics** — loitering · intrusion · crowding |            ✅            | ⛔ no analyzer wired (TD-14) |         ⛔          |  ⛔  |  ⛔   |  ⛔  | **P-8**         | C-19 · **D-4**     | ai/inference |
-| **C-21** | Upload a recording and analyse it                          |            ✅            |     ✅ reruns included      |         ⛔          |  ✅  |  ✅   |  ⛔  | **P-8 Phase 8** | C-19               | media        |
+| **C-21** | Upload a recording and analyse it                          |            ✅            |  ✅ timeline + incidents    |         ⛔          |  ✅  |  ✅   |  ⛔  | **P-8 Phase 8** | C-19               | media        |
 | **C-22** | **Live video view**                                        | ⛔ no transport contract |          ⛔ (TD-28)          | ⛔ placeholder page |  ⛔  |  ⛔   |  ⛔  | **P-8**         | **ADR: transport** | media        |
 | **C-23** | Auto-captured evidence from a live incident                |            ✅            |  ⛔ no-op extractor (TD-15)  |         n/a         |  ⛔  |  ⛔   |  ⛔  | **P-8**         | C-19               | evidence     |
 

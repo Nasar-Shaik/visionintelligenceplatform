@@ -369,6 +369,18 @@ export const Incident = z.object({
    * event's `correlationId`, else anchored to the triggering event id. Threads the whole vertical.
    */
   correlationId: z.string().min(1),
+  /**
+   * ⭐ **The offline analysis run that produced this incident** (ADR-0047, extended to incidents).
+   *
+   * ⛔ Absent ⇒ live, and the live queue shows only those. An investigation's incidents are real
+   * findings about real footage, but they are **not work** — nobody is dispatched to a thing that
+   * happened six weeks ago because somebody pressed "analyse". Keeping them out of the queue is the
+   * difference between a useful investigation feature and one that makes the queue untrustworthy.
+   *
+   * ⚠️ They are still incidents: fully persisted, fully queryable by run, and carrying the same
+   * lifecycle. Only their *default visibility* differs.
+   */
+  analysisSessionId: z.string().min(1).max(120).optional(),
   /** The candidate id that caused this incident (causation chain). */
   causationId: Uuid,
   /** Lifecycle transition audit trail (append-only). */
@@ -487,6 +499,18 @@ export const IncidentQuery = z.object({
   ruleId: z.string().min(1).optional(),
   /** The correlation spine — "everything related to this". */
   correlationId: z.string().min(1).optional(),
+  /** ⭐ Everything one offline analysis run raised — the investigation's incident list. */
+  analysisSessionId: z.string().min(1).max(120).optional(),
+  /**
+   * ⛔ **Include offline-analysis incidents in an otherwise unfiltered read. Default `false`.**
+   *
+   * The live queue is a work list. Every caller written before offline analysis existed asks its
+   * question meaning "what needs attention", and an incident replayed out of old footage is not
+   * that. Naming an `analysisSessionId` selects a run regardless of this flag, because asking for a
+   * run is already an unambiguous request for it. Same rule, same reasoning, as
+   * `EventQuery.includeAnalyses`.
+   */
+  includeAnalyses: z.coerce.boolean().default(false),
   assignee: IncidentActor.optional(),
   /** Inclusive lower bound on `raisedAt`. */
   from: IsoDateTime.optional(),

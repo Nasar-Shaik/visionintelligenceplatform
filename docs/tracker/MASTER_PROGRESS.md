@@ -305,6 +305,30 @@ _Last updated: 2026-08-07 · Claude_
   deployed run above. ⚠️ **C-21 moves ⛔ → ⚠️** — a *first* analysis of a recording works end to end;
   a rerun is silent until L-61 is closed.
 
+  **Slice 5 · Incident review — ✅ deployed.** ADR-0047 extended from events to findings:
+  `analysisSessionId` is additive on `IncidentCandidate` and `Incident`, carried event → candidate →
+  incident, and **⛔ the live queue excludes offline findings by default**
+  (`IncidentQuery.includeAnalyses`, `false`). An incident replayed out of six-week-old footage is a
+  real finding and is *not* work — nobody is dispatched to it now, and letting it into the queue with
+  no change to any caller would have made the queue untrustworthy. Naming a run returns that run
+  regardless of the flag.
+
+  ⚠️ **No fallback, unlike `correlationId`.** That anchors to the triggering event id when absent so
+  the chain is never broken; an absent run means the incident is **live**, and inventing one would
+  hide a real incident from the queue. The timeline's incident lane now fills, placing each incident
+  at its **triggering event's footage offset** — never `raisedAt`, which is when the analysis ran and
+  would put "today" on something that happened weeks ago.
+
+  ⚠️ Two frozen guards were changed **deliberately, with their own preconditions met**: the
+  `IncidentQuery` filter freeze (which demands "its index and a row in the workflow coverage test
+  before this line changes" — both done, `tenant_analysis_time`), and the workflow index-coverage
+  test. `includeAnalyses` is excluded from the coverage rule because it is a *mode*, not a filter.
+
+  Verified deployed (1 565 pre-existing incidents, index created on start): an offline run raised
+  **1 incident attributed to its session**, the default live queue returned **200 items with 0
+  leaked**, and the timeline reported `incidentsAvailable: true` with the incident at footage offset
+  0.0 s. 68/68 repo gate.
+
   **Slice 4 · Investigation timeline — ✅ deployed.** `GET /analyses/:id/timeline` derives entries,
   track spans and a density lane from the events one run persisted. ⭐ **Derived, never stored** — a
   stored timeline can disagree with the events it claims to summarise, and the disagreement surfaces

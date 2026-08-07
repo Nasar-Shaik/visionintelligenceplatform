@@ -139,6 +139,16 @@ export function buildIncidentCandidate(
   if (envelope.cameraId) candidate.triggeredBy.cameraId = envelope.cameraId;
   if (envelope.zoneId) candidate.triggeredBy.zoneId = envelope.zoneId;
   if (envelope.correlationId) candidate.correlationId = envelope.correlationId;
+  /*
+   * ⭐ **The analysis run travels with the finding** (ADR-0047, extended to incidents).
+   *
+   * ⚠️ Copied, never defaulted. Absent means a live camera raised this — which is every candidate
+   * any deployment produced before offline analysis existed — and absence is what keeps it in the
+   * live queue. A placeholder here would put every live incident into an investigation.
+   */
+  if (envelope.analysisSessionId !== undefined) {
+    candidate.analysisSessionId = envelope.analysisSessionId;
+  }
 
   if (dwell !== undefined) {
     const detail = {

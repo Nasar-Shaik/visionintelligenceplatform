@@ -903,6 +903,15 @@ export const IncidentCandidate = z.object({
   /** How many matching events satisfied the (windowed) rule — 1 for a stateless rule. */
   matchedCount: z.number().int().min(1),
   correlationId: z.string().optional(),
+  /**
+   * ⭐ **The offline analysis run whose event triggered this** (ADR-0047, extended to incidents).
+   *
+   * ⚠️ Absent ⇒ a live camera raised it, which is every candidate any deployment produced before
+   * this milestone. Present ⇒ it came from replayed footage, and it must not appear in the live
+   * queue an operator works from: an incident from six-week-old footage, raised on demand, is not
+   * something anybody is going to respond to now.
+   */
+  analysisSessionId: z.string().min(1).max(120).optional(),
   dedupKey: z.string(),
   at: IsoDateTime,
 

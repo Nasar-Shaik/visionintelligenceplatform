@@ -169,9 +169,16 @@ describe('IncidentQuery — the frozen P-5 search surface (G-3)', () => {
   /**
    * Frozen so P-5 can be built against it without an API redesign (Architect rec 9). A tenth filter
    * needs its index and a row in the workflow coverage test before this line changes.
+   *
+   * ⚠️ **Changed once, deliberately, with both preconditions met** (ADR-0047, P-8 Phase 8 slice 5):
+   * `analysisSessionId` is served by `tenant_analysis_time` in `services/workflow/src/adapters/
+   * indexes.ts`, and the workflow coverage test asserts it. `includeAnalyses` is a **mode** rather
+   * than a filter — it selects `{$exists:false}` on the same field that index leads with — so it
+   * needs no index of its own and is excluded from the coverage rule for that stated reason.
    */
   it('freezes the filter set', () => {
     expect(Object.keys(IncidentQuery.shape).sort()).toEqual([
+      'analysisSessionId',
       'assignee',
       'cameraId',
       'category',
@@ -179,6 +186,7 @@ describe('IncidentQuery — the frozen P-5 search surface (G-3)', () => {
       'cursor',
       'eventType',
       'from',
+      'includeAnalyses',
       'limit',
       'ruleId',
       'severity',

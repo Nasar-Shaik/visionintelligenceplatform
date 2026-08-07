@@ -7,6 +7,7 @@
 import type {
   AnalysisSessionState,
   EventEnvelope,
+  Incident,
   ClipQuery,
   RecordingQuery,
   RecordingSegment,
@@ -298,6 +299,22 @@ export interface AnalysisEventSource {
     limit: number,
     caller: AnalysisEventCaller,
   ): Promise<{ events: EventEnvelope[]; truncated: boolean }>;
+}
+
+/**
+ * Reads back the incidents one analysis run raised (P-8 Phase 8, slice 5).
+ *
+ * ⚠️ Separate from `AnalysisEventSource` because it is a **different service** and can be absent
+ * independently. A deployment with events but no workflow answers `incidentsAvailable: false` rather
+ * than an empty lane — "we cannot look" and "we looked and found none" are opposite answers.
+ */
+export interface AnalysisIncidentSource {
+  forSession(
+    scope: TenantScope,
+    sessionId: string,
+    limit: number,
+    caller: AnalysisEventCaller,
+  ): Promise<{ incidents: Incident[]; truncated: boolean }>;
 }
 
 /**

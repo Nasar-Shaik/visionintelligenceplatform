@@ -27,6 +27,7 @@ import { AnalysisWorker, defaultWorkerId } from './application/analysis-worker.j
 import { AnalysisRunner } from './application/analysis-runner.js';
 import { StoredMediaFrameSourceFactory } from './adapters/stored-media-frame-source.js';
 import { HttpAnalysisEvents } from './adapters/http-analysis-events.js';
+import { HttpAnalysisIncidents } from './adapters/http-analysis-incidents.js';
 import { FfprobeMediaProbe } from './adapters/ffprobe.js';
 import { CameraSourceDirectory } from './adapters/camera-source-directory.js';
 import { NatsEventBus } from '@vip/messaging';
@@ -258,6 +259,9 @@ async function main(): Promise<void> {
       : {
           events: new HttpAnalysisEvents({ baseUrl: config.eventsUrl }),
         }),
+    ...(config.workflowUrl === ''
+      ? {}
+      : { incidents: new HttpAnalysisIncidents({ baseUrl: config.workflowUrl }) }),
   });
 
   const supervisor = new StreamSupervisor({

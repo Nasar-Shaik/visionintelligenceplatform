@@ -116,6 +116,18 @@ export class MongoIncidentStore implements IncidentStore {
     if (query.zoneId !== undefined) filter['triggeredBy.zoneId'] = query.zoneId;
     if (query.ruleId !== undefined) filter['source.ruleId'] = query.ruleId;
     if (query.correlationId !== undefined) filter['correlationId'] = query.correlationId;
+    if (query.analysisSessionId !== undefined) {
+      filter['analysisSessionId'] = query.analysisSessionId;
+    } else if (!query.includeAnalyses) {
+      /*
+       * ⛔ **The live queue is a work list** (ADR-0047). An incident replayed out of old footage is
+       * a real finding and not something anybody is dispatched to now.
+       *
+       * ⚠️ `$exists: false`, never `$eq: null` — the field is absent on a live incident, so matching
+       * null would return nothing and empty the queue, which is the failure inverted.
+       */
+      filter['analysisSessionId'] = { $exists: false };
+    }
     if (query.assignee !== undefined) filter['assignee'] = query.assignee;
     if (query.from !== undefined || query.to !== undefined) {
       const range: Record<string, unknown> = {};

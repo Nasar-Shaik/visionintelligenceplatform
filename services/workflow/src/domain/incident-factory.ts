@@ -82,6 +82,14 @@ export function promoteFromCandidate(
     version: 1,
     // rec 1 — always present: inherit the event's correlation, else anchor to the triggering event.
     correlationId: candidate.correlationId ?? candidate.triggeredBy.eventId,
+    /*
+     * ⭐ Carried through to the incident (ADR-0047). ⚠️ No fallback: unlike `correlationId`, which
+     * anchors to the event id when absent so the chain is never broken, an absent run means the
+     * incident is **live**. Inventing one would hide a real incident from the queue.
+     */
+    ...(candidate.analysisSessionId === undefined
+      ? {}
+      : { analysisSessionId: candidate.analysisSessionId }),
     causationId: candidate.id,
     history: [firstTransition],
     // A fresh incident is unassigned with nothing said about it yet. Empty rather than absent, so

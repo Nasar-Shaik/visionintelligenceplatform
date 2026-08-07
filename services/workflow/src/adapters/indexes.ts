@@ -102,6 +102,14 @@ export const INCIDENT_INDEXES: readonly IndexSpec[] = [
     serves: 'the correlation spine — "everything related to this"',
   },
   {
+    name: 'tenant_analysis_time',
+    keys: ['tenantId', 'analysisSessionId', 'raisedAt', 'id'],
+    descending: CURSOR_DESC,
+    serves:
+      'the investigation’s incident list — everything one offline analysis run raised (ADR-0047). ' +
+      'Also serves the live queue’s {$exists:false} exclusion, which leads on the same field',
+  },
+  {
     name: 'tenant_assignee_time',
     keys: ['tenantId', 'assignee', 'raisedAt', 'id'],
     descending: CURSOR_DESC,

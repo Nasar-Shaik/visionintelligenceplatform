@@ -47,10 +47,16 @@ import { badRequest, conflict, DuplicateSessionError, notFound } from './errors.
 import type {
   AnalysisEventCaller,
   AnalysisEventSource,
+  AnalysisIncidentSource,
   AnalysisStore,
   CameraDirectory,
 } from './ports.js';
-import { toDensity, toEntry, toTrackSpans } from '../domain/analysis-timeline.js';
+import {
+  offsetSeconds,
+  toDensity,
+  toEntry,
+  toTrackSpans,
+} from '../domain/analysis-timeline.js';
 
 export interface AnalysisIdGen {
   analysisId(): string;
@@ -86,6 +92,13 @@ export interface AnalysisServiceDeps {
    * and "no events" are opposite answers to a customer's question.
    */
   events?: AnalysisEventSource;
+  /**
+   * Reads back the incidents a run raised (slice 5). Absent ⇒ `incidentsAvailable: false`.
+   *
+   * ⚠️ Independent of `events`: a deployment can have one and not the other, and the timeline must
+   * say which lane it could not fill rather than showing an empty one.
+   */
+  incidents?: AnalysisIncidentSource;
 }
 
 /** The seam between recording the intent to run and running it. Implemented by `AnalysisRunner`. */
@@ -106,6 +119,7 @@ export class AnalysisService {
   readonly #playbackTtl: number;
   readonly #runner: SessionRunner | undefined;
   readonly #events: AnalysisEventSource | undefined;
+  readonly #incidents: AnalysisIncidentSource | undefined;
 
   constructor(deps: AnalysisServiceDeps) {
     this.#store = deps.store;
@@ -119,6 +133,7 @@ export class AnalysisService {
     this.#playbackTtl = deps.playbackTtlSeconds;
     this.#runner = deps.runner;
     this.#events = deps.events;
+    this.#incidents = deps.incidents;
   }
 
   /**
@@ -523,6 +538,37 @@ export class AnalysisService {
       TIMELINE_MAX_EVENTS,
       caller,
     );
+
+    /*
+     * ⚠️ **A failure to read incidents degrades the lane, never the timeline.** The events are the
+     * substance of an investigation; the incidents are a layer on top. A workflow outage must not
+     * turn a working timeline into a 500 — it turns the lane into "not available", which is exactly
+     * what `incidentsAvailable` exists to say.
+     */
+    let incidents: AnalysisTimeline['incidents'] = [];
+    let incidentsAvailable = false;
+    if (this.#incidents !== undefined) {
+      try {
+        const raised = await this.#incidents.forSession(scope, session._id, 200, caller);
+        incidents = raised.incidents.map((incident) => ({
+          incidentId: incident.id,
+          title: incident.title,
+          status: incident.status,
+          ...(incident.severity === undefined ? {} : { severity: incident.severity }),
+          ...(incident.source.ruleId === undefined ? {} : { ruleId: incident.source.ruleId }),
+          /*
+           * ⭐ The TRIGGERING EVENT's time, never `raisedAt`. `raisedAt` is when the analysis ran;
+           * placing that on a footage timeline would put "today" on something that happened weeks
+           * ago, which is the whole class of defect this milestone's three clocks exist to prevent.
+           */
+          occurredAt: incident.triggeredBy.occurredAt,
+          offsetSeconds: offsetSeconds(incident.triggeredBy.occurredAt, doc.footageStartedAt),
+        }));
+        incidentsAvailable = true;
+      } catch {
+        incidentsAvailable = false;
+      }
+    }
     const entries = events
       .map((event) => toEntry(event, doc.footageStartedAt))
       /*
@@ -543,12 +589,13 @@ export class AnalysisService {
       tracks: toTrackSpans(entries),
       density: toDensity(entries, doc.asset?.durationSeconds),
       truncated,
+      incidents,
       /*
-       * ⚠️ Incidents arrive in slice 5. Reported as **unavailable** rather than as an empty lane,
-       * because "we cannot look" and "we looked and found none" are opposite answers and the console
-       * must be able to say which one it is showing.
+       * ⚠️ **"We cannot look" is not "we looked and found none."** `false` means no incident source
+       * was configured or it could not be reached; the console shows "not available" rather than an
+       * empty lane that reads as "nothing was raised" — ADR-0039's rule applied to a whole lane.
        */
-      incidentsAvailable: false,
+      incidentsAvailable,
       generatedAt: this.#clock.now().toISOString(),
     };
   }
