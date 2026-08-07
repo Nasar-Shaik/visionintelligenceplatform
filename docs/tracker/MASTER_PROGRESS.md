@@ -318,7 +318,12 @@ _Last updated: 2026-08-07 · Claude_
   a host that could not keep up shows "1× real time" and a speedFactor below 1.0 rather than a figure
   it did not achieve.
 
-  ⛔ Same outstanding item as slice 8: not yet driven in a real browser against the deployment.
+  ⚠️ **Deployment check, short of a browser drive.** `/investigations` and `/investigations/:id`
+  serve 200, and the deployed lazy chunk `InvestigationDetailPage-*.js` was fetched over HTTPS and
+  **contains all four honesty strings** — "Demonstrate at real time", "could not be looked up",
+  "Showing the first", "Capture still". So the artefact a browser downloads genuinely has the
+  feature. ⛔ That is still not the same as driving it: nobody has clicked the button against the
+  deployment. Recorded as outstanding rather than rounded up.
 
   **Slice 8 · Customer Investigation UI — ⚠️ shipped, browser verification OUTSTANDING.**
   `/investigations` (list + upload) and `/investigations/:id` (runs, timeline, incidents, capture a
@@ -333,10 +338,10 @@ _Last updated: 2026-08-07 · Claude_
   the run**; `speedFactor: null` renders "—" and never "0×"; a truncated timeline says so; and
   `incidentsAvailable: false` renders "could not be looked up" rather than an empty table.
 
-  ⚠️ **Verified: 5 component tests driving the real components against mocked APIs** (the four
-  honesty rules above, plus the offset formatter), 467 console tests total, 68/68 repo gate, and the
-  console image is deployed with `/investigations` serving 200. ⛔ **Not verified: the screens in a
-  real browser against the deployment.** Playwright is not installed in this workspace and the
+  ⚠️ **Verified: 7 component tests driving the real components against mocked APIs** (each honesty
+  rule above, plus the offset formatter), 469 console tests total, 68/68 repo gate, the console image
+  deployed, and the built chunk fetched over HTTPS and confirmed to contain the new UI. ⛔ **Not
+  verified: a human path through the screens in a real browser against the deployment.** Playwright is not installed in this workspace and the
   edge's self-signed CA blocks the MCP browser, so the P-5.8 pattern could not be reused. Until that
   runs, this slice is **shipped but not certified** — the same distinction P-5.8 was created to
   enforce, and it is recorded here rather than assumed away.
