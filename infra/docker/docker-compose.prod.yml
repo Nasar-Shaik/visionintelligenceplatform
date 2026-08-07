@@ -206,6 +206,12 @@ services:
       PORT: '8083'
       SERVICE_NAME: media
       CAMERA_URL: http://camera:8082
+      # ⚠️ Read-only, and only for the investigation timeline (P-8 Phase 8 slice 4). Media asks the
+      # events service for the events one analysis run produced rather than keeping a second copy —
+      # a stored timeline can disagree with the events it claims to summarise. Blank is a valid
+      # deployment: the timeline then reports itself unavailable, which is honest, rather than
+      # returning an empty one that reads as "nothing happened in this recording".
+      EVENTS_URL: ${EVENTS_URL:-http://events:8084}
       # ⚠️ The perception seam, connected (P-8 Phase 2, ADR-A). Blank would keep the null sink and the
       # pre-Phase-2 behaviour; this is the one variable that turns frame delivery on. Delivery is
       # non-blocking and bounded per camera, so a slow or absent runtime costs frames and never

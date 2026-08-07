@@ -6,6 +6,7 @@
  */
 import type {
   AnalysisSessionState,
+  EventEnvelope,
   ClipQuery,
   RecordingQuery,
   RecordingSegment,
@@ -260,6 +261,43 @@ export interface AnalysisStore {
     expected: { state: AnalysisSessionState; workerId: string | null },
     next: AnalysisSessionDoc,
   ): Promise<boolean>;
+}
+
+/**
+ * Reads back the events one analysis session produced (P-8 Phase 8, slice 4).
+ *
+ * ⭐ **The timeline is derived from the events, never stored.** A stored timeline can disagree with
+ * the events it claims to summarise, and the disagreement surfaces months later in front of a
+ * customer. The events are the record; the timeline is a view.
+ *
+ * ⚠️ Absent in a deployment with no events service configured — media records and analyses without
+ * one, so the timeline reports that it is unavailable rather than returning an empty one. "No events
+ * service" and "no events" are different answers.
+ */
+export interface AnalysisEventCaller {
+  /**
+   * ⛔ **The requesting user's `authorization` header, forwarded — never a service key.**
+   *
+   * A service key would work and would quietly widen what a timeline can show beyond what the person
+   * asking for it is entitled to open. `services/workflow` made exactly this decision for the
+   * incident timeline; the same rule applies here, for the same reason.
+   */
+  authorization: string;
+}
+
+export interface AnalysisEventSource {
+  /**
+   * Every event of one run, oldest first.
+   *
+   * ⚠️ Returns `truncated` rather than silently capping. "The first two thousand events" and "the
+   * events" are different claims about an investigation, and only one of them is true.
+   */
+  forSession(
+    scope: TenantScope,
+    sessionId: string,
+    limit: number,
+    caller: AnalysisEventCaller,
+  ): Promise<{ events: EventEnvelope[]; truncated: boolean }>;
 }
 
 /**

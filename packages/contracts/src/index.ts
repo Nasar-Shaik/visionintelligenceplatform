@@ -37,6 +37,7 @@ export * from './media/media.js';
 // ⚠️ `AnalysisSession` is the Media context's execution record; it is NOT the AI runtime's live
 // session (`POST /sessions`). Two words, two meanings — see the header, and ADR-0044's discipline.
 export * from './media/analysis.js';
+export * from './media/analysis-timeline.js';
 
 // evidence (P2-2 G-4)
 export * from './evidence/evidence.js';

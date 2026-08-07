@@ -305,6 +305,28 @@ _Last updated: 2026-08-07 · Claude_
   deployed run above. ⚠️ **C-21 moves ⛔ → ⚠️** — a *first* analysis of a recording works end to end;
   a rerun is silent until L-61 is closed.
 
+  **Slice 4 · Investigation timeline — ✅ deployed.** `GET /analyses/:id/timeline` derives entries,
+  track spans and a density lane from the events one run persisted. ⭐ **Derived, never stored** — a
+  stored timeline can disagree with the events it claims to summarise, and the disagreement surfaces
+  months later in front of a customer. Per **session**, never merged: omitting `sessionId` means the
+  latest run, because two runs are two answers and overlaying them describes no run that happened.
+
+  ⛔ **A service key shipped and was caught by the deployment.** The first build authenticated to the
+  events service with `x-internal-key` and got a 401 — which was lucky, because
+  `services/workflow` had already recorded the right answer for the incident timeline: *forward the
+  caller's own authorization, never a service key, or the timeline quietly shows more than the person
+  asking is entitled to open.* Now forwarded, refused when absent, and pinned by a test.
+
+  Honest edges: `truncated` is stated rather than hidden (a partial timeline is a different claim from
+  a complete one); `incidentsAvailable: false` until slice 5, so the console can distinguish "we
+  cannot look" from "we looked and found none"; spans group by `trackId` and **not** `identityId`,
+  because a bar drawn across an occlusion claims visibility the footage does not support. New
+  [L-62](../project/KNOWN_LIMITATIONS.md): the track lane is sparse because dedup keeps the earliest
+  observation in each bucket, which is systematically the untracked one.
+
+  Verified deployed: both runs of one recording return identical timelines — 5 entries, 2 spans, 120
+  density buckets, `truncated: false`. 281 media tests; turbo lint + typecheck + test green (68).
+
   **ADR-0047 · An analysis run is part of an event's identity — ✅ verified on the deployed stack.**
   `analysisSessionId` added to `EventEnvelope` and `DetectionResult`, additive and absent on every
   live event. Appended to the dedup key **only when present**, so live keys are byte-identical to the

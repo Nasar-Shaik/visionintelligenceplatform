@@ -14,6 +14,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import {
+  AnalysisTimelineQuery,
   ConfirmVideoAnalysisInput,
   CreateVideoAnalysisInput,
   StartAnalysisSessionInput,
@@ -60,6 +61,30 @@ export function registerAnalysisRoutes(app: FastifyInstance, deps: AnalysisRoute
     async (request, reply) => {
       const scope = scopeOf(request.principal!.tenantId);
       return reply.send(success(await analyses.detail(scope, request.params.id)));
+    },
+  );
+
+  /**
+   * ⭐ The investigation timeline — derived from the events one run produced (slice 4).
+   *
+   * ⚠️ `stream:read`, matching every other analysis read. It exposes no pixels and no detections,
+   * only what was already persisted as events, so it needs no stronger permission than the detail
+   * view an operator already has.
+   */
+  app.get<{ Params: IdParams }>(
+    '/analyses/:id/timeline',
+    { preHandler: auth.authorize('stream:read') },
+    async (request, reply) => {
+      const scope = scopeOf(request.principal!.tenantId);
+      const query = parseBody(AnalysisTimelineQuery, request.query ?? {});
+      /*
+       * ⛔ **The caller's own authorization is forwarded to the events service, never a service key.**
+       * The timeline must show exactly what the person asking for it is entitled to open; a service
+       * key would work and would quietly widen that. Same decision `services/workflow` records for
+       * the incident timeline.
+       */
+      const caller = { authorization: request.headers.authorization ?? '' };
+      return reply.send(success(await analyses.timeline(scope, request.params.id, query, caller)));
     },
   );
 

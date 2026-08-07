@@ -1,0 +1,127 @@
+/**
+ * The **investigation timeline** (P-8 Phase 8, slice 4).
+ *
+ * ### ⭐ Derived, never stored
+ *
+ * Every value here is computed from the events one analysis session persisted. Nothing is written
+ * down, and that is the point: a stored timeline can disagree with the events it claims to
+ * summarise, and the disagreement surfaces months later in front of a customer. The events are the
+ * record; this is a view of them.
+ *
+ * ### ⭐ Footage time, and the media offset beside it
+ *
+ * Every entry carries `offsetSeconds` — seconds from the start of the recording — as well as the
+ * footage-clock `occurredAt`. The offset is what a scrubber, an evidence clip range and a "jump to
+ * this moment" control all need, and deriving it in the browser would put the milestone's central
+ * arithmetic in three places instead of one.
+ */
+import { z } from 'zod';
+import { IsoDateTime, TenantId } from '../common/primitives.js';
+
+/**
+ * One thing that happened, placed in the footage.
+ *
+ * ⚠️ It carries the event's own id so the timeline can link to the record it came from. A timeline
+ * that cannot be traced back to its evidence is a picture, not an investigation.
+ */
+export const AnalysisTimelineEntry = z.object({
+  eventId: z.string().min(1),
+  type: z.string().min(1),
+  /** Footage-clock instant. ⭐ Where in the recording, on the recording's own clock. */
+  occurredAt: IsoDateTime,
+  /** Seconds from the start of the recording. ⭐ The scrubber's x-axis. */
+  offsetSeconds: z.number().min(0),
+  /** What was seen — the subject's class, e.g. `person`. */
+  label: z.string().min(1).max(120),
+  /** ⚠️ `null` when the runtime returned no confidence, never 0 — see ADR-0039. */
+  confidence: z.number().min(0).max(1).nullable(),
+  /** The tracked identity, when the tracker gave one (ADR-0041). */
+  trackId: z.string().min(1).optional(),
+  /** The detection zone the subject was inside, when it was inside one (ADR-0044). */
+  zoneId: z.string().min(1).optional(),
+});
+export type AnalysisTimelineEntry = z.infer<typeof AnalysisTimelineEntry>;
+
+/**
+ * ⭐ **One subject's span through the footage** — where a person entered and left the frame.
+ *
+ * ⚠️ Grouped by `trackId` and **not** by identity across gaps. `identityId` (ADR-0041) bridges an
+ * occlusion, and a span drawn on it would render as one unbroken bar across a period the subject was
+ * not visible — which is a claim the footage does not support. Two bars with a gap is the honest
+ * picture, and the gap is often the interesting part.
+ */
+export const AnalysisTrackSpan = z.object({
+  trackId: z.string().min(1),
+  label: z.string().min(1).max(120),
+  fromOffsetSeconds: z.number().min(0),
+  toOffsetSeconds: z.number().min(0),
+  /** Events attributed to this track. ⚠️ Sampled by the dedup window, not one per frame (L-57). */
+  observations: z.number().int().min(1),
+  /** Highest confidence seen. `null` when none was reported. */
+  peakConfidence: z.number().min(0).max(1).nullable(),
+});
+export type AnalysisTrackSpan = z.infer<typeof AnalysisTrackSpan>;
+
+/**
+ * Detection density over the footage, for the lane a scrubber draws behind everything else.
+ *
+ * ⚠️ Bucketed rather than per-event because a four-hour analysis has more entries than a screen has
+ * pixels, and sending them all so the browser can throw them away is a cost paid on every open.
+ */
+export const AnalysisDensityBucket = z.object({
+  fromOffsetSeconds: z.number().min(0),
+  toOffsetSeconds: z.number().min(0),
+  count: z.number().int().min(0),
+});
+export type AnalysisDensityBucket = z.infer<typeof AnalysisDensityBucket>;
+
+/** Buckets across the whole recording. ⚠️ Bounded, so a long analysis cannot produce a huge body. */
+export const TIMELINE_BUCKETS = 120;
+
+/**
+ * ⛔ **How many events one timeline will read.**
+ *
+ * A ceiling exists because the alternative is an endpoint whose cost is set by how much footage a
+ * customer uploaded. When it is hit the timeline says so (`truncated`) rather than presenting a
+ * partial picture as a complete one.
+ */
+export const TIMELINE_MAX_EVENTS = 2000;
+
+export const AnalysisTimeline = z.object({
+  analysisId: z.string().min(1),
+  /** ⭐ The **run** this timeline describes. A rerun has its own, and they never merge (ADR-0047). */
+  sessionId: z.string().min(1),
+  tenantId: TenantId,
+  cameraId: z.string().min(1),
+  /** Footage-clock instant of offset 0. ⚠️ Operator-supplied — see `footageStartSource`. */
+  footageStartedAt: IsoDateTime,
+  /** Length of the recording, when the container declared one. */
+  durationSeconds: z.number().min(0).optional(),
+  entries: z.array(AnalysisTimelineEntry).max(TIMELINE_MAX_EVENTS),
+  tracks: z.array(AnalysisTrackSpan).max(500),
+  density: z.array(AnalysisDensityBucket).max(TIMELINE_BUCKETS),
+  /**
+   * ⛔ **`true` means this timeline is incomplete.** The analysis produced more events than one
+   * timeline reads, so what is shown is the earliest `TIMELINE_MAX_EVENTS` of them. Reported rather
+   * than hidden, because "the first two thousand events" and "the events" are different claims about
+   * an investigation and only one of them is true.
+   */
+  truncated: z.boolean(),
+  /**
+   * ⚠️ **Whether incidents could be looked up at all**, distinct from there being none.
+   *
+   * A deployment with no incident source answers `false`, and the console shows "not available"
+   * rather than an empty lane that reads as "nothing was raised". Those are opposite answers to a
+   * customer's question — the same rule ADR-0039 applies to a metric, applied to a whole lane.
+   */
+  incidentsAvailable: z.boolean(),
+  /** When this view was computed. ⚠️ Wall clock — the only wall-clock value in the whole shape. */
+  generatedAt: IsoDateTime,
+});
+export type AnalysisTimeline = z.infer<typeof AnalysisTimeline>;
+
+/** Query for a timeline. ⚠️ Omitting `sessionId` means the latest run, never a merge of all runs. */
+export const AnalysisTimelineQuery = z.object({
+  sessionId: z.string().min(1).optional(),
+});
+export type AnalysisTimelineQuery = z.infer<typeof AnalysisTimelineQuery>;

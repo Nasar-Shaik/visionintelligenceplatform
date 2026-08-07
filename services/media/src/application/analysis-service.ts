@@ -12,6 +12,9 @@
 import {
   ANALYSIS_LIMITS,
   isTerminalSessionState,
+  TIMELINE_MAX_EVENTS,
+  type AnalysisTimeline,
+  type AnalysisTimelineQuery,
   type AnalysisSession,
   type ConfirmVideoAnalysisInput,
   type CreateVideoAnalysisInput,
@@ -41,7 +44,13 @@ import {
 import { stateAfterLeaseLapse } from '../domain/analysis-lease.js';
 import { assetFromProbe, type MediaProbe } from '../adapters/ffprobe.js';
 import { badRequest, conflict, DuplicateSessionError, notFound } from './errors.js';
-import type { AnalysisStore, CameraDirectory } from './ports.js';
+import type {
+  AnalysisEventCaller,
+  AnalysisEventSource,
+  AnalysisStore,
+  CameraDirectory,
+} from './ports.js';
+import { toDensity, toEntry, toTrackSpans } from '../domain/analysis-timeline.js';
 
 export interface AnalysisIdGen {
   analysisId(): string;
@@ -69,6 +78,14 @@ export interface AnalysisServiceDeps {
    * leaving the session visibly `queued` rather than by silently reporting it as finished.
    */
   runner?: SessionRunner;
+  /**
+   * Reads back the events a run produced (slice 4). Absent ⇒ `/timeline` answers 501.
+   *
+   * ⚠️ Absent is a real deployment: media records and analyses without an events service. The
+   * timeline says it is unavailable rather than returning an empty one, because "no events service"
+   * and "no events" are opposite answers to a customer's question.
+   */
+  events?: AnalysisEventSource;
 }
 
 /** The seam between recording the intent to run and running it. Implemented by `AnalysisRunner`. */
@@ -88,6 +105,7 @@ export class AnalysisService {
   readonly #defaultFrameRate: number;
   readonly #playbackTtl: number;
   readonly #runner: SessionRunner | undefined;
+  readonly #events: AnalysisEventSource | undefined;
 
   constructor(deps: AnalysisServiceDeps) {
     this.#store = deps.store;
@@ -100,6 +118,7 @@ export class AnalysisService {
     this.#defaultFrameRate = deps.defaultFrameRate;
     this.#playbackTtl = deps.playbackTtlSeconds;
     this.#runner = deps.runner;
+    this.#events = deps.events;
   }
 
   /**
@@ -460,6 +479,78 @@ export class AnalysisService {
       repaired,
     );
     return landed ? repaired : ((await this.#store.getSession(scope, session._id)) ?? session);
+  }
+
+  /**
+   * ⭐ **The investigation timeline** (slice 4) — derived from the events one run produced.
+   *
+   * ⚠️ **Per session, never merged across runs.** Omitting `sessionId` means the *latest* run, not a
+   * union of all of them. Two runs of one recording are two answers — possibly under different rules
+   * or a different model — and overlaying them would produce a picture that describes no run that
+   * ever happened.
+   */
+  async timeline(
+    scope: TenantScope,
+    analysisId: string,
+    query: AnalysisTimelineQuery,
+    caller: AnalysisEventCaller,
+  ): Promise<AnalysisTimeline> {
+    const doc = await this.#require(scope, analysisId);
+    const source = this.#events;
+    if (source === undefined) {
+      throw conflict(
+        'this deployment has no events service configured, so an analysis timeline cannot be built — the analysis itself is unaffected',
+      );
+    }
+
+    const sessions = await this.#store.listSessions(scope, analysisId);
+    /* ⚠️ `listSessions` is newest-first, so the head IS the latest run. */
+    const session =
+      query.sessionId === undefined
+        ? sessions[0]
+        : sessions.find((s) => s._id === query.sessionId);
+    if (session === undefined) {
+      throw notFound(
+        query.sessionId === undefined
+          ? `analysis '${analysisId}' has not been run yet, so it has no timeline`
+          : `run '${query.sessionId}' does not belong to analysis '${analysisId}'`,
+      );
+    }
+
+    const { events, truncated } = await source.forSession(
+      scope,
+      session._id,
+      TIMELINE_MAX_EVENTS,
+      caller,
+    );
+    const entries = events
+      .map((event) => toEntry(event, doc.footageStartedAt))
+      /*
+       * ⚠️ Sorted here rather than trusted from the store, which returns newest-first. A timeline is
+       * read left to right and every consumer of `entries` — the track spans, the density lane, the
+       * export — assumes footage order.
+       */
+      .sort((a, b) => a.offsetSeconds - b.offsetSeconds || a.eventId.localeCompare(b.eventId));
+
+    return {
+      analysisId,
+      sessionId: session._id,
+      tenantId: scope.tenantId,
+      cameraId: session.cameraId,
+      footageStartedAt: doc.footageStartedAt,
+      ...(doc.asset === undefined ? {} : { durationSeconds: doc.asset.durationSeconds }),
+      entries,
+      tracks: toTrackSpans(entries),
+      density: toDensity(entries, doc.asset?.durationSeconds),
+      truncated,
+      /*
+       * ⚠️ Incidents arrive in slice 5. Reported as **unavailable** rather than as an empty lane,
+       * because "we cannot look" and "we looked and found none" are opposite answers and the console
+       * must be able to say which one it is showing.
+       */
+      incidentsAvailable: false,
+      generatedAt: this.#clock.now().toISOString(),
+    };
   }
 
   /** A signed URL for the source recording, so an operator can watch what was analysed. */

@@ -26,6 +26,7 @@ import { AnalysisService } from './application/analysis-service.js';
 import { AnalysisWorker, defaultWorkerId } from './application/analysis-worker.js';
 import { AnalysisRunner } from './application/analysis-runner.js';
 import { StoredMediaFrameSourceFactory } from './adapters/stored-media-frame-source.js';
+import { HttpAnalysisEvents } from './adapters/http-analysis-events.js';
 import { FfprobeMediaProbe } from './adapters/ffprobe.js';
 import { CameraSourceDirectory } from './adapters/camera-source-directory.js';
 import { NatsEventBus } from '@vip/messaging';
@@ -247,6 +248,16 @@ async function main(): Promise<void> {
     defaultFrameRate: config.ingestion.frameRate,
     playbackTtlSeconds: config.playbackTtlSeconds,
     runner: analysisRunner,
+    /*
+     * ⚠️ Wired only when an events service is configured. Without one the timeline says it is
+     * unavailable — which is honest — rather than returning an empty one that reads as "nothing
+     * happened in this recording".
+     */
+    ...(config.eventsUrl === ''
+      ? {}
+      : {
+          events: new HttpAnalysisEvents({ baseUrl: config.eventsUrl }),
+        }),
   });
 
   const supervisor = new StreamSupervisor({
