@@ -67,6 +67,7 @@ Any decision that changes: a **contract**, a **boundary/dependency rule**, a **t
 | [0043](ADR-0043-assignment-is-a-control-plane-with-a-measured-data-plane.md) | Camera Processing Assignment is a control plane with a measured data plane | Accepted |
 | [0044](ADR-0044-one-word-two-zones.md) | One word, two zones: detection zones are not places | Accepted |
 | [0045](ADR-0045-the-incident-lifecycle-is-frozen.md) | The incident lifecycle is frozen, and two of its states are declared unreachable | Accepted |
+| [0046](ADR-0046-promotion-only-from-a-bundle.md) | A device's certification status changes only from a bundle, and the verdict is re-derived | Accepted |
 
 _Add new rows as ADRs are created. Never renumber; never delete._
 

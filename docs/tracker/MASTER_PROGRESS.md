@@ -2,7 +2,7 @@
 
 > **The single canonical dashboard. Read this first to know "where are we."** Update it every working session; keep it terse. Companion files: per-slice reviews in [REVIEW_HISTORY](REVIEW_HISTORY.md), narrative logs in [DAILY_LOG](DAILY_LOG.md). Backlog: [TASK-BOARD](../../tracking/TASK-BOARD.md). Roadmap: [PROJECT_ROADMAP](../project/PROJECT_ROADMAP.md).
 
-_Last updated: 2026-08-05 · Claude_
+_Last updated: 2026-08-07 · Claude_
 
 ## Snapshot
 
@@ -253,6 +253,54 @@ _Last updated: 2026-08-05 · Claude_
   reports no error at all). Gate green: typecheck 28 · lint 20 · test 28 · build 19 · python
   **1032** · contracts · import graph 0 violations.
   [ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md).
+
+- **P-9 Track A · Real Camera Validation — pre-hardware engineering ✅ complete (2026-08-07).** The
+  research changed the milestone's shape before a line was written: **almost all of P-9 was already
+  built and switched off.** ONVIF discovery (`onvif.py`, 651 lines, 22 tests), `POST /discovery/onvif`,
+  `POST /streams/validate`, `HttpDiscoveryProvider`, `HttpStreamProbe`, the frozen certification
+  contracts, `certify_cli.py` and an 11-device registry all shipped between P-1 and AI-5e — and
+  ⛔ **`CAMERA_DISCOVERY_URL` was unset in every deployment ever made**, so all of it fell back to the
+  `Unavailable*` implementations. [L-56](../project/KNOWN_LIMITATIONS.md)'s shape again: enablable in
+  the contract, unusable in every deployment, because nothing had tried.
+
+  Switching it on (**A1**) made the rest reachable, and each fix uncovered the next. **A2:** the probe
+  crashed — `cv2` was in **neither** requirements file, so `/streams/validate` raised
+  `ModuleNotFoundError` inside an unguarded handler, reset the socket, and surfaced to the camera
+  service as _"the stream validator is unreachable"_. An installer reading that goes to their switch;
+  the fault was a missing Python package. The `authentication` verdict was also decided by
+  pattern-matching a transport error string that OpenCV never populates, so **a wrong password — the
+  commonest installation fault — reported as `stream-interrupted` with `authentication: not-executed`**.
+  **A3:** `certify_cli` against a live source **hung forever** (inline pump on an unbounded source) and
+  then **segfaulted** (the decoder released while the pump thread was inside a native `read()`),
+  printing a complete summary and writing a zero-byte bundle. **A11:** a device that accepts TCP and
+  stalls held the capture past every budget above it — the second independent route to the same
+  missing capture timeout.
+
+  ⭐ **Certification was not weakened, and the run proves the mechanism.** Against a live transport,
+  seven checks carry `hardware` evidence and the two only a person can make — `reconnect-recovery`,
+  `clean-shutdown` — stay `not-executed` on `simulated`. `weakest()` makes the summary `simulated`, so
+  the verdict stays `pending-validation`. Three attempts to buy a certification, including
+  `--min-fps 0 --max-loss 100`, all refused. **A6** found the promotion guard firing correctly **and
+  corrupting the profile it refused** — `certify()` mutated then validated, so a caught refusal wrote
+  `certified`/`simulated` to disk and bricked the registry on next load; promotion is now atomic,
+  bundle-only, and re-derives the verdict from the bundle's own checks.
+
+  ⭐ **Two things happened for the first time.** **A5** closed **TD-29**: real HEVC fixtures decoded in
+  five engines, and `canPlayType` told the truth in all fifteen measurements — while **WebKit/Safari
+  genuinely cannot decode `hev1`**, which is now a stated procurement requirement rather than a
+  footnote. **A9/A10** put **real-world pixels through the perception path for the first time in the
+  project's life** — a real lens, real optics and real sensor noise through the deployed ONNX runtime:
+  308 frames, 78 ms inference, 143 detections, one tracked identity. Every frame before today came
+  from ffmpeg looping a photograph.
+
+  Delivered: A1–A11 + P0-1, five verifications (**A1 16/16 · A2 40/40 · A3+A4 27/27 · A4.5 35/35 ·
+  A11 10/10**, 8 of 11 stress scenarios executable), the Installer Toolkit, Customer Demonstration
+  Mode, a **generated** compatibility matrix (drift-guarded, never hand-edited), a certification
+  nightly stage, and five governance documents. **1057 runtime tests pass.**
+  ⛔ **No device was certified and none could be — that is the result, not an omission.** L-1 stands;
+  Track B is gated on hardware ([P9_HARDWARE_PROCUREMENT](../project/P9_HARDWARE_PROCUREMENT.md)).
+  Docs: [TRACK_A_ACCEPTANCE](../project/P9_TRACK_A_ACCEPTANCE.md),
+  [P9_IMPLEMENTATION_PLAN](../project/P9_IMPLEMENTATION_PLAN.md).
 
 - **P-8 Phase 7 FREEZE 🔒 (2026-08-07) — and the two nightlies that found nine defects, none of them
   in the runtime.** The milestone was implemented, deployment-verified, browser-verified and

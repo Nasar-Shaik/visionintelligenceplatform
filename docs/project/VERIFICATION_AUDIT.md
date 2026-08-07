@@ -204,3 +204,31 @@ Said explicitly, because an audit that only lists problems is not an audit:
 class was left.** The `[].every()` trap, the capacity refusal, the assignment gate — each was found,
 repaired in one file, and met again somewhere else within days. Policy 8 is the general form: when a
 verification needs a repair, the repair belongs in the shared helper.
+
+---
+
+## P-9 Track A — four more, and two of them are the same rule from opposite ends
+
+**2026-08-07.** Five new verifications; every one of them found a defect in the product, and three
+found defects in themselves first.
+
+| #   | Policy                                                                                                                                                                                                                                                                                                                                                                     |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 9   | ⭐ **A verification asserts the ABSENCE of "we could not measure", never the presence of a result it cannot control.** A1 asserts `unavailable` is absent, not that devices were found — the other way round it would be red forever on correct behaviour and green only once a camera existed, which is green exactly when it had stopped being needed                    |
+| 10  | ⭐ **Read the exit code, not the output.** A live certification printed a complete, correct summary and then died with SIGSEGV while writing its bundle. Every human reading stdout called it a pass                                                                                                                                                                       |
+| 11  | ⚠️ **A control case is not optional in a measurement suite.** A5's first run reported every engine failing to decode HEVC. It also reported every engine failing to decode **H.264**, which all five demonstrably play — and only that impossible result exposed two harness defects. Without the control it would have been published, because it matched the expectation |
+| 12  | ⚠️ **Assert the fixture came up, not that the command to start it returned.** `docker run -d` exits 0 for a container that started and immediately died on a bad config. A4.5 reported `0/4 cameras decoded` against a fixture that had never existed                                                                                                                      |
+| 13  | ⚠️ **A verification whose outcome depends on someone else's allocator is not a verification.** A11's first S6 restarted a container and hoped Docker would hand out a different IP. It did not, so the scenario reported `not-executed` — and would have reported `pass` on a different day for no reason connected to the platform                                        |
+
+⭐ **Two independent findings pointed at one missing property.** A3 hit it from teardown — the decoder
+was released while a pump thread sat inside a native `read()` that never returned. A11 hit it from the
+probe — a device that accepted TCP and stalled held the capture past every budget above it. Neither
+looked like the other; both were `cv2.VideoCapture` having no open or read timeout. **When two
+unrelated verifications fail for reasons that both bottom out in the same absent bound, the bound is
+the finding** — fixing either symptom alone would have left the other live.
+
+⚠️ And the P-8.7 lesson recurred in a new place. A6 found a guard that **fired correctly and caused
+the damage it existed to prevent**: `certify()` refused a `certified`-on-`simulated` promotion, and
+left the entry mutated to exactly that, so `save()` wrote it to disk and the next `load()` refused the
+whole registry. **A refusal must leave the world as it found it**, or the correct-looking report is
+what stops anyone looking further.
