@@ -22,8 +22,8 @@ import { execFileSync } from 'node:child_process';
 
 const B = process.env.BASE ?? 'https://localhost';
 const TENANT = 'tnt_demo_retail';
-const ADMIN = { email: 'security.manager@northgate.demo', password: 'Vip-Demo-2026!' };
-const OPERATOR = { email: 'day.operator@northgate.demo', password: 'Vip-Demo-2026!' };
+const ADMIN = { email: 'security.manager@northgate.demo', password: '12345678' };
+const OPERATOR = { email: 'day.operator@northgate.demo', password: '12345678' };
 /* A viewer-only account. Created for this run and left disabled-by-absence of roles. */
 const VIEWER = { email: `p64.viewer.${Date.now()}@northgate.demo`, password: 'Probe-Password-2026!' };
 

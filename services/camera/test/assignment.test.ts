@@ -875,6 +875,75 @@ describe('P-8.6 · the control plane', () => {
     expect(cam1.lastError).toMatch(/healthy/);
   });
 
+  /**
+   * ⛔ **V-1 — a runtime that is exactly full never recovers from a failover.**
+   *
+   * Found by P-8.5 Product Validation against the deployed stack, not by this suite, and the reason
+   * it was invisible here is worth keeping: every failover test above runs on a runtime with spare
+   * seats. The defect needs `assignedCameras === maxCameras` *exactly*.
+   *
+   * `#runtimeLoad()` counts `error` as an occupied slot — correctly, an errored camera is still
+   * assigned. So a camera being re-placed is already inside the load figure, and the failover path
+   * passed `currentRuntimeId: null`, withholding the one fact that would let the strategy discount
+   * it. The camera was then refused a seat it was itself sitting in, forever.
+   *
+   * Measured: 4 of `maxCameras: 4` failed over on a runtime restart, 669 planner cycles recorded
+   * `capacity-exceeded`, and no camera recovered. Every offline analysis afterwards reported
+   * `succeeded` having analysed zero frames.
+   */
+  it('⛔ recovers a full runtime after failover — the camera does not block its own seat', async () => {
+    await withRuntime(h, 'rt1', 2);
+    for (const id of ['cam1', 'cam2']) {
+      await h.service.enable(scope, id, { profileId: 'person-tracking', actor: 'op' });
+    }
+    /* The runtime goes away: both cameras fail over with nowhere to go. */
+    await h.service.report({
+      reportedBy: 'media',
+      at: NOW.toISOString(),
+      planVersion: null,
+      runtimes: [{ runtimeId: 'rt1', health: 'offline', latencyMs: null, capabilities: null }],
+      cameras: [],
+    });
+    for (const id of ['cam1', 'cam2']) {
+      expect((await h.service.getAssignment(scope, id)).state).toBe('error');
+    }
+
+    /* ⭐ It comes back healthy — and both cameras must return, because each already owns a seat. */
+    await h.service.report({
+      reportedBy: 'media',
+      at: NOW.toISOString(),
+      planVersion: null,
+      runtimes: [{ runtimeId: 'rt1', health: 'healthy', latencyMs: 3, capabilities: [PERSON] }],
+      cameras: [],
+    });
+
+    for (const id of ['cam1', 'cam2']) {
+      const recovered = await h.service.getAssignment(scope, id);
+      expect(recovered.state).toBe('recovering');
+      expect(recovered.runtimeId).toBe('rt1');
+      /* ⚠️ Asserted explicitly: with `currentRuntimeId: null` this read `capacity-exceeded`. */
+      expect(recovered.placementFailure).toBeNull();
+    }
+  });
+
+  /**
+   * ⚠️ The other half of the same fix: a runtime that is full of *other* cameras must still refuse.
+   *
+   * Without this, "discount the camera's own slot" could be mistaken for "capacity no longer
+   * applies", and the fix for V-1 would quietly become an overcommit bug — which is worse, because
+   * an over-subscribed runtime degrades every camera on it instead of one.
+   */
+  it('⚠️ still refuses when the runtime is full of OTHER cameras', async () => {
+    await withRuntime(h, 'rt1', 1);
+    await h.service.enable(scope, 'cam1', { profileId: 'person-tracking', actor: 'op' });
+    /* ⚠️ It throws a 409 rather than returning a result — see `#prepareEnable`, which refuses the
+     * request and writes nothing rather than parking a junk assignment in `error`. */
+    await expect(
+      h.service.enable(scope, 'cam2', { profileId: 'person-tracking', actor: 'op' }),
+    ).rejects.toThrow(/at capacity/);
+    expect((await h.service.getAssignment(scope, 'cam2')).state).toBe('unassigned');
+  });
+
   it('⚠️ a bulk operation with one bad item writes NOTHING', async () => {
     await withRuntime(h);
     const result = await h.service.bulk(

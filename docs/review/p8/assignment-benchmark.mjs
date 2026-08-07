@@ -37,7 +37,7 @@ import { resolve, join } from 'node:path';
 const ROOT = resolve(new URL('../../..', import.meta.url).pathname);
 const B = process.env.BASE ?? 'https://localhost';
 const TENANT = 'tnt_demo_retail';
-const ADMIN = { email: 'security.manager@northgate.demo', password: 'Vip-Demo-2026!' };
+const ADMIN = { email: 'security.manager@northgate.demo', password: '12345678' };
 const MEDIA = 'vip-prod-media-1';
 const CAMERA = 'vip-prod-camera-1';
 const FIXTURE = 'vip-assignment-bench';

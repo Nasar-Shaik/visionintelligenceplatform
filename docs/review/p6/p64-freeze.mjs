@@ -22,7 +22,7 @@ import { execFileSync } from 'node:child_process';
 
 const B = process.env.BASE ?? 'https://localhost';
 const TENANT = 'tnt_demo_retail';
-const ADMIN = { email: 'security.manager@northgate.demo', password: 'Vip-Demo-2026!' };
+const ADMIN = { email: 'security.manager@northgate.demo', password: '12345678' };
 const VIEWER = { email: `p64f.viewer.${Date.now()}@northgate.demo`, password: 'Probe-Password-2026!' };
 const PROBE_GATEWAY = 'vip-p64-probe-gateway';
 const PROBE_PORT = 18_080;

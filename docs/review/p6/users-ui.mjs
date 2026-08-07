@@ -16,7 +16,7 @@ import { chromium } from 'playwright';
 
 const B = process.env.BASE ?? 'https://localhost';
 const OUT = process.env.OUT ?? '.';
-const ADMIN = { email: 'security.manager@northgate.demo', password: 'Vip-Demo-2026!' };
+const ADMIN = { email: 'security.manager@northgate.demo', password: '12345678' };
 const TENANT = 'tnt_demo_retail';
 
 let failures = 0;
@@ -189,7 +189,7 @@ opPage.on('pageerror', (e) => opErrors.push(e.message));
 await opPage.goto(`${B}/login`, { waitUntil: 'domcontentloaded' });
 await opPage.getByLabel(/tenant/i).fill(TENANT);
 await opPage.getByLabel(/email/i).fill('day.operator@northgate.demo');
-await opPage.getByLabel(/password/i).fill('Vip-Demo-2026!');
+await opPage.getByLabel(/password/i).fill('12345678');
 await opPage.getByRole('button', { name: /sign in/i }).click();
 await opPage.waitForURL((u) => !u.pathname.startsWith('/login'));
 check(

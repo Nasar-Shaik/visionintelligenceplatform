@@ -1546,8 +1546,41 @@ export class AssignmentService {
      * registration instead of at the container that died. `placeable()` already excludes it on
      * health; leaving it in the list is what lets the failure resolve to `no-healthy-runtime`.
      */
+    /*
+     * ⛔ **`currentRuntimeId` is the camera's own runtime, not `null` — and passing `null` here
+     * deadlocked the platform** (P-8.5 Product Validation, V-1).
+     *
+     * `#runtimeLoad()` counts every assignment whose state is `aiEnabled`, and `error` is one of
+     * them — correctly, because an errored camera is still assigned and still owns its slot. So a
+     * camera being re-placed is *already inside* the load figure. Telling the strategy it has no
+     * current runtime withholds the one fact that lets it discount that slot, and the camera is
+     * refused for lack of a seat it is itself sitting in.
+     *
+     * ⚠️ The failure only appears when the runtime is **exactly full**, which is why no test caught
+     * it and only a deployment did. Measured on the deployed stack: the inference container was
+     * restarted, all 4 of `maxCameras: 4` failed over, and every retry thereafter recorded
+     * `placementFailure: capacity-exceeded` — `remaining: 0`, `utilization: 1`, `failedCameras: 4`.
+     * The planner cycled 669 times without recovering. Freeing a single slot by unassigning one
+     * camera moved the other three from `error` to `recovering` within one cycle, which is the
+     * measurement that isolated the cause.
+     *
+     * ⛔ The product consequence was worse than a stuck camera: with no assignment, every subsequent
+     * offline analysis completed as `succeeded` having analysed **nothing**, reporting a speed factor
+     * of ×280 for a run that looked at zero frames.
+     *
+     * ⭐ The pinned branch of `LeastLoadedPlacement` already documents this exact trap — "the camera
+     * already on this runtime does not consume a slot it is about to re-occupy" — and guards it. The
+     * reasoning was simply never carried across to failover. The strategy needed no change; it needed
+     * to be told the truth.
+     *
+     * ⚠️ Still not filtered from `runtimes`: a dead runtime left in the list is what lets the failure
+     * resolve to `no-healthy-runtime` rather than `no-runtime-registered`, which is the difference
+     * between sending an engineer to the container that died and sending them to look for a missing
+     * registration. `placeable()` excludes it on health, so a genuinely dead runtime still forces the
+     * choose branch and a real move.
+     */
     const placement = this.#placement.place(
-      { capabilityId: primaryCapability(profile), currentRuntimeId: null },
+      { capabilityId: primaryCapability(profile), currentRuntimeId: doc.runtimeId },
       runtimes,
       load,
       now,

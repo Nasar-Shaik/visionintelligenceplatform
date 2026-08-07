@@ -10,6 +10,7 @@ import { authenticated, signedOut } from '@/store/sessionSlice';
 import { TooltipProvider } from '@/ui';
 import { renderWithProviders } from '@/test/render';
 import { Sidebar } from './Sidebar';
+import { NAV_GROUPS } from './navModel';
 import { AppShell } from './AppShell';
 
 function authAs(roles: string[]) {
@@ -120,5 +121,35 @@ describe('AppShell', () => {
     );
     expect(screen.getByRole('link', { name: /dashboard/i })).toBeInTheDocument();
     expect(screen.getByText('routed page')).toBeInTheDocument();
+  });
+});
+
+/**
+ * ⛔ **V-6 — two navigation items were both labelled "Investigations".**
+ *
+ * `/investigations` (analyse a recording) and `/workspace` (work an incident that already exists)
+ * sat next to each other in the Investigate section under the same word, leading to entirely
+ * different screens. An operator clicking "Investigations" got whichever they happened to hit.
+ *
+ * Found by P-8.5 Product Validation driving the real navigation in a browser — the certification's
+ * own `getByRole('link', { name: /investigations/i })` matched two elements and could not proceed.
+ * No test noticed, because each page renders perfectly on its own; the defect only exists in the
+ * relationship between them.
+ *
+ * ⚠️ Asserted as a **general rule**, not as "these two differ". A test naming the two old labels
+ * would pass forever while a third duplicate was added next year.
+ */
+describe('the navigation is unambiguous', () => {
+  it('⛔ no two nav items share a label', () => {
+    const labels = NAV_GROUPS.flatMap((s) => s.items.map((i) => i.label));
+    const seen = new Map<string, number>();
+    for (const l of labels) seen.set(l, (seen.get(l) ?? 0) + 1);
+    const duplicated = [...seen.entries()].filter(([, n]) => n > 1).map(([l]) => l);
+    expect(duplicated).toEqual([]);
+  });
+
+  it('⛔ no two nav items share a destination', () => {
+    const routes = NAV_GROUPS.flatMap((s) => s.items.map((i) => i.to));
+    expect(new Set(routes).size).toBe(routes.length);
   });
 });

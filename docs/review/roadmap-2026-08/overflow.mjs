@@ -15,7 +15,7 @@
 import { chromium } from 'playwright';
 
 const BASE = process.env.BASE ?? 'https://localhost';
-const PASSWORD = process.env.SEED_PASSWORD ?? 'Vip-Demo-2026!';
+const PASSWORD = process.env.SEED_PASSWORD ?? '12345678';
 
 const ROUTES = [
   '/',

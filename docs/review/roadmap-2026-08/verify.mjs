@@ -14,7 +14,7 @@ const BASE = process.env.BASE ?? 'https://localhost';
 const OUT = process.env.OUT ?? 'docs/review/roadmap-2026-08/screens';
 const TENANT = 'tnt_demo_retail';
 const EMAIL = 'security.manager@northgate.demo';
-const PASSWORD = process.env.SEED_PASSWORD ?? 'Vip-Demo-2026!';
+const PASSWORD = process.env.SEED_PASSWORD ?? '12345678';
 
 const ROUTES = [
   ['dashboard', '/'],

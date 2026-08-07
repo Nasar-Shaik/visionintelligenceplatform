@@ -39,9 +39,14 @@ def det(label="person", conf=0.9, bbox=(0.4, 0.4, 0.1, 0.1), class_id=0):
     return Detection(label=label, confidence=conf, bbox=bbox, class_id=class_id)
 
 
-def ctx(camera="cam_1", tenant="tnt_a", seq=0, at="2026-08-05T09:00:00.000Z"):
+def ctx(camera="cam_1", tenant="tnt_a", seq=0, at="2026-08-05T09:00:00.000Z", correlation=None):
     return FrameContext(
-        tenant_id=tenant, camera_id=camera, image=b"", frame_number=seq, timestamp=at
+        tenant_id=tenant,
+        camera_id=camera,
+        image=b"",
+        frame_number=seq,
+        timestamp=at,
+        correlation_id=correlation,
     )
 
 
@@ -490,6 +495,65 @@ class RuntimeTrackerTests(unittest.TestCase):
         stats = rt.stats("tnt_a")
         self.assertEqual(stats["outOfOrderFrames"], 1)
         self.assertEqual(stats["framesTracked"], 1)
+
+    # -- V-2: the stream, not the camera ----------------------------------------
+
+    def test_two_analysis_runs_of_one_recording_do_not_silence_each_other(self):
+        """⛔ **V-2 — the defect that made offline reruns produce no tracking at all.**
+
+        Found by P-8.5 Product Validation against the deployed stack. An offline analysis stamps
+        **footage** time, and footage time does not advance between runs: the second analysis of a
+        recording replays the same instants. Against a gate holding `last_capture_seconds` per
+        *camera*, every one of those frames is "older" and is skipped — no association, no
+        `tracking_id`, no dwell, no loitering incident, and nothing anywhere saying so.
+
+        Measured before the fix: two identical reruns raised `outOfOrderFrames` by exactly 120, the
+        whole of both runs, while `framesTracked` did not move.
+        """
+        rt = self.tracker()
+        for seq, second in enumerate([10, 11, 12]):
+            rt.run([det(bbox=(0.4 + seq * 0.04, 0.45, 0.1, 0.1))], ctx(seq=seq, at=iso(second), correlation="ases_A"))
+        first = rt.stats("tnt_a")["framesTracked"]
+
+        # ⭐ The same footage instants again, under a different run.
+        for seq, second in enumerate([10, 11, 12]):
+            rt.run([det(bbox=(0.4 + seq * 0.04, 0.45, 0.1, 0.1))], ctx(seq=seq, at=iso(second), correlation="ases_B"))
+
+        stats = rt.stats("tnt_a")
+        self.assertEqual(stats["framesTracked"], first * 2)
+        self.assertEqual(stats["outOfOrderFrames"], 0)
+
+    def test_two_runs_mint_different_track_ids(self):
+        """⚠️ ADR-0047 promises runs are independently queryable. That has to hold for identities
+        too, or two analyses of one recording would report the same track id for different work."""
+        rt = self.tracker()
+        for run in ("ases_A", "ases_B"):
+            for seq, second in enumerate([10, 11, 12]):
+                rt.run([det(bbox=(0.4 + seq * 0.04, 0.45, 0.1, 0.1))], ctx(seq=seq, at=iso(second), correlation=run))
+        ids = {t.track_id for t in rt.tracks("tnt_a")}
+        self.assertEqual(len(ids), 2)
+
+    def test_a_live_camera_is_unchanged_when_no_run_is_named(self):
+        """⭐ **The backward-compatibility assertion.** Media attaches `correlationId` only to frames
+        carrying stored-media provenance, so a live frame arrives with `correlation_id=None`, the key
+        stays `(tenant, camera)`, and the out-of-order gate behaves exactly as it always did."""
+        rt = self.tracker()
+        rt.run([det(bbox=(0.4, 0.45, 0.1, 0.1))], ctx(seq=0, at=iso(10)))
+        rt.run([det(bbox=(0.9, 0.45, 0.1, 0.1))], ctx(seq=1, at=iso(2)))
+        stats = rt.stats("tnt_a")
+        self.assertEqual(stats["outOfOrderFrames"], 1)
+        self.assertEqual(stats["framesTracked"], 1)
+
+    def test_an_offline_run_cannot_stall_the_live_camera_it_analyses(self):
+        """⛔ The sharper edge of V-2: an analysis of footage dated **ahead** of now would have
+        poisoned the live gate and silently stopped tracking the real camera."""
+        rt = self.tracker()
+        # An investigation of footage from far in the future, on the same camera.
+        rt.run([det()], ctx(seq=0, at="2027-01-01T00:00:00.000Z", correlation="ases_A"))
+        # The live camera keeps working.
+        rt.run([det(bbox=(0.4, 0.45, 0.1, 0.1))], ctx(seq=1, at=iso(10)))
+        rt.run([det(bbox=(0.44, 0.45, 0.1, 0.1))], ctx(seq=2, at=iso(11)))
+        self.assertEqual(rt.stats("tnt_a")["outOfOrderFrames"], 0)
 
     def test_camera_state_is_bounded(self):
         rt = self.tracker()

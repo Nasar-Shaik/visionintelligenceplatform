@@ -22,8 +22,8 @@
  */
 const B = process.env.BASE ?? 'https://localhost';
 const TENANT = 'tnt_demo_retail';
-const ADMIN = { email: 'security.manager@northgate.demo', password: 'Vip-Demo-2026!' };
-const OPERATOR = { email: 'day.operator@northgate.demo', password: 'Vip-Demo-2026!' };
+const ADMIN = { email: 'security.manager@northgate.demo', password: '12345678' };
+const OPERATOR = { email: 'day.operator@northgate.demo', password: '12345678' };
 /*
  * ⚠️ A fresh address per run. The first version used a fixed one and the second run failed with a
  * 409 on every check — there is deliberately no DELETE route for a user, so a probe that reuses an
@@ -172,7 +172,7 @@ check(newPassword.status === 200, '8 · the new password works', `HTTP ${newPass
 
 // ── isolation ───────────────────────────────────────────────────────────────────────────────────
 const otherTenant = await api('POST', '/identity/auth/login', {
-  body: { email: 'site.manager@meridian.demo', password: 'Vip-Demo-2026!' },
+  body: { email: 'site.manager@meridian.demo', password: '12345678' },
   tenant: 'tnt_demo_warehouse',
 });
 if (otherTenant.status === 200) {

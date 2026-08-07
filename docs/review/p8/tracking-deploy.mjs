@@ -28,7 +28,7 @@ const GATEWAY = 'vip-prod-gateway-1';
 const IMAGE = 'vip/inference:local';
 const B = process.env.BASE ?? 'https://localhost';
 const TENANT = 'tnt_demo_retail';
-const ADMIN = { email: 'security.manager@northgate.demo', password: 'Vip-Demo-2026!' };
+const ADMIN = { email: 'security.manager@northgate.demo', password: '12345678' };
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 

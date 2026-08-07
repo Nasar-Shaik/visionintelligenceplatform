@@ -56,6 +56,26 @@ export function groupKeyFor(rule: Rule, envelope: EventEnvelope): string {
  *
  * So the subject is part of the key whenever there is one. The cool-down, not dedup, is what stops a
  * single subject firing repeatedly — dedup's job here is only to make a redelivery idempotent.
+ *
+ * ### ⛔ The analysis run is part of the key — ADR-0047, and the layer it missed
+ *
+ * Every component of this key is derived from the observation, and an offline analysis stamps
+ * **footage** time. Re-analysing one recording reproduces `occurredAt` exactly, so it reproduces
+ * `bucket` exactly, so a rerun's candidates collide with the first run's — permanently, because
+ * footage time never advances out of the window.
+ *
+ * ADR-0047 fixed precisely this shape in three places (the publisher's ordering gate, the events
+ * dedup key, JetStream's `msgId`) and **did not reach here**. Measured by P-8.5 Product Validation
+ * against the deployed stack (V-4): a five-minute recording raised 8 incidents on its first run and
+ * **0 on an identical second run**, while its events, timeline and tracks all reproduced correctly.
+ * That is the exact promise ADR-0047 makes — "both analyses persisted independently, both
+ * independently queryable" — holding for events and silently failing for incidents.
+ *
+ * ⚠️ **Appended only when present, never joined with a placeholder.** A live candidate has no
+ * analysis run, so its key is **byte-identical** to the one this function produced before. That
+ * matters beyond tidiness: dedup state outlives a deployment, and a key whose *shape* changed would
+ * make every live rule miss its window once on rollout — a burst of duplicate incidents at exactly
+ * the moment an operator is watching a deploy.
  */
 export function candidateDedupKey(
   rule: Rule,
@@ -65,24 +85,27 @@ export function candidateDedupKey(
 ): string {
   const bucket =
     windowMs > 0 ? Math.floor(Date.parse(envelope.occurredAt) / windowMs) : envelope.id;
-  if (dwell !== undefined) {
-    /*
-     * ⚠️ Keyed on the subject, the zone and the moment the visit STARTED — not on a time bucket. Two
-     * candidates for the same visit are the same candidate however far apart they fall, which makes a
-     * redelivery idempotent; a second visit by the same person starts at a different instant and is
-     * correctly a second candidate. `firedAtMs` would have made every cool-down expiry a new key,
-     * which is right, but it would also have made a redelivery a new key, which is not.
-     */
-    return [
-      envelope.tenantId,
-      rule.id,
-      envelope.zoneId ?? '-',
-      dwell.subject,
-      dwell.outcome.record.firstObservedAtMs,
-      dwell.outcome.record.firedAtMs ?? bucket,
-    ].join('|');
-  }
-  return [envelope.tenantId, rule.id, groupKeyFor(rule, envelope), bucket].join('|');
+  const parts: (string | number)[] =
+    dwell !== undefined
+      ? /*
+         * ⚠️ Keyed on the subject, the zone and the moment the visit STARTED — not on a time bucket.
+         * Two candidates for the same visit are the same candidate however far apart they fall,
+         * which makes a redelivery idempotent; a second visit by the same person starts at a
+         * different instant and is correctly a second candidate. `firedAtMs` would have made every
+         * cool-down expiry a new key, which is right, but it would also have made a redelivery a new
+         * key, which is not.
+         */
+        [
+          envelope.tenantId,
+          rule.id,
+          envelope.zoneId ?? '-',
+          dwell.subject,
+          dwell.outcome.record.firstObservedAtMs,
+          dwell.outcome.record.firedAtMs ?? bucket,
+        ]
+      : [envelope.tenantId, rule.id, groupKeyFor(rule, envelope), bucket];
+  if (envelope.analysisSessionId !== undefined) parts.push(envelope.analysisSessionId);
+  return parts.join('|');
 }
 
 /** The first `raise-incident` action on the rule, if any. */

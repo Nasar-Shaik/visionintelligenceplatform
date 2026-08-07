@@ -33,7 +33,7 @@ export const BASE = process.env.BASE ?? 'https://localhost';
 export const TENANT = process.env.TENANT ?? 'tnt_demo_retail';
 export const ADMIN = {
   email: process.env.ADMIN_EMAIL ?? 'security.manager@northgate.demo',
-  password: process.env.ADMIN_PASSWORD ?? 'Vip-Demo-2026!',
+  password: process.env.ADMIN_PASSWORD ?? '12345678',
 };
 export const FIXTURE = 'vip-rtsp-fixture';
 export const NETWORK = 'vip-prod_default';

@@ -6,7 +6,7 @@ const p = await c.newPage();
 await p.goto(`${B}/login`, { waitUntil: 'domcontentloaded' });
 await p.getByLabel(/tenant/i).fill('tnt_demo_retail');
 await p.getByLabel(/email/i).fill('security.manager@northgate.demo');
-await p.getByLabel(/password/i).fill('Vip-Demo-2026!');
+await p.getByLabel(/password/i).fill('12345678');
 await p.getByRole('button', { name: /sign in/i }).click();
 await p.waitForURL((u) => !u.pathname.startsWith('/login'));
 await p.goto(`${B}/rules/rule_demo_retail_afterhours`, { waitUntil: 'domcontentloaded' });

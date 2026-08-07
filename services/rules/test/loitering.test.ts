@@ -328,6 +328,49 @@ describe('the candidate a loiter produces', () => {
     expect(a).not.toBe(b);
   });
 
+  /**
+   * ⛔ **V-4 — ADR-0047 reached the events dedup key and not this one.**
+   *
+   * Found by P-8.5 Product Validation against the deployed stack, not by this suite. Every part of
+   * this key is derived from the observation, and an offline analysis stamps **footage** time — so
+   * re-analysing one recording reproduces `occurredAt`, reproduces `bucket`, and the rerun's
+   * candidates collide with the first run's permanently, because footage time never advances out of
+   * the window.
+   *
+   * Measured: a five-minute recording raised **8 incidents** on its first run and **0** on an
+   * identical second run, while its events, timeline and tracks all reproduced correctly. ADR-0047
+   * promises both analyses are persisted independently and independently queryable; that held for
+   * events and silently failed for incidents.
+   */
+  it('⛔ gives two analysis runs of one recording two dedup keys', () => {
+    const key = (analysisSessionId: string) =>
+      candidateDedupKey(loiterRule, envelope({ zoneId: 'zn-queue', analysisSessionId }), 60_000, {
+        outcome: visit(),
+        subject: 'id-1',
+      });
+    expect(key('ases_A')).not.toBe(key('ases_B'));
+  });
+
+  it('⛔ separates two runs on the bucketed (non-dwell) path too', () => {
+    const key = (over: Partial<EventEnvelope>) =>
+      candidateDedupKey(loiterRule, envelope(over), 60_000);
+    expect(key({ analysisSessionId: 'ases_A' })).not.toBe(key({ analysisSessionId: 'ases_B' }));
+  });
+
+  /**
+   * ⭐ **The backward-compatibility assertion, and the reason the field is appended rather than
+   * joined with a placeholder.** Dedup state outlives a deployment: a key whose *shape* changed
+   * would make every live rule miss its window once on rollout — a burst of duplicate incidents at
+   * exactly the moment an operator is watching a deploy.
+   */
+  it('⭐ leaves a live candidate key byte-identical', () => {
+    const live = envelope({ zoneId: 'zn-queue' });
+    expect(candidateDedupKey(loiterRule, live, 60_000, { outcome: visit(), subject: 'id-1' })).toBe(
+      ['t-1', loiterRule.id, 'zn-queue', 'id-1', visit().record.firstObservedAtMs, visit().record.firedAtMs ?? Math.floor(T0 / 60_000)].join('|'),
+    );
+    expect(candidateDedupKey(loiterRule, live, 60_000)).not.toContain('undefined');
+  });
+
   /** A redelivery of the same visit must collapse — that is what dedup is actually for. */
   it('gives the same visit the same dedup key twice', () => {
     const outcome = visit();

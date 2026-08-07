@@ -18,7 +18,7 @@ import { chromium } from 'playwright';
 const B = process.env.BASE ?? 'https://localhost';
 const OUT = process.env.OUT ?? '.';
 const TENANT = 'tnt_demo_retail';
-const ADMIN = { email: 'security.manager@northgate.demo', password: 'Vip-Demo-2026!' };
+const ADMIN = { email: 'security.manager@northgate.demo', password: '12345678' };
 const VIEWER = {
   email: `p64.ui.viewer.${Date.now()}@northgate.demo`,
   password: 'Probe-Password-2026!',

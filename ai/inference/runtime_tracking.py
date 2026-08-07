@@ -263,7 +263,9 @@ class RuntimeTracker:
             return detections
         started = time.perf_counter()
         with self._lock:
-            state = self._state_for(ctx.tenant_id, ctx.camera_id)
+            # ⚠️ `correlation_id` identifies the stream, not the camera — see `_state_for`. For a
+            # live frame it is absent and the key is unchanged.
+            state = self._state_for(ctx.tenant_id, ctx.camera_id, ctx.correlation_id)
             captured = seconds_of(ctx.timestamp) if ctx.timestamp else None
 
             # ⚠️ Out-of-order frames are skipped, not tracked. Media runs up to four requests in
@@ -489,8 +491,39 @@ class RuntimeTracker:
 
     # --- camera state ------------------------------------------------------------
 
-    def _state_for(self, tenant_id: str, camera_id: str) -> _CameraState:
-        key = (tenant_id, camera_id)
+    def _state_for(
+        self, tenant_id: str, camera_id: str, stream_id: Optional[str] = None
+    ) -> _CameraState:
+        """Tracking state for one **stream**, which is usually but not always one camera.
+
+        ⛔ **`stream_id` is the fourth layer of a defect this platform has now met four times**
+        (P-8.5 Product Validation, V-2). Three mechanisms identified a stream as `(tenant, camera)`
+        plus a forward-moving number, and each was fixed in turn: the event publisher's ordering
+        gate, the events dedup key, and JetStream's `msgId`. This is the last of them, and it is the
+        one that lives inside the runtime.
+
+        An offline analysis stamps **footage** time. Footage time does not advance between runs — a
+        second recording, or the same recording analysed twice, replays the same instants. The
+        out-of-order guard in `run()` compares against `last_capture_seconds` held per camera, so
+        every frame of the second run is older than the first run's last frame and is skipped:
+        no association, no `tracking_id`, no dwell, no loitering incident. Silently.
+
+        Measured on the deployed stack before this change: eight analyses on one camera produced
+        `framesTracked: 906` against `outOfOrderFrames: 1244` — more frames rejected than tracked —
+        and two identical reruns raised the rejected count by exactly 120, the whole of both runs.
+        Five of eight clips finished with zero tracks.
+
+        ⚠️ **Live behaviour is byte-identical, and that is not an aspiration.** Media attaches
+        `correlationId` only to frames carrying stored-media provenance (`http-frame-sink.ts`), so a
+        live frame arrives with `stream_id=None`, the key stays `(tenant, camera)`, and both the
+        gate and the minted track ids are exactly what they were. Nothing about a live camera is
+        keyed on anything new.
+
+        ⚠️ Live and offline on the same camera also stop interfering, which was the sharper edge of
+        the same bug: an offline analysis of footage dated *ahead* of now would have poisoned the
+        live gate and silently stopped tracking the real camera.
+        """
+        key = (tenant_id, camera_id, stream_id)
         state = self._cameras.get(key)
         if state is None:
             if len(self._cameras) >= MAX_CAMERAS:
@@ -499,7 +532,14 @@ class RuntimeTracker:
             # camera + session + counter, so without it two tenants that both call a camera "cam_1"
             # mint byte-identical track ids. Reads are already isolated, but an id that collides
             # across a tenant boundary is one export, log line or future join away from mattering.
-            state = _CameraState(f"{self._session_id}-{tenant_id}-{camera_id}", self._options)
+            #
+            # ⚠️ The STREAM is in it for the same reason, one level down: two analyses of one
+            # recording must not mint the same track ids, or ADR-0047's promise that runs are
+            # independently queryable would hold for events and quietly fail for identities.
+            suffix = "" if stream_id is None else f"-{stream_id}"
+            state = _CameraState(
+                f"{self._session_id}-{tenant_id}-{camera_id}{suffix}", self._options
+            )
             self._cameras[key] = state
         return state
 
@@ -527,7 +567,11 @@ class RuntimeTracker:
             return []
         out: List[Track] = []
         with self._lock:
-            for (tid, cam), state in self._cameras.items():
+            # ⚠️ `_stream` is discarded here on purpose. A caller asking "what is live on this
+            # camera" means the camera, and an offline analysis of its footage is genuinely tracking
+            # that camera's subjects. Isolation between runs is provided by the track ids and by
+            # `analysisSessionId` downstream, not by hiding a run from this view.
+            for (tid, cam, _stream), state in self._cameras.items():
                 if tid != tenant_id or (camera_id is not None and cam != camera_id):
                     continue
                 for track in state.manager.active():
@@ -542,7 +586,7 @@ class RuntimeTracker:
         if not tenant_id:
             return None
         with self._lock:
-            for (tid, _cam), state in self._cameras.items():
+            for (tid, _cam, _stream), state in self._cameras.items():
                 if tid != tenant_id:
                     continue
                 track = state.manager.get(track_id)
@@ -561,7 +605,9 @@ class RuntimeTracker:
         """
         with self._lock:
             states = [
-                s for (tid, _cam), s in self._cameras.items() if tenant_id is None or tid == tenant_id
+                s
+                for (tid, _cam, _stream), s in self._cameras.items()
+                if tenant_id is None or tid == tenant_id
             ]
             active = confirmed = tentative = lost = 0
             lifetimes: List[float] = []
@@ -662,17 +708,23 @@ class RuntimeTracker:
         out: List[dict] = []
         with self._lock:
             live: Dict[str, dict] = {}
-            for (tid, cam), state in self._cameras.items():
+            # ⚠️ **Summed across a camera's streams, not overwritten by the last one.** The key
+            # gained a stream component, so one camera can now hold several states — a live feed and
+            # an offline analysis of its own footage. `live[cam] = {...}` would have silently
+            # reported whichever happened to be iterated last, which for an operator watching a
+            # camera during an investigation is a count that flickers between two truths.
+            for (tid, cam, _stream), state in self._cameras.items():
                 if tid != tenant_id:
                     continue
-                active = confirmed = lost = 0
+                row = live.setdefault(
+                    cam, {"activeTracks": 0, "confirmedTracks": 0, "lostTracks": 0}
+                )
                 for track in state.manager.active():
-                    active += 1
+                    row["activeTracks"] += 1
                     if track.state.value == "confirmed":
-                        confirmed += 1
+                        row["confirmedTracks"] += 1
                     elif track.state.value == "lost":
-                        lost += 1
-                live[cam] = {"activeTracks": active, "confirmedTracks": confirmed, "lostTracks": lost}
+                        row["lostTracks"] += 1
 
             for (tid, cam), record in self._camera_totals.items():
                 if tid != tenant_id:

@@ -22,7 +22,7 @@ import { readFileSync } from 'node:fs';
 
 const B = process.env.BASE ?? 'https://localhost';
 const TENANT = 'tnt_demo_retail';
-const ADMIN = { email: 'security.manager@northgate.demo', password: 'Vip-Demo-2026!' };
+const ADMIN = { email: 'security.manager@northgate.demo', password: '12345678' };
 const MONGO = 'vip-prod-mongodb-1';
 const SIZES = [100, 500, 1_000, 5_000];
 

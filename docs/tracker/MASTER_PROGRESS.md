@@ -254,6 +254,105 @@ _Last updated: 2026-08-07 · Claude_
   **1032** · contracts · import graph 0 violations.
   [ADR-0039](../adr/ADR-0039-absent-metrics-are-unavailable-never-zero.md).
 
+- **P-8.5 · Product Validation ✅ complete, ⏳ awaiting review (2026-08-07)** — **the first time
+  this platform was used the way a customer will use it**, and the answer to what a 69-task green
+  gate is worth. 37 generated recordings driven through upload → object storage → ffmpeg → ONNX →
+  tracker → rules → events → timeline → incidents → evidence → export, in **four real browsers**
+  against the deployed stack. ⭐ **It found six defects, and not one was visible to the ~1 700 tests
+  that were already passing** — because every one of those runs against a double, and every defect
+  here lived in a **join**.
+
+  ⛔ **V-1 · a full runtime never recovered from a failover.** Restarting inference failed over all 4
+  of `maxCameras: 4`; every retry then recorded `capacity-exceeded`, because `#runtimeLoad()` counts
+  `error` as an occupied slot (correctly — an errored camera is still assigned) while the failover
+  path passed `currentRuntimeId: null`, withholding the one fact that lets the strategy discount the
+  camera's **own** seat. The camera was refused a seat it was itself sitting in, **forever**: 669
+  planner cycles, no recovery. Freeing one slot by hand moved the other three to `recovering` in one
+  cycle, which is the measurement that isolated it. ⛔ The product consequence was worse than a stuck
+  camera — with no assignment every subsequent analysis completed as **`succeeded` having analysed
+  nothing**, reporting **×280 real time** for a run that looked at zero frames. ⭐ The *pinned* branch
+  of `LeastLoadedPlacement` already documents this exact trap and guards it; the reasoning was simply
+  never carried across to failover. The strategy needed no change — it needed the truth.
+
+  ⛔ **V-2 · offline analysis produced no tracking at all** ([ADR-0048](../adr/ADR-0048-a-tracked-stream-is-not-always-a-camera.md)).
+  The runtime's tracker skips frames whose capture time went backwards, keyed on `(tenant, camera)` —
+  and offline analysis stamps **footage** time, which does not advance between runs. Measured:
+  **`framesTracked: 906` against `outOfOrderFrames: 1244`**, more frames rejected than tracked; two
+  identical reruns raised the rejected count by **exactly 120**, the whole of both runs; five of eight
+  clips finished with zero tracks. ⭐ **This is the fourth layer of one defect class** — three
+  mechanisms identified a stream as `(tenant, camera)` + a forward-moving number and ADR-0047 fixed
+  three of them; this was the fourth, and it lives inside the frozen runtime. Keyed on the stream
+  instead; media attaches `correlationId` only to stored-media frames so **live is byte-identical**,
+  asserted by a test that passes with and without the change. ⚠️ The sharper edge: footage dated
+  *ahead* of now would have poisoned the live gate and silently stopped tracking the real camera.
+
+  ⛔ **V-3 · eight people produced the same event count as one.** `crowd` gave **3 events and 0
+  tracks**, identical to a single walker, because the dedup key falls back to the subject *class* when
+  there is no `trackId`. ⭐ Not a separate defect — a **symptom of V-2, and the measurement that
+  proved it**: after the fix, **24 events and 8 tracks**. The finding that survives is that the dedup
+  key's degradation mode **hides scale**.
+
+  ⛔ **V-4 · re-running an analysis produced no incidents.** A five-minute recording raised **8
+  incidents on its first run and 0 on an identical second run**, while its events, timeline and tracks
+  all reproduced correctly. `candidateDedupKey` is built from a **footage-time bucket** and ADR-0047
+  never reached it — so the collision is permanent. That is the exact promise ADR-0047 makes ("both
+  analyses persisted independently, both independently queryable") holding for events and silently
+  failing for incidents. Appended when present, so live keys stay byte-identical. Verified: two
+  identical runs → 20 events, 5 tracks, **10 incidents each**.
+
+  ⛔ **V-5 · a presigned credential was returned in an error body.** ffprobe names the input it failed
+  on, and that input is a **presigned URL** — so uploading a text file renamed `.mp4` returned
+  `X-Amz-Credential`, `X-Amz-Signature` and `http://minio:9000` in an HTTP 400. A live tenant-scoped
+  read credential, obtainable on demand by anyone willing to upload a file that will not open, plus
+  the storage topology. ⚠️ Redacted, **not discarded** — ffprobe's diagnosis survives, because an
+  operator needs to know whether the file, the codec or the store was at fault.
+
+  ⛔ **V-6 · two navigation items were both labelled "Investigations."** Found because the browser
+  certification **could not proceed** — a name-based locator matched two elements and Playwright
+  refused to guess. No unit test noticed: each page renders perfectly on its own, and the defect
+  exists only in the *relationship* between them. Now "Recorded Video" and "Incident Workspace",
+  routes unchanged; the test asserts **no two nav items share a label or a destination**, a general
+  rule rather than a restatement of these two.
+
+  ⚠️ **V-7 · found and deliberately NOT fixed.** The timeline UI renders **incidents only** —
+  `entries`, `tracks` and `density`, the whole of slice 4's model, are computed and never displayed;
+  the truncation banner even reads "Showing the first N events" for events that are never shown. The
+  brief for this phase forbids new features, so it is recorded as the largest gap between what the
+  platform computes and what a customer can see, and the first thing P-8.6 should close.
+
+  **Permanent infrastructure, not one-off scripts.** `tools/dataset/` (37 clips: motion · rules ·
+  degraded · capture-rate · 4 resolutions · 4 codecs · 4 angles · 6 corrupted, plus a duration
+  ladder) — ⭐ **ground truth is MEASURED against the deployed model and written to a committed
+  manifest**, never declared, because asserting against intent produces a suite that fails whenever
+  the model is upgraded in a way indistinguishable from a real regression. It caught two of my own
+  fixture defects: `multiple-people` probed at the exact instant the two subjects coincide (the
+  midpoint of a *crossing* scenario is the one point you must not sample), and `camera-shake` failing
+  to build because `crop` rejects `eval=frame`. `tools/validation/` (31-check deployment verifier ·
+  the journey harness · a demo-password reset that **verifies by logging in**). `tools/e2e-browser/`
+  — ⭐ **Playwright is now a repo dependency**, closing the certification pending since P-5.8.
+
+  **Measured.** 17/17 containers · **31/31** deployment checks · **20/20** browser specs on Chromium
+  and **4/4** each on Edge, Firefox and WebKit · speed factor **×8.8–×9.1 flat across a 30× duration
+  range** · evidence still **~130 ms regardless of recording length** (accurate seek is O(1)) · media
+  RSS 141→173 MiB over the same range · ⭐ **ten simultaneous uploads → ten identical results, one
+  distinct tuple, zero findings** (impossible before V-2 and V-4). ⭐ **The negative control holds end
+  to end**: `empty-scene` → 0 detections, 0 tracks, 0 events, 0 incidents, and the UI says *"Nothing
+  was detected in this recording"* rather than rendering a blank panel. ⭐ **L-62 closed as a side
+  effect of V-2** — 0 of 8 track spans zero-width, each running the full footage length.
+
+  ⚠️ **Verdict: 🟡 GO for supervised customer demonstration, 🔴 NO-GO for unsupervised production** —
+  not because of anything found and left unfixed, but because of what has **not been measured**:
+  [L-1] has not moved, every validation recording is synthetic ([L-63]), and six real-venue recordings
+  are required and do not exist ([L-64]). Four of six defects here were critical and invisible to a
+  green gate; the honest inference is that a first real deployment will surface more, and it should do
+  so with an engineer watching. New: [L-63] · [L-64] · [L-65] · [L-66]; [L-62] closed.
+  Docs: [FIRST_PRODUCT_VALIDATION](../project/FIRST_PRODUCT_VALIDATION.md) ·
+  [TEST_PLAN](../project/TEST_PLAN.md) · [TEST_DATASET](../project/TEST_DATASET.md) ·
+  [PERFORMANCE_BASELINE](../project/PERFORMANCE_BASELINE.md) · [UAT_GUIDE](../project/UAT_GUIDE.md) ·
+  [CUSTOMER_ACCEPTANCE_CHECKLIST](../project/CUSTOMER_ACCEPTANCE_CHECKLIST.md) ·
+  [DEMO_VIDEO_LIBRARY](../project/DEMO_VIDEO_LIBRARY.md) ·
+  [END_TO_END_TEST_GUIDE](../project/END_TO_END_TEST_GUIDE.md) · [ADR-0048](../adr/ADR-0048-a-tracked-stream-is-not-always-a-camera.md).
+
 - **P-8 Phase 8 · Offline Video Investigation — 🚧 IN PROGRESS (2026-08-07). Slices 1–3 of 9 complete.**
 
   **Slice 3 · Pipeline execution — ⭐ offline footage now runs through the LIVE runtime.** A frame

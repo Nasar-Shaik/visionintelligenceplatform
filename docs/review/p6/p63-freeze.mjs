@@ -20,12 +20,12 @@ import { readFileSync } from 'node:fs';
 const ROOT = new URL('../../../', import.meta.url);
 const B = process.env.BASE ?? 'https://localhost';
 const TENANT = 'tnt_demo_retail';
-const ADMIN = { email: 'security.manager@northgate.demo', password: 'Vip-Demo-2026!' };
+const ADMIN = { email: 'security.manager@northgate.demo', password: '12345678' };
 /** A tenant seeded by the *previous* image and never touched since. That is the whole point of it. */
 const LEGACY = {
   tenant: 'tnt_demo_school',
   email: 'site.lead@ashford.demo',
-  password: 'Vip-Demo-2026!',
+  password: '12345678',
 };
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // self-signed edge certificate

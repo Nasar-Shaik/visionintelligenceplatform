@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { TenantScope } from '@vip/tenancy';
 import { buildSnapshotArgs, jpegSize } from '../src/adapters/ffmpeg-snapshot.js';
-import { AnalysisService } from '../src/application/analysis-service.js';
+import { AnalysisService, redactUrls } from '../src/application/analysis-service.js';
 import { InMemoryAnalysisStore } from '../src/adapters/in-memory-analysis-store.js';
 import { newSession, type AnalysisDoc } from '../src/domain/analysis.js';
 
@@ -248,5 +248,53 @@ describe('AnalysisService.snapshot', () => {
       incidentId: 'inc_9',
     });
     expect(shot.incidentId).toBe('inc_9');
+  });
+});
+
+/**
+ * ⛔ **V-5 — a presigned credential reached the caller in an error body.**
+ *
+ * Found by P-8.5 Product Validation against the deployed stack: uploading a text file renamed
+ * `.mp4` produced an HTTP 400 whose message was ffprobe's, and ffprobe names the input it failed
+ * on. The input is a **presigned** URL, so the body carried `X-Amz-Credential`, `X-Amz-Signature`
+ * and the internal endpoint `http://minio:9000` — a live tenant-scoped read credential handed out
+ * on demand to anyone willing to upload a file that will not open.
+ */
+describe('redactUrls', () => {
+  const probeFailure =
+    'ffprobe exited 1: http://minio:9000/vip-recordings/tnt_a/analyses/ana_1/source.mp4' +
+    '?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=vip%2F20260807%2Fus-east-1%2Fs3%2F' +
+    'aws4_request&X-Amz-Signature=deadbeef: Invalid data found when processing input';
+
+  it('removes the signed url and everything signed into it', () => {
+    const safe = redactUrls(probeFailure);
+    expect(safe).not.toContain('X-Amz-Credential');
+    expect(safe).not.toContain('X-Amz-Signature');
+    expect(safe).not.toContain('minio:9000');
+    expect(safe).toContain('<source>');
+  });
+
+  /**
+   * ⚠️ **The diagnostic survives, and that is half the point.** "this file could not be read as a
+   * video" alone leaves an operator with a rejected upload and no idea whether the file, the codec
+   * or the store was at fault. Redaction that destroys the reason trades one support ticket for
+   * another.
+   */
+  it('keeps ffprobe’s actual reason', () => {
+    const safe = redactUrls(probeFailure);
+    expect(safe).toContain('ffprobe exited 1');
+    expect(safe).toContain('Invalid data found when processing input');
+  });
+
+  /** ⚠️ The internal scheme too — `http://`, not only `https://`. */
+  it('redacts plain http as well as https', () => {
+    expect(redactUrls('failed on http://minio:9000/x?sig=1')).toBe('failed on <source>');
+    expect(redactUrls('failed on https://s3.example/x?sig=1')).toBe('failed on <source>');
+  });
+
+  it('leaves a message with no url alone', () => {
+    expect(redactUrls('the file contains no video stream')).toBe(
+      'the file contains no video stream',
+    );
   });
 });

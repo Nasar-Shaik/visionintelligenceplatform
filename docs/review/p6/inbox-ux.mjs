@@ -15,8 +15,8 @@ import { chromium } from 'playwright';
 
 const B = process.env.BASE ?? 'https://localhost';
 const TENANT = 'tnt_demo_retail';
-const ALICE = { email: 'security.manager@northgate.demo', password: 'Vip-Demo-2026!' };
-const BOB = { email: 'day.operator@northgate.demo', password: 'Vip-Demo-2026!' };
+const ALICE = { email: 'security.manager@northgate.demo', password: '12345678' };
+const BOB = { email: 'day.operator@northgate.demo', password: '12345678' };
 
 let failures = 0;
 const check = (ok, label, detail = '') => {

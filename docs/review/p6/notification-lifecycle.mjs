@@ -40,7 +40,7 @@ const env = Object.fromEntries(
 
 const B = process.env.BASE ?? 'https://localhost';
 const TENANT = 'tnt_demo_retail';
-const ADMIN = { email: 'security.manager@northgate.demo', password: 'Vip-Demo-2026!' };
+const ADMIN = { email: 'security.manager@northgate.demo', password: '12345678' };
 const SINK = 'http://vip-lc-sink:8080';
 const MARK = 'lifecycle-probe';
 

@@ -288,9 +288,25 @@ export class AnalysisService {
     try {
       probed = await this.#probe.probe(url);
     } catch (err) {
-      throw badRequest(
-        `this file could not be read as a video: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      /*
+       * ⛔ **The URL is stripped out of the diagnostic before it reaches the caller** (P-8.5 Product
+       * Validation, V-5).
+       *
+       * `ffprobe` names the input it failed on, and the input here is a **presigned** URL. Passing
+       * its message through returned `X-Amz-Credential`, `X-Amz-Signature` and the internal endpoint
+       * `http://minio:9000` in an HTTP 400 body — a live, tenant-scoped read credential handed to
+       * anyone who uploads a file the prober cannot open, which is a thing any caller can do on
+       * demand. It also published the storage topology, which is free reconnaissance.
+       *
+       * Measured by uploading a text file renamed `.mp4`: the 400 body carried the whole signed URL.
+       *
+       * ⚠️ Redacted, **not** discarded. "this file could not be read as a video" alone would leave an
+       * operator with a rejected upload and no idea whether the file, the codec or the store was at
+       * fault — so ffprobe's own words are kept and only the URL is replaced. The unredacted message
+       * still reaches the service log, where the credential is not a disclosure.
+       */
+      const detail = err instanceof Error ? err.message : String(err);
+      throw badRequest(`this file could not be read as a video: ${redactUrls(detail)}`);
     }
 
     const asset = assetFromProbe({
@@ -843,6 +859,26 @@ export class AnalysisService {
  * "this happened at 14:32" and "this happened 90 seconds into a file we received at 14:32" is the
  * difference between an investigation and a filename.
  */
+/**
+ * Replace any URL in a diagnostic with `<source>` before it crosses the API boundary.
+ *
+ * ⛔ **Written for a measured disclosure, not as a precaution** (P-8.5 Product Validation, V-5).
+ * `ffprobe` names the input it failed on, and that input is a **presigned** object-store URL. Its
+ * message reached the caller verbatim in an HTTP 400, carrying `X-Amz-Credential`,
+ * `X-Amz-Signature` and the internal endpoint `http://minio:9000` — a live tenant-scoped read
+ * credential, obtainable by anyone willing to upload a file that will not open.
+ *
+ * ⚠️ Matches on scheme, so it catches the internal `http://minio:9000` form as well as `https://`,
+ * and it is deliberately greedy to the first whitespace: a signed URL is one unbroken token, and a
+ * pattern that stopped at `&` would leave the credential behind while looking like it had worked.
+ *
+ * ⚠️ Exported so this is testable directly. A redaction asserted only through the one call site it
+ * currently has is a redaction that silently stops covering the second one.
+ */
+export function redactUrls(message: string): string {
+  return message.replace(/\bhttps?:\/\/\S+/gi, '<source>');
+}
+
 export function resolveFootageStart(
   doc: AnalysisDoc,
   operatorSaid: string | undefined,

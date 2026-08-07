@@ -39,7 +39,7 @@ import { resolve, join } from 'node:path';
 const ROOT = resolve(new URL('../../..', import.meta.url).pathname);
 const B = process.env.BASE ?? 'https://localhost';
 const TENANT = 'tnt_demo_retail';
-const ADMIN = { email: 'security.manager@northgate.demo', password: 'Vip-Demo-2026!' };
+const ADMIN = { email: 'security.manager@northgate.demo', password: '12345678' };
 const TAG = 'p8-replay';
 const CONTAINER = process.env.PROBE_CONTAINER ?? 'vip-prod-media-1';
 const PROBE_SRC = join(ROOT, 'docs/review/p8/bus-probe.mjs');

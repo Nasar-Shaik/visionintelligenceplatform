@@ -27,7 +27,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const B = process.env.BASE ?? 'https://localhost';
 const TENANT = 'tnt_demo_retail';
-const ADMIN = { email: 'security.manager@northgate.demo', password: 'Vip-Demo-2026!' };
+const ADMIN = { email: 'security.manager@northgate.demo', password: '12345678' };
 const COUNT = Number(process.env.COUNT ?? 5_000);
 const MONGO = 'vip-prod-mongodb-1';
 /** Where `load` records the size it found, so `clean` can prove it put that size back. */

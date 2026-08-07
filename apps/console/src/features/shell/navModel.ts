@@ -62,7 +62,23 @@ export const NAV_GROUPS: NavGroup[] = [
        * service and gated on the stream permissions, so navigating a user here who cannot open it
        * would show them a link straight to a 403.
        */
-      { to: '/investigations', label: 'Investigations', icon: FileVideo, permission: 'stream:read' },
+      /*
+       * ⛔ **"Recorded Video", not "Investigations" — this entry and `/workspace` below were both
+       * labelled "Investigations"** (P-8.5 Product Validation, V-6).
+       *
+       * Two items in the same section, with the same word, leading to entirely different screens:
+       * this one uploads and analyses a recording, the other one works an incident that already
+       * exists. An operator clicking "Investigations" got whichever they happened to hit, and the
+       * two are not alternative views of one thing — they are different jobs.
+       *
+       * Found by driving the real navigation in a browser: the certification's own
+       * `getByRole('link', { name: /investigations/i })` matched two elements and could not proceed.
+       * No unit test would ever have noticed, because each page renders perfectly on its own.
+       *
+       * ⚠️ The **route is unchanged**, so every existing link, bookmark and runbook reference still
+       * lands. Only the word in the sidebar moved.
+       */
+      { to: '/investigations', label: 'Recorded Video', icon: FileVideo, permission: 'stream:read' },
       /*
        * P-8 Phase 4 — object tracking. Gated on `track:read`, the permission the route requires.
        *
@@ -83,7 +99,9 @@ export const NAV_GROUPS: NavGroup[] = [
        * the section discoverable, and the workspace's own empty states explain that an incident
        * must be chosen.
        */
-      { to: '/workspace', label: 'Investigations', icon: Telescope, permission: 'incident:read' },
+      /* ⚠️ "Incident Workspace" — see V-6 above. This is where an incident that already exists is
+       * worked; `/investigations` is where a recording is analysed to find one. */
+      { to: '/workspace', label: 'Incident Workspace', icon: Telescope, permission: 'incident:read' },
       /*
        * P-6.5 — **Inbox**, not "Alerts". The screen stopped being a log of what the platform sent
        * and became a queue of what somebody has to deal with, and the word in the sidebar is the

@@ -12,7 +12,7 @@
  */
 const B = process.env.BASE ?? 'https://localhost';
 const TENANT = 'tnt_demo_retail';
-const ADMIN = { email: 'security.manager@northgate.demo', password: 'Vip-Demo-2026!' };
+const ADMIN = { email: 'security.manager@northgate.demo', password: '12345678' };
 const MARKER_FILE = process.env.MARKER ?? '/tmp/vip-p63-restart-marker.json';
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';

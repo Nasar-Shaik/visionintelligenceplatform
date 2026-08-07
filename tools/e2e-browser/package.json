@@ -1,0 +1,24 @@
+{
+  "name": "@vip/e2e-browser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "P-8.5 Product Validation: browser certification of the deployed platform. Drives a real Chromium against the real Caddy edge (HTTPS, real JWT, real object storage, real ffmpeg, real runtime) \u2014 the only suite in the repo where nothing is a double. Everything else proves the code is right; this proves the product works.",
+  "scripts": {
+    "certify": "playwright test",
+    "certify:headed": "playwright test --headed",
+    "report": "playwright show-report artifacts/report",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src test",
+    "clean": "rm -rf artifacts .turbo",
+    "walk-uat": "node walk-uat.mjs"
+  },
+  "dependencies": {
+    "@vip/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@types/node": "^26.1.1",
+    "typescript": "^5.9.3"
+  }
+}

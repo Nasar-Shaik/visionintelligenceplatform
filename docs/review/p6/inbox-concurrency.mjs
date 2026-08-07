@@ -36,8 +36,8 @@ import { Agent, request as httpsRequest } from 'node:https';
 const B = process.env.BASE ?? 'https://localhost';
 const TENANT = 'tnt_demo_retail';
 /* ⚠️ Two different principals — the same person in two tabs would not prove the record names one. */
-const ALICE = { email: 'security.manager@northgate.demo', password: 'Vip-Demo-2026!' };
-const BOB = { email: 'day.operator@northgate.demo', password: 'Vip-Demo-2026!' };
+const ALICE = { email: 'security.manager@northgate.demo', password: '12345678' };
+const BOB = { email: 'day.operator@northgate.demo', password: '12345678' };
 const RACERS = Number(process.env.RACERS ?? 6);
 const ROUNDS = Number(process.env.ROUNDS ?? 12);
 const HEAVY = Number(process.env.HEAVY ?? 12);

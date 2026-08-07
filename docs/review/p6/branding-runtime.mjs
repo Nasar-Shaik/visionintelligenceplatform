@@ -92,7 +92,7 @@ async function signIn() {
   await page.goto(`${B}/login`, { waitUntil: 'domcontentloaded' });
   await page.getByLabel(/tenant/i).fill('tnt_demo_retail');
   await page.getByLabel(/email/i).fill('security.manager@northgate.demo');
-  await page.getByLabel(/password/i).fill('Vip-Demo-2026!');
+  await page.getByLabel(/password/i).fill('12345678');
   await page.getByRole('button', { name: /sign in/i }).click();
   await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 20_000 });
 }
@@ -223,7 +223,7 @@ try {
   await secondPage.goto(`${B}/login`, { waitUntil: 'domcontentloaded' });
   await secondPage.getByLabel(/tenant/i).fill('tnt_demo_warehouse');
   await secondPage.getByLabel(/email/i).fill('site.manager@meridian.demo');
-  await secondPage.getByLabel(/password/i).fill('Vip-Demo-2026!');
+  await secondPage.getByLabel(/password/i).fill('12345678');
   await secondPage.getByRole('button', { name: /sign in/i }).click();
   await secondPage.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 20_000 });
   await secondPage.waitForTimeout(1200);

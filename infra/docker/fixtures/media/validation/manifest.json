@@ -1,0 +1,932 @@
+{
+  "generatedAt": "2026-08-07T13:33:10.102Z",
+  "tenant": "tnt_demo_retail",
+  "clips": [
+    {
+      "id": "single-person-walking",
+      "file": "validation/single-person-walking.mp4",
+      "title": "One person crosses the frame, continuously visible",
+      "category": "motion",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 103359,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 1,
+        "identities": 1,
+        "note": "A single object visible in every frame must hold exactly one track id for the whole clip."
+      },
+      "note": "A single object visible in every frame must hold exactly one track id for the whole clip.",
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.911
+        ]
+      }
+    },
+    {
+      "id": "multiple-people",
+      "file": "validation/multiple-people.mp4",
+      "title": "Two people cross in opposite directions at different depths",
+      "category": "motion",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 202074,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 2,
+        "identities": 2,
+        "note": "Each identity keeps its own row. A swap shows as a track that changes height. They coincide at t=15 — sample either side of it."
+      },
+      "note": "Each identity keeps its own row. A swap shows as a track that changes height. They coincide at t=15 — sample either side of it.",
+      "measured": {
+        "probeAtSeconds": 5,
+        "people": 2,
+        "confidences": [
+          0.875,
+          0.843
+        ]
+      }
+    },
+    {
+      "id": "fast-movement",
+      "file": "validation/fast-movement.mp4",
+      "title": "One person traverses the frame every four seconds",
+      "category": "motion",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 123659,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 1,
+        "note": "Displacement between analysed frames exceeds the subject width. Fragmentation here is expected and must be REPORTED, not asserted away.",
+        "expectFragmentation": true
+      },
+      "note": "Displacement between analysed frames exceeds the subject width. Fragmentation here is expected and must be REPORTED, not asserted away.",
+      "measured": {
+        "probeAtSeconds": 2,
+        "people": 1,
+        "confidences": [
+          0.91
+        ]
+      }
+    },
+    {
+      "id": "occlusion",
+      "file": "validation/occlusion.mp4",
+      "title": "One person walks behind a pillar and out the other side",
+      "category": "motion",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 84776,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 1,
+        "identities": 1,
+        "note": "The identity must survive the gap. A new id here is the defect predictive association exists to prevent."
+      },
+      "note": "The identity must survive the gap. A new id here is the defect predictive association exists to prevent.",
+      "measured": {
+        "probeAtSeconds": 4,
+        "people": 1,
+        "confidences": [
+          0.886
+        ]
+      }
+    },
+    {
+      "id": "partial-visibility",
+      "file": "validation/partial-visibility.mp4",
+      "title": "One person stands half outside the frame edge",
+      "category": "motion",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 63190,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 1,
+        "uncertain": true,
+        "note": "Half the subject is outside the frame. Whether the model fires is a property of the model — the manifest records what it did, and the test asserts the platform handled it either way."
+      },
+      "note": "Half the subject is outside the frame. Whether the model fires is a property of the model — the manifest records what it did, and the test asserts the platform handled it either way.",
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.811
+        ]
+      }
+    },
+    {
+      "id": "retail-loitering",
+      "file": "validation/retail-loitering.mp4",
+      "title": "One person enters, stops in the middle, and stays",
+      "category": "rules",
+      "kind": "authored",
+      "durationSeconds": 60,
+      "bytes": 221598,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 1,
+        "identities": 1,
+        "dwellSeconds": 45,
+        "note": "Arrives by t=8s and never leaves. A loitering rule with a 20s threshold must fire exactly once, not once per frame."
+      },
+      "note": "Arrives by t=8s and never leaves. A loitering rule with a 20s threshold must fire exactly once, not once per frame.",
+      "measured": {
+        "probeAtSeconds": 30,
+        "people": 1,
+        "confidences": [
+          0.919
+        ]
+      }
+    },
+    {
+      "id": "restricted-zone",
+      "file": "validation/restricted-zone.mp4",
+      "title": "One person walks through a marked restricted area",
+      "category": "rules",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 120952,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 1,
+        "identities": 1,
+        "zone": {
+          "x": 0.55,
+          "y": 0.35,
+          "w": 0.4,
+          "h": 0.6
+        },
+        "note": "The subject is outside the marked area before t=12s and inside it after. An entry event must fire once, on the transition."
+      },
+      "note": "The subject is outside the marked area before t=12s and inside it after. An entry event must fire once, on the transition.",
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.893
+        ]
+      }
+    },
+    {
+      "id": "counter-monitoring",
+      "file": "validation/counter-monitoring.mp4",
+      "title": "A served counter — one person behind, one arriving in front",
+      "category": "rules",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 205430,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 2,
+        "identities": 2,
+        "note": "A stationary staff member plus an arriving customer. Distinguishes \"someone is present\" from \"someone approached\"."
+      },
+      "note": "A stationary staff member plus an arriving customer. Distinguishes \"someone is present\" from \"someone approached\".",
+      "measured": {
+        "probeAtSeconds": 20,
+        "people": 2,
+        "confidences": [
+          0.884,
+          0.843
+        ]
+      }
+    },
+    {
+      "id": "queue-formation",
+      "file": "validation/queue-formation.mp4",
+      "title": "Four people standing in a line at a service point",
+      "category": "rules",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 262427,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 4,
+        "note": "A queue is a count plus a persistence. Four subjects at receding scales, all stationary for the whole clip."
+      },
+      "note": "A queue is a count plus a persistence. Four subjects at receding scales, all stationary for the whole clip.",
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 4,
+        "confidences": [
+          0.91,
+          0.889,
+          0.833,
+          0.813
+        ]
+      }
+    },
+    {
+      "id": "crowd",
+      "file": "validation/crowd.mp4",
+      "title": "Eight people at mixed depths, partially overlapping",
+      "category": "rules",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 462248,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 8,
+        "uncertain": true,
+        "note": "Overlapping subjects at small scale. The gap between intent and measurement IS the crowd finding."
+      },
+      "note": "Overlapping subjects at small scale. The gap between intent and measurement IS the crowd finding.",
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 8,
+        "confidences": [
+          0.886,
+          0.877,
+          0.872,
+          0.866,
+          0.864,
+          0.848,
+          0.837,
+          0.793
+        ]
+      }
+    },
+    {
+      "id": "empty-scene",
+      "file": "validation/empty-scene.mp4",
+      "title": "Nobody is there",
+      "category": "rules",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 18289,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 0,
+        "note": "Zero detections, zero tracks, zero events, and a timeline that says so rather than rendering blank."
+      },
+      "note": "Zero detections, zero tracks, zero events, and a timeline that says so rather than rendering blank.",
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 0,
+        "confidences": []
+      }
+    },
+    {
+      "id": "lighting-changes",
+      "file": "validation/lighting-changes.mp4",
+      "title": "One person walking while the scene brightness swings",
+      "category": "degraded",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 175691,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 1,
+        "uncertain": true,
+        "note": "Brightness ramps ±0.35 over a 10s cycle. Confidence is expected to move with it; the manifest records the spread."
+      },
+      "note": "Brightness ramps ±0.35 over a 10s cycle. Confidence is expected to move with it; the manifest records the spread.",
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.909
+        ]
+      }
+    },
+    {
+      "id": "night-footage",
+      "file": "validation/night-footage.mp4",
+      "title": "One person walking in low light with sensor noise",
+      "category": "degraded",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 709588,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 1,
+        "uncertain": true,
+        "note": "Gamma-crushed to ~25% luminance plus temporal noise. A detector that finds nothing here is a REPORTED limitation, not a fixture defect."
+      },
+      "note": "Gamma-crushed to ~25% luminance plus temporal noise. A detector that finds nothing here is a REPORTED limitation, not a fixture defect.",
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.89
+        ]
+      }
+    },
+    {
+      "id": "rain",
+      "file": "validation/rain.mp4",
+      "title": "One person walking through rain-like degradation",
+      "category": "degraded",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 15253981,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 1,
+        "uncertain": true,
+        "note": "Temporal noise + contrast loss + light blur: what rain does to an encoded frame, not what rain is."
+      },
+      "note": "Temporal noise + contrast loss + light blur: what rain does to an encoded frame, not what rain is.",
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.804
+        ]
+      }
+    },
+    {
+      "id": "blur",
+      "file": "validation/blur.mp4",
+      "title": "One person walking, the lens out of focus",
+      "category": "degraded",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 60224,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 1,
+        "uncertain": true,
+        "note": "Gaussian sigma 3.5 — a badly focused or dirty dome, which is the single most common real-world camera fault."
+      },
+      "note": "Gaussian sigma 3.5 — a badly focused or dirty dome, which is the single most common real-world camera fault.",
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.854
+        ]
+      }
+    },
+    {
+      "id": "camera-shake",
+      "file": "validation/camera-shake.mp4",
+      "title": "One person walking while the camera vibrates",
+      "category": "degraded",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 175931,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 1,
+        "uncertain": true,
+        "note": "The whole frame translates ±10px. Static geometry moves, which is what a pole-mounted camera in wind actually does to a tracker."
+      },
+      "note": "The whole frame translates ±10px. Static geometry moves, which is what a pole-mounted camera in wind actually does to a tracker.",
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.918
+        ]
+      }
+    },
+    {
+      "id": "low-fps",
+      "file": "validation/low-fps.mp4",
+      "title": "One person walking, recorded at 1 fps",
+      "category": "capture",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 101959,
+      "width": 640,
+      "height": 360,
+      "fps": 1,
+      "codec": "h264",
+      "intent": {
+        "people": 1,
+        "note": "Source rate is BELOW the requested analysis rate. Provenance must stay honest rather than interpolating frames that do not exist."
+      },
+      "note": "Source rate is BELOW the requested analysis rate. Provenance must stay honest rather than interpolating frames that do not exist.",
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.91
+        ]
+      }
+    },
+    {
+      "id": "high-fps",
+      "file": "validation/high-fps.mp4",
+      "title": "One person walking, recorded at 30 fps",
+      "category": "capture",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 111438,
+      "width": 640,
+      "height": 360,
+      "fps": 30,
+      "codec": "h264",
+      "intent": {
+        "people": 1,
+        "note": "Source rate far ABOVE the analysis rate. The decoder must decimate to exactly the requested rate — an off-by-one here doubles every customer bill."
+      },
+      "note": "Source rate far ABOVE the analysis rate. The decoder must decimate to exactly the requested rate — an off-by-one here doubles every customer bill.",
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.912
+        ]
+      }
+    },
+    {
+      "id": "long-recording",
+      "file": "validation/long-recording.mp4",
+      "title": "Five minutes of intermittent activity",
+      "category": "capture",
+      "kind": "authored",
+      "durationSeconds": 300,
+      "bytes": 788132,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "intent": {
+        "people": 1,
+        "note": "Long enough to cross a decode chunk boundary and to make the timeline bucket rather than list.",
+        "crossesChunkBoundary": true
+      },
+      "note": "Long enough to cross a decode chunk boundary and to make the timeline bucket rather than list.",
+      "measured": {
+        "probeAtSeconds": 20,
+        "people": 1,
+        "confidences": [
+          0.899
+        ]
+      }
+    },
+    {
+      "id": "res-180p",
+      "file": "validation/res-180p.mp4",
+      "title": "320×180 — below the model input",
+      "category": "transport",
+      "axis": "resolution",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 31973,
+      "width": 320,
+      "height": 180,
+      "fps": 15,
+      "codec": "h264",
+      "codecTag": "avc1",
+      "intent": {
+        "people": 1
+      },
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.9
+        ]
+      }
+    },
+    {
+      "id": "res-360p",
+      "file": "validation/res-360p.mp4",
+      "title": "640×360 — the baseline",
+      "category": "transport",
+      "axis": "resolution",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 65052,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "codecTag": "avc1",
+      "intent": {
+        "people": 1
+      },
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.909
+        ]
+      }
+    },
+    {
+      "id": "res-720p",
+      "file": "validation/res-720p.mp4",
+      "title": "1280×720 — common IP camera",
+      "category": "transport",
+      "axis": "resolution",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 150849,
+      "width": 1280,
+      "height": 720,
+      "fps": 15,
+      "codec": "h264",
+      "codecTag": "avc1",
+      "intent": {
+        "people": 1
+      },
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.909
+        ]
+      }
+    },
+    {
+      "id": "res-1080p",
+      "file": "validation/res-1080p.mp4",
+      "title": "1920×1080 — full HD",
+      "category": "transport",
+      "axis": "resolution",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 284723,
+      "width": 1920,
+      "height": 1080,
+      "fps": 15,
+      "codec": "h264",
+      "codecTag": "avc1",
+      "intent": {
+        "people": 1
+      },
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.91
+        ]
+      }
+    },
+    {
+      "id": "codec-h264",
+      "file": "validation/codec-h264.mp4",
+      "title": "H.264 / avc1 — the universal baseline",
+      "category": "transport",
+      "axis": "codec",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 65052,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "codecTag": "avc1",
+      "intent": {
+        "people": 1
+      },
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.909
+        ]
+      }
+    },
+    {
+      "id": "codec-h265-hvc1",
+      "file": "validation/codec-h265-hvc1.mp4",
+      "title": "H.265 / hvc1 — plays in Safari",
+      "category": "transport",
+      "axis": "codec",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 43842,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "hevc",
+      "codecTag": "hvc1",
+      "intent": {
+        "people": 1
+      },
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.907
+        ]
+      }
+    },
+    {
+      "id": "codec-h265-hev1",
+      "file": "validation/codec-h265-hev1.mp4",
+      "title": "H.265 / hev1 — ⛔ TD-29, refused by WebKit MSE",
+      "category": "transport",
+      "axis": "codec",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 43842,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "hevc",
+      "codecTag": "hev1",
+      "intent": {
+        "people": 1
+      },
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.907
+        ]
+      }
+    },
+    {
+      "id": "codec-mpeg4",
+      "file": "validation/codec-mpeg4.mp4",
+      "title": "MPEG-4 Part 2 — a legacy DVR export",
+      "category": "transport",
+      "axis": "codec",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 462313,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "mpeg4",
+      "codecTag": "mp4v",
+      "intent": {
+        "people": 1
+      },
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.91
+        ]
+      }
+    },
+    {
+      "id": "angle-eye-level",
+      "file": "validation/angle-eye-level.mp4",
+      "title": "Eye level — the baseline framing",
+      "category": "transport",
+      "axis": "angle",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 65052,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "codecTag": "avc1",
+      "intent": {
+        "people": 1
+      },
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.909
+        ]
+      }
+    },
+    {
+      "id": "angle-high",
+      "file": "validation/angle-high.mp4",
+      "title": "High angle — perspective-compressed",
+      "category": "transport",
+      "axis": "angle",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 127153,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "codecTag": "avc1",
+      "intent": {
+        "people": 1
+      },
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.88
+        ]
+      }
+    },
+    {
+      "id": "angle-overhead",
+      "file": "validation/angle-overhead.mp4",
+      "title": "⚠️ Steep down-angle, NOT true overhead",
+      "category": "transport",
+      "axis": "angle",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 128360,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "codecTag": "avc1",
+      "intent": {
+        "people": 1
+      },
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.871
+        ]
+      }
+    },
+    {
+      "id": "angle-wide",
+      "file": "validation/angle-wide.mp4",
+      "title": "Wide angle with barrel distortion",
+      "category": "transport",
+      "axis": "angle",
+      "kind": "authored",
+      "durationSeconds": 30,
+      "bytes": 359417,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "codecTag": "avc1",
+      "intent": {
+        "people": 1
+      },
+      "measured": {
+        "probeAtSeconds": 15,
+        "people": 1,
+        "confidences": [
+          0.912
+        ]
+      }
+    },
+    {
+      "id": "corrupt-zero-bytes",
+      "file": "validation/corrupt-zero-bytes.mp4",
+      "title": "A zero-byte file with a .mp4 name",
+      "category": "corrupt",
+      "kind": "damaged",
+      "bytes": 0,
+      "expect": "rejected at probe — there is no container to read",
+      "stage": "upload-confirm",
+      "ffprobe": "ffprobe refuses it"
+    },
+    {
+      "id": "corrupt-truncated-header",
+      "file": "validation/corrupt-truncated-header.mp4",
+      "title": "The first 200 bytes only — a stalled upload",
+      "category": "corrupt",
+      "kind": "damaged",
+      "bytes": 200,
+      "expect": "rejected at probe — moov atom absent",
+      "stage": "upload-confirm",
+      "ffprobe": "probes OK but NO VIDEO STREAM"
+    },
+    {
+      "id": "corrupt-truncated-tail",
+      "file": "validation/corrupt-truncated-tail.mp4",
+      "title": "The last 40% cut off — a DVR that lost power mid-write",
+      "category": "corrupt",
+      "kind": "damaged",
+      "bytes": 62015,
+      "expect": "probe succeeds and MISREPORTS duration; the decode must end honestly, not invent frames",
+      "stage": "analysis",
+      "ffprobe": "probes OK: h264 640×360 30.0s"
+    },
+    {
+      "id": "corrupt-not-a-video",
+      "file": "validation/corrupt-not-a-video.mp4",
+      "title": "A text file renamed to .mp4",
+      "category": "corrupt",
+      "kind": "damaged",
+      "bytes": 11000,
+      "expect": "rejected at probe — no stream of any kind",
+      "stage": "upload-confirm",
+      "ffprobe": "ffprobe refuses it"
+    },
+    {
+      "id": "corrupt-audio-only",
+      "file": "validation/corrupt-audio-only.mp4",
+      "title": "A valid MP4 containing only an audio track",
+      "category": "corrupt",
+      "kind": "damaged",
+      "bytes": 265656,
+      "expect": "rejected — a valid container is not a video",
+      "stage": "upload-confirm",
+      "ffprobe": "probes OK but NO VIDEO STREAM"
+    },
+    {
+      "id": "corrupt-bitflips",
+      "file": "validation/corrupt-bitflips.mp4",
+      "title": "Valid header, 64 random bytes flipped mid-stream",
+      "category": "corrupt",
+      "kind": "damaged",
+      "bytes": 103359,
+      "expect": "decodes with visible artefacts OR fails with a reason — never silently produces nothing",
+      "stage": "analysis",
+      "ffprobe": "probes OK: h264 640×360 30.0s"
+    }
+  ],
+  "procurement": [
+    {
+      "id": "real-shop",
+      "title": "Real retail shop floor, fixed overhead camera",
+      "needs": "Detector accuracy on real subjects at real scale; reflections from glass and polished floor.",
+      "blocks": "Any claim about retail detection accuracy, and the loitering false-positive rate.",
+      "duration": "10 min, business hours",
+      "consent": "Signed footage-use agreement from the store; faces blurred or a private fixture repo."
+    },
+    {
+      "id": "mall-concourse",
+      "title": "Shopping-centre concourse, wide angle, heavy footfall",
+      "needs": "Genuine crowd density and mutual occlusion — the thing the `crowd` fixture only gestures at.",
+      "blocks": "Crowd counting accuracy; the NMS suppression question the crowd fixture raises.",
+      "duration": "10 min, peak",
+      "consent": "Centre management agreement; public-space signage."
+    },
+    {
+      "id": "warehouse",
+      "title": "Warehouse aisle with forklift and pedestrian traffic",
+      "needs": "Vehicle/person discrimination and high-ceiling perspective.",
+      "blocks": "Any safety claim about pedestrian–vehicle separation.",
+      "duration": "15 min, shift hours",
+      "consent": "Site operator agreement; union/works-council notice where required."
+    },
+    {
+      "id": "hospital-corridor",
+      "title": "Hospital corridor, mixed staff and public",
+      "needs": "Uniform-heavy scenes, trolleys, and long thin geometry with strong perspective.",
+      "blocks": "Healthcare deployment claims.",
+      "duration": "10 min",
+      "consent": "⛔ Highest bar in this table — patient privacy. Likely requires a synthetic re-enactment on a real ward instead of live footage."
+    },
+    {
+      "id": "factory-floor",
+      "title": "Production line, fixed camera, machinery in motion",
+      "needs": "Persistent non-human motion — the single largest false-positive source in industrial installs.",
+      "blocks": "Industrial deployment claims; the moving-machinery false-positive rate.",
+      "duration": "15 min",
+      "consent": "Site operator agreement."
+    },
+    {
+      "id": "parking-area",
+      "title": "Outdoor car park, day→dusk transition",
+      "needs": "Real low-light transition, headlights, and weather — the honest version of `night-footage` and `rain`.",
+      "blocks": "Outdoor/overnight claims; everything the `night-footage` and `rain` fixtures approximate.",
+      "duration": "30 min spanning dusk",
+      "consent": "Site operator agreement; ANPR rules may apply in some jurisdictions."
+    }
+  ],
+  "negativeControl": {
+    "people": 0
+  }
+}
