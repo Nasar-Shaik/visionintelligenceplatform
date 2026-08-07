@@ -305,6 +305,21 @@ _Last updated: 2026-08-07 · Claude_
   deployed run above. ⚠️ **C-21 moves ⛔ → ⚠️** — a *first* analysis of a recording works end to end;
   a rerun is silent until L-61 is closed.
 
+  **Slice 9 · Customer Demonstration Mode — ⚠️ shipped, browser certification outstanding.**
+  ⭐ **One parameter, not a second pipeline.** `speed: 1` paces a recording so it plays through the
+  *live* runtime, tracker, rule engine and event path at the rate a camera would produce it — what an
+  audience watches is the production pipeline, not a simulation of it. The mechanism was built and
+  measured in slice 3; this slice exposes it as "Demonstrate at real time" beside "Run analysis".
+
+  ⚠️ **The 1×/8× parity run is what makes it offerable at all**: the two speeds were measured
+  producing byte-identical event streams, identical track identities and identical confidences to six
+  decimal places. A demonstration therefore shows exactly what an investigation would find, which is
+  the claim a demo has to be able to survive. The requested mode sits beside the **measured** rate, so
+  a host that could not keep up shows "1× real time" and a speedFactor below 1.0 rather than a figure
+  it did not achieve.
+
+  ⛔ Same outstanding item as slice 8: not yet driven in a real browser against the deployment.
+
   **Slice 8 · Customer Investigation UI — ⚠️ shipped, browser verification OUTSTANDING.**
   `/investigations` (list + upload) and `/investigations/:id` (runs, timeline, incidents, capture a
   still) over the APIs slices 1–7 shipped, plus the nav entry gated on `stream:read` — the media

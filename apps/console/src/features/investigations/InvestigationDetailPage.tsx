@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { AlertTriangle, Camera, Play } from 'lucide-react';
+import { AlertTriangle, Camera, MonitorPlay, Play } from 'lucide-react';
 import {
   Button,
   EmptyState,
@@ -54,13 +54,35 @@ export function InvestigationDetailPage() {
               description: `${detail.data.analysis.cameraName ?? detail.data.analysis.cameraId} · footage from ${formatTimestamp(detail.data.analysis.footageStartedAt)}`,
             })}
         actions={
-          <Button
-            onClick={() => startRun.mutate({})}
-            disabled={startRun.isPending || detail.data?.analysis.state !== 'ready'}
-          >
-            <Play className="mr-2 h-4 w-4" />
-            Run analysis
-          </Button>
+          <div className="flex gap-2">
+            {/*
+              ⭐ **Demonstration Mode** (slice 9) — and it is one parameter, not a second pipeline.
+              `speed: 1` paces the recording to real time, so it plays through the *live* runtime,
+              tracker, rules and event path at the rate a camera would produce it. What an audience
+              watches is the production pipeline, not a simulation of it.
+
+              ⚠️ The parity run is what lets this be offered at all: 1× and 8× were measured to
+              produce byte-identical event streams, identical track identities and identical
+              confidences. A demonstration therefore shows exactly what an investigation would find.
+            */}
+            <Button
+              variant="outline"
+              onClick={() => startRun.mutate({ speed: 1 })}
+              disabled={startRun.isPending || detail.data?.analysis.state !== 'ready'}
+              title="Plays the recording through the live pipeline at real time"
+            >
+              <MonitorPlay className="mr-2 h-4 w-4" />
+              Demonstrate at real time
+            </Button>
+            <Button
+              onClick={() => startRun.mutate({})}
+              disabled={startRun.isPending || detail.data?.analysis.state !== 'ready'}
+              title="Analyses as fast as the runtime allows"
+            >
+              <Play className="mr-2 h-4 w-4" />
+              Run analysis
+            </Button>
+          </div>
         }
       />
 
@@ -101,6 +123,12 @@ export function InvestigationDetailPage() {
                 >
                   <TableCell>#{s.sequence}</TableCell>
                   <TableCell>{s.state}</TableCell>
+                  {/*
+                    ⚠️ What was ASKED for, beside what was MEASURED in the next column. A demo that
+                    could not keep up shows "real time" here and less than 1.0× there — which is the
+                    honest reading, and the reason both are on screen.
+                  */}
+                  <TableCell>{s.speed === null ? 'As fast as possible' : `${s.speed}× real time`}</TableCell>
                   <TableCell>
                     {/*
                       ⚠️ `null` is rendered as "—", never as 0. A queued run has not been slow; it

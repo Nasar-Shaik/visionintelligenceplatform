@@ -151,6 +151,33 @@ describe('Investigation detail', () => {
     expect(screen.queryByText(/0\.0× real time/)).not.toBeInTheDocument();
   });
 
+  /**
+   * ⭐ **Demonstration Mode is one parameter, not a second pipeline** (slice 9). `speed: 1` paces the
+   * recording so it plays through the *live* runtime, tracker, rules and event path at the rate a
+   * camera would produce it — and the 1×/8× parity run is what lets it be offered at all, because it
+   * measured the two producing byte-identical event streams.
+   */
+  it('offers a real-time demonstration alongside the fast analysis', async () => {
+    mock();
+    renderWithProviders(<InvestigationDetailPage />, { route: '/investigations/ana_1', path: '/investigations/:id' });
+
+    expect(await screen.findByRole('button', { name: /demonstrate at real time/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^run analysis$/i })).toBeInTheDocument();
+  });
+
+  /**
+   * ⚠️ **What was asked for sits beside what was measured.** A demonstration the host could not keep
+   * up with shows "1× real time" as the mode and less than 1.0× as the measurement — which is the
+   * honest reading, and the reason both are on screen.
+   */
+  it('shows the requested mode beside the measured rate', async () => {
+    mock({ sessions: [session({ speed: 1 })] });
+    renderWithProviders(<InvestigationDetailPage />, { route: '/investigations/ana_1', path: '/investigations/:id' });
+
+    expect(await screen.findByText('1× real time')).toBeInTheDocument();
+    expect(screen.getByText('9.7× real time')).toBeInTheDocument();
+  });
+
   /** ⛔ A partial timeline says so rather than presenting itself as the whole run. */
   it('states when the timeline was truncated', async () => {
     mock({ timeline: { truncated: true } });
