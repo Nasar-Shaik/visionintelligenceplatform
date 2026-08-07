@@ -178,8 +178,27 @@ class ConnectionSupervisor:
     def redacted_uri(self) -> str:
         return redact_uri(getattr(self._source, "uri", ""))
 
+    def signal_stop(self) -> None:
+        """Ask the frame loop to exit at its next boundary, **without releasing the decoder**.
+
+        ⛔ Separated from `stop()` in P-9 A3, because the two must not happen at the same instant
+        when the pump is on its own thread. `stop()` closed the source immediately, so a pump blocked
+        inside a native `cv2.VideoCapture.read()` had its capture released underneath it — a
+        use-after-free that ended the process with SIGSEGV (`double free or corruption`), reproducibly,
+        on every live certification run.
+
+        ⚠️ It had never fired before today. The synchronous executor has no second thread, and until
+        `opencv-python-headless` was installed (A2) no live source could open at all — so the runtime
+        had never once torn down a real decoder while a real thread was reading from it.
+        """
+        self._stopping = True
+
     def stop(self) -> None:
-        """Ask the supervisor to stop; the frame loop exits at the next boundary. Idempotent."""
+        """Stop and release. Idempotent.
+
+        ⚠️ Callers running the frame loop on another thread must `signal_stop()`, join that thread,
+        and only then call this — releasing the decoder is the last step, not the first.
+        """
         self._stopping = True
         if self.state == "failed":
             self._finish("failed")

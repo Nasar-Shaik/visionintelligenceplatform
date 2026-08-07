@@ -49,6 +49,14 @@ from video_analyzer import AnalyzeOptions, VideoAnalyzer
 
 _DEFAULT_MAX_SESSIONS = 8
 
+#: How long teardown waits for the pump thread to leave native decoder code before releasing it.
+#: ⚠️ A ceiling, not a delay — a pump that has noticed `signal_stop` exits within one frame interval,
+#: so this is only ever paid by a source that has genuinely stopped delivering. If it is EXCEEDED the
+#: decoder is released anyway, which is the same hazard this ordering exists to avoid: bounded now,
+#: not eliminated. Closing it properly needs a read timeout on the capture itself — Track B, where a
+#: real device that stalls can justify it.
+_TEARDOWN_JOIN_SECONDS = 3.0
+
 
 # --- execution seam (injected so tests never spawn a thread) --------------------------------------
 
@@ -77,7 +85,10 @@ class ThreadExecutor:
 
     def join(self, timeout: Optional[float] = None) -> None:
         thread, self._thread = self._thread, None
-        if thread is not None and thread.is_alive():
+        # ⚠️ `_teardown` also runs on the pump thread itself (a finite source that ran to completion),
+        # and `Thread.join()` on the current thread raises `RuntimeError: cannot join current thread`.
+        # Nothing had reached it before P-9: the synchronous executor has no thread to join.
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
             thread.join(timeout)
 
     @property
@@ -181,9 +192,12 @@ class SessionRunner:
         self._log.emit("session.resumed")
 
     def stop(self, *, timeout: Optional[float] = 5.0) -> None:
-        """Stop the session and release everything it owns. Idempotent."""
+        """Stop the session and release everything it owns. Idempotent.
+
+        ⚠️ **Signal, join, then release** — never release first. See `ConnectionSupervisor.signal_stop`.
+        """
         self._stopping = True
-        self._supervisor.stop()
+        self._supervisor.signal_stop()
         self._executor.join(timeout)
         self._teardown(reason="stopped")
 
@@ -430,8 +444,14 @@ class SessionRunner:
         """Release every resource this runner owns. Idempotent and safe from any state, so stop,
         restart and fail all converge here and nothing leaks."""
         released = self._pipeline.close()  # queue frames released
+        # ⛔ Order is load-bearing (P-9 A3). This was `stop()` then `join(0.1)` — the decoder was
+        # released while the pump thread was still inside a native `cv2.VideoCapture.read()`, and the
+        # process died with SIGSEGV. Signal first so the loop exits at its next frame boundary, give
+        # the thread a real chance to leave native code, and release only then.
+        self._supervisor.signal_stop()  # loop exits at the next boundary; decoder still valid
+        self._executor.join(_TEARDOWN_JOIN_SECONDS)  # thread out of native code
         self._supervisor.stop()  # source closed (decoder released)
-        self._executor.join(0.1)  # thread joined
+        self._executor.join(0.1)  # anything left over
         self._paused = False  # heartbeat/pause state cleared
         self._log.emit(
             "session.torn_down",

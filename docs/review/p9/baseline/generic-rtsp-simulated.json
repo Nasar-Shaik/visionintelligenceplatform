@@ -1,0 +1,70 @@
+{
+  "bundleVersion": "1.0.0",
+  "status": "pending-validation",
+  "evidenceClass": "simulated",
+  "blockers": [
+    "evidence class is 'simulated' — certification requires a run against physical hardware",
+    "required check 'clean-shutdown' was not executed",
+    "required check 'reconnect-recovery' was not executed"
+  ],
+  "bundleKeys": [
+    "benchmarks",
+    "bundleVersion",
+    "capability",
+    "compatibility",
+    "configuration",
+    "environment",
+    "generatedAt",
+    "id",
+    "logs",
+    "runtimeVersion",
+    "summary"
+  ],
+  "checks": [
+    {
+      "name": "clean-shutdown",
+      "status": "not-executed",
+      "evidenceClass": "simulated"
+    },
+    {
+      "name": "connect",
+      "status": "pass",
+      "evidenceClass": "simulated"
+    },
+    {
+      "name": "credential-redaction",
+      "status": "pass",
+      "evidenceClass": "simulated"
+    },
+    {
+      "name": "declared-capabilities",
+      "status": "skipped",
+      "evidenceClass": "simulated"
+    },
+    {
+      "name": "fps-within-declared-range",
+      "status": "skipped",
+      "evidenceClass": "simulated"
+    },
+    {
+      "name": "frame-accounting",
+      "status": "pass",
+      "evidenceClass": "simulated"
+    },
+    {
+      "name": "reconnect-recovery",
+      "status": "not-executed",
+      "evidenceClass": "simulated"
+    },
+    {
+      "name": "stream-acquisition",
+      "status": "pass",
+      "evidenceClass": "simulated"
+    },
+    {
+      "name": "stream-profile-selection",
+      "status": "skipped",
+      "evidenceClass": "simulated"
+    }
+  ]
+}

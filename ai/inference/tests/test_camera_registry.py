@@ -214,6 +214,31 @@ class ShippedRegistryTest(unittest.TestCase):
     def test_the_registry_directory_is_where_the_module_says_it_is(self):
         self.assertTrue(os.path.isdir(REGISTRY_DIR))
 
+    def test_the_committed_certification_baseline_claims_nothing(self):
+        """P-9 A4. The baseline is the diff target every hardware run is compared against, so a
+        hardware verdict that leaked into it would make the comparison meaningless in the one
+        direction that matters.
+
+        ⚠️ Asserted HERE, in the unit suite, and not only in `docs/review/p9/certification.mjs` —
+        that verification needs Docker, a built image and a running fixture, and a guard that only
+        runs when someone remembers to run it is not a guard.
+        """
+        path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+            "docs", "review", "p9", "baseline", "generic-rtsp-simulated.json",
+        )
+        self.assertTrue(os.path.isfile(path), f"missing certification baseline: {path}")
+        with open(path, encoding="utf-8") as fh:
+            baseline = json.load(fh)
+        self.assertEqual(baseline["status"], "pending-validation")
+        self.assertEqual(baseline["evidenceClass"], "simulated")
+        self.assertTrue(baseline["blockers"], "a baseline that certifies nothing must say why")
+        # The two checks no software can produce must still be listed as un-executed, or the
+        # baseline has quietly stopped being a record of what is outstanding.
+        outstanding = {c["name"] for c in baseline["checks"] if c["status"] == "not-executed"}
+        self.assertIn("reconnect-recovery", outstanding)
+        self.assertIn("clean-shutdown", outstanding)
+
     def test_the_matrix_spells_the_status_out_in_words(self):
         # A tick or a dash invites an optimistic reading; words do not.
         text = render_matrix(self.registry.matrix())

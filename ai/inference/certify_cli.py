@@ -35,6 +35,7 @@ import json
 import os
 import platform
 import sys
+import time
 from typing import List, Optional
 
 from benchmark import BenchmarkWorkload, environment_fingerprint, run_benchmark
@@ -51,7 +52,7 @@ from certification import (
 from compute import ComputeRegistry, ComputeResource
 from resources import ResourceAccountant
 from scheduler import InferenceScheduler, SchedulerPolicy
-from session_runner import LiveSessionConfig, SessionSupervisor
+from session_runner import LiveSessionConfig, SessionSupervisor, ThreadExecutor
 from sessions import SessionManager
 from sizing import SizingRequest, recommend, render_table, sizing_table
 from soak import SoakPolicy, SoakRun, render_report as render_soak
@@ -225,7 +226,29 @@ def _run_session(args: argparse.Namespace, source_type: str, *, frames: int, on_
 
     The REAL supervisor, scheduler and pipeline — not a certification-specific harness. A result
     obtained from a bespoke path would say nothing about production, which is the whole reason the
-    procedure drives the frozen runtime rather than reimplementing it."""
+    procedure drives the frozen runtime rather than reimplementing it.
+
+    ### ⛔ Why a live source needs a thread and a deadline (P-9 A3)
+
+    `SessionSupervisor` defaults to `SynchronousExecutor` — *"runs the pump inline, the deterministic
+    default for tests and benchmarks"* — which is exactly right for a **finite** simulated source and
+    catastrophic for a live one. `OpenCvStreamSource.frames()` is an unbounded `while True`
+    (correctly: a live camera stream has no end, and `totalFrames` is honoured only by the simulated
+    source), so `supervisor.start()` never returned.
+
+    Measured: `certify_cli --target generic-rtsp --source rtsp --uri rtsp://…` printed its header and
+    then hung. Stack, at 35 s:
+
+        stream_source.frames → stream_pipeline.run → session_runner._pump
+        → SynchronousExecutor.submit → runner.start → supervisor.start → _run_session
+
+    ⚠️ **Every hardware certification run — the entire point of Track B — would have hung**, before
+    printing a summary or writing a bundle. Found on a synthetic fixture, which is the cheapest place
+    to find it.
+
+    The bound lives here rather than in the runtime because a live stream having no end is the
+    correct behaviour; it is the *certification procedure* that wants a finite observation window.
+    """
     analyze_options = AnalyzeOptions(
         tenant_id="tnt_certify", camera_id="cam_certify", engine=args.engine
     )
@@ -240,6 +263,8 @@ def _run_session(args: argparse.Namespace, source_type: str, *, frames: int, on_
         pipeline=PipelineOptions(queue_capacity=32, target_fps=args.fps, source_fps=30.0),
         reconnect=ReconnectPolicy(max_attempts=3, base_ms=200.0, max_ms=2000.0),
     )
+    # A live transport never ends by itself, so its pump must not be the calling thread.
+    live = source_type != "simulated"
     supervisor = SessionSupervisor(
         SessionManager(),
         max_sessions=2,
@@ -248,12 +273,24 @@ def _run_session(args: argparse.Namespace, source_type: str, *, frames: int, on_
             ResourceAccountant(),
             policy=SchedulerPolicy(reserved_capacity_percent=0.0),
         ),
+        **({"executor_factory": ThreadExecutor} if live else {}),
     )
     source = (
         SimulatedStreamSource(uri="sim://certify", total_frames=frames)
         if source_type == "simulated"
         else build_source(config.source)
     )
+
+    # Counted here rather than asked of the pipeline afterwards: the observation window has to close
+    # on frames that actually arrived, and a camera that stalls at frame 12 must end the window by
+    # deadline rather than by hope.
+    seen = {"frames": 0}
+
+    def observe(result) -> None:  # noqa: ANN001 - one analyzer result
+        seen["frames"] += 1
+        if on_result is not None:
+            on_result(result)
+
     runner = supervisor.start(
         "tnt_certify",
         camera_id="cam_certify",
@@ -261,9 +298,25 @@ def _run_session(args: argparse.Namespace, source_type: str, *, frames: int, on_
         config=config,
         analyzer=analyzer,
         source=source,
-        on_result=on_result,
+        on_result=observe,
         log_sink=lambda _r: None,
     )
+    if live:
+        deadline = time.monotonic() + max(1.0, float(args.max_seconds))
+        while (
+            not runner.finished
+            and seen["frames"] < frames
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.1)
+        if seen["frames"] < frames:
+            # ⚠️ Said out loud. A run that observed 12 of 60 requested frames is a finding about the
+            # device, and the checks below read the same diagnostics either way — but a human
+            # watching a certification (which §8 of the plan requires) should not have to infer it.
+            print(
+                f"  window closed after {seen['frames']}/{frames} frames "
+                f"({'deadline' if not runner.finished else 'stream ended'})"
+            )
     diagnostics = runner.diagnostics()
     try:
         supervisor.stop("tnt_certify", runner.identity.session_id)
@@ -375,6 +428,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--deployment", default="dev-laptop",
                    choices=["dev-laptop", "mini-pc-i5", "rtx-desktop", "edge-device"])
     p.add_argument("--frames", type=int, default=60)
+    # ⚠️ The observation window's hard ceiling on a LIVE source. Ignored for `simulated`, which ends
+    # by itself. Without it a camera that opens and then stalls — the "opens then stalls" device the
+    # probe contract already names — holds the certification open forever instead of failing it.
+    p.add_argument("--max-seconds", type=float, default=120.0,
+                   help="ceiling on a live observation window (s); the simulated source ignores it")
     p.add_argument("--fps", type=float, default=5.0)
     p.add_argument("--min-fps", type=float, default=None, help="certification floor for sustained fps")
     p.add_argument("--max-loss", type=float, default=None, help="certification ceiling for frame loss %%")
