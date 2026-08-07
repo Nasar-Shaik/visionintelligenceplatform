@@ -369,7 +369,17 @@ async function login() {
   const token = r.json?.data?.accessToken;
   if (token === undefined)
     throw new Error(`login failed: HTTP ${r.status} ${r.text.slice(0, 200)}`);
-  H = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+  /*
+   * ⚠️ **Mutated in place, never reassigned — and this cost a capacity leak once already.**
+   *
+   * `raiseRuntimeCapacity(api, H, …)` closes over the headers OBJECT and its `restore()` uses that
+   * same reference at teardown, hours later. An earlier version of `login()` did `H = {…}`, so the
+   * first re-authentication left every existing closure holding the expired token: `restore()` got a
+   * 401 and the runtime's declared capacity stayed raised. That is finding F-4 — one stage leaking a
+   * shared deployment declaration into the next — reintroduced by the fix for a different defect.
+   */
+  H.authorization = `Bearer ${token}`;
+  H['content-type'] = 'application/json';
   try {
     const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
     tokenExpiresAt = Number(claims.exp) * 1000;
