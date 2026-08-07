@@ -194,3 +194,43 @@ power.
 
 ⚠️ **The freeze at `647a96e` is unaffected.** This soak was never a freeze gate — it is new
 verification capability being established. Nothing it found changes P-8 Phase 7's status.
+
+---
+
+## 7 · Review of the soak framework itself
+
+⚠️ **Every defect this exercise found was in the instrument, not the platform** — five during the
+smoke phase, one during the run. That is now the third consecutive verification effort in this
+repository with that result, and it is the reason `DEFINITION_OF_DONE` treats verification as
+production code.
+
+### Fixed before tonight's rerun, and validated
+
+| #   | Change                                                                                 | Validated by                                                     |
+| --- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 1   | `ensureAuth()` re-authenticates from the token's own `exp` claim                       | A 17-minute run crossing the 15-minute TTL: **8/8 samples live** |
+| 2   | `apiRead()` returns `{ok, data}`; every control-plane field is `null` when unavailable | Same run — `apiAvailable: true` recorded per sample              |
+| 3   | A check asserts the control plane answered at **every** sample                         | Present and green                                                |
+| 4   | Stream checks refuse to pass when the signal was never measured                        | Detail now names unavailable samples instead of reading 0        |
+| 5   | Suspended samples detected (`elapsed > 2× cadence`) and excluded from rates and trends | Logic exercised against the 4458 s sample                        |
+| 6   | A run of ≥60 minutes refuses to start on battery (`SOAK_ALLOW_BATTERY=1` to override)  | Precondition present; tonight's run needs AC                     |
+
+### ⚠️ Recommended next, in priority order
+
+| #        | Recommendation                                                                                                                                                   | Why                                                                                                                         |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **SF-1** | **Register the soak as a nightly stage** (`scripts/nightly/stages/platform/soak.sh`) in the `weekly` and `pilot` profiles, `OUT` pointing into the run directory | Deliverable 6 of the eight. A verification invoked by hand is a verification that ran once                                  |
+| **SF-2** | **Mutation-test the harness.** Break dwell, stop a container, exhaust a queue — and assert the soak goes red **at the check that names it**                      | ⚠️ Deliverable 5, and unmet. This harness has never been shown able to fail on a broken platform                            |
+| **SF-3** | **Characterise publisher out-of-order.** 13.4 % is recorded and unexplained                                                                                      | An uncharacterised 13 % is either fine or a defect, and "unknown" must stay unknown until measured                          |
+| **SF-4** | **Resumability.** A soak that dies at hour six should be able to append rather than restart, keyed on the run's own evidence file                                | This run lost 11 samples to a restart decision that better tooling would not have forced                                    |
+| **SF-5** | **A second profile for contrast.** Run `baseline` alongside `retail-loitering` on alternate nights                                                               | A drift in both is perception; a drift in one is the rule. Today neither can be distinguished                               |
+| **SF-6** | **Put `docs/review/*.mjs` under the lint gate.** `turbo run lint` covers 21 packages and none of them is `docs/`                                                 | ⚠️ 34 pre-existing errors in `inference-soak.mjs` alone. Verification code is production code, and it is currently unlinted |
+| **SF-7** | **Narrow the log-error regex.** It matched `"state":"error"` inside a JSON payload and reported 5 "exceptions" that were `level:30` info lines                   | It found something real by accident; a check that is right by luck will be wrong by luck                                    |
+
+### ⚠️ What tonight's run must do differently
+
+1. **AC power connected** — now enforced by the harness, not by memory.
+2. **`caffeinate -is`**, not `-i`, so a closed lid cannot suspend it either.
+3. **A clean deployment** as instructed, with `deployment-integrity.mjs` green before and after.
+4. **78 samples uninterrupted**, and the new control-plane check must be green — if it is not, the
+   run is void regardless of what the Prometheus half says.
