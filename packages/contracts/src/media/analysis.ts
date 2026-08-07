@@ -245,18 +245,48 @@ export type VideoAnalysis = z.infer<typeof VideoAnalysis>;
 // ---------------------------------------------------------------------------------------------
 
 /**
- * A session's lifecycle.
+ * A session's lifecycle — richer than `JobState`, deliberately.
+ *
+ * ⚠️ **`JobState` is frozen at five values and is not extended.** A job is an execution primitive
+ * ("is this unit of work outstanding?"); a session is what an operator watches for twenty minutes.
+ * They need different vocabularies, so the session carries the operational states and **maps down**
+ * to the job's five. Widening the frozen enum to serve one screen would change the meaning of every
+ * job in the platform.
  *
  * ⚠️ There is deliberately no `partial`, for the reason `JobState` gives: a half-analysed recording
  * is a **failure that may have produced something**, not a third kind of success. A run that stopped
  * early is `failed` with its counts and a `bounded-by-limit` finding intact.
  */
 export const AnalysisSessionState = z.enum([
+  /** Recorded, waiting for a worker to claim it. */
   'queued',
+  /** A worker holds the lease and is opening the source. ⚠️ No frame has been analysed yet. */
+  'starting',
+  /** Frames are flowing. */
   'running',
+  /**
+   * Deliberately halted, resumable from the last checkpoint.
+   *
+   * ⛔ **Pausing is not free and the contract says so.** The runtime releases a camera's tracking
+   * state after an idle period (300 s by default), so a session paused for longer than that resumes
+   * with **new identities**: a dwell spanning the pause is split into two shorter visits and may
+   * stop crossing its threshold. The resume records a finding rather than pretending continuity.
+   */
+  'paused',
+  /** A transient failure; the worker is backing off before another attempt. Attempts are bounded. */
+  'retrying',
+  'cancelled',
   'succeeded',
   'failed',
-  'cancelled',
+  /**
+   * ⚠️ **The worker stopped heartbeating and its lease ran out.**
+   *
+   * Distinct from `failed`, which is a run that reached a conclusion. `expired` is a run nobody can
+   * account for — the process died, the host went away, the container was rescheduled — and the
+   * distinction matters because `failed` means "we tried and it did not work" while `expired` means
+   * "we do not know what happened", which is the only honest thing to say about a vanished worker.
+   */
+  'expired',
 ]);
 export type AnalysisSessionState = z.infer<typeof AnalysisSessionState>;
 
@@ -264,7 +294,47 @@ export const TERMINAL_SESSION_STATES: readonly AnalysisSessionState[] = [
   'succeeded',
   'failed',
   'cancelled',
+  'expired',
 ];
+
+/** States in which a worker may legitimately hold this session. */
+export const CLAIMABLE_SESSION_STATES: readonly AnalysisSessionState[] = ['queued', 'retrying'];
+
+/** States a worker actively owns — the ones a lease expiry must reclaim. */
+export const LEASED_SESSION_STATES: readonly AnalysisSessionState[] = [
+  'starting',
+  'running',
+  'paused',
+];
+
+/**
+ * ⭐ **The session's state, expressed in the frozen job vocabulary.**
+ *
+ * The mapping is deliberately lossy in one direction only: several session states collapse to
+ * `running`, and none of the five job states is unreachable. Keeping it as one function means the
+ * two can never drift into disagreeing about whether a job is finished — the failure `verdict_for`
+ * exists to prevent one layer down in the certification registry.
+ */
+export function sessionStateToJobState(
+  state: AnalysisSessionState,
+): 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' {
+  switch (state) {
+    case 'queued':
+      return 'queued';
+    case 'starting':
+    case 'running':
+    case 'paused':
+    case 'retrying':
+      return 'running';
+    case 'succeeded':
+      return 'succeeded';
+    case 'cancelled':
+      return 'cancelled';
+    case 'failed':
+    case 'expired':
+      return 'failed';
+  }
+}
 
 export function isTerminalSessionState(state: AnalysisSessionState): boolean {
   return TERMINAL_SESSION_STATES.includes(state);
@@ -347,18 +417,68 @@ export const EMPTY_ANALYSIS_COUNTS: AnalysisCounts = {
  * whole of it, and a session that does not yet know its duration reports no progress rather than 0 %.
  */
 export const AnalysisProgress = z.object({
-  /** How far into the footage the decoder has reached. */
+  /**
+   * ⭐ How far into the footage the decoder has reached — **and the resume checkpoint.**
+   *
+   * It is one number because it has to be: a checkpoint that could disagree with the progress bar
+   * is a resume that starts somewhere the operator was not told about.
+   */
   mediaOffsetSeconds: z.number().min(0),
   /** The footage's total length, when known. */
   durationSeconds: z.number().min(0).optional(),
+  /** Frames handed to perception so far, across every attempt of this session. */
+  framesProcessed: z.number().int().min(0),
+  /**
+   * ⚠️ **Frames per second of WALL CLOCK — throughput, not the analysis rate.**
+   *
+   * `analysisFrameRate` is how densely the footage is sampled and is configuration; this is how fast
+   * the platform is getting through it and is a measurement. Naming them both "fps" on one screen is
+   * how an operator concludes the analysis is running at the wrong rate.
+   *
+   * ⛔ `null` until enough samples exist to mean anything — never `0`, which reads as "stalled".
+   */
+  throughputFps: z.number().min(0).nullable(),
   /**
    * ⭐ Footage-seconds analysed per wall-clock second. A live camera runs at 1.0 by definition; an
    * offline session above 1.0 is running faster than real time, which is the point of it.
    */
-  speedFactor: z.number().min(0).optional(),
+  speedFactor: z.number().min(0).nullable(),
+  /**
+   * Estimated seconds remaining.
+   *
+   * ⛔ **`null` with a reason, never a fabricated number** ([ADR-0039]). An ETA computed from three
+   * frames is a guess wearing a number's clothes, and an operator plans around it. It stays absent
+   * until the measurement window has filled and the duration is known — and `etaUnavailableReason`
+   * says which of those is missing.
+   */
+  etaSeconds: z.number().min(0).nullable(),
+  etaUnavailableReason: z.string().max(200).optional(),
   updatedAt: IsoDateTime,
 });
 export type AnalysisProgress = z.infer<typeof AnalysisProgress>;
+
+/**
+ * ⭐ **The lease a worker holds, and the whole of what makes multi-worker execution safe.**
+ *
+ * Claiming is a conditional write against `(state, leaseExpiresAt)`, so two workers racing for the
+ * same session cannot both win. A worker that dies stops renewing; the lease lapses; a sweeper moves
+ * the session to `expired` and it becomes claimable again.
+ *
+ * ⚠️ **The lease is what makes "at most one worker" true — not the claim check.** The same lesson
+ * the session-sequence unique index taught: a read-then-write is not exclusion, and only a
+ * conditional write or a unique constraint is.
+ */
+export const AnalysisLease = z.object({
+  /** Which worker holds it. ⚠️ Stable per process, so a stale lease names what to go and look at. */
+  workerId: z.string().min(1).max(120),
+  /** Last time the worker said it was alive. */
+  heartbeatAt: IsoDateTime,
+  /** After this instant the lease may be taken. */
+  expiresAt: IsoDateTime,
+  /** Attempts made on this session, including the current one. Bounded — see `ANALYSIS_LIMITS`. */
+  attempt: z.number().int().min(1),
+});
+export type AnalysisLease = z.infer<typeof AnalysisLease>;
 
 /** ⛔ **Immutable once terminal.** One execution of one analysis. */
 export const AnalysisSession = z.object({
@@ -378,6 +498,8 @@ export const AnalysisSession = z.object({
   ruleSet: z.array(AnalysisRuleSnapshot).max(200),
   progress: AnalysisProgress,
   counts: AnalysisCounts,
+  /** Present while a worker holds this session, and left in place afterwards as the audit trail. */
+  lease: AnalysisLease.optional(),
   findings: z.array(AnalysisFinding).max(50),
   /** Present when `state` is `failed` — the operator-facing reason. */
   error: z.string().max(500).optional(),
@@ -480,6 +602,33 @@ export const ANALYSIS_LIMITS = {
   uploadTtlSeconds: 3600,
   /** Sessions retained per analysis before the oldest is refused rather than silently dropped. */
   maxSessionsPerAnalysis: 20,
+  /**
+   * How long a worker's claim survives without a heartbeat.
+   *
+   * ⚠️ Long enough that an ordinary GC pause or a slow chunk cannot lose a lease, short enough that
+   * a dead worker's session does not sit unclaimable for minutes. Reclaiming a **live** worker's
+   * session runs the analysis twice — two workers pushing the same footage through one camera's
+   * tracker; never reclaiming a **dead** one's strands it for ever. The second is the failure an
+   * operator actually meets, so the window errs short.
+   */
+  leaseSeconds: 60,
+  /** Heartbeat interval. Divides `leaseSeconds` with room for a missed beat. */
+  heartbeatSeconds: 15,
+  /**
+   * Attempts per session before it stops being retried.
+   *
+   * ⛔ Bounded on purpose. An unbounded retry against a recording that cannot be decoded is a worker
+   * that never does anything else, and from outside it is indistinguishable from a busy queue.
+   */
+  maxAttempts: 3,
+  /**
+   * Footage seconds per chunk.
+   *
+   * ⭐ Chunking buys three things: progress that moves, cancellation that lands within a second
+   * rather than at the end of a four-hour file, and a checkpoint to resume from. It costs one
+   * decoder start per chunk, which is why it is minutes rather than seconds.
+   */
+  chunkSeconds: 120,
 } as const;
 
 /**

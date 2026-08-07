@@ -7,7 +7,11 @@
  * recordings and clips catalogue already uses, deliberately, so there is one paging idiom here.
  */
 import type { Collection } from 'mongodb';
-import type { VideoAnalysisQuery } from '@vip/contracts';
+import {
+  TERMINAL_SESSION_STATES,
+  type AnalysisSessionState,
+  type VideoAnalysisQuery,
+} from '@vip/contracts';
 import { TenantRepository, type PlainObject, type TenantScope } from '@vip/tenancy';
 import type { AnalysisDoc, AnalysisSessionDoc } from '../domain/analysis.js';
 import type { AnalysisStore } from '../application/ports.js';
@@ -117,6 +121,29 @@ export class MongoAnalysisStore implements AnalysisStore {
     return this.#sessions.findOne(scope, { _id: id } as PlainObject);
   }
 
+  /**
+   * ⭐ The conditional write. One `updateOne` whose filter carries the expectation, so the database
+   * decides the winner rather than the process that read first.
+   *
+   * ⚠️ `matchedCount === 1` is the answer, not `modifiedCount`. A worker renewing a lease can
+   * legitimately write a document identical to the one already stored — Mongo reports that as
+   * matched-but-not-modified, and reading `modifiedCount` would tell a live worker it had lost a
+   * lease it still holds.
+   */
+  async compareAndSetSession(
+    scope: TenantScope,
+    id: string,
+    expected: { state: AnalysisSessionState; workerId: string | null },
+    next: AnalysisSessionDoc,
+  ): Promise<boolean> {
+    const filter: PlainObject = { _id: id, state: expected.state };
+    filter['lease.workerId'] = expected.workerId === null ? { $exists: false } : expected.workerId;
+    const matched = await this.#sessions.updateOne(scope, filter as never, {
+      $set: next as unknown as PlainObject,
+    });
+    return matched === 1;
+  }
+
   async listSessions(scope: TenantScope, analysisId: string): Promise<AnalysisSessionDoc[]> {
     return this.#sessions.aggregate<AnalysisSessionDoc>(scope, [
       { $match: { analysisId } },
@@ -124,9 +151,18 @@ export class MongoAnalysisStore implements AnalysisStore {
     ]);
   }
 
+  /**
+   * ⚠️ Derived from `TERMINAL_SESSION_STATES` rather than listing the live ones.
+   *
+   * The first version matched `['queued','running']`, which was correct when there were five states
+   * and silently wrong the moment `starting`, `paused` and `retrying` were added — a sweeper looking
+   * for lapsed leases would never have seen a session that died while starting, and it would have sat
+   * unclaimable for ever. Asking "not finished" cannot go stale when a state is added; listing the
+   * live ones can, and did.
+   */
   async listActiveSessions(scope: TenantScope): Promise<AnalysisSessionDoc[]> {
     return this.#sessions.aggregate<AnalysisSessionDoc>(scope, [
-      { $match: { state: { $in: ['queued', 'running'] } } },
+      { $match: { state: { $nin: TERMINAL_SESSION_STATES } } },
       { $sort: { createdAt: 1 } },
     ]);
   }

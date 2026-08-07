@@ -72,6 +72,8 @@ export interface AnalysisSessionDoc extends TenantScoped {
   ruleSet: AnalysisSession['ruleSet'];
   progress: AnalysisSession['progress'];
   counts: AnalysisSession['counts'];
+  /** The worker's claim. ⚠️ Left in place after a run ends — it is the audit trail of who ran it. */
+  lease?: AnalysisSession['lease'];
   findings: AnalysisFinding[];
   error?: string;
   requestedBy: string;
@@ -233,9 +235,18 @@ export function newSession(input: NewSessionInput): AnalysisSessionDoc {
       pipelineVersion: ANALYSIS_PIPELINE_VERSION,
     },
     ruleSet: input.ruleSet,
+    /*
+     * ⚠️ Every measurement starts `null`, not `0`. A queued session has not been slow — it has not
+     * been measured, and `0 fps` on screen reads as "stalled" to the operator watching it.
+     */
     progress: {
       mediaOffsetSeconds: 0,
       ...(input.durationSeconds === undefined ? {} : { durationSeconds: input.durationSeconds }),
+      framesProcessed: 0,
+      throughputFps: null,
+      speedFactor: null,
+      etaSeconds: null,
+      etaUnavailableReason: 'this run has not started yet',
       updatedAt: iso,
     },
     counts: { ...EMPTY_ANALYSIS_COUNTS },
@@ -259,6 +270,7 @@ export function toSession(doc: AnalysisSessionDoc): AnalysisSession {
     ruleSet: doc.ruleSet,
     progress: doc.progress,
     counts: doc.counts,
+    ...(doc.lease === undefined ? {} : { lease: doc.lease }),
     findings: doc.findings,
     ...(doc.error === undefined ? {} : { error: doc.error }),
     requestedBy: doc.requestedBy,

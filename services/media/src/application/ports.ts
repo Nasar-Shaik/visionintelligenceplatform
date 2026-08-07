@@ -5,6 +5,7 @@
  * a camera, or a network.
  */
 import type {
+  AnalysisSessionState,
   ClipQuery,
   RecordingQuery,
   RecordingSegment,
@@ -141,6 +142,21 @@ export interface AnalysisStore {
   listSessions(scope: TenantScope, analysisId: string): Promise<AnalysisSessionDoc[]>;
   /** Sessions in a non-terminal state, across analyses — what a worker claims from. */
   listActiveSessions(scope: TenantScope): Promise<AnalysisSessionDoc[]>;
+  /**
+   * ⭐ **Conditional write.** Move a session into `next` only if it is still in `expectedState` and
+   * still held by `expectedWorkerId` (or by nobody, when that is `null`). Returns whether the write
+   * landed.
+   *
+   * ⚠️ This is the whole of multi-worker safety, and it exists because slice 1 proved that a
+   * read-then-write is not exclusion: two workers can both read a `queued` session and both decide
+   * they own it. Only the store can settle it, so only the store is asked to.
+   */
+  compareAndSetSession(
+    scope: TenantScope,
+    id: string,
+    expected: { state: AnalysisSessionState; workerId: string | null },
+    next: AnalysisSessionDoc,
+  ): Promise<boolean>;
 }
 
 /**
