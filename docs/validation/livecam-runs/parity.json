@@ -1,0 +1,316 @@
+{
+ "report": {
+  "at": "2026-08-08T08:35:33.392Z",
+  "clip": "single-person-walking",
+  "camera": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+  "executionPath": {
+   "offline": {
+    "modelId": "yolox-nano",
+    "runtimeVersion": "0.1.0",
+    "executionProvider": "CPUExecutionProvider",
+    "capabilityId": "perception.person-detection",
+    "pipelineVersion": "1.0.0"
+   },
+   "live": {
+    "modelId": "yolox-nano",
+    "runtimeVersion": "0.1.0",
+    "executionProvider": "CPUExecutionProvider",
+    "capabilityId": "perception.person-detection"
+   },
+   "note": "Read from what each run SAID it ran, not from configuration \u2014 configuration is what somebody intended."
+  },
+  "volumes": {
+   "offlineFramesAnalysed": 60,
+   "offlineDetections": 48,
+   "offlineDetectionsPerFrame": 0.8,
+   "liveFramesWithResults": 59,
+   "liveDetections": 59,
+   "liveDetectionsPerFrame": 1,
+   "note": "Counts differ by design: offline delivers every frame losslessly, live samples at the capture rate and drops under pressure (FrameSink.deliver vs push). The per-frame RATE is the comparable figure."
+  },
+  "events": {
+   "offline": 4,
+   "live": 2,
+   "offlineTypes": [
+    "perception.person.detected"
+   ],
+   "liveTypes": [
+    "perception.person.detected"
+   ]
+  },
+  "tracking": {
+   "offlineTracks": null,
+   "liveTracksCreated": 1
+  },
+  "offlineAnalysisId": "ana_89c349d82cbc4ccf9252921f598ccd14",
+  "offlineSessionId": "ases_85b5c03e4fe7438aaa95aa0d4444bb79",
+  "offlineStatus": "succeeded",
+  "offlineFrameRate": 2,
+  "offlineFramesDropped": 0,
+  "liveScenario": "one-person"
+ },
+ "offlineDetail": {
+  "analysis": {
+   "id": "ana_89c349d82cbc4ccf9252921f598ccd14",
+   "tenantId": "tnt_demo_retail",
+   "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+   "label": "P-9 parity \u2014 single-person-walking",
+   "sourceKind": "upload",
+   "state": "ready",
+   "asset": {
+    "key": "analyses/ana_89c349d82cbc4ccf9252921f598ccd14/source.mp4",
+    "originalName": "parity-single-person-walking-1786178127224.mp4",
+    "bytes": 103359,
+    "contentType": "video/mp4",
+    "container": "mp4",
+    "codec": "h264",
+    "codecTag": "avc1",
+    "width": 640,
+    "height": 360,
+    "sourceFrameRate": 15,
+    "durationSeconds": 30
+   },
+   "footageStartedAt": "2026-08-08T08:35:27.233Z",
+   "footageStartSource": "upload-time",
+   "latestSessionId": "ases_85b5c03e4fe7438aaa95aa0d4444bb79",
+   "sessionCount": 1,
+   "createdBy": "usr_demo_retail_mgr",
+   "createdAt": "2026-08-08T08:35:27.233Z",
+   "updatedAt": "2026-08-08T08:35:27.304Z"
+  },
+  "sessions": [
+   {
+    "id": "ases_85b5c03e4fe7438aaa95aa0d4444bb79",
+    "tenantId": "tnt_demo_retail",
+    "analysisId": "ana_89c349d82cbc4ccf9252921f598ccd14",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "sequence": 1,
+    "state": "succeeded",
+    "analysisFrameRate": 2,
+    "speed": null,
+    "provenance": {
+     "capabilityId": "perception.person-detection",
+     "pipelineVersion": "1.0.0",
+     "runtimeVersion": "0.1.0",
+     "modelId": "yolox-nano",
+     "executionProvider": "CPUExecutionProvider"
+    },
+    "ruleSet": [],
+    "progress": {
+     "mediaOffsetSeconds": 30,
+     "durationSeconds": 30,
+     "framesProcessed": 60,
+     "throughputFps": 19.348597226701063,
+     "speedFactor": 9.674298613350532,
+     "etaSeconds": null,
+     "etaUnavailableReason": "not enough of the recording has been analysed yet to estimate honestly (1 of 2 samples)",
+     "updatedAt": "2026-08-08T08:35:30.416Z"
+    },
+    "counts": {
+     "framesDecoded": 60,
+     "framesAnalysed": 60,
+     "framesDropped": 0,
+     "detections": 48,
+     "events": 0,
+     "incidents": 0
+    },
+    "lease": {
+     "workerId": "f7c603529a30:7",
+     "heartbeatAt": "2026-08-08T08:35:30.416Z",
+     "expiresAt": "2026-08-08T08:36:30.416Z",
+     "attempt": 1
+    },
+    "findings": [
+     {
+      "kind": "footage-start-assumed",
+      "detail": "the file carried no creation time, so the upload time was used as the footage start \u2014 incident times in this analysis are offsets from the upload, not real clock times"
+     }
+    ],
+    "requestedBy": "usr_demo_retail_mgr",
+    "createdAt": "2026-08-08T08:35:27.304Z",
+    "startedAt": "2026-08-08T08:35:27.308Z",
+    "finishedAt": "2026-08-08T08:35:30.417Z"
+   }
+  ]
+ },
+ "liveRow": {
+  "id": "one-person",
+  "title": "One person",
+  "group": "scene",
+  "clip": "single-person-walking.mp4",
+  "expectedPeople": 1,
+  "status": "ran",
+  "startedAt": "2026-08-08T07:33:37.485Z",
+  "endedAt": "2026-08-08T07:33:54.969Z",
+  "seconds": 15,
+  "fps": 4,
+  "clipSeconds": 30,
+  "browserLifetimeSeconds": 17.5,
+  "looped": false,
+  "browserStages": {
+   "Capture (video \u2192 canvas)": {
+    "count": 65,
+    "min": 0.3,
+    "avg": 0.6,
+    "p95": 1.1,
+    "max": 1.9
+   },
+   "Encode (canvas \u2192 JPEG)": {
+    "count": 65,
+    "min": 0.9,
+    "avg": 2.4,
+    "p95": 5.5,
+    "max": 6.5
+   },
+   "Upload (round trip)": {
+    "count": 65,
+    "min": 7,
+    "avg": 10.9,
+    "p95": 22,
+    "max": 62
+   },
+   "Transport (service-measured)": {
+    "count": 65,
+    "min": 5,
+    "avg": 9.9,
+    "p95": 18,
+    "max": 56
+   }
+  },
+  "browserCounters": {
+   "Ticks": "65",
+   "Accepted": "65",
+   "Skipped (busy)": "0",
+   "Rejected": "0",
+   "Failed": "0",
+   "Achieved fps": "4.06",
+   "Sent": "0.4 MB",
+   "Last seq": "65",
+   "State": "running",
+   "Processing fps": "4.00",
+   "Queue depth": "0",
+   "Dropped (queue full)": "0",
+   "Offered": "1571",
+   "Delivered": "1570",
+   "Skipped (unassigned)": "0",
+   "Media \u2192 runtime": "67 ms",
+   "Events published": "1136",
+   "Active tracks": "1",
+   "Profile": "person-tracking",
+   "Runtime": "inference"
+  },
+  "overlayText": "1 tracked subject \u00b7 boxes are 0.1 s behind the preview",
+  "clockText": "Browser clock vs platform clock: +2 ms \u00b1 6 ms (estimated over a 11 ms round trip)",
+  "tracking": {
+   "createdTracks": 1,
+   "confirmedTracks": 1,
+   "recoveredTracks": 0,
+   "occlusionsSurvived": 0,
+   "framesTracked": 65,
+   "outOfOrderFrames": 0,
+   "activeTracksAtEnd": 1,
+   "trackingFps": 0.544,
+   "averageTrackingMs": 0.1704
+  },
+  "pipeline": {
+   "tenantId": "tnt_demo_retail",
+   "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+   "aiEnabled": true,
+   "state": "running",
+   "profileId": "person-tracking",
+   "runtimeId": "inference",
+   "processingFps": 1.6,
+   "framesOffered": 1574,
+   "framesDelivered": 1574,
+   "framesSkippedUnassigned": 0,
+   "framesDroppedQueueFull": 0,
+   "queueDepth": 0,
+   "processingLatencyMs": 66.62,
+   "eventsPublished": 1140,
+   "activeTracks": 1,
+   "lastFrameAt": "2026-08-08T07:33:54.908Z",
+   "lastErrorAt": null,
+   "lastError": null
+  },
+  "detection": {
+   "detectionsPublished": 59,
+   "resultsPublished": 59,
+   "resultsOffered": 65,
+   "suppressedNoDetections": 6,
+   "droppedQueueFull": 0,
+   "droppedOutOfOrder": 0,
+   "failed": 0
+  },
+  "events": {
+   "count": 2,
+   "distinctTrackIds": 1,
+   "types": [
+    "perception.person.detected"
+   ],
+   "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+  },
+  "incidents": {
+   "count": 1,
+   "titles": [
+    "Person detected \u2014 any camera: perception.person.detected"
+   ]
+  },
+  "cpuSamples": [
+   {
+    "vip-prod-media-1": {
+     "cpu": 3.61,
+     "mem": "162.7MiB"
+    },
+    "vip-prod-inference-1": {
+     "cpu": 181,
+     "mem": "109.7MiB"
+    },
+    "vip-prod-events-1": {
+     "cpu": 0.77,
+     "mem": "109.5MiB"
+    },
+    "vip-prod-rules-1": {
+     "cpu": 0.35,
+     "mem": "110.9MiB"
+    }
+   },
+   {
+    "vip-prod-media-1": {
+     "cpu": 2.46,
+     "mem": "162.2MiB"
+    },
+    "vip-prod-inference-1": {
+     "cpu": 182.1,
+     "mem": "109.5MiB"
+    },
+    "vip-prod-events-1": {
+     "cpu": 0.76,
+     "mem": "109.5MiB"
+    },
+    "vip-prod-rules-1": {
+     "cpu": 0.3,
+     "mem": "110.9MiB"
+    }
+   },
+   {
+    "vip-prod-media-1": {
+     "cpu": 3.01,
+     "mem": "162.6MiB"
+    },
+    "vip-prod-inference-1": {
+     "cpu": 222.82,
+     "mem": "109.5MiB"
+    },
+    "vip-prod-events-1": {
+     "cpu": 0.96,
+     "mem": "109.5MiB"
+    },
+    "vip-prod-rules-1": {
+     "cpu": 0.44,
+     "mem": "111.1MiB"
+    }
+   }
+  ],
+  "consoleErrors": []
+ }
+}

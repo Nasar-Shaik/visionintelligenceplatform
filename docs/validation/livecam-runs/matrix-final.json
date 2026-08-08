@@ -1,0 +1,3364 @@
+{
+ "base": "https://localhost",
+ "camera": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+ "seconds": 15,
+ "fps": 4,
+ "at": "2026-08-08T07:54:10.220Z",
+ "results": [
+  {
+   "id": "empty-room",
+   "title": "Empty room",
+   "group": "scene",
+   "clip": "empty-scene.mp4",
+   "expectedPeople": 0,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:32:57.574Z",
+   "endedAt": "2026-08-08T07:33:16.960Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.4,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 72,
+     "min": 0.2,
+     "avg": 0.7,
+     "p95": 1.5,
+     "max": 2
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 72,
+     "min": 0.8,
+     "avg": 2.2,
+     "p95": 5.5,
+     "max": 9.7
+    },
+    "Upload (round trip)": {
+     "count": 72,
+     "min": 6,
+     "avg": 10.2,
+     "p95": 18,
+     "max": 50
+    },
+    "Transport (service-measured)": {
+     "count": 72,
+     "min": 5,
+     "avg": 9.6,
+     "p95": 16,
+     "max": 50
+    }
+   },
+   "browserCounters": {
+    "Ticks": "72",
+    "Accepted": "72",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.05",
+    "Sent": "0.2 MB",
+    "Last seq": "72",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "1505",
+    "Delivered": "1505",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "63 ms",
+    "Events published": "1081",
+    "Active tracks": "0",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "No tracks on this camera right now.",
+   "clockText": "Browser clock vs platform clock: +4 ms \u00b1 7 ms (estimated over a 13 ms round trip)",
+   "tracking": {
+    "createdTracks": 0,
+    "confirmedTracks": -1,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "framesTracked": 73,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 0,
+    "trackingFps": 0.529,
+    "averageTrackingMs": 0.1715
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 1509,
+    "framesDelivered": 1509,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 62.97,
+    "eventsPublished": 1081,
+    "activeTracks": 0,
+    "lastFrameAt": "2026-08-08T07:33:17.011Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 0,
+    "resultsPublished": 0,
+    "resultsOffered": 73,
+    "suppressedNoDetections": 73,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 0,
+    "distinctTrackIds": 0,
+    "types": [],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 0,
+    "titles": []
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "one-person",
+   "title": "One person",
+   "group": "scene",
+   "clip": "single-person-walking.mp4",
+   "expectedPeople": 1,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:33:37.485Z",
+   "endedAt": "2026-08-08T07:33:54.969Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 17.5,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 65,
+     "min": 0.3,
+     "avg": 0.6,
+     "p95": 1.1,
+     "max": 1.9
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 65,
+     "min": 0.9,
+     "avg": 2.4,
+     "p95": 5.5,
+     "max": 6.5
+    },
+    "Upload (round trip)": {
+     "count": 65,
+     "min": 7,
+     "avg": 10.9,
+     "p95": 22,
+     "max": 62
+    },
+    "Transport (service-measured)": {
+     "count": 65,
+     "min": 5,
+     "avg": 9.9,
+     "p95": 18,
+     "max": 56
+    }
+   },
+   "browserCounters": {
+    "Ticks": "65",
+    "Accepted": "65",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.06",
+    "Sent": "0.4 MB",
+    "Last seq": "65",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "1571",
+    "Delivered": "1570",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "67 ms",
+    "Events published": "1136",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.1 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +2 ms \u00b1 6 ms (estimated over a 11 ms round trip)",
+   "tracking": {
+    "createdTracks": 1,
+    "confirmedTracks": 1,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "framesTracked": 65,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.544,
+    "averageTrackingMs": 0.1704
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 1574,
+    "framesDelivered": 1574,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 66.62,
+    "eventsPublished": 1140,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:33:54.908Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 59,
+    "resultsPublished": 59,
+    "resultsOffered": 65,
+    "suppressedNoDetections": 6,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 2,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 1,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "two-people",
+   "title": "Two people",
+   "group": "scene",
+   "clip": "multiple-people.mp4",
+   "expectedPeople": 2,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:34:15.259Z",
+   "endedAt": "2026-08-08T07:34:34.794Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.5,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.3,
+     "avg": 0.9,
+     "p95": 3.1,
+     "max": 4.3
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 1,
+     "avg": 2.7,
+     "p95": 6.9,
+     "max": 8.5
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 8,
+     "avg": 9.3,
+     "p95": 11,
+     "max": 17
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 5,
+     "avg": 9.1,
+     "p95": 14,
+     "max": 15
+    }
+   },
+   "browserCounters": {
+    "Ticks": "73",
+    "Accepted": "73",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.05",
+    "Sent": "0.8 MB",
+    "Last seq": "73",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "1643",
+    "Delivered": "1643",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "64 ms",
+    "Events published": "1209",
+    "Active tracks": "2",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.2 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +0 ms \u00b1 6 ms (estimated over a 12 ms round trip)",
+   "tracking": {
+    "createdTracks": 3,
+    "confirmedTracks": 1,
+    "recoveredTracks": 1,
+    "occlusionsSurvived": 0,
+    "framesTracked": 73,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 2,
+    "trackingFps": 0.56,
+    "averageTrackingMs": 0.1708
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 1647,
+    "framesDelivered": 1647,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 63.7,
+    "eventsPublished": 1213,
+    "activeTracks": 2,
+    "lastFrameAt": "2026-08-08T07:34:34.703Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 137,
+    "resultsPublished": 73,
+    "resultsOffered": 73,
+    "suppressedNoDetections": 0,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 4,
+    "distinctTrackIds": 3,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 3,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected",
+     "Person detected \u2014 any camera: perception.person.detected",
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "three-plus-people",
+   "title": "Three or more people (four)",
+   "group": "scene",
+   "clip": "queue-formation.mp4",
+   "expectedPeople": 4,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:34:55.059Z",
+   "endedAt": "2026-08-08T07:35:13.779Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 18.7,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 70,
+     "min": 0.2,
+     "avg": 0.7,
+     "p95": 1.4,
+     "max": 1.9
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 70,
+     "min": 1,
+     "avg": 2.9,
+     "p95": 6.4,
+     "max": 8.4
+    },
+    "Upload (round trip)": {
+     "count": 70,
+     "min": 7,
+     "avg": 9.9,
+     "p95": 13,
+     "max": 56
+    },
+    "Transport (service-measured)": {
+     "count": 70,
+     "min": 7,
+     "avg": 10.9,
+     "p95": 16,
+     "max": 59
+    }
+   },
+   "browserCounters": {
+    "Ticks": "70",
+    "Accepted": "70",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.05",
+    "Sent": "1.1 MB",
+    "Last seq": "70",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "1716",
+    "Delivered": "1716",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "57 ms",
+    "Events published": "1282",
+    "Active tracks": "4",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "4 tracked subjects \u00b7 boxes are 0.1 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +4 ms \u00b1 7 ms (estimated over a 13 ms round trip)",
+   "tracking": {
+    "createdTracks": 2,
+    "confirmedTracks": 2,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "framesTracked": 70,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 4,
+    "trackingFps": 0.576,
+    "averageTrackingMs": 0.1752
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 1717,
+    "framesDelivered": 1717,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 57.21,
+    "eventsPublished": 1283,
+    "activeTracks": 4,
+    "lastFrameAt": "2026-08-08T07:35:13.717Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 280,
+    "resultsPublished": 70,
+    "resultsOffered": 70,
+    "suppressedNoDetections": 0,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 0,
+    "distinctTrackIds": 0,
+    "types": [],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 0,
+    "titles": []
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "crowd",
+   "title": "Crowded scene (eight)",
+   "group": "scene",
+   "clip": "crowd.mp4",
+   "expectedPeople": 8,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:35:34.056Z",
+   "endedAt": "2026-08-08T07:35:53.674Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.6,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.2,
+     "avg": 0.7,
+     "p95": 1.5,
+     "max": 3.1
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 1.2,
+     "avg": 3.3,
+     "p95": 9.5,
+     "max": 11.2
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 7,
+     "avg": 10.5,
+     "p95": 14,
+     "max": 45
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 6,
+     "avg": 12,
+     "p95": 18,
+     "max": 43
+    }
+   },
+   "browserCounters": {
+    "Ticks": "73",
+    "Accepted": "73",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.01",
+    "Sent": "2.0 MB",
+    "Last seq": "73",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "1786",
+    "Delivered": "1786",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "60 ms",
+    "Events published": "1352",
+    "Active tracks": "8",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "8 tracked subjects \u00b7 boxes are 0.2 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +5 ms \u00b1 8 ms (estimated over a 16 ms round trip)",
+   "tracking": {
+    "createdTracks": 5,
+    "confirmedTracks": 4,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "framesTracked": 74,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 8,
+    "trackingFps": 0.592,
+    "averageTrackingMs": 0.194
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.7,
+    "framesOffered": 1791,
+    "framesDelivered": 1791,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 60.31,
+    "eventsPublished": 1357,
+    "activeTracks": 8,
+    "lastFrameAt": "2026-08-08T07:35:53.731Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 592,
+    "resultsPublished": 74,
+    "resultsOffered": 74,
+    "suppressedNoDetections": 0,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 8,
+    "distinctTrackIds": 8,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 8,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected",
+     "Person detected \u2014 any camera: perception.person.detected",
+     "Person detected \u2014 any camera: perception.person.detected",
+     "Person detected \u2014 any camera: perception.person.detected",
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "fast-walking",
+   "title": "Fast walking",
+   "group": "motion",
+   "clip": "fast-movement.mp4",
+   "expectedPeople": 1,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:36:13.925Z",
+   "endedAt": "2026-08-08T07:36:33.517Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.6,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.3,
+     "avg": 0.7,
+     "p95": 2,
+     "max": 3.1
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 0.9,
+     "avg": 2.8,
+     "p95": 7,
+     "max": 10.4
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 6,
+     "avg": 9,
+     "p95": 11,
+     "max": 29
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 5,
+     "avg": 9.6,
+     "p95": 15,
+     "max": 28
+    }
+   },
+   "browserCounters": {
+    "Ticks": "73",
+    "Accepted": "73",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.02",
+    "Sent": "0.5 MB",
+    "Last seq": "73",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "1860",
+    "Delivered": "1860",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "61 ms",
+    "Events published": "1409",
+    "Active tracks": "2",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.1 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +3 ms \u00b1 6 ms (estimated over a 11 ms round trip)",
+   "tracking": {
+    "createdTracks": 4,
+    "confirmedTracks": -7,
+    "recoveredTracks": 2,
+    "occlusionsSurvived": 6,
+    "framesTracked": 73,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.607,
+    "averageTrackingMs": 0.1919
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 1864,
+    "framesDelivered": 1864,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 60.12,
+    "eventsPublished": 1413,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:36:33.343Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 56,
+    "resultsPublished": 56,
+    "resultsOffered": 73,
+    "suppressedNoDetections": 17,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 7,
+    "distinctTrackIds": 5,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 5,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected",
+     "Person detected \u2014 any camera: perception.person.detected",
+     "Person detected \u2014 any camera: perception.person.detected",
+     "Person detected \u2014 any camera: perception.person.detected",
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "slow-walking",
+   "title": "Slow walking / dwelling",
+   "group": "motion",
+   "clip": "retail-loitering.mp4",
+   "expectedPeople": 1,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:36:53.793Z",
+   "endedAt": "2026-08-08T07:37:13.431Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.6,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.2,
+     "avg": 0.8,
+     "p95": 2.1,
+     "max": 2.3
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 0.9,
+     "avg": 2.9,
+     "p95": 6.8,
+     "max": 10.9
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 7,
+     "avg": 9.8,
+     "p95": 15,
+     "max": 32
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 6,
+     "avg": 10.2,
+     "p95": 15,
+     "max": 21
+    }
+   },
+   "browserCounters": {
+    "Ticks": "73",
+    "Accepted": "73",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.01",
+    "Sent": "0.5 MB",
+    "Last seq": "73",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "1933",
+    "Delivered": "1933",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "62 ms",
+    "Events published": "1479",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.2 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +1 ms \u00b1 7 ms (estimated over a 14 ms round trip)",
+   "tracking": {
+    "createdTracks": 1,
+    "confirmedTracks": 0,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "framesTracked": 74,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.623,
+    "averageTrackingMs": 0.1893
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.7,
+    "framesOffered": 1938,
+    "framesDelivered": 1938,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 62.5,
+    "eventsPublished": 1484,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:37:13.495Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 71,
+    "resultsPublished": 71,
+    "resultsOffered": 74,
+    "suppressedNoDetections": 3,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 3,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 1,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "entering-leaving",
+   "title": "Entering and leaving frame",
+   "group": "motion",
+   "clip": "partial-visibility.mp4",
+   "expectedPeople": 1,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:37:33.705Z",
+   "endedAt": "2026-08-08T07:37:53.305Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.6,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.2,
+     "avg": 0.7,
+     "p95": 1.6,
+     "max": 2.3
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 0.9,
+     "avg": 3.2,
+     "p95": 8.1,
+     "max": 9.9
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 6,
+     "avg": 9.2,
+     "p95": 12,
+     "max": 29
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 4,
+     "avg": 9.6,
+     "p95": 15,
+     "max": 25
+    }
+   },
+   "browserCounters": {
+    "Ticks": "73",
+    "Accepted": "73",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.02",
+    "Sent": "0.4 MB",
+    "Last seq": "73",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "2007",
+    "Delivered": "2007",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "63 ms",
+    "Events published": "1553",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.1 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +3 ms \u00b1 6 ms (estimated over a 11 ms round trip)",
+   "tracking": {
+    "createdTracks": 1,
+    "confirmedTracks": 0,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "framesTracked": 73,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.638,
+    "averageTrackingMs": 0.1878
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.5,
+    "framesOffered": 2011,
+    "framesDelivered": 2011,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 63.06,
+    "eventsPublished": 1557,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:37:53.130Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 73,
+    "resultsPublished": 73,
+    "resultsOffered": 73,
+    "suppressedNoDetections": 0,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 1,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 1,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "partial-occlusion",
+   "title": "Partial occlusion",
+   "group": "motion",
+   "clip": "occlusion.mp4",
+   "expectedPeople": 1,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:38:13.725Z",
+   "endedAt": "2026-08-08T07:38:33.372Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.6,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.2,
+     "avg": 0.7,
+     "p95": 1.6,
+     "max": 2.8
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 0.9,
+     "avg": 2.8,
+     "p95": 6.3,
+     "max": 10.4
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 6,
+     "avg": 9.1,
+     "p95": 13,
+     "max": 18
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 6,
+     "avg": 9.8,
+     "p95": 15,
+     "max": 19
+    }
+   },
+   "browserCounters": {
+    "Ticks": "73",
+    "Accepted": "73",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.02",
+    "Sent": "0.5 MB",
+    "Last seq": "73",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "2081",
+    "Delivered": "2080",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "63 ms",
+    "Events published": "1611",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.1 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +4 ms \u00b1 7 ms (estimated over a 14 ms round trip)",
+   "tracking": {
+    "createdTracks": 1,
+    "confirmedTracks": 0,
+    "recoveredTracks": 1,
+    "occlusionsSurvived": 1,
+    "framesTracked": 74,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.652,
+    "averageTrackingMs": 0.1856
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.7,
+    "framesOffered": 2085,
+    "framesDelivered": 2085,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 63.71,
+    "eventsPublished": 1616,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:38:33.410Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 59,
+    "resultsPublished": 59,
+    "resultsOffered": 74,
+    "suppressedNoDetections": 15,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 1,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 1,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "low-light",
+   "title": "Low light (authored)",
+   "group": "lighting",
+   "clip": "night-footage.mp4",
+   "expectedPeople": 1,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:38:53.644Z",
+   "endedAt": "2026-08-08T07:39:13.247Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.6,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.2,
+     "avg": 0.7,
+     "p95": 1.5,
+     "max": 1.7
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 1,
+     "avg": 2.5,
+     "p95": 5.4,
+     "max": 6.7
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 6,
+     "avg": 8.3,
+     "p95": 10,
+     "max": 13
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 0,
+     "avg": 4,
+     "p95": 8,
+     "max": 16
+    }
+   },
+   "browserCounters": {
+    "Ticks": "73",
+    "Accepted": "73",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.02",
+    "Sent": "0.4 MB",
+    "Last seq": "73",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "2154",
+    "Delivered": "2154",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "62 ms",
+    "Events published": "1679",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.1 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +4 ms \u00b1 7 ms (estimated over a 13 ms round trip)",
+   "tracking": {
+    "createdTracks": 1,
+    "confirmedTracks": 0,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "framesTracked": 73,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.666,
+    "averageTrackingMs": 0.1841
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 2158,
+    "framesDelivered": 2158,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 62.15,
+    "eventsPublished": 1683,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:39:13.062Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 67,
+    "resultsPublished": 67,
+    "resultsOffered": 73,
+    "suppressedNoDetections": 6,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 3,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 2,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected",
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "light-bright",
+   "title": "Bright light",
+   "group": "lighting",
+   "clip": "light-bright.mp4",
+   "expectedPeople": null,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:39:33.519Z",
+   "endedAt": "2026-08-08T07:39:53.198Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.7,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.2,
+     "avg": 0.6,
+     "p95": 1.5,
+     "max": 2.1
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 0.9,
+     "avg": 3.1,
+     "p95": 5.7,
+     "max": 13.9
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 7,
+     "avg": 9.7,
+     "p95": 14,
+     "max": 44
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 5,
+     "avg": 9.8,
+     "p95": 15,
+     "max": 24
+    }
+   },
+   "browserCounters": {
+    "Ticks": "73",
+    "Accepted": "73",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.02",
+    "Sent": "0.5 MB",
+    "Last seq": "73",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "2227",
+    "Delivered": "2227",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "62 ms",
+    "Events published": "1746",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.1 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +3 ms \u00b1 7 ms (estimated over a 13 ms round trip)",
+   "tracking": {
+    "createdTracks": 1,
+    "confirmedTracks": 0,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "framesTracked": 74,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.68,
+    "averageTrackingMs": 0.1823
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 2232,
+    "framesDelivered": 2232,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 62.23,
+    "eventsPublished": 1751,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:39:53.278Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 68,
+    "resultsPublished": 68,
+    "resultsOffered": 74,
+    "suppressedNoDetections": 6,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 3,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 1,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "light-backlight",
+   "title": "Backlight",
+   "group": "lighting",
+   "clip": "light-backlight.mp4",
+   "expectedPeople": null,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:40:13.467Z",
+   "endedAt": "2026-08-08T07:40:32.060Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 18.6,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 69,
+     "min": 0.2,
+     "avg": 0.7,
+     "p95": 1.4,
+     "max": 2.2
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 69,
+     "min": 0.8,
+     "avg": 2.8,
+     "p95": 6.5,
+     "max": 8.9
+    },
+    "Upload (round trip)": {
+     "count": 69,
+     "min": 6,
+     "avg": 9.8,
+     "p95": 10,
+     "max": 66
+    },
+    "Transport (service-measured)": {
+     "count": 69,
+     "min": 5,
+     "avg": 10.5,
+     "p95": 14,
+     "max": 67
+    }
+   },
+   "browserCounters": {
+    "Ticks": "69",
+    "Accepted": "69",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.06",
+    "Sent": "0.3 MB",
+    "Last seq": "69",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "2297",
+    "Delivered": "2297",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "60 ms",
+    "Events published": "1770",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "No tracks on this camera right now.",
+   "clockText": "Browser clock vs platform clock: -5 ms \u00b1 16 ms (estimated over a 32 ms round trip)",
+   "tracking": {
+    "createdTracks": 3,
+    "confirmedTracks": -1,
+    "recoveredTracks": 1,
+    "occlusionsSurvived": 13,
+    "framesTracked": 69,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 2,
+    "trackingFps": 0.692,
+    "averageTrackingMs": 0.1791
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 2301,
+    "framesDelivered": 2301,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 59.3,
+    "eventsPublished": 1772,
+    "activeTracks": 2,
+    "lastFrameAt": "2026-08-08T07:40:31.925Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 23,
+    "resultsPublished": 21,
+    "resultsOffered": 69,
+    "suppressedNoDetections": 48,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 0,
+    "distinctTrackIds": 0,
+    "types": [],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 0,
+    "titles": []
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "orient-portrait",
+   "title": "Portrait orientation (tall crop, people upright)",
+   "group": "orientation",
+   "clip": "orient-portrait.mp4",
+   "expectedPeople": 1,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:50:11.008Z",
+   "endedAt": "2026-08-08T07:50:30.114Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.1,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 71,
+     "min": 0.2,
+     "avg": 0.9,
+     "p95": 1.6,
+     "max": 1.8
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 71,
+     "min": 1,
+     "avg": 3.7,
+     "p95": 9.2,
+     "max": 12
+    },
+    "Upload (round trip)": {
+     "count": 71,
+     "min": 7,
+     "avg": 9.6,
+     "p95": 13,
+     "max": 41
+    },
+    "Transport (service-measured)": {
+     "count": 71,
+     "min": 6,
+     "avg": 11.3,
+     "p95": 18,
+     "max": 30
+    }
+   },
+   "browserCounters": {
+    "Ticks": "71",
+    "Accepted": "71",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.05",
+    "Sent": "0.4 MB",
+    "Last seq": "71",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "3319",
+    "Delivered": "3319",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "64 ms",
+    "Events published": "2588",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.1 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +4 ms \u00b1 8 ms (estimated over a 15 ms round trip)",
+   "tracking": {
+    "createdTracks": 1,
+    "confirmedTracks": 0,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 1,
+    "framesTracked": 71,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.842,
+    "averageTrackingMs": 0.174
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 3321,
+    "framesDelivered": 3321,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 63.25,
+    "eventsPublished": 2590,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:50:30.044Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 34,
+    "resultsPublished": 34,
+    "resultsOffered": 71,
+    "suppressedNoDetections": 37,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 1,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 1,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "orient-landscape",
+   "title": "Landscape orientation (720p)",
+   "group": "orientation",
+   "clip": "res-720p.mp4",
+   "expectedPeople": 1,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:41:31.326Z",
+   "endedAt": "2026-08-08T07:41:51.044Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.7,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 74,
+     "min": 1.4,
+     "avg": 2.2,
+     "p95": 4.4,
+     "max": 5.7
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 74,
+     "min": 0.9,
+     "avg": 1.7,
+     "p95": 3.1,
+     "max": 4.8
+    },
+    "Upload (round trip)": {
+     "count": 74,
+     "min": 7,
+     "avg": 9,
+     "p95": 14,
+     "max": 22
+    },
+    "Transport (service-measured)": {
+     "count": 74,
+     "min": 6,
+     "avg": 9.7,
+     "p95": 14,
+     "max": 17
+    }
+   },
+   "browserCounters": {
+    "Ticks": "74",
+    "Accepted": "74",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.05",
+    "Sent": "0.5 MB",
+    "Last seq": "74",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "2445",
+    "Delivered": "2444",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "62 ms",
+    "Events published": "1839",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.2 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +1 ms \u00b1 4 ms (estimated over a 8 ms round trip)",
+   "tracking": {
+    "createdTracks": 1,
+    "confirmedTracks": 1,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "framesTracked": 74,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.718,
+    "averageTrackingMs": 0.1741
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 2445,
+    "framesDelivered": 2445,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 61.94,
+    "eventsPublished": 1840,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:41:50.980Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 68,
+    "resultsPublished": 68,
+    "resultsOffered": 74,
+    "suppressedNoDetections": 6,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 3,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 1,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "occl-static-object",
+   "title": "Behind a static object (chair/desk analogue)",
+   "group": "occlusion",
+   "clip": "occlusion.mp4",
+   "expectedPeople": 1,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:42:11.325Z",
+   "endedAt": "2026-08-08T07:42:31.094Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.8,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 74,
+     "min": 0.3,
+     "avg": 0.8,
+     "p95": 2.3,
+     "max": 5
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 74,
+     "min": 0.8,
+     "avg": 3.1,
+     "p95": 7.5,
+     "max": 9.9
+    },
+    "Upload (round trip)": {
+     "count": 74,
+     "min": 7,
+     "avg": 12.9,
+     "p95": 24,
+     "max": 141
+    },
+    "Transport (service-measured)": {
+     "count": 74,
+     "min": 7,
+     "avg": 13.5,
+     "p95": 24,
+     "max": 131
+    }
+   },
+   "browserCounters": {
+    "Ticks": "74",
+    "Accepted": "74",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.05",
+    "Sent": "0.5 MB",
+    "Last seq": "74",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "2515",
+    "Delivered": "2515",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "75 ms",
+    "Events published": "1895",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.1 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +2 ms \u00b1 6 ms (estimated over a 12 ms round trip)",
+   "tracking": {
+    "createdTracks": 2,
+    "confirmedTracks": 0,
+    "recoveredTracks": 1,
+    "occlusionsSurvived": 0,
+    "framesTracked": 74,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.731,
+    "averageTrackingMs": 0.1733
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 2519,
+    "framesDelivered": 2519,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 75.8,
+    "eventsPublished": 1899,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:42:31.045Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 59,
+    "resultsPublished": 59,
+    "resultsOffered": 74,
+    "suppressedNoDetections": 15,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 4,
+    "distinctTrackIds": 2,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 2,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected",
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "occl-by-person",
+   "title": "Behind another person (they cross at t=15)",
+   "group": "occlusion",
+   "clip": "multiple-people.mp4",
+   "expectedPeople": 2,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:42:51.415Z",
+   "endedAt": "2026-08-08T07:43:11.045Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.6,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.2,
+     "avg": 0.6,
+     "p95": 1.2,
+     "max": 1.5
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 0.9,
+     "avg": 3.4,
+     "p95": 7.2,
+     "max": 8.9
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 5,
+     "avg": 9.5,
+     "p95": 11,
+     "max": 28
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 4,
+     "avg": 9.7,
+     "p95": 15,
+     "max": 24
+    }
+   },
+   "browserCounters": {
+    "Ticks": "73",
+    "Accepted": "73",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.05",
+    "Sent": "0.8 MB",
+    "Last seq": "73",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "2589",
+    "Delivered": "2589",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "64 ms",
+    "Events published": "1969",
+    "Active tracks": "2",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.2 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +5 ms \u00b1 7 ms (estimated over a 14 ms round trip)",
+   "tracking": {
+    "createdTracks": 3,
+    "confirmedTracks": 1,
+    "recoveredTracks": 1,
+    "occlusionsSurvived": 0,
+    "framesTracked": 73,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 2,
+    "trackingFps": 0.743,
+    "averageTrackingMs": 0.1744
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 2592,
+    "framesDelivered": 2592,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 63.09,
+    "eventsPublished": 1972,
+    "activeTracks": 2,
+    "lastFrameAt": "2026-08-08T07:43:10.854Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 137,
+    "resultsPublished": 73,
+    "resultsOffered": 73,
+    "suppressedNoDetections": 0,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 4,
+    "distinctTrackIds": 2,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 4,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected",
+     "Person detected \u2014 any camera: perception.person.detected",
+     "Person detected \u2014 any camera: perception.person.detected",
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "occl-partial-body",
+   "title": "Partial body visibility",
+   "group": "occlusion",
+   "clip": "partial-visibility.mp4",
+   "expectedPeople": 1,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:43:31.327Z",
+   "endedAt": "2026-08-08T07:43:50.951Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.6,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.3,
+     "avg": 0.7,
+     "p95": 1.7,
+     "max": 3.8
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 0.9,
+     "avg": 2.9,
+     "p95": 6.8,
+     "max": 12.1
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 6,
+     "avg": 8.8,
+     "p95": 12,
+     "max": 16
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 6,
+     "avg": 9.3,
+     "p95": 14,
+     "max": 20
+    }
+   },
+   "browserCounters": {
+    "Ticks": "73",
+    "Accepted": "73",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.02",
+    "Sent": "0.4 MB",
+    "Last seq": "73",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "2662",
+    "Delivered": "2661",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "62 ms",
+    "Events published": "2041",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.1 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +3 ms \u00b1 7 ms (estimated over a 13 ms round trip)",
+   "tracking": {
+    "createdTracks": 1,
+    "confirmedTracks": -1,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "framesTracked": 74,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.755,
+    "averageTrackingMs": 0.174
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 2666,
+    "framesDelivered": 2666,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 62.27,
+    "eventsPublished": 2046,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:43:51.000Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 74,
+    "resultsPublished": 74,
+    "resultsOffered": 74,
+    "suppressedNoDetections": 0,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 3,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 1,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "occl-exit-reentry",
+   "title": "Leaving and re-entering frame",
+   "group": "occlusion",
+   "clip": "exit-reentry.mp4",
+   "expectedPeople": 1,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:44:11.215Z",
+   "endedAt": "2026-08-08T07:44:29.939Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 18.7,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 70,
+     "min": 0.2,
+     "avg": 0.7,
+     "p95": 1.6,
+     "max": 3.9
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 70,
+     "min": 0.9,
+     "avg": 2.3,
+     "p95": 6.1,
+     "max": 10
+    },
+    "Upload (round trip)": {
+     "count": 70,
+     "min": 6,
+     "avg": 9.1,
+     "p95": 11,
+     "max": 26
+    },
+    "Transport (service-measured)": {
+     "count": 70,
+     "min": 5,
+     "avg": 9.2,
+     "p95": 13,
+     "max": 19
+    }
+   },
+   "browserCounters": {
+    "Ticks": "70",
+    "Accepted": "70",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.05",
+    "Sent": "0.5 MB",
+    "Last seq": "70",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "2735",
+    "Delivered": "2735",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "63 ms",
+    "Events published": "2111",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.2 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +4 ms \u00b1 7 ms (estimated over a 13 ms round trip)",
+   "tracking": {
+    "createdTracks": 0,
+    "confirmedTracks": 0,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 1,
+    "framesTracked": 70,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.766,
+    "averageTrackingMs": 0.1732
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 2736,
+    "framesDelivered": 2736,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 63.34,
+    "eventsPublished": 2112,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:44:29.879Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 66,
+    "resultsPublished": 66,
+    "resultsOffered": 70,
+    "suppressedNoDetections": 4,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 2,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 1,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "light-office",
+   "title": "Office lighting (control)",
+   "group": "lighting",
+   "clip": "light-office.mp4",
+   "expectedPeople": null,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:44:50.208Z",
+   "endedAt": "2026-08-08T07:45:09.862Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.7,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.2,
+     "avg": 0.7,
+     "p95": 1.6,
+     "max": 2.9
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 0.8,
+     "avg": 2.2,
+     "p95": 5.1,
+     "max": 9.7
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 6,
+     "avg": 10.8,
+     "p95": 16,
+     "max": 94
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 6,
+     "avg": 10.2,
+     "p95": 15,
+     "max": 76
+    }
+   },
+   "browserCounters": {
+    "Ticks": "73",
+    "Accepted": "73",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.02",
+    "Sent": "0.5 MB",
+    "Last seq": "73",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "2806",
+    "Delivered": "2806",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "66 ms",
+    "Events published": "2176",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.1 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +2 ms \u00b1 6 ms (estimated over a 11 ms round trip)",
+   "tracking": {
+    "createdTracks": 1,
+    "confirmedTracks": 0,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "framesTracked": 74,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.778,
+    "averageTrackingMs": 0.1731
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 2810,
+    "framesDelivered": 2810,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 65,
+    "eventsPublished": 2180,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:45:09.908Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 68,
+    "resultsPublished": 68,
+    "resultsOffered": 74,
+    "suppressedNoDetections": 6,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 2,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 2,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected",
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "light-low",
+   "title": "Low light (darkened + noised)",
+   "group": "lighting",
+   "clip": "light-low.mp4",
+   "expectedPeople": null,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:45:30.136Z",
+   "endedAt": "2026-08-08T07:45:49.790Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.7,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.3,
+     "avg": 0.8,
+     "p95": 2,
+     "max": 3.3
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 1.4,
+     "avg": 4.1,
+     "p95": 8.4,
+     "max": 10.1
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 7,
+     "avg": 10.3,
+     "p95": 11,
+     "max": 44
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 8,
+     "avg": 12.6,
+     "p95": 17,
+     "max": 36
+    }
+   },
+   "browserCounters": {
+    "Ticks": "73",
+    "Accepted": "73",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.02",
+    "Sent": "1.7 MB",
+    "Last seq": "73",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "2879",
+    "Delivered": "2879",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "61 ms",
+    "Events published": "2241",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.1 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +2 ms \u00b1 6 ms (estimated over a 12 ms round trip)",
+   "tracking": {
+    "createdTracks": 3,
+    "confirmedTracks": 0,
+    "recoveredTracks": 1,
+    "occlusionsSurvived": 1,
+    "framesTracked": 74,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.789,
+    "averageTrackingMs": 0.1728
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.7,
+    "framesOffered": 2884,
+    "framesDelivered": 2884,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 61.94,
+    "eventsPublished": 2246,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:45:49.843Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 68,
+    "resultsPublished": 66,
+    "resultsOffered": 74,
+    "suppressedNoDetections": 8,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 1,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 1,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "light-glare",
+   "title": "Monitor glare",
+   "group": "lighting",
+   "clip": "light-glare.mp4",
+   "expectedPeople": null,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:46:10.094Z",
+   "endedAt": "2026-08-08T07:46:30.227Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 20.1,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 74,
+     "min": 0.2,
+     "avg": 0.8,
+     "p95": 1.8,
+     "max": 6.8
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 74,
+     "min": 0.8,
+     "avg": 3.6,
+     "p95": 8.1,
+     "max": 9.3
+    },
+    "Upload (round trip)": {
+     "count": 74,
+     "min": 7,
+     "avg": 16.8,
+     "p95": 26,
+     "max": 385
+    },
+    "Transport (service-measured)": {
+     "count": 74,
+     "min": 7,
+     "avg": 17,
+     "p95": 23,
+     "max": 384
+    }
+   },
+   "browserCounters": {
+    "Ticks": "75",
+    "Accepted": "74",
+    "Skipped (busy)": "1",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "3.97",
+    "Sent": "0.5 MB",
+    "Last seq": "74",
+    "State": "running",
+    "Processing fps": "3.90",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "2958",
+    "Delivered": "2957",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "84 ms",
+    "Events published": "2313",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.1 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +3 ms \u00b1 8 ms (estimated over a 16 ms round trip)",
+   "tracking": {
+    "createdTracks": 1,
+    "confirmedTracks": 0,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "framesTracked": 74,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.8,
+    "averageTrackingMs": 0.1736
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.5,
+    "framesOffered": 2958,
+    "framesDelivered": 2958,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 84.99,
+    "eventsPublished": 2314,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:46:30.176Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 68,
+    "resultsPublished": 68,
+    "resultsOffered": 74,
+    "suppressedNoDetections": 6,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 3,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 1,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "light-side",
+   "title": "Side lighting",
+   "group": "lighting",
+   "clip": "light-side.mp4",
+   "expectedPeople": null,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:46:50.815Z",
+   "endedAt": "2026-08-08T07:47:11.417Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 20.6,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 77,
+     "min": 0.2,
+     "avg": 0.5,
+     "p95": 1.1,
+     "max": 2.4
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 77,
+     "min": 0.9,
+     "avg": 2.3,
+     "p95": 6.7,
+     "max": 9.1
+    },
+    "Upload (round trip)": {
+     "count": 77,
+     "min": 6,
+     "avg": 26.2,
+     "p95": 72,
+     "max": 97
+    },
+    "Transport (service-measured)": {
+     "count": 77,
+     "min": 6,
+     "avg": 20.6,
+     "p95": 48,
+     "max": 86
+    }
+   },
+   "browserCounters": {
+    "Ticks": "77",
+    "Accepted": "77",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.04",
+    "Sent": "0.6 MB",
+    "Last seq": "77",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "3035",
+    "Delivered": "3034",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "193 ms",
+    "Events published": "2378",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.3 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +2 ms \u00b1 5 ms (estimated over a 9 ms round trip)",
+   "tracking": {
+    "createdTracks": 2,
+    "confirmedTracks": 0,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 4,
+    "framesTracked": 76,
+    "outOfOrderFrames": 1,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.811,
+    "averageTrackingMs": 0.1787
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 3035,
+    "framesDelivered": 3035,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 194.06,
+    "eventsPublished": 2379,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:47:11.457Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 68,
+    "resultsPublished": 65,
+    "resultsOffered": 77,
+    "suppressedNoDetections": 11,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 1,
+    "failed": 0
+   },
+   "events": {
+    "count": 4,
+    "distinctTrackIds": 2,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 1,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "move-pan",
+   "title": "Moving laptop (slow pan)",
+   "group": "movement",
+   "clip": "move-pan.mp4",
+   "expectedPeople": null,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:51:30.464Z",
+   "endedAt": "2026-08-08T07:51:50.055Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.6,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.2,
+     "avg": 0.7,
+     "p95": 1.4,
+     "max": 5.1
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 0.9,
+     "avg": 2.4,
+     "p95": 6,
+     "max": 8.9
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 7,
+     "avg": 9,
+     "p95": 12,
+     "max": 23
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 6,
+     "avg": 8.4,
+     "p95": 13,
+     "max": 19
+    }
+   },
+   "browserCounters": {
+    "Ticks": "73",
+    "Accepted": "73",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.01",
+    "Sent": "0.5 MB",
+    "Last seq": "73",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "3463",
+    "Delivered": "3463",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "65 ms",
+    "Events published": "2636",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.2 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +0 ms \u00b1 5 ms (estimated over a 10 ms round trip)",
+   "tracking": {
+    "createdTracks": 1,
+    "confirmedTracks": 1,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "framesTracked": 73,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.861,
+    "averageTrackingMs": 0.1704
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 3467,
+    "framesDelivered": 3467,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 65.53,
+    "eventsPublished": 2640,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:51:49.890Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 50,
+    "resultsPublished": 50,
+    "resultsOffered": 73,
+    "suppressedNoDetections": 23,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 2,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 1,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "move-shake",
+   "title": "Shaking laptop",
+   "group": "movement",
+   "clip": "move-shake.mp4",
+   "expectedPeople": null,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:52:10.341Z",
+   "endedAt": "2026-08-08T07:52:29.969Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.6,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.2,
+     "avg": 0.7,
+     "p95": 1.7,
+     "max": 3.8
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 0.8,
+     "avg": 3,
+     "p95": 7.1,
+     "max": 9.2
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 7,
+     "avg": 9.2,
+     "p95": 16,
+     "max": 39
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 6,
+     "avg": 9.8,
+     "p95": 18,
+     "max": 44
+    }
+   },
+   "browserCounters": {
+    "Ticks": "73",
+    "Accepted": "73",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.02",
+    "Sent": "0.5 MB",
+    "Last seq": "73",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "3536",
+    "Delivered": "3536",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "67 ms",
+    "Events published": "2700",
+    "Active tracks": "2",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.1 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +2 ms \u00b1 6 ms (estimated over a 12 ms round trip)",
+   "tracking": {
+    "createdTracks": 2,
+    "confirmedTracks": 0,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 19,
+    "framesTracked": 74,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 2,
+    "trackingFps": 0.871,
+    "averageTrackingMs": 0.1694
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.7,
+    "framesOffered": 3541,
+    "framesDelivered": 3541,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 66.9,
+    "eventsPublished": 2705,
+    "activeTracks": 2,
+    "lastFrameAt": "2026-08-08T07:52:30.015Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 65,
+    "resultsPublished": 65,
+    "resultsOffered": 74,
+    "suppressedNoDetections": 9,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 2,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 1,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "move-rotate",
+   "title": "Rotating webcam",
+   "group": "movement",
+   "clip": "move-rotate.mp4",
+   "expectedPeople": null,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:52:50.255Z",
+   "endedAt": "2026-08-08T07:53:09.907Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.7,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.2,
+     "avg": 0.9,
+     "p95": 1.7,
+     "max": 9
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 1,
+     "avg": 3.4,
+     "p95": 8.5,
+     "max": 10.3
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 6,
+     "avg": 9.4,
+     "p95": 12,
+     "max": 51
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 5,
+     "avg": 9.5,
+     "p95": 16,
+     "max": 35
+    }
+   },
+   "browserCounters": {
+    "Ticks": "74",
+    "Accepted": "74",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.05",
+    "Sent": "0.6 MB",
+    "Last seq": "74",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "3611",
+    "Delivered": "3611",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "61 ms",
+    "Events published": "2769",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.2 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +8 ms \u00b1 11 ms (estimated over a 21 ms round trip)",
+   "tracking": {
+    "createdTracks": 1,
+    "confirmedTracks": 0,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "framesTracked": 74,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.88,
+    "averageTrackingMs": 0.1685
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 3615,
+    "framesDelivered": 3615,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 61.92,
+    "eventsPublished": 2773,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:53:09.952Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 68,
+    "resultsPublished": 68,
+    "resultsOffered": 74,
+    "suppressedNoDetections": 6,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 2,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 1,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "move-angle",
+   "title": "Changed viewing angle (overhead)",
+   "group": "movement",
+   "clip": "angle-overhead.mp4",
+   "expectedPeople": 1,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:53:30.528Z",
+   "endedAt": "2026-08-08T07:53:50.134Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.6,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.3,
+     "avg": 0.9,
+     "p95": 3.5,
+     "max": 3.6
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 0.9,
+     "avg": 2.3,
+     "p95": 4.9,
+     "max": 8.4
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 5,
+     "avg": 9.3,
+     "p95": 14,
+     "max": 40
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 5,
+     "avg": 9.6,
+     "p95": 15,
+     "max": 38
+    }
+   },
+   "browserCounters": {
+    "Ticks": "73",
+    "Accepted": "73",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.05",
+    "Sent": "0.4 MB",
+    "Last seq": "73",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "3685",
+    "Delivered": "3684",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "70 ms",
+    "Events published": "2827",
+    "Active tracks": "1",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "1 tracked subject \u00b7 boxes are 0.1 s behind the preview",
+   "clockText": "Browser clock vs platform clock: +2 ms \u00b1 5 ms (estimated over a 9 ms round trip)",
+   "tracking": {
+    "createdTracks": 1,
+    "confirmedTracks": 0,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 2,
+    "framesTracked": 73,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 1,
+    "trackingFps": 0.889,
+    "averageTrackingMs": 0.1676
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 3688,
+    "framesDelivered": 3688,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 70.63,
+    "eventsPublished": 2831,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T07:53:50.096Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 58,
+    "resultsPublished": 58,
+    "resultsOffered": 73,
+    "suppressedNoDetections": 15,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 3,
+    "distinctTrackIds": 1,
+    "types": [
+     "perception.person.detected"
+    ],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 1,
+    "titles": [
+     "Person detected \u2014 any camera: perception.person.detected"
+    ]
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "orient-rotated-90",
+   "title": "Camera mounted 90\u00b0 wrong (people sideways)",
+   "group": "orientation",
+   "clip": "orient-rotated-90.mp4",
+   "expectedPeople": null,
+   "status": "ran",
+   "startedAt": "2026-08-08T07:50:50.405Z",
+   "endedAt": "2026-08-08T07:51:09.971Z",
+   "seconds": 15,
+   "fps": 4,
+   "clipSeconds": 30,
+   "browserLifetimeSeconds": 19.6,
+   "looped": false,
+   "browserStages": {
+    "Capture (video \u2192 canvas)": {
+     "count": 73,
+     "min": 0.2,
+     "avg": 0.7,
+     "p95": 1.7,
+     "max": 2.1
+    },
+    "Encode (canvas \u2192 JPEG)": {
+     "count": 73,
+     "min": 1,
+     "avg": 3,
+     "p95": 7.3,
+     "max": 12.7
+    },
+    "Upload (round trip)": {
+     "count": 73,
+     "min": 7,
+     "avg": 8.6,
+     "p95": 10,
+     "max": 24
+    },
+    "Transport (service-measured)": {
+     "count": 73,
+     "min": 6,
+     "avg": 9.8,
+     "p95": 16,
+     "max": 23
+    }
+   },
+   "browserCounters": {
+    "Ticks": "73",
+    "Accepted": "73",
+    "Skipped (busy)": "0",
+    "Rejected": "0",
+    "Failed": "0",
+    "Achieved fps": "4.01",
+    "Sent": "0.5 MB",
+    "Last seq": "73",
+    "State": "running",
+    "Processing fps": "4.00",
+    "Queue depth": "0",
+    "Dropped (queue full)": "0",
+    "Offered": "3390",
+    "Delivered": "3390",
+    "Skipped (unassigned)": "0",
+    "Media \u2192 runtime": "63 ms",
+    "Events published": "2590",
+    "Active tracks": "0",
+    "Profile": "person-tracking",
+    "Runtime": "inference"
+   },
+   "overlayText": "No tracks on this camera right now.",
+   "clockText": "Browser clock vs platform clock: +2 ms \u00b1 5 ms (estimated over a 9 ms round trip)",
+   "tracking": {
+    "createdTracks": 0,
+    "confirmedTracks": -1,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "framesTracked": 73,
+    "outOfOrderFrames": 0,
+    "activeTracksAtEnd": 0,
+    "trackingFps": 0.852,
+    "averageTrackingMs": 0.1714
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 3394,
+    "framesDelivered": 3394,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 0,
+    "queueDepth": 0,
+    "processingLatencyMs": 62.95,
+    "eventsPublished": 2590,
+    "activeTracks": 0,
+    "lastFrameAt": "2026-08-08T07:51:09.788Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "detection": {
+    "detectionsPublished": 0,
+    "resultsPublished": 0,
+    "resultsOffered": 73,
+    "suppressedNoDetections": 73,
+    "droppedQueueFull": 0,
+    "droppedOutOfOrder": 0,
+    "failed": 0
+   },
+   "events": {
+    "count": 0,
+    "distinctTrackIds": 0,
+    "types": [],
+    "note": "Deduplicated at 10 s per track (L-57) \u2014 NOT a detection count. See `detection`."
+   },
+   "incidents": {
+    "count": 0,
+    "titles": []
+   },
+   "consoleErrors": []
+  },
+  {
+   "id": "webcam-live",
+   "title": "The real built-in webcam, driven by a human",
+   "status": "manual",
+   "note": "Run from MANUAL_TEST_GUIDE.md \u00a74. Reported as NOT EXECUTED by an automated matrix run."
+  }
+ ],
+ "note": "Merged: 22 rows from the first full run + 6 re-run after the harness token fix + 1 manual-only."
+}

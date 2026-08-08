@@ -9,6 +9,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { analyseContinuity, describeContinuity } from './lib/continuity.mjs';
 
 const OUT = process.argv[2] ?? '.soak';
 const read = (name) => {
@@ -33,6 +34,27 @@ const pct = (arr, p) => {
   return s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))];
 };
 const n = (v, d = 1) => (typeof v === 'number' && Number.isFinite(v) ? Number(v.toFixed(d)) : '—');
+
+/* ── run continuity ──────────────────────────────────────────────────────────────────────── */
+/*
+ * ⛔ **First, because it decides whether anything below may be quoted.** Every table here divides
+ * work by wall-clock time. A host that sleeps mid-soak freezes the process while the clock runs on,
+ * so throughput, drift and per-hour figures all shrink toward a number nobody chose — and the
+ * streams still look complete. Checked here rather than only in `soak.mjs` because a run that was
+ * killed, or that died, never reaches its own finaliser, and that is exactly when this gets read.
+ */
+const sampleArg = Number(process.argv[3]);
+const SAMPLE_MS = Number.isFinite(sampleArg) && sampleArg > 0 ? sampleArg : 60_000;
+const continuity = analyseContinuity({ samples: metrics, intervalMs: SAMPLE_MS });
+console.log('## Run continuity\n');
+console.log(`${describeContinuity(continuity)}\n`);
+if (!continuity.intact && !continuity.inconclusive) {
+  console.log(
+    `> ⚠️ Wall clock **${n(continuity.totalSeconds / 3600, 2)} h**, process awake ` +
+      `**${n(continuity.uninterrupted.seconds / 3600, 2)} h**. Treat every rate below as describing the ` +
+      `awake window only, and do not certify a release from this run.\n`,
+  );
+}
 
 /* ── operations ──────────────────────────────────────────────────────────────────────────── */
 const byKind = new Map();

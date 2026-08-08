@@ -154,4 +154,16 @@ export const queryKeys = {
     list: (params?: Record<string, unknown>) => ['tracking', 'list', params ?? {}] as const,
     detail: (trackId: string) => ['tracking', 'detail', trackId] as const,
   },
+  /*
+   * P-9 — live webcam capture. ⚠️ Its own namespace rather than a branch of `tracking` or
+   * `assignment`, even though it reads one route from each. These polls run at 1–3 s while a capture
+   * is live and stop the moment it ends; folding them into a namespace an ordinary page invalidates
+   * would either drag those pages up to this rate or drag this one down below the interval at which
+   * a back-pressure episode is still visible.
+   */
+  livecam: {
+    all: () => ['livecam'] as const,
+    sessions: () => ['livecam', 'sessions'] as const,
+    processing: () => ['livecam', 'processing'] as const,
+  },
 } as const;

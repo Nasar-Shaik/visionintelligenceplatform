@@ -7,7 +7,7 @@
 [tracking/TECH-DEBT.md](../../tracking/TECH-DEBT.md) and does not belong here — a `TD-nn` reference
 appears below only to point an engineer at the fix, never because the debt itself is the limitation.
 
-**Last verified: 2026-08-07** against the running production deployment — P-8.5 Product Validation.
+**Last verified: 2026-08-08** against the running production deployment — P-9 Live Video Validation.
 
 ⚠️ **An unrecorded limitation is a defect.** A limitation a customer discovers for themselves is a
 defect that has already cost something. Add rows here freely; the cost of an extra row is nil and the
@@ -666,6 +666,54 @@ irregular** — 19.07 s, 47.3 s, 121.6 s — precisely because real recordings a
 | **Exposure**          | Any indoor scene. Earlier runs produced `kite` and `keyboard` the same way                                                                                                                                                                                                                              |
 | **How to see it**     | Filter the Events lane by type: `perception.object.detected` rows carry the raw COCO label                                                                                                                                                                                                               |
 | **Planned**           | Not a runtime change — AI Runtime v1.0 is closed. The product answer is a per-tenant label allow-list at the normalizer, which is a rules/config decision and is not scheduled                                                                                                                          |
+
+---
+
+## L-72 · Live capture needs a browser — a container cannot reach the host camera
+
+|                       |                                                                                                                                                                                                                                                                                                          |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | Frames from a local camera enter the platform through the **Live Capture console page**, which uses `getUserMedia`. There is no container-side capture agent                                                                                                                                              |
+| **Customer impact**   | ⚠️ Demonstrating live AI on a laptop requires an operator with a browser tab open. Closing the tab ends the capture. This is a demonstration and validation path, not an unattended one — a production camera is an RTSP source and needs no browser                                                       |
+| **Exposure**          | Anyone demonstrating the product from a laptop, and any validation run of the live path                                                                                                                                                                                                                  |
+| **How to see it**     | Docker Desktop on macOS exposes no `/dev/video*` to a container; there is no device to pass through                                                                                                                                                                                                       |
+| **Planned**           | Not a defect to fix. A USB or ONVIF camera becomes a new **producer** against `FrameSink`, exactly as the browser did — see [LIVE_WEBCAM_VALIDATION](../validation/LIVE_WEBCAM_VALIDATION.md) §1                                                                                                          |
+
+---
+
+## L-73 · Detection falls to roughly a third of frames under strong backlight
+
+|                       |                                                                                                                                                                                                                                                                                                          |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | A subject crushed toward silhouette against a blown background is largely invisible to `yolox-nano`. Measured over a 15 s live capture: **21 of 69 frames carried a detection (~30 %)**, against 68 of 74 (92 %) for the same footage in even light — and **no incident was raised at all**                |
+| **Customer impact**   | ⛔ A doorway camera facing daylight, or any camera pointed toward a window or bright signage, will miss people. The platform will not report an error; it will report an emptier scene than the one in front of it                                                                                        |
+| **Exposure**          | Entrances, shop fronts, loading bays, any camera with a light source behind the subject — a very common CCTV geometry                                                                                                                                                                                     |
+| **How to see it**     | `orient`/`light` group of the live scenario matrix; `light-backlight` versus `light-office` on identical footage                                                                                                                                                                                          |
+| **Planned**           | Not fixable in configuration. It is a property of the detector and belongs to model evaluation — see [MODEL_EVALUATION_PLAN](../architecture/MODEL_EVALUATION_PLAN.md) §2.5, which makes per-category review mandatory precisely so an aggregate win cannot hide a lighting regression                    |
+
+---
+
+## L-74 · A camera mounted 90° from upright detects nothing at all
+
+|                       |                                                                                                                                                                                                                                                                                                          |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | Footage in which people appear lying on their side produces **0 detections in 73 frames**. The same footage upright produces 59 in 65                                                                                                                                                                    |
+| **Customer impact**   | ⛔ A camera installed rotated — a genuine and common installation error — reports a permanently empty scene. Nothing fails, nothing logs, and the platform looks healthy                                                                                                                                  |
+| **Exposure**          | Any new installation until someone looks at the picture. ⚠️ Note this is **not** the same as a portrait-oriented camera: a corridor-mount in portrait sees people upright in a tall frame and works (measured at 34 of 71 frames)                                                                          |
+| **How to see it**     | `orient-rotated-90` versus `orient-portrait` in the live scenario matrix                                                                                                                                                                                                                                 |
+| **Planned**           | The product answer is an **installation check** — a camera whose first minutes produce zero detections while motion is present deserves a warning. Not scheduled; recorded because it is cheap to detect and expensive to discover                                                                        |
+
+---
+
+## L-75 · A closed browser tab leaves a live capture session claimed for up to 60 seconds
+
+|                       |                                                                                                                                                                                                                                                                                                          |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Current behaviour** | Pressing **Stop** releases the camera immediately. Closing the tab, quitting the browser or losing power sends nothing, so the session lingers until the idle reaper takes it after **60 s** of silence                                                                                                   |
+| **Customer impact**   | ⚠️ For up to a minute the camera reads as claimed and a second capture on it is refused. The camera's indicator light is off and no frames are ingested — the record is stale, not the device                                                                                                             |
+| **Exposure**          | Any demonstration that ends by closing the laptop                                                                                                                                                                                                                                                        |
+| **How to see it**     | Close the tab mid-capture and watch `GET /api/media/live/sessions`                                                                                                                                                                                                                                       |
+| **Planned**           | Not fixed. The alternative is a heartbeat on every camera in the estate to catch a case that costs one stale row for one minute; the trade is not worth it. Certified as the honest behaviour in `livecam.spec.ts` rather than asserted away                                                              |
 
 ---
 

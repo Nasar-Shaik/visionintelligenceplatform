@@ -26,6 +26,7 @@ import { execFile, execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
+import { analyseContinuity, describeContinuity } from './lib/continuity.mjs';
 
 const exec = promisify(execFile);
 
@@ -552,6 +553,19 @@ async function runCycle() {
 
 async function main() {
   event('phase', 'soak starting', { hours: HOURS, corpus: CORPUS.length, out: OUT });
+  /*
+   * ⛔ **An overnight run on a laptop is the exact case where the host sleeps.** A suspended process
+   * does not slow a soak down — it deletes the hours that had not happened yet and leaves a
+   * full-looking set of streams behind, because every rate is computed from a clock that kept
+   * running. Measured in the P-9 live soak: 966 s of suspension turned a true 4.000 fps into a
+   * recorded 2.6 fps, and every other guard passed.
+   */
+  if (process.platform === 'darwin') {
+    console.log(
+      '⚠️  macOS: run this under `caffeinate -dimsu node tools/validation/soak.mjs …` or the host will\n' +
+        '    sleep and silently invalidate the run. Continuity is checked at the end either way.\n',
+    );
+  }
   await login();
   await sample('baseline');
 
@@ -573,13 +587,77 @@ async function main() {
 
   clearInterval(sampler);
   await sample('final');
+
+  /*
+   * ⭐ **The last question, and the one that decides whether the rest may be quoted:** was this
+   * process running for the hours it says it ran? The metrics stream is its own heartbeat — a gap
+   * of several sampling intervals means the host was asleep, not that the platform was quiet.
+   */
+  const heartbeats = readFileSync(metricsFile, 'utf8')
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => {
+      try {
+        return JSON.parse(l);
+      } catch {
+        return null;
+      }
+    })
+    .filter((x) => x !== null);
+  const continuity = analyseContinuity({ samples: heartbeats, intervalMs: SAMPLE_MS });
+  const awakeHours = Number((continuity.uninterrupted.seconds / 3600).toFixed(2));
+  console.log(`\ncontinuity  ${describeContinuity(continuity)}\n`);
+  if (!continuity.intact) {
+    event('finding', 'host suspended during the soak', {
+      suspensions: continuity.suspensions,
+      backwardsSteps: continuity.backwardsSteps,
+      awakeHours,
+      wallClockHours: Number((continuity.totalSeconds / 3600).toFixed(2)),
+    });
+  }
+
   event('phase', 'soak complete', {
     cycles: cycle,
     analyses: done.length,
     findings,
     elapsedHours: Number(((Date.now() - started) / 3600000).toFixed(2)),
+    awakeHours,
+    continuous: continuity.intact,
   });
-  writeFileSync(join(OUT, 'SUMMARY.json'), JSON.stringify({ cycles: cycle, analyses: done.length, findings, started: new Date(started).toISOString(), ended: iso() }, null, 2));
+  writeFileSync(
+    join(OUT, 'SUMMARY.json'),
+    JSON.stringify(
+      {
+        cycles: cycle,
+        analyses: done.length,
+        findings,
+        started: new Date(started).toISOString(),
+        ended: iso(),
+        requestedHours: HOURS,
+        awakeHours,
+        continuity,
+      },
+      null,
+      2,
+    ),
+  );
+
+  /*
+   * ⛔ A release soak must be **uninterrupted** — that is the whole claim it makes. Exiting
+   * non-zero is what stops a suspended run from being written up as a GO.
+   */
+  if (continuity.inconclusive) {
+    console.error('⛔ INVALID SOAK — too few metric samples to show the host stayed awake. Not a release soak.');
+    process.exit(1);
+  }
+  if (!continuity.intact || awakeHours < HOURS * 0.95) {
+    console.error(
+      `⛔ INVALID SOAK — requested ${String(HOURS)} h, the process ran for ${String(awakeHours)} h. ` +
+        `This run cannot certify a release; re-run it uninterrupted.`,
+    );
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {

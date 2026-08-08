@@ -20,6 +20,7 @@ import {
   Telescope,
   SlidersHorizontal,
   Users,
+  Webcam,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -49,6 +50,15 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
       { to: '/live', label: 'Live Monitoring', icon: MonitorPlay, permission: 'camera:read' },
+      /*
+       * P-9 — live capture from the operator's own device.
+       *
+       * ⚠️ Gated on `stream:control`, NOT `camera:read`. Everything else in this group is a read;
+       * this one pushes frames into the perception path that a tenant's rules act on and a tenant's
+       * incidents cite. Revealing it to a viewer would offer an action the gateway would then refuse
+       * — and a menu item that 403s is a worse answer than a menu item that is not there.
+       */
+      { to: '/live/webcam', label: 'Live Capture', icon: Webcam, permission: 'stream:control' },
       { to: '/cameras', label: 'Cameras', icon: Camera, permission: 'camera:read' },
       { to: '/locations', label: 'Locations', icon: Building2, permission: 'camera:read' },
     ],

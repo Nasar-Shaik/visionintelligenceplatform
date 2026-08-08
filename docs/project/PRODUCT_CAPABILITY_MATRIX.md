@@ -193,6 +193,16 @@ references them rather than restating what a capability is.
 | **C-21** | Upload a recording and analyse it                          |            ✅            |  ✅ timeline + incidents    |         ⛔          |  ✅  |  ✅   |  ⛔  | **P-8 Phase 8** | C-19               | media        |
 | **C-22** | **Live video view**                                        | ⛔ no transport contract |          ⛔ (TD-28)          | ⛔ placeholder page |  ⛔  |  ⛔   |  ⛔  | **P-8**         | **ADR: transport** | media        |
 | **C-23** | Auto-captured evidence from a live incident                |            ✅            |  ⛔ no-op extractor (TD-15)  |         n/a         |  ⛔  |  ⛔   |  ⛔  | **P-8**         | C-19               | evidence     |
+| **C-50** | **Live frame ingest from a browser camera**                |            ✅            |   ✅ `LiveIngest` → the SAME `FrameSink`   |    ✅ Live Capture page    |  ✅  |  ⚠️   |  ⚠️  | **P-9**         | C-19               | media        |
+
+> ⭐ **C-50 (P-9) is a producer, not a pipeline, and the ⚠️ in Pilot/Prod is deliberate.** The live
+> path runs through the identical runtime, tracker, publisher, rule engine and incident pipeline as
+> offline analysis — proved by measurement (identical model id, runtime version, execution provider,
+> capability and event types) and guarded by a structural test that fails if a second `/infer` call,
+> a second tracker or a second sink ever appears. What is **not** proved is the optics: every frame
+> in that validation came from an authored clip or Chrome's fake video device, so C-50 is production
+> *code* on validated *synthetic* input. A real camera has never been connected (L-1), and the
+> browser is a demonstration path rather than an unattended one (L-72).
 
 > ⚠️ **C-17, C-18 and C-19 are a CORRECTION, made 2026-08-06, and the drift is the point.** They read
 > `⛔ NullFrameSink (TD-4)`, `⚠️ stub backend is the default (TD-5)` and `⚠️ runtime only, no frame

@@ -138,6 +138,14 @@ const TrackStatisticsPage = lazy(() =>
     default: m.TrackStatisticsPage,
   })),
 );
+/**
+ * P-9 — live webcam capture. ⚠️ Lazily loaded like everything else, and that matters more here than
+ * elsewhere: this is the only page in the console that touches `getUserMedia`, and an operator who
+ * never opens it must never download code that asks for a camera.
+ */
+const LiveCamPage = lazy(() =>
+  import('@/features/livecam/LiveCamPage').then((m) => ({ default: m.LiveCamPage })),
+);
 const PlaceholderPage = lazy(() =>
   import('@/routes/PlaceholderPage').then((m) => ({ default: m.PlaceholderPage })),
 );
@@ -171,6 +179,15 @@ export const router = createBrowserRouter([
             path: 'live',
             element: route(<PlaceholderPage title="Live Monitoring" slice="P2-1.6" />),
           },
+          /*
+           * P-9 — live capture from this device's camera.
+           *
+           * ⚠️ Declared under `/live` rather than under `/system`, because it is not an engineering
+           * view: it produces frames a tenant's rules act on and a tenant's incidents cite. It rides
+           * `stream:control`, the same permission as starting that camera's stream, which is exactly
+           * what it is doing by another route.
+           */
+          { path: 'live/webcam', element: route(<LiveCamPage />) },
           { path: 'cameras', element: route(<CamerasPage />) },
           /* P-6.6 — a camera has an address, so it can be linked to, refreshed and gone back from. */
           { path: 'cameras/:id', element: route(<CameraDetailPage />) },

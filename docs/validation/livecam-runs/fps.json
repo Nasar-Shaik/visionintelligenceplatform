@@ -1,0 +1,2052 @@
+{
+ "mode": "fps",
+ "camera": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+ "at": "2026-08-08T08:18:28.504Z",
+ "perRate": [
+  {
+   "label": "1fps",
+   "targetFps": 1,
+   "maxInflight": 1,
+   "seconds": 60,
+   "sent": 60,
+   "rejected": 0,
+   "skippedBusy": 0,
+   "skipRatio": 0,
+   "harnessBound": false,
+   "achievedFps": 1,
+   "uploadMs": {
+    "count": 60,
+    "min": 7,
+    "avg": 14.65,
+    "p95": 23,
+    "max": 34
+   },
+   "samples": [
+    {
+     "at": "2026-08-08T08:11:43.152Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7423,
+     "offered": 7565,
+     "processingFps": null,
+     "processingLatencyMs": 75.66,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:11:45.169Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7425,
+     "offered": 7567,
+     "processingFps": 0.2,
+     "processingLatencyMs": 76.03,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:11:47.189Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7427,
+     "offered": 7570,
+     "processingFps": 0.4,
+     "processingLatencyMs": 76.24,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:11:49.207Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7429,
+     "offered": 7572,
+     "processingFps": 0.6,
+     "processingLatencyMs": 76.38,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:11:51.231Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7431,
+     "offered": 7574,
+     "processingFps": 0.8,
+     "processingLatencyMs": 76.95,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:11:53.251Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7434,
+     "offered": 7576,
+     "processingFps": 1,
+     "processingLatencyMs": 74.88,
+     "activeTracks": 0
+    },
+    {
+     "at": "2026-08-08T08:11:55.260Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7436,
+     "offered": 7578,
+     "processingFps": 1,
+     "processingLatencyMs": 72.88,
+     "activeTracks": 0
+    },
+    {
+     "at": "2026-08-08T08:11:57.269Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7438,
+     "offered": 7580,
+     "processingFps": 1,
+     "processingLatencyMs": 72.8,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:11:59.281Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7440,
+     "offered": 7582,
+     "processingFps": 1,
+     "processingLatencyMs": 73.17,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:01.291Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7442,
+     "offered": 7584,
+     "processingFps": 1.1,
+     "processingLatencyMs": 73.61,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:03.299Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7444,
+     "offered": 7586,
+     "processingFps": 1,
+     "processingLatencyMs": 74.01,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:05.308Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7446,
+     "offered": 7588,
+     "processingFps": 1,
+     "processingLatencyMs": 74.44,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:07.320Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7448,
+     "offered": 7590,
+     "processingFps": 1,
+     "processingLatencyMs": 74.65,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:09.329Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7450,
+     "offered": 7592,
+     "processingFps": 1,
+     "processingLatencyMs": 74.56,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:11.338Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7452,
+     "offered": 7594,
+     "processingFps": 1,
+     "processingLatencyMs": 74.36,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:13.348Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7454,
+     "offered": 7596,
+     "processingFps": 1,
+     "processingLatencyMs": 74.14,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:15.360Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7456,
+     "offered": 7598,
+     "processingFps": 1,
+     "processingLatencyMs": 74.31,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:17.370Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7458,
+     "offered": 7600,
+     "processingFps": 1,
+     "processingLatencyMs": 74.6,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:19.383Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7460,
+     "offered": 7602,
+     "processingFps": 1,
+     "processingLatencyMs": 74.73,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:21.397Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7462,
+     "offered": 7604,
+     "processingFps": 1,
+     "processingLatencyMs": 74.73,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:23.408Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7464,
+     "offered": 7606,
+     "processingFps": 1,
+     "processingLatencyMs": 74.39,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:25.417Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7466,
+     "offered": 7608,
+     "processingFps": 1,
+     "processingLatencyMs": 74.33,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:27.427Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7468,
+     "offered": 7610,
+     "processingFps": 1,
+     "processingLatencyMs": 73.49,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:29.438Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7470,
+     "offered": 7612,
+     "processingFps": 1,
+     "processingLatencyMs": 70.8,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:31.457Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7472,
+     "offered": 7614,
+     "processingFps": 1,
+     "processingLatencyMs": 68.65,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:33.472Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7474,
+     "offered": 7616,
+     "processingFps": 1,
+     "processingLatencyMs": 66.48,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:35.482Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7476,
+     "offered": 7618,
+     "processingFps": 1,
+     "processingLatencyMs": 66.21,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:37.494Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7478,
+     "offered": 7620,
+     "processingFps": 1,
+     "processingLatencyMs": 65.91,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:39.516Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7480,
+     "offered": 7622,
+     "processingFps": 1,
+     "processingLatencyMs": 65.03,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:12:41.534Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7482,
+     "offered": 7624,
+     "processingFps": 1,
+     "processingLatencyMs": 64.01,
+     "activeTracks": 1
+    }
+   ],
+   "tracking": {
+    "framesTracked": 60,
+    "createdTracks": 1,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "outOfOrderFrames": 0,
+    "averageTrackingMs": 0.1596
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 0.4,
+    "framesOffered": 7625,
+    "framesDelivered": 7483,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 142,
+    "queueDepth": 0,
+    "processingLatencyMs": 63.91,
+    "eventsPublished": 5836,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T08:12:42.264Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "cpuPercent": {
+    "media": {
+     "count": 11,
+     "min": 0.68,
+     "avg": 1.61,
+     "p95": 3.01,
+     "max": 3.01
+    },
+    "inference": {
+     "count": 11,
+     "min": 0.02,
+     "avg": 47.25,
+     "p95": 69.74,
+     "max": 69.74
+    },
+    "events": {
+     "count": 11,
+     "min": 0.39,
+     "avg": 0.76,
+     "p95": 1.24,
+     "max": 1.24
+    },
+    "rules": {
+     "count": 11,
+     "min": 0.35,
+     "avg": 0.56,
+     "p95": 0.75,
+     "max": 0.75
+    }
+   },
+   "memMiB": {
+    "media": {
+     "count": 11,
+     "min": 157,
+     "avg": 157.15,
+     "p95": 157.5,
+     "max": 157.5
+    },
+    "inference": {
+     "count": 11,
+     "min": 135,
+     "avg": 135,
+     "p95": 135,
+     "max": 135
+    },
+    "events": {
+     "count": 11,
+     "min": 109.1,
+     "avg": 109.1,
+     "p95": 109.1,
+     "max": 109.1
+    },
+    "rules": {
+     "count": 11,
+     "min": 111,
+     "avg": 111,
+     "p95": 111,
+     "max": 111
+    }
+   }
+  },
+  {
+   "label": "2fps",
+   "targetFps": 2,
+   "maxInflight": 1,
+   "seconds": 60,
+   "sent": 120,
+   "rejected": 0,
+   "skippedBusy": 0,
+   "skipRatio": 0,
+   "harnessBound": false,
+   "achievedFps": 2,
+   "uploadMs": {
+    "count": 120,
+    "min": 5,
+    "avg": 14.69,
+    "p95": 21,
+    "max": 23
+   },
+   "samples": [
+    {
+     "at": "2026-08-08T08:13:04.215Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7483,
+     "offered": 7625,
+     "processingFps": null,
+     "processingLatencyMs": 63.91,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:06.235Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7487,
+     "offered": 7629,
+     "processingFps": 0.4,
+     "processingLatencyMs": 63.54,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:08.250Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7491,
+     "offered": 7634,
+     "processingFps": 0.8,
+     "processingLatencyMs": 63.48,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:10.267Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7495,
+     "offered": 7638,
+     "processingFps": 1.2,
+     "processingLatencyMs": 63.85,
+     "activeTracks": 0
+    },
+    {
+     "at": "2026-08-08T08:13:12.293Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7500,
+     "offered": 7642,
+     "processingFps": 1.7,
+     "processingLatencyMs": 64.07,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:14.303Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7504,
+     "offered": 7646,
+     "processingFps": 2,
+     "processingLatencyMs": 64.56,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:16.326Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7508,
+     "offered": 7650,
+     "processingFps": 2,
+     "processingLatencyMs": 62.54,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:18.334Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7512,
+     "offered": 7654,
+     "processingFps": 2,
+     "processingLatencyMs": 61.48,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:20.343Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7516,
+     "offered": 7658,
+     "processingFps": 2,
+     "processingLatencyMs": 61.53,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:22.354Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7520,
+     "offered": 7662,
+     "processingFps": 2,
+     "processingLatencyMs": 62.17,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:24.366Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7524,
+     "offered": 7666,
+     "processingFps": 2,
+     "processingLatencyMs": 63.21,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:26.379Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7528,
+     "offered": 7670,
+     "processingFps": 2,
+     "processingLatencyMs": 63.25,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:28.388Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7532,
+     "offered": 7674,
+     "processingFps": 2,
+     "processingLatencyMs": 62.24,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:30.397Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7536,
+     "offered": 7678,
+     "processingFps": 2,
+     "processingLatencyMs": 62.74,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:32.407Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7540,
+     "offered": 7682,
+     "processingFps": 2,
+     "processingLatencyMs": 62.87,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:34.418Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7544,
+     "offered": 7686,
+     "processingFps": 2,
+     "processingLatencyMs": 62.79,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:36.425Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7548,
+     "offered": 7690,
+     "processingFps": 2,
+     "processingLatencyMs": 62.63,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:38.435Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7552,
+     "offered": 7694,
+     "processingFps": 2,
+     "processingLatencyMs": 62.3,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:40.445Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7556,
+     "offered": 7698,
+     "processingFps": 2,
+     "processingLatencyMs": 62.2,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:42.458Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7560,
+     "offered": 7702,
+     "processingFps": 2,
+     "processingLatencyMs": 62.41,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:44.468Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7564,
+     "offered": 7706,
+     "processingFps": 2,
+     "processingLatencyMs": 62.71,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:46.478Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7568,
+     "offered": 7710,
+     "processingFps": 2,
+     "processingLatencyMs": 62.32,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:48.489Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7572,
+     "offered": 7714,
+     "processingFps": 2,
+     "processingLatencyMs": 62.45,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:50.510Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7576,
+     "offered": 7718,
+     "processingFps": 2,
+     "processingLatencyMs": 62.27,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:52.528Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7580,
+     "offered": 7722,
+     "processingFps": 2,
+     "processingLatencyMs": 62.13,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:54.540Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7584,
+     "offered": 7726,
+     "processingFps": 2,
+     "processingLatencyMs": 62.36,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:56.552Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7588,
+     "offered": 7730,
+     "processingFps": 2,
+     "processingLatencyMs": 62.45,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:13:58.562Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7592,
+     "offered": 7734,
+     "processingFps": 2,
+     "processingLatencyMs": 62.42,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:00.578Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7596,
+     "offered": 7738,
+     "processingFps": 2,
+     "processingLatencyMs": 62.39,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:02.597Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7600,
+     "offered": 7742,
+     "processingFps": 2,
+     "processingLatencyMs": 63.06,
+     "activeTracks": 1
+    }
+   ],
+   "tracking": {
+    "framesTracked": 120,
+    "createdTracks": 1,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "outOfOrderFrames": 0,
+    "averageTrackingMs": 0.1591
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 0.8,
+    "framesOffered": 7745,
+    "framesDelivered": 7603,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 142,
+    "queueDepth": 0,
+    "processingLatencyMs": 62.19,
+    "eventsPublished": 5942,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T08:14:03.820Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "cpuPercent": {
+    "media": {
+     "count": 11,
+     "min": 0.58,
+     "avg": 1.9,
+     "p95": 3.21,
+     "max": 3.21
+    },
+    "inference": {
+     "count": 11,
+     "min": 0.01,
+     "avg": 86.26,
+     "p95": 112.69,
+     "max": 112.69
+    },
+    "events": {
+     "count": 11,
+     "min": 0.4,
+     "avg": 0.82,
+     "p95": 1.61,
+     "max": 1.61
+    },
+    "rules": {
+     "count": 11,
+     "min": 0.32,
+     "avg": 0.57,
+     "p95": 1.44,
+     "max": 1.44
+    }
+   },
+   "memMiB": {
+    "media": {
+     "count": 11,
+     "min": 121.4,
+     "avg": 138.85,
+     "p95": 157.5,
+     "max": 157.5
+    },
+    "inference": {
+     "count": 11,
+     "min": 135,
+     "avg": 135,
+     "p95": 135,
+     "max": 135
+    },
+    "events": {
+     "count": 11,
+     "min": 109.1,
+     "avg": 109.1,
+     "p95": 109.1,
+     "max": 109.1
+    },
+    "rules": {
+     "count": 11,
+     "min": 111,
+     "avg": 111,
+     "p95": 111,
+     "max": 111
+    }
+   }
+  },
+  {
+   "label": "4fps",
+   "targetFps": 4,
+   "maxInflight": 1,
+   "seconds": 60,
+   "sent": 240,
+   "rejected": 0,
+   "skippedBusy": 0,
+   "skipRatio": 0,
+   "harnessBound": false,
+   "achievedFps": 4,
+   "uploadMs": {
+    "count": 240,
+    "min": 6,
+    "avg": 12.74,
+    "p95": 20,
+    "max": 23
+   },
+   "samples": [
+    {
+     "at": "2026-08-08T08:14:25.295Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7603,
+     "offered": 7745,
+     "processingFps": null,
+     "processingLatencyMs": 62.19,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:27.328Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7611,
+     "offered": 7753,
+     "processingFps": 0.8,
+     "processingLatencyMs": 62.72,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:29.341Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7619,
+     "offered": 7762,
+     "processingFps": 1.6,
+     "processingLatencyMs": 62.69,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:31.357Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7627,
+     "offered": 7770,
+     "processingFps": 2.4,
+     "processingLatencyMs": 61.75,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:33.394Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7635,
+     "offered": 7778,
+     "processingFps": 3.2,
+     "processingLatencyMs": 62.18,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:35.411Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7644,
+     "offered": 7786,
+     "processingFps": 4,
+     "processingLatencyMs": 61.62,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:37.422Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7652,
+     "offered": 7794,
+     "processingFps": 4,
+     "processingLatencyMs": 62.66,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:39.430Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7660,
+     "offered": 7802,
+     "processingFps": 4,
+     "processingLatencyMs": 62.92,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:41.438Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7668,
+     "offered": 7810,
+     "processingFps": 4,
+     "processingLatencyMs": 62.88,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:43.450Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7676,
+     "offered": 7818,
+     "processingFps": 4,
+     "processingLatencyMs": 62.52,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:45.460Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7684,
+     "offered": 7826,
+     "processingFps": 4,
+     "processingLatencyMs": 62.07,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:47.469Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7692,
+     "offered": 7834,
+     "processingFps": 4,
+     "processingLatencyMs": 62.31,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:49.478Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7700,
+     "offered": 7842,
+     "processingFps": 4,
+     "processingLatencyMs": 61.71,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:51.489Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7708,
+     "offered": 7850,
+     "processingFps": 4,
+     "processingLatencyMs": 61.28,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:53.498Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7716,
+     "offered": 7858,
+     "processingFps": 4,
+     "processingLatencyMs": 60.38,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:55.507Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7724,
+     "offered": 7866,
+     "processingFps": 4,
+     "processingLatencyMs": 59.61,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:57.517Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7732,
+     "offered": 7874,
+     "processingFps": 4,
+     "processingLatencyMs": 59.2,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:14:59.530Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7740,
+     "offered": 7882,
+     "processingFps": 4,
+     "processingLatencyMs": 58.19,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:01.538Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7748,
+     "offered": 7890,
+     "processingFps": 4,
+     "processingLatencyMs": 57.91,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:03.552Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7756,
+     "offered": 7898,
+     "processingFps": 4,
+     "processingLatencyMs": 56.84,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:05.560Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7764,
+     "offered": 7906,
+     "processingFps": 4,
+     "processingLatencyMs": 56.46,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:07.578Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7772,
+     "offered": 7914,
+     "processingFps": 4,
+     "processingLatencyMs": 56.32,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:09.590Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7780,
+     "offered": 7923,
+     "processingFps": 4,
+     "processingLatencyMs": 56.46,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:11.605Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7788,
+     "offered": 7931,
+     "processingFps": 4,
+     "processingLatencyMs": 55.87,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:13.630Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7796,
+     "offered": 7939,
+     "processingFps": 4,
+     "processingLatencyMs": 55.46,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:15.649Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7805,
+     "offered": 7947,
+     "processingFps": 4,
+     "processingLatencyMs": 55.82,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:17.660Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7812,
+     "offered": 7955,
+     "processingFps": 3.9,
+     "processingLatencyMs": 56.12,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:19.677Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7821,
+     "offered": 7963,
+     "processingFps": 4,
+     "processingLatencyMs": 57.79,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:21.687Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7829,
+     "offered": 7971,
+     "processingFps": 4,
+     "processingLatencyMs": 58.18,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:23.696Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7837,
+     "offered": 7979,
+     "processingFps": 4,
+     "processingLatencyMs": 58.09,
+     "activeTracks": 1
+    }
+   ],
+   "tracking": {
+    "framesTracked": 240,
+    "createdTracks": 1,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "outOfOrderFrames": 0,
+    "averageTrackingMs": 0.1586
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 1.6,
+    "framesOffered": 7985,
+    "framesDelivered": 7843,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 142,
+    "queueDepth": 0,
+    "processingLatencyMs": 58.19,
+    "eventsPublished": 6168,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T08:15:25.151Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "cpuPercent": {
+    "media": {
+     "count": 11,
+     "min": 2.67,
+     "avg": 6.05,
+     "p95": 16.18,
+     "max": 16.18
+    },
+    "inference": {
+     "count": 11,
+     "min": 0.15,
+     "avg": 172.01,
+     "p95": 229.26,
+     "max": 229.26
+    },
+    "events": {
+     "count": 11,
+     "min": 0.28,
+     "avg": 0.69,
+     "p95": 0.91,
+     "max": 0.91
+    },
+    "rules": {
+     "count": 11,
+     "min": 0.26,
+     "avg": 0.36,
+     "p95": 0.64,
+     "max": 0.64
+    }
+   },
+   "memMiB": {
+    "media": {
+     "count": 11,
+     "min": 127.1,
+     "avg": 136.21,
+     "p95": 146.3,
+     "max": 146.3
+    },
+    "inference": {
+     "count": 11,
+     "min": 135,
+     "avg": 135.07,
+     "p95": 135.3,
+     "max": 135.3
+    },
+    "events": {
+     "count": 11,
+     "min": 109.1,
+     "avg": 109.13,
+     "p95": 109.4,
+     "max": 109.4
+    },
+    "rules": {
+     "count": 11,
+     "min": 111,
+     "avg": 111,
+     "p95": 111,
+     "max": 111
+    }
+   }
+  },
+  {
+   "label": "8fps",
+   "targetFps": 8,
+   "maxInflight": 1,
+   "seconds": 60,
+   "sent": 480,
+   "rejected": 0,
+   "skippedBusy": 0,
+   "skipRatio": 0,
+   "harnessBound": false,
+   "achievedFps": 8,
+   "uploadMs": {
+    "count": 480,
+    "min": 5,
+    "avg": 8.82,
+    "p95": 12,
+    "max": 40
+   },
+   "samples": [
+    {
+     "at": "2026-08-08T08:15:46.374Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7843,
+     "offered": 7985,
+     "processingFps": null,
+     "processingLatencyMs": 58.19,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:48.406Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7859,
+     "offered": 8001,
+     "processingFps": 1.6,
+     "processingLatencyMs": 57.22,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:50.417Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7875,
+     "offered": 8018,
+     "processingFps": 3.2,
+     "processingLatencyMs": 57.86,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:52.430Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7891,
+     "offered": 8034,
+     "processingFps": 4.8,
+     "processingLatencyMs": 57.88,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:54.456Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7907,
+     "offered": 8050,
+     "processingFps": 6.4,
+     "processingLatencyMs": 57.23,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:56.476Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7924,
+     "offered": 8066,
+     "processingFps": 8,
+     "processingLatencyMs": 55.15,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:15:58.484Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7940,
+     "offered": 8082,
+     "processingFps": 8,
+     "processingLatencyMs": 54.57,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:00.494Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7956,
+     "offered": 8098,
+     "processingFps": 8,
+     "processingLatencyMs": 56.07,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:02.504Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7972,
+     "offered": 8114,
+     "processingFps": 8,
+     "processingLatencyMs": 55.03,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:04.516Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 7988,
+     "offered": 8130,
+     "processingFps": 8,
+     "processingLatencyMs": 54.71,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:06.530Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8004,
+     "offered": 8146,
+     "processingFps": 8,
+     "processingLatencyMs": 53.79,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:08.539Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8020,
+     "offered": 8162,
+     "processingFps": 8,
+     "processingLatencyMs": 52.75,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:10.550Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8036,
+     "offered": 8179,
+     "processingFps": 8,
+     "processingLatencyMs": 52.93,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:12.571Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8052,
+     "offered": 8195,
+     "processingFps": 8,
+     "processingLatencyMs": 51.58,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:14.592Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8069,
+     "offered": 8211,
+     "processingFps": 8,
+     "processingLatencyMs": 51.18,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:16.608Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8085,
+     "offered": 8227,
+     "processingFps": 8,
+     "processingLatencyMs": 50.64,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:18.615Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8101,
+     "offered": 8243,
+     "processingFps": 8,
+     "processingLatencyMs": 50.36,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:20.622Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8117,
+     "offered": 8259,
+     "processingFps": 8,
+     "processingLatencyMs": 51.46,
+     "activeTracks": 0
+    },
+    {
+     "at": "2026-08-08T08:16:22.630Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8133,
+     "offered": 8275,
+     "processingFps": 8,
+     "processingLatencyMs": 51.19,
+     "activeTracks": 0
+    },
+    {
+     "at": "2026-08-08T08:16:24.639Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8149,
+     "offered": 8291,
+     "processingFps": 8,
+     "processingLatencyMs": 51.19,
+     "activeTracks": 0
+    },
+    {
+     "at": "2026-08-08T08:16:26.651Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8165,
+     "offered": 8307,
+     "processingFps": 8,
+     "processingLatencyMs": 50.19,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:28.658Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8181,
+     "offered": 8323,
+     "processingFps": 8,
+     "processingLatencyMs": 50.21,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:30.672Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8197,
+     "offered": 8340,
+     "processingFps": 8,
+     "processingLatencyMs": 51.25,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:32.683Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8213,
+     "offered": 8356,
+     "processingFps": 8,
+     "processingLatencyMs": 50.37,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:34.705Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8230,
+     "offered": 8372,
+     "processingFps": 8,
+     "processingLatencyMs": 50.76,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:36.720Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8246,
+     "offered": 8388,
+     "processingFps": 8,
+     "processingLatencyMs": 49.59,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:38.729Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8262,
+     "offered": 8404,
+     "processingFps": 8,
+     "processingLatencyMs": 49.59,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:40.740Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8277,
+     "offered": 8420,
+     "processingFps": 7.9,
+     "processingLatencyMs": 51.04,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:42.761Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8294,
+     "offered": 8436,
+     "processingFps": 8,
+     "processingLatencyMs": 53.42,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:16:44.771Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8310,
+     "offered": 8452,
+     "processingFps": 8,
+     "processingLatencyMs": 52.52,
+     "activeTracks": 1
+    }
+   ],
+   "tracking": {
+    "framesTracked": 480,
+    "createdTracks": 2,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "outOfOrderFrames": 0,
+    "averageTrackingMs": 0.1566
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 3.2,
+    "framesOffered": 8465,
+    "framesDelivered": 8323,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 142,
+    "queueDepth": 0,
+    "processingLatencyMs": 52.49,
+    "eventsPublished": 6576,
+    "activeTracks": 1,
+    "lastFrameAt": "2026-08-08T08:16:46.334Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "cpuPercent": {
+    "media": {
+     "count": 11,
+     "min": 1.59,
+     "avg": 4.19,
+     "p95": 6.43,
+     "max": 6.43
+    },
+    "inference": {
+     "count": 11,
+     "min": 0.03,
+     "avg": 305.47,
+     "p95": 355.35,
+     "max": 355.35
+    },
+    "events": {
+     "count": 11,
+     "min": 0.21,
+     "avg": 0.76,
+     "p95": 1.24,
+     "max": 1.24
+    },
+    "rules": {
+     "count": 11,
+     "min": 0.25,
+     "avg": 0.42,
+     "p95": 0.68,
+     "max": 0.68
+    }
+   },
+   "memMiB": {
+    "media": {
+     "count": 11,
+     "min": 146.2,
+     "avg": 151.76,
+     "p95": 157.6,
+     "max": 157.6
+    },
+    "inference": {
+     "count": 11,
+     "min": 135,
+     "avg": 135.03,
+     "p95": 135.3,
+     "max": 135.3
+    },
+    "events": {
+     "count": 11,
+     "min": 109.1,
+     "avg": 109.17,
+     "p95": 109.6,
+     "max": 109.6
+    },
+    "rules": {
+     "count": 11,
+     "min": 111,
+     "avg": 111,
+     "p95": 111,
+     "max": 111
+    }
+   }
+  },
+  {
+   "label": "15fps",
+   "targetFps": 15,
+   "maxInflight": 1,
+   "seconds": 60,
+   "sent": 899,
+   "rejected": 0,
+   "skippedBusy": 1,
+   "skipRatio": 0.001,
+   "harnessBound": false,
+   "achievedFps": 14.98,
+   "uploadMs": {
+    "count": 899,
+    "min": 4,
+    "avg": 9.67,
+    "p95": 18,
+    "max": 74
+   },
+   "samples": [
+    {
+     "at": "2026-08-08T08:17:07.448Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8323,
+     "offered": 8465,
+     "processingFps": null,
+     "processingLatencyMs": 52.49,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:09.469Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8353,
+     "offered": 8495,
+     "processingFps": 3,
+     "processingLatencyMs": 51.28,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:11.476Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8383,
+     "offered": 8526,
+     "processingFps": 6,
+     "processingLatencyMs": 47.79,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:13.484Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8413,
+     "offered": 8556,
+     "processingFps": 9,
+     "processingLatencyMs": 55.2,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:15.504Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8443,
+     "offered": 8586,
+     "processingFps": 12,
+     "processingLatencyMs": 57.02,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:17.533Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8474,
+     "offered": 8616,
+     "processingFps": 15,
+     "processingLatencyMs": 58.67,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:19.540Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8504,
+     "offered": 8646,
+     "processingFps": 15,
+     "processingLatencyMs": 48.64,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:21.549Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 142,
+     "delivered": 8532,
+     "offered": 8676,
+     "processingFps": 14.8,
+     "processingLatencyMs": 49.32,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:23.571Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 8561,
+     "offered": 8706,
+     "processingFps": 14.7,
+     "processingLatencyMs": 78.71,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:25.607Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 8592,
+     "offered": 8736,
+     "processingFps": 14.7,
+     "processingLatencyMs": 79.58,
+     "activeTracks": 0
+    },
+    {
+     "at": "2026-08-08T08:17:27.614Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 8622,
+     "offered": 8767,
+     "processingFps": 14.7,
+     "processingLatencyMs": 80.57,
+     "activeTracks": 0
+    },
+    {
+     "at": "2026-08-08T08:17:29.631Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 8652,
+     "offered": 8797,
+     "processingFps": 14.7,
+     "processingLatencyMs": 49.22,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:31.654Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 8683,
+     "offered": 8827,
+     "processingFps": 14.9,
+     "processingLatencyMs": 47.92,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:33.668Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 8713,
+     "offered": 8857,
+     "processingFps": 15.1,
+     "processingLatencyMs": 60.22,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:35.679Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 8743,
+     "offered": 8888,
+     "processingFps": 15,
+     "processingLatencyMs": 59.92,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:37.687Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 8773,
+     "offered": 8918,
+     "processingFps": 15,
+     "processingLatencyMs": 60.04,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:39.710Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 8803,
+     "offered": 8948,
+     "processingFps": 15,
+     "processingLatencyMs": 50.43,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:41.725Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 8834,
+     "offered": 8978,
+     "processingFps": 15.1,
+     "processingLatencyMs": 47.7,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:43.740Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 8863,
+     "offered": 9008,
+     "processingFps": 15,
+     "processingLatencyMs": 57.83,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:45.753Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 8894,
+     "offered": 9039,
+     "processingFps": 15,
+     "processingLatencyMs": 58.27,
+     "activeTracks": 0
+    },
+    {
+     "at": "2026-08-08T08:17:47.773Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 8924,
+     "offered": 9069,
+     "processingFps": 15,
+     "processingLatencyMs": 58.77,
+     "activeTracks": 0
+    },
+    {
+     "at": "2026-08-08T08:17:49.794Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 8955,
+     "offered": 9099,
+     "processingFps": 15.1,
+     "processingLatencyMs": 55.76,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:51.804Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 8985,
+     "offered": 9129,
+     "processingFps": 15,
+     "processingLatencyMs": 47.04,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:53.811Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 9013,
+     "offered": 9160,
+     "processingFps": 14.9,
+     "processingLatencyMs": 48.87,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:55.840Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 9046,
+     "offered": 9190,
+     "processingFps": 15.1,
+     "processingLatencyMs": 58.52,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:57.866Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 9076,
+     "offered": 9220,
+     "processingFps": 15,
+     "processingLatencyMs": 59.58,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:17:59.872Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 9106,
+     "offered": 9250,
+     "processingFps": 15,
+     "processingLatencyMs": 61.41,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:18:01.883Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 9136,
+     "offered": 9281,
+     "processingFps": 15,
+     "processingLatencyMs": 53.11,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:18:03.899Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 9166,
+     "offered": 9311,
+     "processingFps": 15.2,
+     "processingLatencyMs": 56.57,
+     "activeTracks": 1
+    },
+    {
+     "at": "2026-08-08T08:18:05.913Z",
+     "queueDepth": 0,
+     "droppedQueueFull": 144,
+     "delivered": 9197,
+     "offered": 9341,
+     "processingFps": 15,
+     "processingLatencyMs": 57.93,
+     "activeTracks": 0
+    }
+   ],
+   "tracking": {
+    "framesTracked": 891,
+    "createdTracks": 3,
+    "recoveredTracks": 0,
+    "occlusionsSurvived": 0,
+    "outOfOrderFrames": 6,
+    "averageTrackingMs": 0.1538
+   },
+   "pipeline": {
+    "tenantId": "tnt_demo_retail",
+    "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+    "aiEnabled": true,
+    "state": "running",
+    "profileId": "person-tracking",
+    "runtimeId": "inference",
+    "processingFps": 6,
+    "framesOffered": 9364,
+    "framesDelivered": 9220,
+    "framesSkippedUnassigned": 0,
+    "framesDroppedQueueFull": 144,
+    "queueDepth": 0,
+    "processingLatencyMs": 57.94,
+    "eventsPublished": 7300,
+    "activeTracks": 0,
+    "lastFrameAt": "2026-08-08T08:18:07.471Z",
+    "lastErrorAt": null,
+    "lastError": null
+   },
+   "cpuPercent": {
+    "media": {
+     "count": 11,
+     "min": 1.46,
+     "avg": 8.34,
+     "p95": 19.42,
+     "max": 19.42
+    },
+    "inference": {
+     "count": 11,
+     "min": 561.5,
+     "avg": 628.44,
+     "p95": 705.13,
+     "max": 705.13
+    },
+    "events": {
+     "count": 11,
+     "min": 0.31,
+     "avg": 1.62,
+     "p95": 4.49,
+     "max": 4.49
+    },
+    "rules": {
+     "count": 11,
+     "min": 0.29,
+     "avg": 0.65,
+     "p95": 2.33,
+     "max": 2.33
+    }
+   },
+   "memMiB": {
+    "media": {
+     "count": 11,
+     "min": 122.6,
+     "avg": 150.44,
+     "p95": 161.6,
+     "max": 161.6
+    },
+    "inference": {
+     "count": 11,
+     "min": 135.1,
+     "avg": 135.21,
+     "p95": 135.5,
+     "max": 135.5
+    },
+    "events": {
+     "count": 11,
+     "min": 109,
+     "avg": 109.1,
+     "p95": 109.3,
+     "max": 109.3
+    },
+    "rules": {
+     "count": 11,
+     "min": 111,
+     "avg": 111.07,
+     "p95": 111.6,
+     "max": 111.6
+    }
+   }
+  }
+ ]
+}

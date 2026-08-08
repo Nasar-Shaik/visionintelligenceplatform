@@ -2,7 +2,7 @@
 
 > **The single canonical dashboard. Read this first to know "where are we."** Update it every working session; keep it terse. Companion files: per-slice reviews in [REVIEW_HISTORY](REVIEW_HISTORY.md), narrative logs in [DAILY_LOG](DAILY_LOG.md). Backlog: [TASK-BOARD](../../tracking/TASK-BOARD.md). Roadmap: [PROJECT_ROADMAP](../project/PROJECT_ROADMAP.md).
 
-_Last updated: 2026-08-07 · Claude_
+_Last updated: 2026-08-08 · Claude_
 
 ## Snapshot
 
@@ -793,6 +793,109 @@ _Last updated: 2026-08-07 · Claude_
   Track B is gated on hardware ([P9_HARDWARE_PROCUREMENT](../project/P9_HARDWARE_PROCUREMENT.md)).
   Docs: [TRACK_A_ACCEPTANCE](../project/P9_TRACK_A_ACCEPTANCE.md),
   [P9_IMPLEMENTATION_PLAN](../project/P9_IMPLEMENTATION_PLAN.md).
+
+- **P-9 · Live Video Validation ✅ complete, ⏳ awaiting review (2026-08-08)** — **live video through
+  the production pipeline, and the headline is architectural rather than featural: the live AI
+  pipeline already existed in full.** Every producer converges on one door, `FrameSink.push()`, and
+  what this milestone added is a **producer**, not a pipeline — so swapping the webcam for an RTSP
+  camera needs **zero new code**. ⛔ **The webcam is deliberately not a `FrameSource`**: that is the
+  *offline* port, demanding `assetKey`/`contentType`/`footageStartedAt` and a resumable
+  `read(fromOffsetSeconds, durationSeconds)` — four values a live camera cannot supply and would then
+  have to keep true for ever; and not a `Decoder` either, whose `StreamConnection.protocol` is frozen
+  at `['rtsp','rtmp']`. ⭐ **The parity claim is a test, not a diagram** —
+  `one-pipeline.test.ts` reads the source and fails if a second `/infer` call, a second tracker, or a
+  `LiveIngest` with its own sink ever appears (7 tests). Measured parity on the **same clip** through
+  both paths: identical `modelId` · `runtimeVersion` · `executionProvider` · `capabilityId` ·
+  `pipelineVersion` · event types; volumes differ by design because `deliver` waits and `push`
+  samples. **Two blockers the deployment found before the UI existed**: the edge shipped
+  `Permissions-Policy: camera=()`, disabling `getUserMedia` for the whole origin and surfacing as
+  "permission denied" — as if the operator had chosen it; and ⛔ **the gateway had corrupted every
+  binary body for eight milestones** — `await upstream.text()` turned a **104 803-byte JPEG into
+  188 133 bytes**, still beginning `FFD8FF` so it still passed a magic-number check, and it would not
+  open. Nothing failed and nothing logged. A corrupted evidence image is worse than a missing one.
+  **28-scenario matrix** through a real browser with Chrome's fake device (real `getUserMedia`, real
+  decode, real canvas, real encode, real upload) against published ground truth: `crowd` **8.00
+  detections/frame against a ground truth of 8**, `three-plus-people` **4.00 against 4**, and
+  `empty-room` **0 across 73 frames** — the negative control that proves the instrument can read
+  zero. **0 frames dropped for a full queue across the whole matrix.** ⛔ **Backlight is the worst
+  result: 21 of 69 frames (~30 %), no incident raised at all** (L-73). ⛔ **A camera mounted 90° from
+  upright detects nothing — 0 of 73 frames** (L-74). **Nine-stage latency**, each tagged measured /
+  reported / derived: capture 0.7 · encode 2.5 · upload 9.2 · transport 9.3 · media→runtime 67.1 (of
+  which **inference 57.0**, tracking 0.2) · publish+broker+persist 15.3 · event→incident 12.3 ·
+  ⭐ **end to end, camera frame → incident raised, 87.3 ms avg / 109 ms max** · overlay 183.8 ms —
+  with the browser↔platform clock offset printed as **+3 ms ± 5 ms** so the transport figure is
+  transport and not skew. **Back-pressure**: 4 fps → 25 fps/12-in-flight → 4 fps, one continuous
+  sampler; at 25 fps the runtime reached **949 % CPU (9.5 of 10 cores)** and lost **11 frames of 2250
+  (0.5 %)**, nothing rejected — and ⭐ **queue and drops both return to zero in recovery**, which an
+  overload phase alone cannot show. **Frame rate exact at 1/2/4/8/15 fps**, inference CPU scaling
+  linearly at ~42 % of a core per fps with memory **flat at 135 MiB** across a fifteen-fold load
+  change. **30-minute continuous soak**: 7181 frames at exactly **4.000 fps**, **0 rejected, 0
+  dropped, queue never above 0**; inference memory **134.77 → 134.77 MiB — identical to two decimal
+  places** at the start and the end, media +1.4 %, events +0.1 %, rules +0.2 %; pipeline latency flat
+  at 53.2–55.9 ms across **nine of ten deciles**; **0 out-of-order frames** in half an hour of live
+  ingest. ⏳ **The 6–7 hour release soak is deferred to the night of 2026-08-08** and is the run that
+  certifies the build — [OVERNIGHT_SOAK](../runbooks/OVERNIGHT_SOAK.md). ⛔ **Seven instrument
+  failures, every one caught before publication, and five only by the shape of a number.** (1) `crowd` reported **0 events with 8 active tracks** — an event count is
+  not a detection count (L-57 dedup); replaced with `detectionsPublished`, upstream of it. (2) The
+  frame rate read **70 % of target at 1, 2, 4, 8 and 15 fps** and inference CPU 0.08–2.98 % —
+  ⭐ **the constancy gave it away**, because a platform limit does not scale perfectly with the load
+  offered to it and a fixed overhead does: `docker stats` ran through **`execFileSync`**, blocking the
+  Node event loop ~1 s per sample, in a file that already carried a comment stating the S-4 lesson
+  directly above the synchronous call. (3) The harness's token expired 30 minutes into the matrix and
+  every platform read became `null` while the browser half kept working — and (3b) **the same expiry
+  in the soak tool, which had not been fixed**, produced `sent=3598 rejected=3601`: fifteen minutes of
+  real traffic and fifteen of pure 401s, at exactly a healthy run's cadence, with the queue at zero
+  and `docker stats` recording an idle deployment — so the drift analysis would have compared a first
+  tenth under load against a last tenth under none and read falling memory as proof of no leak. (4) ⛔ **A fixture bug that
+  would have become a false claim about the product** — `transpose=1` made the frame portrait *and
+  laid every person on their side*; the same footage scored **59/59 upright, 0/73 rotated, 34/71 as a
+  proper tall crop**. "The platform fails in portrait" would have been wrong; it fails when a camera
+  is mounted the wrong way round, which is now its own scenario. Each fix made the instrument grade
+  itself: `skipRatio`/`harnessBound`, an explicit invalid-row marker, `looped` +
+  `browserLifetimeSeconds` on every row, a duplicate-sender guard (a second soak process made the
+  platform ingest **8.00 fps against a 4 fps target** and neither process could tell), and a run that
+  **refuses to report itself** when more than 1 % of its frames were refused. (5) ⛔ **The soak that
+  produced those stability numbers recorded 2.6 fps against a 4 fps target — a 35 % shortfall that
+  never happened.** The host suspended for **966 s** *after* the sender had completed its full 1800 s,
+  and the harness divided 7181 frames by a wall clock that had kept running. ⭐ **The arithmetic did
+  not close**: `sent=7181` is 4 fps × 1795 s and cannot also be 2.6 fps, so either the frame count or
+  the clock was lying — the 5-second sampler's own timestamps showed a 966.2 s hole. ⚠️ **Both
+  existing guards passed** — 0 of 7181 rejected, and the platform's `framesAccepted` matched the
+  sender's `sent` exactly, ruling out the duplicate sender that had invalidated the previous attempt.
+  **A run can be invalidated by the machine underneath it while the sender and the platform both
+  behave perfectly.** The detector is now `tools/validation/lib/continuity.mjs` — a sampler's own
+  timestamps are its heartbeat, and a gap several times the sampling interval means nobody was
+  running — wired into the live bench, the **release soak** and both report generators, each of which
+  now exits non-zero rather than publish a run the host slept through, with **12 regression tests**
+  holding it to the 2.6-versus-4.000 distinction. `soak.json` is committed **with its wrong fields
+  intact**, because evidence edited to agree with a later understanding stops being evidence; the
+  report recomputes from the raw series instead. ⚠️ **And one caveat
+  found by reading the runtime rather than by any check**: tracking state is released only after
+  `CAMERA_IDLE_SECONDS = 300` and track age advances per *frame*, so the matrix's 14 s inter-scenario
+  gap (chosen to exceed the tracker's 12 s re-entry window) lets live tracks carry between scenarios
+  — `createdTracks` and `activeTracksAtEnd` are affected and are labelled as such; detections per
+  frame, which carry no cross-frame state, are not. **Browser certification 9/9** including ⛔ the one that
+  matters most — a device that stops producing video **stops the capture** instead of posting the
+  frozen frame for ever, which would have the platform record somebody standing perfectly motionless
+  until the tab closed: a fabricated observation. The run also found `NotSupportedError` rendering as
+  **"unknown — Not supported"**, a raw browser string in front of an operator, now
+  `capture-unsupported` with an assertion that the code is never `unknown`. **Also delivered: the
+  Professional AI Foundation as DESIGN ONLY** — seven documents whose central finding is that VIP is
+  *already* a plugin architecture in three of the four places it needs to be (engine registry, model
+  registry+selector, behaviour analyzers), and the one seam that is missing is `RawDetection`'s four
+  slots, which cannot express keypoints, masks, embeddings, text or a per-span label. Gate **70/70
+  tasks** · console **561 tests** · media **+7 structural** · e2e **+12 continuity** · browser
+  **9/9**. ⚠️ **The result applies
+  only to the exercised workload**: single camera, CPU only, authored footage and a fake device — no
+  CCTV lens, no RTSP, no ONVIF, no NVR, no multi-camera, no GPU, and the real built-in webcam is
+  reported as **NOT EXECUTED** because it needs a human. C-50 · L-72…L-75 · TD-28 narrowed ·
+  [LIVE_WEBCAM_VALIDATION](../validation/LIVE_WEBCAM_VALIDATION.md) ·
+  [LIVE_PERFORMANCE_BASELINE](../validation/LIVE_PERFORMANCE_BASELINE.md) ·
+  [MANUAL_TEST_GUIDE](../validation/MANUAL_TEST_GUIDE.md) ·
+  [COMPLETE_E2E_TEST_GUIDE](../validation/COMPLETE_E2E_TEST_GUIDE.md) ·
+  [OVERNIGHT_SOAK](../runbooks/OVERNIGHT_SOAK.md) ·
+  [PERCEPTION_ENGINE_ARCHITECTURE](../architecture/PERCEPTION_ENGINE_ARCHITECTURE.md) ·
+  [AI_ROADMAP](../architecture/AI_ROADMAP.md).
 
 - **P-8 Phase 7 FREEZE 🔒 (2026-08-07) — and the two nightlies that found nine defects, none of them
   in the runtime.** The milestone was implemented, deployment-verified, browser-verified and

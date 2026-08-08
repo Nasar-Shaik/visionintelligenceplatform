@@ -1,0 +1,298 @@
+{
+ "at": "2026-08-08T07:56:40.848Z",
+ "camera": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+ "window": {
+  "startedAt": "2026-08-08T07:55:02.283Z",
+  "endedAt": "2026-08-08T07:56:32.693Z",
+  "seconds": 90,
+  "fps": 4
+ },
+ "clock": "Browser clock vs platform clock: +3 ms \u00b1 5 ms (estimated over a 9 ms round trip)",
+ "counts": {
+  "framesAccepted": 361,
+  "events": 9,
+  "incidents": 3
+ },
+ "stages": [
+  {
+   "stage": "Capture (video \u2192 canvas)",
+   "kind": "measured",
+   "where": "browser",
+   "ms": {
+    "count": 361,
+    "min": 0.2,
+    "avg": 0.7,
+    "p95": 1.5,
+    "max": 4.1
+   }
+  },
+  {
+   "stage": "JPEG encode (canvas \u2192 blob)",
+   "kind": "measured",
+   "where": "browser",
+   "ms": {
+    "count": 361,
+    "min": 0.8,
+    "avg": 2.5,
+    "p95": 5.9,
+    "max": 10.1
+   }
+  },
+  {
+   "stage": "HTTP upload (round trip)",
+   "kind": "measured",
+   "where": "browser",
+   "ms": {
+    "count": 361,
+    "min": 6,
+    "avg": 9.2,
+    "p95": 13,
+    "max": 56
+   }
+  },
+  {
+   "stage": "Transport (capture \u2192 media accept)",
+   "kind": "measured",
+   "where": "media service clock",
+   "ms": {
+    "count": 361,
+    "min": 5,
+    "avg": 9.3,
+    "p95": 14,
+    "max": 53
+   },
+   "note": "Includes browser\u2194platform clock skew; see `clock`."
+  },
+  {
+   "stage": "Media ingest \u2192 runtime round trip",
+   "kind": "measured",
+   "where": "media service",
+   "ms": {
+    "count": null,
+    "min": null,
+    "avg": 67.13,
+    "p95": null,
+    "max": null
+   },
+   "note": "Rolling mean only \u2014 the sink keeps an average, not a distribution."
+  },
+  {
+   "stage": "Runtime inference",
+   "kind": "reported",
+   "where": "AI runtime",
+   "ms": {
+    "count": null,
+    "min": null,
+    "avg": 56.997615,
+    "p95": null,
+    "max": null
+   },
+   "note": "A component of the round trip above, not additional to it."
+  },
+  {
+   "stage": "Tracking",
+   "kind": "reported",
+   "where": "AI runtime",
+   "ms": {
+    "count": null,
+    "min": null,
+    "avg": 0.1654,
+    "p95": null,
+    "max": null
+   },
+   "note": "A component of the round trip above, not additional to it."
+  },
+  {
+   "stage": "Frame stamped \u2192 event persisted",
+   "kind": "measured",
+   "where": "media + events clocks",
+   "ms": {
+    "count": 9,
+    "min": 58,
+    "avg": 82.44,
+    "p95": 141,
+    "max": 141
+   },
+   "note": "Contains the runtime round trip; the remainder below is the publish + broker + write."
+  },
+  {
+   "stage": "Publish + broker + persist (remainder)",
+   "kind": "derived",
+   "where": "subtraction",
+   "ms": {
+    "count": null,
+    "min": null,
+    "avg": 15.31,
+    "p95": null,
+    "max": null
+   },
+   "note": "Derived: (frame \u2192 event persisted) \u2212 (media \u2192 runtime). Inherits both errors."
+  },
+  {
+   "stage": "Event persisted \u2192 incident raised",
+   "kind": "measured",
+   "where": "events + workflow clocks",
+   "ms": {
+    "count": 3,
+    "min": 8,
+    "avg": 12.33,
+    "p95": 16,
+    "max": 16
+   },
+   "note": "Rule evaluation, candidate dedup and incident creation."
+  },
+  {
+   "stage": "END TO END \u2014 frame stamped \u2192 incident raised",
+   "kind": "measured",
+   "where": "platform clocks",
+   "ms": {
+    "count": 3,
+    "min": 70,
+    "avg": 87.33,
+    "p95": 109,
+    "max": 109
+   }
+  },
+  {
+   "stage": "Browser render (overlay behind preview)",
+   "kind": "measured",
+   "where": "browser",
+   "ms": {
+    "count": 37,
+    "min": 100,
+    "avg": 183.78,
+    "p95": 300,
+    "max": 400
+   },
+   "note": "Bounded below by the 2 s track poll \u2014 this is presentation lag, not pipeline lag."
+  }
+ ],
+ "raw": {
+  "browserStages": {
+   "Capture (video \u2192 canvas)": {
+    "count": 361,
+    "min": 0.2,
+    "avg": 0.7,
+    "p95": 1.5,
+    "max": 4.1
+   },
+   "Encode (canvas \u2192 JPEG)": {
+    "count": 361,
+    "min": 0.8,
+    "avg": 2.5,
+    "p95": 5.9,
+    "max": 10.1
+   },
+   "Upload (round trip)": {
+    "count": 361,
+    "min": 6,
+    "avg": 9.2,
+    "p95": 13,
+    "max": 56
+   },
+   "Transport (service-measured)": {
+    "count": 361,
+    "min": 5,
+    "avg": 9.3,
+    "p95": 14,
+    "max": 53
+   }
+  },
+  "pipeline": {
+   "tenantId": "tnt_demo_retail",
+   "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+   "aiEnabled": true,
+   "state": "running",
+   "profileId": "person-tracking",
+   "runtimeId": "inference",
+   "processingFps": 0.7,
+   "framesOffered": 4049,
+   "framesDelivered": 4049,
+   "framesSkippedUnassigned": 0,
+   "framesDroppedQueueFull": 0,
+   "queueDepth": 0,
+   "processingLatencyMs": 67.13,
+   "eventsPublished": 3124,
+   "activeTracks": 0,
+   "lastFrameAt": "2026-08-08T07:56:32.575Z",
+   "lastErrorAt": null,
+   "lastError": null
+  },
+  "tracking": {
+   "cameraId": "cam_4b8cbcbab9ec4685821b35a01c52efd2",
+   "tracking": true,
+   "activeTracks": 0,
+   "confirmedTracks": 0,
+   "lostTracks": 0,
+   "createdTracks": 100,
+   "removedTracks": 100,
+   "recoveredTracks": 21,
+   "occlusionsSurvived": 104,
+   "crossings": 6,
+   "framesTracked": 4128,
+   "outOfOrderFrames": 1,
+   "trackingFps": 0.938,
+   "averageTrackingMs": 0.1654
+  },
+  "renderSamples": [
+   300,
+   300,
+   100,
+   100,
+   100,
+   400,
+   100,
+   200,
+   200,
+   200,
+   200,
+   200,
+   200,
+   300,
+   300,
+   100,
+   100,
+   100,
+   100,
+   100,
+   100,
+   100,
+   200,
+   200,
+   200,
+   200,
+   300,
+   300,
+   300,
+   300,
+   100,
+   100,
+   100,
+   100,
+   100,
+   200,
+   200
+  ],
+  "occurredToIngested": [
+   66,
+   70,
+   65,
+   58,
+   62,
+   125,
+   62,
+   141,
+   93
+  ],
+  "ingestToIncident": [
+   13,
+   8,
+   16
+  ],
+  "occurredToIncident": [
+   83,
+   70,
+   109
+  ]
+ }
+}
