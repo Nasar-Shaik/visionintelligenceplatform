@@ -19,6 +19,12 @@ proposal — every document reports what was observed, on which build, with what
 | [COMPLETE_E2E_TEST_GUIDE](COMPLETE_E2E_TEST_GUIDE.md) | Reproducing every automated result, command by command |
 | [livecam-runs/](livecam-runs/) | The raw JSON behind every table, so the reports can be audited rather than believed |
 
+## Detectors — P-10 A2 (2026-08-08)
+
+| Document | What it answers |
+| --- | --- |
+| [DETECTOR_COMPARISON](DETECTOR_COMPARISON.md) | ⭐ **Two detector families through one unchanged runtime.** Latency, throughput, memory, ONNX operator inventory, licensing — and the cross-model localisation check (mean IoU **0.95**) that verifies the decoder without ground truth |
+
 ## Release soak — (2026-08-05)
 
 | Document | What it answers |

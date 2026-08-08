@@ -64,14 +64,40 @@ class ShippedCatalogueTests(unittest.TestCase):
         ids = [m.id for m in self.store.all()]
         self.assertEqual(len(ids), len(set(ids)))
 
-    def test_every_registered_model_declares_a_licence_and_a_source(self):
+    def test_every_registered_model_declares_a_licence_and_a_provenance(self):
         # ⚠️ Licence is a selection criterion, not documentation: the obvious detector (Ultralytics
         # YOLO) is AGPL-3.0 and unusable in a commercial product. An artifact with no recorded
         # licence is one nobody checked.
+        #
+        # ⭐ Provenance is "where did this byte sequence come from", and there are two honest
+        # answers, not one. A downloaded artifact names an https source. An artifact VIP **exported
+        # itself** — because the only official weights were PyTorch and the ready-made ONNX
+        # conversion declared no licence — names the script that produced it and the upstream model
+        # it was produced from. The second is the stronger claim, so the test accepts it while
+        # requiring that the script actually exists: a reproduction recipe pointing at a deleted
+        # file is a provenance nobody can follow.
+        import json
+        import os
+
+        with open(DEFAULT_CATALOGUE, encoding="utf-8") as handle:
+            raw = {entry["id"]: entry for entry in json.load(handle)["models"]}
+        repo_root = os.path.join(os.path.dirname(os.path.abspath(DEFAULT_CATALOGUE)), "..", "..", "..")
+
         for model in self.store.all():
             self.assertTrue(model.license, f"{model.id} has no licence")
-            self.assertTrue(model.source.startswith("https://"), f"{model.id} has no https source")
             self.assertGreater(model.size_bytes, 0, f"{model.id} declares no size")
+            entry = raw[model.id]
+            if model.source.startswith("https://"):
+                continue
+            exported_by = entry.get("exportedBy")
+            self.assertTrue(
+                exported_by and entry.get("sourceModel"),
+                f"{model.id} has neither an https source nor an exportedBy + sourceModel provenance",
+            )
+            self.assertTrue(
+                os.path.isfile(os.path.join(repo_root, exported_by)),
+                f"{model.id} names an export script that does not exist: {exported_by}",
+            )
 
     def test_label_lists_are_indexed_by_the_class_id_the_model_emits(self):
         """The one label convention.
@@ -96,7 +122,7 @@ class ShippedCatalogueTests(unittest.TestCase):
         # The decoders themselves need numpy, so this checks the *names* — the catalogue may not
         # reference a format the runtime has never heard of. Kept in step with
         # `model_formats.available_decoders()`, which asserts the same set from the other side.
-        known = {"yolox"}
+        known = {"yolox", "rtdetr", "yolo11"}
         for model in self.store.all():
             self.assertIn(model.output_format, known, f"{model.id} declares an unknown outputFormat")
 

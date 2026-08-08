@@ -211,12 +211,12 @@ class YoloxDecoderTests(unittest.TestCase):
 
 @requires_numpy
 class DecoderRegistryTests(unittest.TestCase):
-    def test_both_shipped_formats_are_registered(self):
-        self.assertEqual(model_formats.available_decoders(), ["yolox"])
+    def test_every_shipped_format_is_registered(self):
+        self.assertEqual(model_formats.available_decoders(), ["rtdetr", "yolo11", "yolox"])
 
     def test_an_unknown_format_names_what_is_registered(self):
         with self.assertRaises(model_formats.UnknownModelFormat) as caught:
-            model_formats.get_decoder("rt-detr")
+            model_formats.get_decoder("faster-rcnn")
         self.assertIn("yolox", str(caught.exception))
 
     def test_a_new_family_is_one_registration_and_no_change_above_this_module(self):

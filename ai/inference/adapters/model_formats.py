@@ -278,8 +278,189 @@ def _yolox_grid(width: int, height: int, strides: Sequence[int]) -> Tuple[Any, A
     )
 
 
+def decode_rtdetr(
+    outputs: Sequence[Any],
+    spec: InputSpec,
+    geometry: Geometry,
+    params: Dict[str, object],
+) -> List[RawDetection]:
+    """RT-DETR heads: two tensors, `logits [1, queries, classes]` and `pred_boxes [1, queries, 4]`.
+
+    ⭐ **Nothing like YOLOX, which is the point of having a decoder registry.** RT-DETR is a direct
+    set predictor: a fixed number of queries (300) each propose one box, and the model is trained so
+    that duplicates do not arise. There is **no objectness, no anchor grid, no stride decoding and no
+    NMS** — running NMS here would be a slow no-op at best and would merge two genuinely adjacent
+    people at worst.
+
+    ⚠️ **Scores are sigmoid, not softmax.** RT-DETR trains with a focal loss over independent class
+    logits, so the 80 classes of one query do not sum to 1 and one query may legitimately be reported
+    under two classes. Applying softmax produces confident-looking numbers that are wrong in a way no
+    smoke test detects — every box still appears, with plausible scores.
+
+    ⚠️ **Boxes are `cxcywh` normalized to the input tensor**, not corners and not pixels. They are
+    converted to tensor pixels here and mapped through the same `to_source_bbox` every other decoder
+    uses, so there is still exactly one answer to "which coordinate space is this in?".
+    """
+    logits, boxes = _rtdetr_split(outputs)
+
+    num_classes = logits.shape[1]
+    declared = params.get("numClasses")
+    if declared is not None and int(declared) != num_classes:
+        raise ValueError(
+            f"rtdetr class-count mismatch: model emits {num_classes}, catalogue declares {int(declared)}"
+        )
+
+    scores = 1.0 / (1.0 + np.exp(-logits.astype(np.float32)))
+
+    # The official post-process ranks over the flattened (query × class) grid rather than taking one
+    # class per query — which is how a query that is genuinely ambiguous reports both readings.
+    #
+    # ⚠️ `k` is the number of **queries** (300), not queries × classes. That is what upstream does
+    # (`topk(scores.flatten(1), num_queries)`) and it is load-bearing in both directions: a larger k
+    # reports every query under several classes, a smaller one truncates real detections.
+    flat = scores.reshape(-1)
+    limit = int(params.get("maxDetections", logits.shape[0]) or logits.shape[0])
+    limit = max(1, min(limit, flat.size))
+    top = np.argpartition(flat, -limit)[-limit:]
+    top = top[np.argsort(flat[top])[::-1]]
+
+    floor = float(params.get("scoreFloor", 0.05) or 0.0)
+    detections: List[RawDetection] = []
+    for index in top:
+        score = float(flat[index])
+        if score < floor:
+            break  # already sorted descending
+        query, class_id = divmod(int(index), num_classes)
+        cx, cy, bw, bh = (float(v) for v in boxes[query])
+        x1 = (cx - bw / 2.0) * spec.width
+        y1 = (cy - bh / 2.0) * spec.height
+        x2 = (cx + bw / 2.0) * spec.width
+        y2 = (cy + bh / 2.0) * spec.height
+        detections.append(
+            RawDetection(
+                bbox=to_source_bbox(x1, y1, x2, y2, geometry),
+                score=score,
+                class_id=int(class_id),
+            )
+        )
+    return detections
+
+
+def _rtdetr_split(outputs: Sequence[Any]) -> Tuple[Any, Any]:
+    """Identify which tensor is which **by shape, not by position**.
+
+    ⛔ Reading `pred_boxes` as logits produces 300 confident detections of class 0–3 at coordinates
+    derived from probabilities — output that is the right shape, the right dtype, and completely
+    fictional. Export order is a property of whoever ran the export, so it is not trusted: boxes are
+    the tensor whose last dimension is 4, and it must be unambiguous.
+    """
+    if len(outputs) < 2:
+        raise ValueError(f"rtdetr expects two output tensors (logits, pred_boxes), got {len(outputs)}")
+    tensors = []
+    for tensor in outputs[:2]:
+        array = np.asarray(tensor)
+        tensors.append(array[0] if array.ndim == 3 else array)
+    if any(t.ndim != 2 for t in tensors):
+        raise ValueError(f"rtdetr expects 2-D tensors after batch removal, got {[t.shape for t in tensors]}")
+
+    box_like = [i for i, t in enumerate(tensors) if t.shape[1] == 4]
+    if len(box_like) != 1:
+        raise ValueError(
+            "rtdetr cannot tell logits from boxes by shape "
+            f"({[t.shape for t in tensors]}) — exactly one tensor must have a last dimension of 4"
+        )
+    boxes = tensors[box_like[0]]
+    logits = tensors[1 - box_like[0]]
+    if logits.shape[0] != boxes.shape[0]:
+        raise ValueError(
+            f"rtdetr query-count mismatch: logits {logits.shape}, boxes {boxes.shape}"
+        )
+    return logits, boxes
+
+
+def decode_yolo11(
+    outputs: Sequence[Any],
+    spec: InputSpec,
+    geometry: Geometry,
+    params: Dict[str, object],
+) -> List[RawDetection]:
+    """Ultralytics v8/v11 head: one `[1, 4 + classes, anchors]` tensor — **channels-first**.
+
+    ⚠️ **Two traps, both of which produce output rather than an error.**
+
+    1. **The layout is transposed relative to YOLOX.** YOLOX emits `[1, anchors, features]`; this
+       emits `[1, features, anchors]`. Reading it the YOLOX way yields 84 "detections" whose
+       "features" are 8400 anchor values — a full result set, entirely fictional.
+    2. **There is no objectness column.** YOLOX multiplies objectness into the class score; doing
+       that here consumes `cx`, the box centre, as a probability. Boxes still appear, ranked by
+       where they are on screen rather than by how confident the model is.
+
+    Class scores arrive already sigmoid-activated from the exported graph, so no activation is
+    applied here. NMS **is** required — unlike RT-DETR, this head proposes duplicates by design.
+    """
+    predictions = np.asarray(outputs[0])
+    if predictions.ndim == 3:
+        predictions = predictions[0]
+    if predictions.ndim != 2:
+        raise ValueError(f"yolo11 expects [1, 4+classes, anchors], got {np.asarray(outputs[0]).shape}")
+
+    # Anchors vastly outnumber features (8400 vs 84); the catalogue may state it explicitly.
+    layout = str(params.get("layout", "channels-first"))
+    if layout == "channels-first":
+        predictions = predictions.T
+    features = predictions.shape[1]
+    declared = params.get("numClasses")
+    if declared is not None and features - 4 != int(declared):
+        raise ValueError(
+            f"yolo11 class-count mismatch: tensor carries {features - 4} classes, "
+            f"catalogue declares {int(declared)} (layout '{layout}' — a transposed read looks like this)"
+        )
+    if features < 5:
+        raise ValueError(f"yolo11 expects at least 5 features (4 box + 1 class), got {features}")
+
+    centres = predictions[:, 0:2].astype(np.float32)
+    sizes = predictions[:, 2:4].astype(np.float32)
+    class_scores = predictions[:, 4:].astype(np.float32)
+    class_ids = class_scores.argmax(axis=1)
+    confidence = class_scores[np.arange(class_scores.shape[0]), class_ids]
+
+    floor = float(params.get("scoreFloor", 0.05) or 0.0)
+    kept = confidence >= floor
+    if not np.any(kept):
+        return []
+    centres, sizes = centres[kept], sizes[kept]
+    confidence, class_ids = confidence[kept], class_ids[kept]
+
+    corners = np.empty((centres.shape[0], 4), dtype=np.float32)
+    corners[:, 0] = centres[:, 0] - sizes[:, 0] / 2.0
+    corners[:, 1] = centres[:, 1] - sizes[:, 1] / 2.0
+    corners[:, 2] = centres[:, 0] + sizes[:, 0] / 2.0
+    corners[:, 3] = centres[:, 1] + sizes[:, 1] / 2.0
+
+    iou_threshold = float(params.get("nmsIouThreshold", 0.45) or 0.45)
+    detections: List[RawDetection] = []
+    # ⚠️ Per class, for the same reason as YOLOX: the person in front of the car must survive.
+    for class_id in np.unique(class_ids):
+        mask = class_ids == class_id
+        indices = np.flatnonzero(mask)
+        for local in nms(corners[mask], confidence[mask], iou_threshold):
+            index = int(indices[local])
+            x1, y1, x2, y2 = (float(v) for v in corners[index])
+            detections.append(
+                RawDetection(
+                    bbox=to_source_bbox(x1, y1, x2, y2, geometry),
+                    score=float(confidence[index]),
+                    class_id=int(class_id),
+                )
+            )
+    detections.sort(key=lambda d: d.score, reverse=True)
+    return detections
+
+
 def _clamp(value: float) -> float:
     return 0.0 if value < 0.0 else (1.0 if value > 1.0 else float(value))
 
 
 register_decoder("yolox", decode_yolox)
+register_decoder("rtdetr", decode_rtdetr)
+register_decoder("yolo11", decode_yolo11)

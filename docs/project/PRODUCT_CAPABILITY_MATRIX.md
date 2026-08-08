@@ -194,6 +194,8 @@ references them rather than restating what a capability is.
 | **C-22** | **Live video view**                                        | ⛔ no transport contract |          ⛔ (TD-28)          | ⛔ placeholder page |  ⛔  |  ⛔   |  ⛔  | **P-8**         | **ADR: transport** | media        |
 | **C-23** | Auto-captured evidence from a live incident                |            ✅            |  ⛔ no-op extractor (TD-15)  |         n/a         |  ⛔  |  ⛔   |  ⛔  | **P-8**         | C-19               | evidence     |
 | **C-50** | **Live frame ingest from a browser camera**                |            ✅            |   ✅ `LiveIngest` → the SAME `FrameSink`   |    ✅ Live Capture page    |  ✅  |  ⚠️   |  ⚠️  | **P-9**         | C-19               | media        |
+| **C-51** | **Interchangeable detectors** — one runtime, many families |            ✅            | ✅ `register_decoder`: `yolox` · `rtdetr` · `yolo11` |         n/a         |  ✅  |  ⚠️   |  ⚠️  | **P-10 A2**     | C-19 · **ADR-0050** | ai/inference |
+| **C-52** | **Multi-modal perception contract** — pose · masks · re-id · OCR · action |            ✅            | ⚠️ contract + registry only; **no such model runs** |         ⛔          |  ✅  |  ⛔   |  ⛔  | **P-10 A1**     | C-51               | ai/inference |
 
 > ⭐ **C-50 (P-9) is a producer, not a pipeline, and the ⚠️ in Pilot/Prod is deliberate.** The live
 > path runs through the identical runtime, tracker, publisher, rule engine and incident pipeline as
@@ -203,6 +205,25 @@ references them rather than restating what a capability is.
 > in that validation came from an authored clip or Chrome's fake video device, so C-50 is production
 > *code* on validated *synthetic* input. A real camera has never been connected (L-1), and the
 > browser is a demonstration path rather than an unattended one (L-72).
+
+> ⭐ **C-51 (P-10 A2) is measured, not asserted.** Two detector families were added as decoder
+> registrations with zero changes above `adapters/model_formats.py`, and verified against **real
+> artifacts**: RT-DETR and YOLOX put their person boxes in the same place to a **mean IoU of 0.95**
+> over the same 40 frames — two models sharing no code path, which is the strongest check on the
+> coordinate transform available without ground truth.
+> ⚠️ **The ⚠️ in Pilot/Prod is the honest half.** `yolox-nano` remains the only `enabled` entry;
+> `rtdetr-r18vd` is registered `disabled` because at **950 ms per frame on CPU** it cannot serve the
+> live path, and **YOLO11 has a decoder but deliberately no catalogue entry** — it is AGPL-3.0, which
+> a commercial multi-tenant deployment cannot serve over a network, and its `sha256` cannot be filled
+> honestly by anyone who has never obtained the artifact.
+> ⛔ **Precision and recall are unmeasured** for every detector: that needs the annotated corpus in
+> DATASET_STRATEGY, and an accuracy figure from unlabelled frames is exactly the instrument failure
+> this project keeps catching. See [DETECTOR_COMPARISON](../validation/DETECTOR_COMPARISON.md).
+
+> ⚠️ **C-52 is a contract, and a contract is not a capability.** `perception.py` can express
+> keypoints, masks, embeddings, text and frame-level labels, and the registry can hold a module for
+> any of them — but **no pose, segmentation, re-id, OCR or action model exists or runs**. It is
+> listed so the boundary is visible rather than implied, and it must never be read as a feature.
 
 > ⚠️ **C-17, C-18 and C-19 are a CORRECTION, made 2026-08-06, and the drift is the point.** They read
 > `⛔ NullFrameSink (TD-4)`, `⚠️ stub backend is the default (TD-5)` and `⚠️ runtime only, no frame

@@ -794,6 +794,47 @@ _Last updated: 2026-08-08 · Claude_
   Docs: [TRACK_A_ACCEPTANCE](../project/P9_TRACK_A_ACCEPTANCE.md),
   [P9_IMPLEMENTATION_PLAN](../project/P9_IMPLEMENTATION_PLAN.md).
 
+- **P-10 · Workstream A2 · Multi-detector support ✅ (2026-08-08)** — **two detector families added
+  through the existing `register_decoder()` seam, with zero changes above
+  `adapters/model_formats.py`** — no pipeline change, no second inference path, and nothing outside
+  the decoder knows which detector ran. ⭐ **Verified against real artifacts, not synthetic tensors.**
+  RT-DETR-r18vd and yolox-nano were run over the **same 40 frames through the same production
+  preprocessing and decoder registry**, inside the deployed image: **mean best IoU 0.95, 26 of 26
+  person boxes matched at IoU ≥ 0.5**. ⛔ **Counting agreement would have been the wrong check** — a
+  broken coordinate transform returns the *right number* of boxes in the wrong places, and "35 of 40
+  frames agree" reads as a verified decoder; two independently trained models with no shared code
+  path landing on the same person is the strongest check available without ground truth, and it
+  verifies the `cxcywh`→corners maths, the normalized→pixel scaling, `to_source_bbox` in `stretch`
+  mode and the preprocessing spec at once. **Measured**: yolox-nano **46.09 ms/frame, 21.7 fps, 79.5
+  MiB** · rtdetr-r18vd **950.41 ms/frame, 1.05 fps, 335.8 MiB** — ⚠️ **22.9× slower on CPU**, finding
+  strictly more people (33 vs 26, never fewer in any frame), which makes the architecture a *choice*
+  rather than a rewrite but does not make the slow model fast. ⛔ **Precision and recall are NOT
+  reported**: that needs the annotated corpus in DATASET_STRATEGY, and an accuracy figure computed
+  from unlabelled frames is exactly the instrument failure this project keeps catching. ⛔ **Two
+  licensing decisions, both taken before implementation.** **YOLO11 is AGPL-3.0** — verified from
+  Ultralytics' own `LICENSE`, not recollection — whose §13 obliges anyone serving it over a network to
+  offer users the complete corresponding source of the combined work, which a commercial
+  multi-tenant deployment cannot do; the repo's own catalogue had already recorded that finding. The
+  decoder is implemented and unit-tested, and ⭐ **no catalogue entry was written, deliberately**:
+  its most important field is `sha256`, VIP has never obtained the artifact, and an invented checksum
+  would defeat the only check that makes the catalogue worth having. **RT-DETR is Apache-2.0**, but
+  the only official artifacts are PyTorch weights and the ready-made ONNX conversion **declares no
+  licence of its own**, so VIP exports its own (`ai/mlops/export_rtdetr_onnx.py`) from the authors'
+  weights and pins the digest it produced. **Two verification checks failed for real reasons and both
+  were fixed rather than relaxed**: the catalogue's label-space test caught RT-DETR shipping **six VOC
+  spellings at identical COCO indices** (`motorbike`, `aeroplane`, `sofa`, `pottedplant`,
+  `diningtable`, `tvmonitor`) — ⛔ a rule written `label == "couch"` works under YOLOX and **silently
+  never fires** under RT-DETR — now normalised in the catalogue with ids never rebased; and the
+  provenance invariant ("every model declares a licence and an https source") was **widened to the
+  stronger claim** — an https source *or* an `exportedBy` script that must exist on disk plus the
+  upstream `sourceModel`. Accelerator compatibility is reported as the **operator inventory of the
+  real graphs** rather than a guess: yolox **10 distinct ops at opset 11**, rtdetr **44 at opset 17
+  including `GridSample`×9, `ScatterND`×12, `Einsum`** — ⚠️ TensorRT and OpenVINO were **not tested**
+  and are not claimed. **1113 Python tests green, and 0 skipped inside the image** (50 skip locally,
+  which is the count that check exists to catch) · gate **70/70** · contracts + perception boundary
+  clean. `yolox-nano` remains the only enabled entry and the default; nothing in production changed.
+  [DETECTOR_COMPARISON](../validation/DETECTOR_COMPARISON.md) · C-51 · C-52.
+
 - **P-10 · Professional Perception Foundation — Slice 1 ✅ (2026-08-08)** — ⭐ **the finding is that
   the plugin architecture was already real and the *vocabulary* was the constraint.** VIP has been
   model-agnostic since P2-2 through three exercised seams — `EngineRegistry` (engine name → adapter

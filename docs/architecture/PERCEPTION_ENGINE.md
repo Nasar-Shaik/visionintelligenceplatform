@@ -22,6 +22,27 @@ records both the reversal and the decision.
 `Detection.attributes["pose"]`, masks in `["mask"]`, text in `["text"]`, embeddings in the existing
 frozen `embedding` field — so `tools/contracts/perception-boundary.mjs` §D still passes untouched.
 
+## What A2 proved, with real artifacts
+
+The seam was claimed in P-9 and **exercised twice** in P-10 A2: RT-DETR and YOLO11 were added as
+`register_decoder()` entries with **zero changes above `adapters/model_formats.py`**.
+
+| | |
+| --- | --- |
+| Decodable families | `yolox` · `rtdetr` · `yolo11` |
+| Registered in the catalogue | `yolox-nano` (enabled, default) · `rtdetr-r18vd` (disabled, checksum-pinned) |
+| ⭐ Independent verification | RT-DETR and YOLOX over the same 40 frames: **mean best IoU 0.95**, 26/26 person boxes matched at IoU ≥ 0.5 |
+| The cost of that generality | **46 ms vs 950 ms** per frame on CPU |
+
+⭐ **Two architectures, two output layouts, two coordinate conventions, two resize policies — and
+nothing above the decoder can tell which one ran.** The tracker, the rule engine, the event publisher
+and the console all receive the same `Detection`.
+
+⚠️ **Generality is not free, and the report says so.** RT-DETR finds strictly more people and is
+22.9× slower on CPU. The architecture makes that a *choice* instead of a rewrite, which is its whole
+value — it does not make the slow model fast.
+[DETECTOR_COMPARISON](../validation/DETECTOR_COMPARISON.md) has the measurements.
+
 The sections below are the original analysis, kept because the reasoning is the useful part.
 
 ---

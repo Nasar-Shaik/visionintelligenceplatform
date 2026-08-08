@@ -40,6 +40,82 @@ registry.register(TASK_POSE, "rtmpose-s", RtmPoseModule)
 ⭐ **Bringing a task nobody designed for** is `register_task("gaze", "Where a subject is looking")` —
 no change to any module in the runtime.
 
+---
+
+## Adding a **detector**, which is a smaller job than adding a task
+
+A detector does not need a `PerceptionModule` at all. It is a catalogue entry plus — only if its
+output layout is genuinely new — one function in `adapters/model_formats.py`:
+
+```python
+register_decoder("rtdetr", decode_rtdetr)
+```
+
+**Proven in P-10 A2 by doing it twice.** RT-DETR and YOLO11 were added with **zero changes above
+that module**: no pipeline change, no second inference path, and nothing outside the decoder knows
+which detector ran. Measured evidence in
+[DETECTOR_COMPARISON](../validation/DETECTOR_COMPARISON.md).
+
+### The three things a new detector actually has to get right
+
+| | ⚠️ The failure mode |
+| --- | --- |
+| **The tensor layout** | YOLOX is `[1, anchors, 4+1+classes]`; YOLO11 is `[1, 4+classes, anchors]` — **transposed**. Reading one as the other returns 84 confident detections and raises nothing. Declare `numClasses` in `outputParams` so the mismatch is an error rather than a result |
+| **The activation** | RT-DETR trains with focal loss over independent logits, so scores are **sigmoid, not softmax**, and one query may legitimately be reported under two classes. Softmax produces confident-looking numbers that are wrong everywhere |
+| **Whether NMS applies at all** | YOLOX and YOLO11 need it. RT-DETR is a set predictor and must **not** have it — suppression there merges two genuinely adjacent people |
+
+⭐ **Preprocessing is usually already covered.** RT-DETR needed `resize: "stretch"`, `scale: 1/255`
+and no mean/std — four existing catalogue fields, no code. ⛔ Its own config lists ImageNet mean/std
+while setting `do_normalize: false`; applying them yields a model that still detects, slightly worse,
+with nothing failing.
+
+### Verifying a detector without a labelled corpus
+
+Run it beside an existing one on identical frames and compare **where the boxes are**, not how many:
+`ai/mlops/compare_detectors.py` reports mean best IoU. RT-DETR and YOLOX agreed to **0.95 mean IoU,
+100 % matched at IoU ≥ 0.5** — two models sharing no code path landing on the same person, which is
+the strongest available check on the coordinate transform short of ground truth. ⚠️ Counting
+agreement is *not* that check: a broken transform returns the right number of boxes in the wrong
+places.
+
+### ⛔ A licence is part of the interface
+
+VIP ships Apache-2.0 detectors. **Ultralytics YOLO11 is AGPL-3.0**, whose §13 obliges anyone serving
+it over a network to offer users the complete corresponding source of the combined work — which a
+commercial multi-tenant deployment cannot do. `decode_yolo11` therefore exists and is tested, and
+**no catalogue entry is written**, because its `sha256` cannot be filled honestly by anyone who has
+never obtained the artifact.
+
+A customer holding an Ultralytics Enterprise licence supplies the weights and adds:
+
+```json
+{
+  "id": "yolo11n", "family": "yolo11", "engine": "onnx", "outputFormat": "yolo11",
+  "artifact": "yolo11n-1.0.0.onnx", "sha256": "<sha256 of YOUR artifact>", "sizeBytes": 0,
+  "source": null, "license": "AGPL-3.0 (Enterprise licence held by <customer>)",
+  "status": "enabled", "default": false,
+  "input": { "width": 640, "height": 640, "layout": "NCHW", "dtype": "float32",
+             "colorOrder": "RGB", "resize": "letterbox", "padValue": 114, "scale": 0.00392156862745098 },
+  "outputParams": { "numClasses": 80, "layout": "channels-first", "nmsIouThreshold": 0.45, "scoreFloor": 0.05 },
+  "labels": [ "person", "…the canonical COCO-80 list…" ]
+}
+```
+
+⚠️ **Use the canonical COCO-80 label strings, not the model's own.** RT-DETR's config ships VOC
+spellings at identical COCO indices — `motorbike`, `aeroplane`, `sofa`, `pottedplant`,
+`diningtable`, `tvmonitor`. A rule written `label == "couch"` works under one detector and **silently
+never fires** under another. The catalogue normalises the strings; ids are never rebased.
+
+### Provenance: two honest answers
+
+An artifact either names an `https` **source**, or names the **script that produced it** plus the
+upstream model it came from (`exportedBy` + `sourceModel`). RT-DETR uses the second, because the only
+official weights are PyTorch and the ready-made ONNX conversion declares no licence. A test asserts
+the named script exists — a reproduction recipe pointing at a deleted file is a provenance nobody can
+follow.
+
+---
+
 The sections below are the original P-9 analysis of which seams already existed.
 
 ---

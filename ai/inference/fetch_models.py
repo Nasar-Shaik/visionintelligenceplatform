@@ -93,6 +93,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     print(f"model store → {args.dest} ({len(wanted)} of {len(store)} registered)")
     for model in wanted:
+        # ⛔ A disabled entry is a *registered* model this deployment does not run — a decoder that
+        # exists for a family whose artifact the product deliberately does not ship (an AGPL model a
+        # customer must licence themselves), or one exported locally and mounted for benchmarking.
+        # Fetching it would fail a build over a model nobody enabled, so the check that matters is
+        # moved to where it belongs: `model_store.verify()` at process start, for enabled models only.
+        if model.status != "enabled" and not args.only:
+            print(f"  – {model.id}: skipped ({model.status}; enable it in the catalogue to fetch)")
+            continue
         if args.verify_only:
             store.verify(model)
             print(f"  ✓ {model.id}: verified")
