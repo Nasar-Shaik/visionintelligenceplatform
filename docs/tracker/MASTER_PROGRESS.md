@@ -794,6 +794,52 @@ _Last updated: 2026-08-08 · Claude_
   Docs: [TRACK_A_ACCEPTANCE](../project/P9_TRACK_A_ACCEPTANCE.md),
   [P9_IMPLEMENTATION_PLAN](../project/P9_IMPLEMENTATION_PLAN.md).
 
+- **P-11 · Professional Perception Phase 2 · Behaviour Engine — 📐 DESIGN ONLY (2026-08-08)** — no
+  code, by instruction: *"produce updated architecture documents, capability matrix, ADRs,
+  implementation plan and verification strategy before coding."* ⭐ **The central decision is where
+  the accusation lives.** The requested item 7 — shelf interaction, concealment, no-checkout — is
+  business logic, and putting it in the runtime would break the standing guardrail that keeps one
+  perception stack serving retail, hospital, warehouse, school and factory without a fork.
+  [ADR-0052](../adr/ADR-0052-behaviour-reasoning-is-not-perception.md) fixes three layers:
+  **perception** (observations) → **behaviour primitives** (domain-neutral geometric and temporal
+  facts) → **domain reasoning** (rules, the only layer that names an intent). The membership test is
+  executable — *can a hospital use it?* `dwell_in_zone` passes (waiting · queueing · idle);
+  `concealment` fails, and that failure is the signal it belongs in the rule engine. ⭐ **The retail
+  layer therefore ships as a rule pack, not runtime code**, which is the Architect's own instruction
+  — *"do not implement fixed theft heuristics first"* — made structural rather than aspirational.
+  [ADR-0051](../adr/ADR-0051-track-history-becomes-durable.md) reverses
+  [ADR-0049](../adr/ADR-0049-per-frame-perception-data-is-not-persisted.md) **in part**: track history
+  becomes durable because the consumer now exists, while ADR-0049's other two reasons — volume and
+  privacy — are recorded as **paid, not disproved**. ⛔ **Keyed by `identityId`, never `trackingId`**:
+  a person briefly occluded returns with a new `trackingId` (ADR-0038 forbids reuse), so every
+  accumulating primitive that groups by the wrong one sees **two short visits instead of one long
+  one** — silent, plausible, and it makes a 60-second loitering rule never fire for anyone who walks
+  behind a display. ⛔ **Two gates were inserted into the requested order, each with a number written
+  before the measurement.** (1) The **compute gate**: P-9 measured detection alone at **57.0 ms/frame
+  and 949 % CPU at 25 fps**, and the `crowd` scenario holds **8.00 detections/frame** — but pose,
+  segmentation and re-id are **per person**, so at 8 subjects they are up to **24 additional
+  inferences per frame** on a box already at 65 % of its budget. Phase 2 items 2–4 are **not
+  simultaneously viable at 4 fps on this hardware**; the recorded responses are per-person models at
+  a lower rate than detection, zone gating, then declaring GPU a requirement *before a customer
+  discovers it*. (2) **Run the Workstream B benchmark on a quiet host first**, so a pose model is
+  chosen on measurement rather than on upstream marketing figures. ⛔ **And the finding that decides
+  the whole retail direction: object memory needs a detector that does not exist.** The shipped
+  detector is COCO-80 with capability `perception.person-detection`, and **no COCO class means
+  "merchandise"** — so without object identity, taking and replacing remain the same skeleton. Pose
+  and trajectory make a *demo* look close; naming this now is the point of the document. ⚠️ **One
+  change to the requested order, argued rather than assumed**: re-identification moves ahead of
+  segmentation, because `Detection.embedding` is already frozen and re-id is what lets *the same
+  object* be followed across an occlusion — segmentation first yields class-agnostic masks nothing
+  can follow. Verification strategy carries the phase's inherited rule (*an instrument that cannot
+  fail is not an instrument*) into three per-slice obligations — a **negative control that reads
+  zero**, a **demonstrated failure**, and **determinism** — plus two phase-specific checks: a
+  **scripted-occlusion test** in every accumulating primitive (one person, one occlusion, one
+  identity — not two) and a **frame-rate invariance test** (the same clip at 1 fps and 4 fps must
+  yield the same durations in seconds, because track age advances per *frame* and
+  `CAMERA_IDLE_SECONDS = 300`). C-54 · C-55 (both design-only, every column ⛔).
+  [BEHAVIOUR_ENGINE](../architecture/BEHAVIOUR_ENGINE.md) ·
+  [PHASE2_PLAN](../architecture/PHASE2_PLAN.md).
+
 - **P-10 · Workstream B · Benchmark framework ⚠️ framework complete, no run executed (2026-08-08)** —
   ⭐ **Three quarters of B already existed**, the third time this milestone has found that. `ai/datasets/`
   holds a corpus across **18 scenario categories** with digest-verified footage and per-case

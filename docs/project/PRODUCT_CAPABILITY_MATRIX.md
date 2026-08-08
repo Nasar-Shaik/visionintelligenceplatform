@@ -197,6 +197,8 @@ references them rather than restating what a capability is.
 | **C-51** | **Interchangeable detectors** — one runtime, many families |            ✅            | ✅ `register_decoder`: `yolox` · `rtdetr` · `yolo11` |         n/a         |  ✅  |  ⚠️   |  ⚠️  | **P-10 A2**     | C-19 · **ADR-0050** | ai/inference |
 | **C-52** | **Multi-modal perception contract** — pose · masks · re-id · OCR · action |            ✅            | ⚠️ contract + registry only; **no such model runs** |         ⛔          |  ✅  |  ⛔   |  ⛔  | **P-10 A1**     | C-51               | ai/inference |
 | **C-53** | **Detector benchmark matrix** — one corpus, every detector |            ✅            | ⚠️ framework + 21 tests; **no run executed, no CLI** |         ⛔          |  ✅  |  ⛔   |  ⛔  | **P-10 B**      | C-51               | ai/inference |
+| **C-54** | **Behaviour primitives** — trajectory · dwell · proximity · ownership |            ⛔ design only            | ⛔ nothing implemented |         ⛔          |  ⛔  |  ⛔   |  ⛔  | **P-11 (planned)** | C-52 · **ADR-0051/0052** | ai/inference |
+| **C-55** | **Retail reasoning** — shelf interaction · concealment · no-checkout |            ⛔ design only            | ⛔ **blocked: no detector sees merchandise** |         ⛔          |  ⛔  |  ⛔   |  ⛔  | **P-11 (planned)** | C-54               | rules        |
 
 > ⭐ **C-50 (P-9) is a producer, not a pipeline, and the ⚠️ in Pilot/Prod is deliberate.** The live
 > path runs through the identical runtime, tracker, publisher, rule engine and incident pipeline as
@@ -220,6 +222,17 @@ references them rather than restating what a capability is.
 > ⛔ **Precision and recall are unmeasured** for every detector: that needs the annotated corpus in
 > DATASET_STRATEGY, and an accuracy figure from unlabelled frames is exactly the instrument failure
 > this project keeps catching. See [DETECTOR_COMPARISON](../validation/DETECTOR_COMPARISON.md).
+
+> ⛔ **C-54 and C-55 are DESIGN ONLY and every column is deliberately empty.** They are listed so
+> the Behaviour Engine's boundary is visible before it is built, not to suggest progress.
+> ⭐ **C-55 sits in `rules`, not `ai/inference`, and that placement is the architectural decision**
+> ([ADR-0052](../adr/ADR-0052-behaviour-reasoning-is-not-perception.md)): the runtime emits
+> observations, a rule names an intent. A concealment heuristic inside the runtime would have to be
+> duplicated and diverged for hospital, warehouse, school and factory.
+> ⛔ **C-55 is additionally blocked on something engineering cannot supply**: the shipped detector is
+> COCO-80 with capability `perception.person-detection`, and **no COCO class means "merchandise"**.
+> Without object identity, taking and replacing are the same skeleton. See
+> [PHASE2_PLAN §5](../architecture/PHASE2_PLAN.md).
 
 > ⚠️ **C-53 is a framework with no result, and the ⛔ columns say so.** The matrix runner, the
 > uneven-aggregate guard and the summary generator are built and tested; **no benchmark has been
