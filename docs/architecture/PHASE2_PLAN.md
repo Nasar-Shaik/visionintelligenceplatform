@@ -104,20 +104,38 @@ for that reason.
 
 ---
 
-## 5. ⛔ Slice 2.7 is blocked on something no amount of engineering supplies
+## 5. Slice 2.7 — ⚠️ a correction to an earlier claim in this document
 
-Object memory, the behaviour graph's object edges and every retail rule need *"which object is this,
-and who has it"*. The shipped detector is COCO-80 with capability `perception.person-detection`;
-**COCO-80 contains no class meaning "merchandise"**.
+**This section previously said object memory was blocked on "a detector that does not exist". That
+was wrong in an important way**, and the Architect's own diagram — which named *Bottle* — is what
+exposed it.
 
-**This is the real gate on theft detection.** Pose and trajectory make a demo look close; without
-object identity, taking and replacing remain the same skeleton. The three options — class-agnostic
-proposals, open-vocabulary detection, customer-specific fine-tuning — are costed in
-[BEHAVIOUR_ENGINE §5](BEHAVIOUR_ENGINE.md). **All three need a decision and two of them need a
-dataset that does not exist.**
+The shipped COCO-80 detector already sees both halves of the problem:
 
-⚠️ Slices 2.1–2.6 and 2.8 are worth building regardless: they serve queue analytics, loitering,
-occupancy, fall detection and PPE, none of which needs object identity.
+| | COCO class id | Role |
+| --- | ---: | --- |
+| `person` | 0 | the subject |
+| **`bottle`** · `cup` · `wine glass` | **39** · 41 · 40 | a takeable object |
+| **`backpack`** · `handbag` · `suitcase` | **24** · 26 · 28 | ⭐ a container to conceal it in |
+
+And `shelf` is **not a detection at all** — it is an operator-drawn **zone**, which the platform
+already has. Detecting shelves was never the requirement.
+
+⭐ **So the whole chain — approach, pick, conceal, leave without passing the till — is buildable and
+verifiable today**, with a bottle and a backpack, on the shipped model. `labels` is a lookup table,
+not a filter; the model always emits all 80 classes.
+
+⚠️ **What is genuinely missing is merchandise *variety*, and accuracy on it.** A cereal box, a razor
+pack and a joint of meat are not COCO classes, and `yolox-nano` scores 25.8 COCO AP overall — small
+objects held in a hand under CCTV optics are the hardest case it faces. So:
+
+- **The engine is unblocked.** Build and verify it with bottles and backpacks.
+- **Coverage is not.** A production retail deployment needs open-vocabulary detection or
+  per-customer fine-tuning, both costed in [BEHAVIOUR_ENGINE §5](BEHAVIOUR_ENGINE.md), and the
+  accuracy question needs the benchmark corpus before any promise is made to a customer.
+
+⚠️ Slices 2.1–2.6 and 2.8 remain worth building regardless: queue analytics, loitering, occupancy,
+fall detection and PPE need none of this.
 
 ---
 

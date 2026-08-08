@@ -794,7 +794,40 @@ _Last updated: 2026-08-08 · Claude_
   Docs: [TRACK_A_ACCEPTANCE](../project/P9_TRACK_A_ACCEPTANCE.md),
   [P9_IMPLEMENTATION_PLAN](../project/P9_IMPLEMENTATION_PLAN.md).
 
-- **P-11 · Professional Perception Phase 2 · Behaviour Engine — 📐 DESIGN ONLY (2026-08-08)** — no
+- **P-11 · Slice 2.1 · Behaviour primitives ✅ (2026-08-08)** — **15 pure primitives over track
+  history, 29 tests, no new model and no pipeline change.** ⭐ **The Architect's diagram corrected a
+  claim this project had made twice.** Both the design docs and the capability matrix said object
+  memory was blocked because "no COCO class means merchandise" — and the diagram naming **Bottle**
+  exposed it as wrong: the shipped COCO-80 detector already sees `bottle` (39), `cup` (41),
+  `wine glass` (40) **and** `backpack` (24), `handbag` (26), `suitcase` (28) — a takeable object *and*
+  a container to conceal it in. `labels` is a lookup table, not a filter; the model always emits all
+  80 classes. And **`shelf` is not a detection at all** — it is an operator-drawn **zone**, which the
+  platform already has. ⭐ **So the whole pick → conceal → leave-without-checkout chain is buildable
+  and verifiable today**; what is genuinely missing is merchandise *variety* and accuracy on it (a
+  cereal box is not a COCO class, and `yolox-nano` at 25.8 COCO AP faces its hardest case in a small
+  object held in a hand). The correction is recorded in place rather than quietly edited.
+  **Implemented**: motion (`trajectory` · `path_length` · `velocity` · `direction`), zones
+  (`zone_visits` · `dwell_seconds` · `zone_transitions`), relational (`distance_between` · `iou` ·
+  `near` · `co_presence_seconds`), presence (`observation_gaps`) and object association
+  (`associations` · `handovers`). ⛔ **Three defect classes were designed against, each with a test
+  that fails loudly**: (1) **accumulate by `identity_id`, never `track_id`** — the scripted-occlusion
+  test asserts one person with one occlusion is **one identity for 5 s**, not two visits of 1 s,
+  which is what a `track_id` grouping would report and what would make a 60-second loitering rule
+  never fire for anyone who steps behind a display; (2) **frame-rate invariance** — the same clip at
+  1 fps and 4 fps must give the same dwell and velocity *in seconds*, because track age advances per
+  *frame* and `CAMERA_IDLE_SECONDS = 300`; (3) **`None`, never `0.0`, when nothing can be measured** —
+  a stationary subject and an empty history are different facts and `0.0` reads as the first while
+  meaning the second. ⭐ **Zone membership uses the foot point, not the centroid** — a centroid floats
+  at chest height and sits outside a floor region the subject is plainly standing in. ⭐ **The layer
+  boundary is executable**: a test scans every exported name for domain words (`shelf`, `theft`,
+  `conceal`, `patient`, `pallet`, `checkout`) and fails if one leaks into Layer 2. `handover` was
+  adopted from the Architect's list and is the primitive behind retail collusion, a hospital
+  instrument pass and a factory tool transfer — one mechanism, three business meanings, which is
+  exactly why it is not a retail feature. ⚠️ **Not yet wired to the pipeline** and no durable storage
+  yet (ADR-0051 remains unimplemented); these are pure functions with injected data. **1163 Python
+  tests green** · contracts and perception boundary clean. C-54.
+
+- **P-11 · Professional Perception Phase 2 · Behaviour Engine — 📐 DESIGN (2026-08-08)** — no
   code, by instruction: *"produce updated architecture documents, capability matrix, ADRs,
   implementation plan and verification strategy before coding."* ⭐ **The central decision is where
   the accusation lives.** The requested item 7 — shelf interaction, concealment, no-checkout — is

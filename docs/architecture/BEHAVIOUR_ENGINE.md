@@ -135,7 +135,14 @@ host before item 2 is committed to.
 
 ---
 
-## 5. ⛔ Object memory needs a detector that does not exist
+## 5. ⚠️ Object memory — a correction
+
+> ⛔ **This section originally claimed object memory was blocked on "a detector that does not
+> exist". That was wrong.** The shipped COCO-80 model already detects `bottle` (39), `cup` (41),
+> `backpack` (24), `handbag` (26) and `suitcase` (28) — a takeable object *and* a container to
+> conceal it in — and `shelf` is an operator-drawn **zone**, not a detection. `labels` is a lookup
+> table, not a filter. **The engine is buildable and verifiable today.** What follows is the real,
+> narrower gap: merchandise *variety* and accuracy on it.
 
 Items 5, 6 and 7 all rest on *"which object is this, and who has it"*. The shipped detector is
 COCO-80 and its capability is `perception.person-detection`. COCO-80 contains `bottle`, `cup`,

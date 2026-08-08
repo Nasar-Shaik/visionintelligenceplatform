@@ -197,8 +197,8 @@ references them rather than restating what a capability is.
 | **C-51** | **Interchangeable detectors** — one runtime, many families |            ✅            | ✅ `register_decoder`: `yolox` · `rtdetr` · `yolo11` |         n/a         |  ✅  |  ⚠️   |  ⚠️  | **P-10 A2**     | C-19 · **ADR-0050** | ai/inference |
 | **C-52** | **Multi-modal perception contract** — pose · masks · re-id · OCR · action |            ✅            | ⚠️ contract + registry only; **no such model runs** |         ⛔          |  ✅  |  ⛔   |  ⛔  | **P-10 A1**     | C-51               | ai/inference |
 | **C-53** | **Detector benchmark matrix** — one corpus, every detector |            ✅            | ⚠️ framework + 21 tests; **no run executed, no CLI** |         ⛔          |  ✅  |  ⛔   |  ⛔  | **P-10 B**      | C-51               | ai/inference |
-| **C-54** | **Behaviour primitives** — trajectory · dwell · proximity · ownership |            ⛔ design only            | ⛔ nothing implemented |         ⛔          |  ⛔  |  ⛔   |  ⛔  | **P-11 (planned)** | C-52 · **ADR-0051/0052** | ai/inference |
-| **C-55** | **Retail reasoning** — shelf interaction · concealment · no-checkout |            ⛔ design only            | ⛔ **blocked: no detector sees merchandise** |         ⛔          |  ⛔  |  ⛔   |  ⛔  | **P-11 (planned)** | C-54               | rules        |
+| **C-54** | **Behaviour primitives** — motion · zones · relational · object association |            ✅            | ⚠️ 15 pure primitives + 29 tests; **not yet wired to the pipeline** |         ⛔          |  ✅  |  ⛔   |  ⛔  | **P-11 slice 2.1** | C-52 · **ADR-0051/0052** | ai/inference |
+| **C-55** | **Retail reasoning** — shelf interaction · concealment · no-checkout |            ⛔ design only            | ⛔ nothing implemented — ships as **rules**, not runtime |         ⛔          |  ⛔  |  ⛔   |  ⛔  | **P-11 (planned)** | C-54               | rules        |
 
 > ⭐ **C-50 (P-9) is a producer, not a pipeline, and the ⚠️ in Pilot/Prod is deliberate.** The live
 > path runs through the identical runtime, tracker, publisher, rule engine and incident pipeline as
@@ -229,9 +229,13 @@ references them rather than restating what a capability is.
 > ([ADR-0052](../adr/ADR-0052-behaviour-reasoning-is-not-perception.md)): the runtime emits
 > observations, a rule names an intent. A concealment heuristic inside the runtime would have to be
 > duplicated and diverged for hospital, warehouse, school and factory.
-> ⛔ **C-55 is additionally blocked on something engineering cannot supply**: the shipped detector is
-> COCO-80 with capability `perception.person-detection`, and **no COCO class means "merchandise"**.
-> Without object identity, taking and replacing are the same skeleton. See
+> ⚠️ **A correction, recorded rather than quietly edited**: this note previously said C-55 was
+> blocked because "no COCO class means merchandise". **That was wrong.** The shipped detector
+> already sees `bottle` (39), `backpack` (24), `handbag` (26) and `suitcase` (28) — a takeable object
+> and a container — and `shelf` is an operator-drawn zone, not a detection. The pick → conceal →
+> leave chain is buildable today. ⚠️ **What is genuinely missing is merchandise *variety* and
+> accuracy on it**: a cereal box is not a COCO class, and `yolox-nano` at 25.8 COCO AP faces its
+> hardest case in a small object held in a hand under CCTV optics. See
 > [PHASE2_PLAN §5](../architecture/PHASE2_PLAN.md).
 
 > ⚠️ **C-53 is a framework with no result, and the ⛔ columns say so.** The matrix runner, the
