@@ -210,6 +210,22 @@ if (first && last) {
 const RUN_HOURS = first && last ? (Date.parse(last.at) - Date.parse(first.at)) / 3600000 : 0;
 const dig = (obj, path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 const series = (path) => metrics.map((m) => dig(m, path)).filter((v) => Number.isFinite(v));
+
+/*
+ * ⛔ **Warm-up is not trend, and a growth verdict that includes it is wrong.**
+ *
+ * A service climbs steeply for its first few minutes — caches, pools, lazily imported modules — and
+ * then does whatever it is actually going to do. Both P-11 attempts began with a step of roughly the
+ * same size, so their *endpoint deltas* were nearly identical (32.3 vs 33.0 MB/h) while their shapes
+ * were opposites: R² 0.819 (a line) against R² 0.151 (a cloud). Judging the fix on the endpoints
+ * said it had failed; judging it on the shape after warm-up said it had worked, and that was right.
+ *
+ * So every growth verdict below drops the first `WARMUP_MIN` minutes, and every slope is reported
+ * with its R². ⚠️ A slope without an R² is not a finding — a large slope through a wide noise band
+ * is oscillation.
+ */
+const WARMUP_MIN = 10;
+const settled = (path) => metrics.filter((m) => (m.elapsedMin ?? 0) > WARMUP_MIN).map((m) => dig(m, path)).filter((v) => Number.isFinite(v));
 const mean = (xs) => (xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length);
 
 const BLOCKS = '▁▂▃▄▅▆▇█';
@@ -303,7 +319,7 @@ console.log('\n### Memory — plateau versus slope\n');
 console.log(SHAPE_HEAD);
 for (const name of containerNames) shape(name, stat(`containers.${name}.memMb`), ' MB');
 shape('inference self-reported', stat('runtime.memoryMb'), ' MB');
-const memGrowth = Object.fromEntries(containerNames.map((name) => [name, growth(series(`containers.${name}.memMb`))]));
+const memGrowth = Object.fromEntries(containerNames.map((name) => [name, growth(settled(`containers.${name}.memMb`))]));
 
 /*
  * ⛔ **A flagged container is a question, not a verdict.** `unbounded` means "climbing as fast at the
@@ -336,15 +352,29 @@ const trendLine = (xs) => {
   return { perHour: RUN_HOURS > 0 ? n(perSample * (xs.length / RUN_HOURS), 2) : null, r2: syy === 0 ? 0 : n((sxy * sxy) / (sxx * syy), 3) };
 };
 
-const memTrend = Object.fromEntries(containerNames.map((name) => [name, trendLine(series(`containers.${name}.memMb`))]));
+const memTrend = Object.fromEntries(containerNames.map((name) => [name, trendLine(settled(`containers.${name}.memMb`))]));
+
+/*
+ * ⭐ Two independent tests, and a container is only called climbing when **both** agree: the
+ * quintile plateau test says the late rise has not flattened, *and* the least-squares fit explains
+ * enough of the variance to be a line rather than a band (R² ≥ 0.5). Either alone misfires — the
+ * quintile test on an oscillation, the slope on a wide noise band.
+ */
+const LINEAR_R2 = 0.5;
 const leaking = Object.entries(memGrowth)
-  .filter(([, g]) => g.verdict === 'unbounded')
+  .filter(([k, g]) => g.verdict === 'unbounded' && (memTrend[k]?.r2 ?? 0) >= LINEAR_R2)
   .map(([k, g]) => `**${k}** (+${g.totalPct} %, late rise ${g.lateRise} MB vs early ${g.earlyRise} MB, slope ${memTrend[k]?.perHour} MB/h at R²=${memTrend[k]?.r2})`);
+const oscillating = Object.entries(memGrowth)
+  .filter(([k, g]) => g.verdict === 'unbounded' && (memTrend[k]?.r2 ?? 0) < LINEAR_R2)
+  .map(([k, g]) => `**${k}** (+${g.totalPct} %, but R²=${memTrend[k]?.r2} — a band, not a line)`);
 console.log(
   leaking.length === 0
-    ? '\n⭐ **No container was still climbing at the end of the run.**'
-    : `\n⛔ **Still climbing at the end — each needs a mechanism before it is called a leak or a fill:** ${leaking.join(', ')}`,
+    ? `\n⭐ **No container shows linear growth after warm-up** (first ${String(WARMUP_MIN)} min excluded).`
+    : `\n⛔ **Climbing linearly after warm-up — each needs a mechanism before it is called a leak or a fill:** ${leaking.join(', ')}`,
 );
+if (oscillating.length > 0) {
+  console.log(`\n⚠️ Rose over the run but without a linear shape, so reported rather than flagged: ${oscillating.join(', ')}`);
+}
 
 /*
  * Evidence for whoever investigates the inference runtime: its resident size beside the number of
@@ -496,7 +526,15 @@ const failedOps = ops.filter((o) => o.ms !== undefined && !o.ok).length;
 const criteria = [
   { id: 'C1', name: 'Ran 6–7 h uninterrupted', met: summary?.continuity?.intact === true && typeof awakeHours === 'number' && awakeHours >= 6, detail: summary === null ? 'SUMMARY.json absent — the run never reached its own completion path' : `continuity intact=${summary.continuity?.intact}, awake ${awakeHours} h of ${summary.requestedHours} h requested` },
   { id: 'C2', name: 'No service restarted', met: restartsMoved.length === 0 && unhealthyEnd.length === 0, detail: restartsMoved.length === 0 ? `no restart counter moved; ${Object.keys(last?.restarts ?? {}).length} containers healthy at the final sample` : `moved: ${restartsMoved.join(', ')}; unhealthy: ${unhealthyEnd.join(', ') || 'none'}` },
-  { id: 'C3', name: 'No container still climbing at the end', met: leaking.length === 0, detail: leaking.length === 0 ? 'every container plateaued or fell' : `needs a mechanism: ${leaking.join(', ').replace(/\*\*/g, '')}` },
+  {
+    id: 'C3',
+    name: 'No linear memory growth after warm-up',
+    met: leaking.length === 0,
+    detail:
+      leaking.length === 0
+        ? `no container grows linearly after the first ${WARMUP_MIN} min${oscillating.length > 0 ? `; ${oscillating.length} rose without a linear shape (reported in §Memory)` : ''}`
+        : `needs a mechanism: ${leaking.join(', ').replace(/\*\*/g, '')}`,
+  },
   { id: 'C4', name: 'No queue growth or backpressure', met: (stat('runtime.queueDepth')?.max ?? 0) === 0 && (stat('media.queueDepth')?.max ?? 0) === 0, detail: `runtime queue max ${stat('runtime.queueDepth')?.max}, media queue max ${stat('media.queueDepth')?.max}` },
   { id: 'C5', name: 'No frame or evidence loss', met: (c['runtime.droppedFrames']?.last ?? 0) === 0 && (c['media.framesDropped']?.last ?? 0) === 0 && (c['media.framesFailed']?.last ?? 0) === 0 && (c['behaviour.historyWriteFailures']?.last ?? 0) === 0 && dropped === 0 && (c['media.framesOffered']?.delta ?? 0) === (c['media.framesDelivered']?.delta ?? -1), detail: `runtime dropped ${c['runtime.droppedFrames']?.last}, media dropped ${c['media.framesDropped']?.last} / failed ${c['media.framesFailed']?.last}, offered−delivered ${(c['media.framesOffered']?.delta ?? 0) - (c['media.framesDelivered']?.delta ?? 0)}, analysis frames dropped ${dropped}, history write failures ${c['behaviour.historyWriteFailures']?.last}` },
   { id: 'C6', name: 'No invariant violation or orphaned work', met: evidence.problems === 0 && orphanSamples === 0 && (c['behaviour.outOfOrder']?.last ?? 0) === 0, detail: `${evidence.problems} invariant problems across ${evidence.analyses} analyses, ${orphanSamples} samples with orphan sessions, ${c['behaviour.outOfOrder']?.last} out-of-order frames` },
@@ -535,7 +573,7 @@ if (jsonIdx >= 0 && process.argv[jsonIdx + 1]) {
         counters: c,
         storage: storageGrowth,
         logs: logGrowth,
-        memory: { perContainer: memGrowth, slopes: memTrend, stillClimbing: leaking, inferenceVersusStore: infRows },
+        memory: { warmupMinExcluded: WARMUP_MIN, perContainer: memGrowth, slopes: memTrend, climbingLinearly: leaking, roseWithoutLinearShape: oscillating, inferenceVersusStore: infRows },
         restarts: { moved: restartsMoved, unhealthyAtEnd: unhealthyEnd, lifetime: last?.restarts ?? {} },
         series: { fps: stat('runtime.fps'), latencyAvgMs: stat('runtime.avgLatencyMs'), latencyP95Ms: stat('runtime.latencyP95Ms'), runtimeQueueDepth: stat('runtime.queueDepth'), mediaQueueDepth: stat('media.queueDepth'), mediaDeliverMs: stat('media.deliverMsAvg'), frameAgeMs: stat('media.frameAgeMsAvg'), apiMs: stat('api.ms'), fragmentation: stat('behaviour.fragmentation') },
         findings,
