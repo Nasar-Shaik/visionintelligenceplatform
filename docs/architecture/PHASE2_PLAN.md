@@ -5,7 +5,7 @@ decisions it rests on are [ADR-0051](../adr/ADR-0051-track-history-becomes-durab
 [ADR-0052](../adr/ADR-0052-behaviour-reasoning-is-not-perception.md).
 
 > ⭐ **The order below is the Architect's, with one change and two gates**, each argued rather than
-> assumed. Nothing here is implemented.
+> assumed. Slices 2.1–2.3 are implemented and deployed; everything from 2.3b on is not.
 
 ---
 
@@ -15,9 +15,10 @@ decisions it rests on are [ADR-0051](../adr/ADR-0051-track-history-becomes-durab
 | --- | --- | --- | --- |
 | **2.1** | ✅ Motion primitives, as pure functions | — | — |
 | **2.2** | ✅ The seam (`register_task("behaviour")`), the four modules on the live path, durable track history, multi-class verified | 2.1 | — |
-| **2.3** | ⛔ **Detector benchmark on a quiet host** | — | Runs *before* any new model is chosen |
-| **2.4** | Pose plugin | 2.3 | ⛔ **Compute gate** — §4 |
-| **2.5** | Re-identification embeddings | 2.3 | Compute gate |
+| **2.3** | ✅ Zone propagation (ADR-0053), the `SceneObservation` carrier (ADR-0054), the Behaviour API and the Behaviour Timeline | 2.2 | — |
+| **2.3b** | ⛔ **Detector benchmark on a quiet host** | — | Runs *before* any new model is chosen |
+| **2.4** | Pose plugin | 2.3b | ⛔ **Compute gate** — §4 |
+| **2.5** | Re-identification embeddings | 2.3b | Compute gate |
 | **2.6** | Segmentation plugin | 2.4, 2.5 | Compute gate |
 | **2.7** | Object memory | 2.6 + ⛔ **an object detector that does not exist** | §5 |
 | **2.8** | Behaviour graph | 2.2, 2.5, 2.7 | — |
@@ -39,7 +40,7 @@ until 2.5 lands anyway.
 
 ### The two inserted gates
 
-**2.3 — benchmark first.** Workstream B built the framework and deliberately ran nothing, because the
+**2.3b — benchmark first.** Workstream B built the framework and deliberately ran nothing, because the
 host was at 496 % CPU. Choosing a pose model before that runs would be choosing on upstream marketing
 figures. It costs a few hours on a quiet machine.
 
@@ -84,15 +85,18 @@ stage in the one slot that already existed. Per-subject facts ride in
 `Detection.attributes["behaviour"]` and reach the events store intact, verified on the deployed
 stack over real footage.
 
-⛔ **Finding 1 — `FrameLabel` has nowhere to go.** The contract can *express* a scene-level statement,
-but `DetectionResult` has no frame-level open map to carry one: only `Detection.attributes`, which is
-per subject. Occupancy and handover therefore leave through `GET /tracking/behaviour` rather than as
-events. Nothing is lost for a rule that wants a handover — the per-object `association.heldBy` array
-shows the object changing hands and *does* ride the detection — but the asymmetry is real and is
-recorded rather than fixed by widening a frozen contract.
+⛔ **Finding 1 — `FrameLabel` has nowhere to go.** ✅ Closed in slice 2.3 by
+[ADR-0054](../adr/ADR-0054-a-scene-observation-is-not-a-detection.md): `DetectionResult.scene`, an
+optional additive field at schema 1.2. As shipped in 2.2 the contract could *express* a scene-level
+statement and had no frame-level open map to carry one — only `Detection.attributes`, which is per
+subject, so occupancy and handover left through `GET /tracking/behaviour` rather than on the frame.
+⚠️ Nothing was ever lost for a rule that wants a handover — the per-object `association.heldBy` array
+shows the object changing hands and *does* ride the detection — but the asymmetry was real, and it was
+recorded rather than papered over until a decision could be taken.
 
-⛔ **Finding 2 — zone membership arrives one hop too late.** See
-[BEHAVIOUR_ENGINE §5b](BEHAVIOUR_ENGINE.md); three costed options, the Architect's call.
+⛔ **Finding 2 — zone membership arrives one hop too late.** ✅ Closed in slice 2.3 by
+[ADR-0053](../adr/ADR-0053-zone-membership-returns-as-an-observation.md); the three costed options
+and the one taken are in [BEHAVIOUR_ENGINE §5b](BEHAVIOUR_ENGINE.md).
 
 ⛔ **Finding 3 — two defects that only a deployment could find**, both in slice 2.2's own code: a
 root-owned Docker volume against a uid-999 runtime, and — much worse — a history write failure that
@@ -103,6 +107,46 @@ secondary duty must never be able to stop the primary one.*
 **The domain-neutrality test is executable**: a test asserts that no primitive's name or output
 vocabulary contains a domain word (`shelf`, `theft`, `patient`, `pallet`). ⚠️ Crude, and it catches
 the exact regression that matters — a retail concept leaking into Layer 2.
+
+---
+
+## 3b. ✅ Slice 2.3 — the infrastructure before reasoning
+
+**Ships:** zone propagation ([ADR-0053](../adr/ADR-0053-zone-membership-returns-as-an-observation.md)),
+the `SceneObservation` carrier ([ADR-0054](../adr/ADR-0054-a-scene-observation-is-not-a-detection.md)),
+`GET /api/behaviour/primitives`, `GET /api/behaviour/timeline`, and the zone-evaluation metrics media
+had been computing since P-8 Phase 7 and publishing nowhere.
+
+**Both of slice 2.2's findings are closed, and each cost one decision rather than one workaround:**
+
+| Finding | Closed by | ⚠️ |
+| --- | --- | --- |
+| Zone membership arrives one hop too late | Membership returns as an **observation** on the next frame | ⛔ Not the zone plan going the other way — that would have put a second polygon engine in the platform, and the first disagreement would be unresolvable |
+| `FrameLabel` has nowhere to go | An optional `scene[]` on `DetectionResult`, schema **1.2** | ⚠️ The frozen contract's own additive path, carried on the `FrameContext` that already reached every stage — no new stage, no widened protocol |
+
+⭐ **The read APIs recompute; they store nothing.** Track history is the one durable substrate, and
+`primitives_for` runs *the same four modules the live path runs*, so Layer 2 cannot drift into two
+implementations. The Behaviour Timeline is a projection over the same functions.
+
+⛔ **What slice 2.3 taught, and it is the same lesson three times: the ambiguity between "no" and
+"not yet" is where the plausible wrong numbers live.**
+
+1. `zoneIds: []` (decided: inside nothing) versus no key (undecided) — collapsing them emits a `left`
+   transition on every frame for a subject standing still.
+2. `occupancy: 0` on a stream with no subjects at all — a camera that is down, a stage that never
+   ran and an empty shop rendered identically. **Slice 2.2 shipped this**; a slice 2.3 test found it.
+3. The echo join keyed on the runtime's private frame counter rather than the caller's `frame.seq` —
+   off by one, on every frame, producing a dwell short by exactly one interval.
+
+⚠️ Plus one that was only visible on real footage: timeline instants printed as `1.77109e+09 s`,
+because a recording stamped with wall-clock capture times has footage seconds in the billions. The
+durations were right and every instant was unreadable.
+
+**Verified on the deployed stack** with two operator-drawn zones on a real camera, over the uploaded
+recording *and* over the live `FrameSink.push` path: `zoneMembership: present` on both, 23 and 25
+memberships applied, 0 and 1 missed, 37 and 40 echoes sent, 0 dropped, dwell of 15.0 s and a
+two-visit 6.5 s, three entries and two exits, 191 scene observations, and 98 durable records
+surviving a container replacement.
 
 ---
 

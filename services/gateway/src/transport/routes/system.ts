@@ -223,8 +223,10 @@ export function registerSystemRoutes(app: FastifyInstance, deps: SystemRoutesDep
   /*
    * Behaviour primitives + stored movement paths (P-11 slice 2.2).
    *
-   *   GET /api/behaviour        the behaviour stage's state and recent scene-level statements
-   *   GET /api/track-history    stored movement paths for the caller's tenant (ADR-0051)
+   *   GET /api/behaviour             the behaviour stage's state and recent scene-level statements
+   *   GET /api/behaviour/primitives  every primitive of an analysis, recomputed (slice 2.3)
+   *   GET /api/behaviour/timeline    the same facts as an ordered account (slice 2.3)
+   *   GET /api/track-history         stored movement paths for the caller's tenant (ADR-0051)
    *
    * ⚠️ Same proxy, same absent permission check, same reason: media authorises `track:read` against
    * the caller's own forwarded token, and a second copy here would be a second thing to keep true.
@@ -233,6 +235,12 @@ export function registerSystemRoutes(app: FastifyInstance, deps: SystemRoutesDep
    */
   app.get('/api/behaviour', async (request, reply) =>
     perceptionProxy(request, reply, '/perception/behaviour'),
+  );
+  app.get('/api/behaviour/primitives', async (request, reply) =>
+    perceptionProxy(request, reply, '/perception/behaviour/primitives'),
+  );
+  app.get('/api/behaviour/timeline', async (request, reply) =>
+    perceptionProxy(request, reply, '/perception/behaviour/timeline'),
   );
   app.get('/api/track-history', async (request, reply) =>
     perceptionProxy(request, reply, '/perception/track-history'),

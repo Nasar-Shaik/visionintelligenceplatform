@@ -60,6 +60,20 @@ class TrackPoint:
     #: disagreed nobody would be able to say which was right. `MembershipZone` reads this; the
     #: geometric zones below are for callers that hold the geometry themselves.
     zone_ids: Tuple[str, ...] = ()
+    #: ⛔ Whether membership for this observation has been **decided** — a different question from
+    #: whether it found any. `False` means nothing has said yet; `True` with an empty `zone_ids`
+    #: means something said "inside none". Membership is resolved a frame after the box (ADR-0053),
+    #: so an undecided point read as "outside" would close a zone visit that never ended.
+    zones_settled: bool = False
+
+    def __post_init__(self) -> None:
+        # ⭐ Non-empty membership implies settled, enforced here so the contradiction cannot be
+        # built. A point carrying `("z_till",)` with `zones_settled=False` says "nothing has decided
+        # this, and it was inside the till zone" — two callers reading it would reasonably disagree
+        # about which half to believe. One invariant in one place beats a rule every construction
+        # site has to remember.
+        if self.zone_ids and not self.zones_settled:
+            object.__setattr__(self, "zones_settled", True)
 
     @property
     def centroid(self) -> Tuple[float, float]:
@@ -89,7 +103,28 @@ class ZoneRegion(Protocol):
 
     zone_id: str
 
+    #: ⛔ Whether this zone can only answer for a point whose membership has been **decided**.
+    #:
+    #: A geometric zone answers for any point — it holds the polygon. A `MembershipZone` answers only
+    #: from what an upstream said, and membership arrives a frame after the box does (ADR-0053), so a
+    #: point it has not yet heard about must be *skipped* rather than treated as outside. Expressed on
+    #: the zone rather than on the caller because it is a property of how the zone knows things.
+    requires_membership: bool
+
     def holds(self, point: "TrackPoint", *, use_foot_point: bool = True) -> bool: ...
+
+
+def observed_points(points: Sequence["TrackPoint"], zone: ZoneRegion) -> List["TrackPoint"]:
+    """The points `zone` is able to answer for.
+
+    ⛔ **Everything zone-shaped walks consecutive points, so a skipped point is not the same as an
+    excluded one.** Dropping an undecided point joins the observations either side of it, which is
+    right: the subject did not leave and come back, we simply have not been told about the moment in
+    between. Treating it as "outside" is what produces a `left` transition that never happened.
+    """
+    if not getattr(zone, "requires_membership", False):
+        return list(points)
+    return [p for p in points if p.zones_settled]
 
 
 @dataclass(frozen=True)
@@ -102,6 +137,8 @@ class Zone:
 
     zone_id: str
     bbox: Box
+    #: It holds the geometry, so it can answer for any point. See `ZoneRegion.requires_membership`.
+    requires_membership: bool = False
 
     def contains(self, point: Tuple[float, float]) -> bool:
         x, y, w, h = self.bbox
@@ -122,6 +159,8 @@ class PolygonZone:
 
     zone_id: str
     points: Sequence[Tuple[float, float]]
+    #: It holds the geometry, so it can answer for any point. See `ZoneRegion.requires_membership`.
+    requires_membership: bool = False
 
     def contains(self, point: Tuple[float, float]) -> bool:
         from zones import point_in_polygon  # noqa: WPS433 - local, keeps this module import-light
@@ -148,9 +187,11 @@ class MembershipZone:
     """
 
     zone_id: str
+    #: It knows nothing the point does not carry. See `ZoneRegion.requires_membership`.
+    requires_membership: bool = True
 
     def holds(self, point: "TrackPoint", *, use_foot_point: bool = True) -> bool:
-        return self.zone_id in point.zone_ids
+        return point.zones_settled and self.zone_id in point.zone_ids
 
 
 @dataclass(frozen=True)
@@ -255,7 +296,12 @@ def zone_visits(points: Sequence[TrackPoint], zone: ZoneRegion, *, use_foot_poin
 
     ⚠️ A visit still open when the track ends is marked `open_ended`. A truncated stay reported as a
     completed one understates dwell for exactly the subjects who stayed longest.
+
+    ⛔ Points the zone cannot answer for are **skipped**, not counted as outside — see
+    `observed_points`. For a `MembershipZone` that is every point whose membership has not come back
+    from the resolver yet, which on the live path is always the newest one.
     """
+    points = observed_points(points, zone)
     if not points:
         return []
     identity = points[0].identity_id
@@ -319,7 +365,13 @@ def iou(a: Box, b: Box) -> float:
     return round(overlap / union, 6) if union > 0 else 0.0
 
 
-def near(a: TrackPoint, b: TrackPoint, *, threshold: float = 0.05) -> bool:
+#: "Near" in **frame widths**, not metres. ⚠️ Named once because three call sites and every API that
+#: reports a proximity must agree about it; a proximity claim whose threshold differs between the
+#: computation and the sentence describing it is a claim nobody made.
+NEAR_THRESHOLD = 0.05
+
+
+def near(a: TrackPoint, b: TrackPoint, *, threshold: float = NEAR_THRESHOLD) -> bool:
     """Within `threshold` frame widths, **or** overlapping at all.
 
     ⚠️ Both tests, because a hand reaching *behind* an object is centre-distant and overlapping,
@@ -329,7 +381,9 @@ def near(a: TrackPoint, b: TrackPoint, *, threshold: float = 0.05) -> bool:
     return distance_between(a, b) <= threshold or iou(a.bbox, b.bbox) > 0.0
 
 
-def co_presence_seconds(a: Sequence[TrackPoint], b: Sequence[TrackPoint], *, threshold: float = 0.05) -> float:
+def co_presence_seconds(
+    a: Sequence[TrackPoint], b: Sequence[TrackPoint], *, threshold: float = NEAR_THRESHOLD
+) -> float:
     """How long two identities were near each other, sampled at `a`'s frames.
 
     ⚠️ Asymmetric by construction, and that is a limitation rather than a design: it assumes the two

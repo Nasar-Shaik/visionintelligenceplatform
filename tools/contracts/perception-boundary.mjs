@@ -270,6 +270,49 @@ console.log(`\nperception boundary · ${files.length} TypeScript source(s) outsi
   );
 }
 
+/*
+ * ### §G the zone membership echo joins on the same key at both ends
+ *
+ * ⛔ **The join media and the runtime make across a network boundary, with nothing typed to hold it
+ * together.** Media resolves membership for a frame it has already had answered and sends it back
+ * under `zoneMembership`, naming the frame with `frameSeq`; the runtime reads those two names out of
+ * an untyped dict and matches `frameSeq` against the frame sequence it stored (ADR-0053).
+ *
+ * ⚠️ **This one already failed once, in development, and produced a plausible number.** The runtime
+ * originally stored its own per-camera frame counter, so the join landed one frame early on every
+ * frame — a dwell short by exactly one interval, on a graph that looked entirely reasonable. So the
+ * check is not just that the field names agree, but that the runtime stores the CALLER's sequence:
+ * `frame_index=ctx.frame_number` in the one place a history point is created.
+ */
+{
+  const wire = readFileSync(join(ROOT, 'packages/contracts/src/perception/perception.ts'), 'utf8');
+  const runtime = readFileSync(join(ROOT, 'ai/inference/contracts.py'), 'utf8');
+  const sink = readFileSync(join(ROOT, 'services/media/src/adapters/http-frame-sink.ts'), 'utf8');
+  const tracking = readFileSync(join(ROOT, 'ai/inference/runtime_tracking.py'), 'utf8');
+
+  for (const key of ['zoneMembership', 'frameSeq']) {
+    const sites = [
+      ['packages/contracts', wire.includes(key)],
+      ['services/media', sink.includes(key) || key === 'frameSeq'],
+      ['ai/inference', runtime.includes(`"${key}"`)],
+    ];
+    const missing = sites.filter(([, present]) => !present).map(([where]) => where);
+    check(
+      missing.length === 0,
+      `§G '${key}' is named on both sides of the zone membership echo`,
+      missing.length === 0 ? 'contracts · media · runtime' : `missing in ${missing.join(', ')}`,
+    );
+  }
+
+  check(
+    /frame_index=ctx\.frame_number/.test(tracking),
+    "§G the runtime stores the caller's frame sequence, not its own counter",
+    /frame_index=ctx\.frame_number/.test(tracking)
+      ? 'runtime_tracking.py records frame_index=ctx.frame_number'
+      : 'a history point is keyed by something other than ctx.frame_number — the echo will not join',
+  );
+}
+
 console.log(
   failures === 0
     ? '\nperception boundary: OK — the runtime is the only thing that knows how a model works.\n'

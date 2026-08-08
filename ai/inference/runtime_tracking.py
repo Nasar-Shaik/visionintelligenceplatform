@@ -374,7 +374,16 @@ class RuntimeTracker:
                 stream_id=ctx.correlation_id,
                 identity_id=detection.identity_id,
                 track_id=detection.tracking_id,
-                frame_index=state.frame_index,
+                # ⛔ **The CALLER's frame sequence, not `state.frame_index`.**
+                #
+                # `state.frame_index` counts frames this runtime has seen on this camera since it
+                # started; `ctx.frame_number` is `frame.seq`, which is what `DetectionResult.frame`
+                # carries, what `EventEnvelope.payload.frameSeq` carries, and what media names when it
+                # sends zone membership back (ADR-0053). Storing the runtime's private counter made a
+                # movement path joinable to nothing outside this process — and the zone echo joined on
+                # it off by one, settling the previous frame every time while producing a dwell that
+                # was short by exactly one interval and looked entirely reasonable.
+                frame_index=ctx.frame_number,
                 at=at,
                 bbox=detection.bbox,
                 label=detection.label,

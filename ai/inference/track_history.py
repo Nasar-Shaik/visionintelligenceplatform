@@ -56,7 +56,7 @@ import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Protocol, Sequence, Tuple
 
 from track_motion import seconds_of
 
@@ -89,24 +89,43 @@ class HistoryPoint:
     the timestamp could not be parsed, which is a fact the reader must handle rather than a zero.
     """
 
+    #: ⛔ **The caller's `frame.seq`**, not any counter this runtime keeps.
+    #:
+    #: It is the same number `DetectionResult.frame.seq` carries and `EventEnvelope.payload.frameSeq`
+    #: publishes, which is what makes a stored movement path joinable to the events that cite it and
+    #: to the membership media sends back (ADR-0053). A runtime-private counter here would be
+    #: meaningless to every reader outside this process, and the zone join built on one was off by
+    #: exactly one frame — producing a dwell short by one interval that looked entirely reasonable.
     frame_index: int
     at: str
     bbox: Box
     track_id: str
     label: str = "person"
     confidence: float = 1.0
-    #: Zones an upstream said this observation was inside. ⛔ **Held in memory, never persisted** —
-    #: see the module docstring: a polygon is versioned configuration, and an archive that froze
-    #: membership can never be corrected when the polygon turns out to have been drawn wrong.
-    #: Mutable by exception (`annotate_zones`), because membership is resolved after the box is.
+    #: Zones an upstream found this observation inside (ADR-0053). Written a second time, after the
+    #: box, because membership is resolved downstream of inference.
     zone_ids: Tuple[str, ...] = ()
+    #: ⛔ **Whether membership for this observation has been DECIDED**, which is a different question
+    #: from whether it found any.
+    #:
+    #: `False` means nothing has said yet; `True` with an empty `zone_ids` means something said, and
+    #: the answer was "inside none". Collapsing the two is not a rounding error — a zone visit walks
+    #: consecutive points, and an undecided point read as "outside" ends the visit and emits a `left`
+    #: transition that never happened, on every frame, for as long as the echo runs one frame behind.
+    zones_settled: bool = False
+
+    def __post_init__(self) -> None:
+        # ⭐ Non-empty membership implies settled — the same invariant `bp.TrackPoint` enforces, for
+        # the same reason: the contradictory state is unbuildable rather than merely discouraged.
+        if self.zone_ids and not self.zones_settled:
+            object.__setattr__(self, "zones_settled", True)
 
     @property
     def at_seconds(self) -> Optional[float]:
         return seconds_of(self.at)
 
     def to_dict(self) -> dict:
-        return {
+        out = {
             "frameIndex": int(self.frame_index),
             "at": self.at,
             "bbox": [round(float(v), 6) for v in self.bbox],
@@ -114,10 +133,19 @@ class HistoryPoint:
             "label": self.label,
             "confidence": round(float(self.confidence), 6),
         }
+        # ⚠️ Present-when-settled, absent otherwise — including when settled to nothing, which
+        # serialises as `[]`. Absence is the only encoding of "undecided" that a reader cannot
+        # mistake for "outside every zone". See `zones_settled`, and ADR-0053 on why membership is
+        # stored at all now that a record can name the polygon version that produced it.
+        if self.zones_settled:
+            out["zoneIds"] = list(self.zone_ids)
+        return out
 
     @staticmethod
     def from_dict(raw: dict) -> "HistoryPoint":
         box = [float(v) for v in raw["bbox"]]
+        zones = raw.get("zoneIds")
+        settled = isinstance(zones, (list, tuple))
         return HistoryPoint(
             frame_index=int(raw["frameIndex"]),
             at=str(raw["at"]),
@@ -125,6 +153,8 @@ class HistoryPoint:
             track_id=str(raw["trackId"]),
             label=str(raw.get("label", "person")),
             confidence=float(raw.get("confidence", 1.0)),
+            zone_ids=tuple(str(z) for z in zones) if settled else (),
+            zones_settled=settled,
         )
 
 
@@ -151,6 +181,14 @@ class TrackHistoryRecord:
     #: Wall-clock ISO-8601, stamped when the record was first written durably. Retention counts
     #: against this and never against footage time — see the module docstring.
     written_at: Optional[str] = None
+    #: ⭐ **Which polygon set decided this record's zone membership** (ADR-0053).
+    #:
+    #: The reason membership may be stored at all. ADR-0051 refused to persist it because an archive
+    #: that froze "was inside `z_till`" could never be corrected when the polygon turned out to be
+    #: drawn two metres off. Naming the version answers that directly: the archive says which geometry
+    #: it used, a correction is visible rather than silent, and re-resolving is a deliberate act.
+    #: `None` on a record whose membership was never settled.
+    zone_version: Optional[int] = None
 
     @property
     def first_seconds(self) -> Optional[float]:
@@ -175,6 +213,8 @@ class TrackHistoryRecord:
             out["streamId"] = self.stream_id
         if self.written_at is not None:
             out["writtenAt"] = self.written_at
+        if self.zone_version is not None:
+            out["zoneVersion"] = int(self.zone_version)
         return out
 
     @staticmethod
@@ -189,6 +229,7 @@ class TrackHistoryRecord:
             track_ids=[str(t) for t in raw.get("trackIds", [])],
             closed=bool(raw.get("closed", False)),
             written_at=raw.get("writtenAt"),
+            zone_version=int(raw["zoneVersion"]) if raw.get("zoneVersion") is not None else None,
         )
 
 
@@ -608,14 +649,16 @@ class TrackHistoryRecorder:
         stream_id: Optional[str],
         identity_id: str,
         zone_ids: Sequence[str],
+        frame_index: Optional[int] = None,
     ) -> bool:
-        """Attach zone membership to an identity's **most recent** observation.
+        """Attach zone membership to one of an identity's observations.
 
-        ⭐ **A second write, deliberately, because membership is resolved after the box is.** The
-        tracker records where a subject was; only later does something with the polygons say which
-        zones that was inside. Without this back-fill every point but the current one would carry no
-        membership, and a dwell that can only ever be one frame long reads as "nobody lingered" —
-        plausible, wrong, and silent.
+        ⚠️ The single-subject form, for a caller that resolves membership **with** the frame rather
+        than after it — the batch analyzer holding its own geometry, and the tests. Anything echoing
+        membership back from a previous frame must use `settle_zones` instead, because only that can
+        say what the *other* subjects on that frame were doing.
+
+        Returns `False` when there is no such point.
         """
         from dataclasses import replace  # noqa: WPS433 - local, one call site
 
@@ -624,8 +667,73 @@ class TrackHistoryRecorder:
             record = None if bucket is None else bucket.get(identity_id)
             if record is None or not record.points:
                 return False
-            record.points[-1] = replace(record.points[-1], zone_ids=tuple(str(z) for z in zone_ids))
-            return True
+            zones = tuple(str(z) for z in zone_ids)
+            if frame_index is None:
+                record.points[-1] = replace(record.points[-1], zone_ids=zones, zones_settled=True)
+                return True
+            # Newest first: an echo is normally one or two frames behind, so this scan ends
+            # immediately. Bounded by `max_points` in the worst case.
+            for offset in range(len(record.points) - 1, -1, -1):
+                if record.points[offset].frame_index == frame_index:
+                    record.points[offset] = replace(
+                        record.points[offset], zone_ids=zones, zones_settled=True
+                    )
+                    return True
+            return False
+
+    def settle_zones(
+        self,
+        *,
+        tenant_id: str,
+        camera_id: str,
+        stream_id: Optional[str],
+        frame_index: int,
+        memberships: Mapping[str, Sequence[str]],
+        zone_version: Optional[int] = None,
+    ) -> Tuple[int, int]:
+        """⭐ **Decide zone membership for one whole frame** (ADR-0053).
+
+        Every observation recorded at `frame_index` on this stream is marked settled: the identities
+        named in `memberships` get the zones they were found inside, and **every other identity on
+        that frame gets an explicitly empty set**.
+
+        ⛔ That last clause is the point of this method existing at all. Membership is resolved after
+        inference answers, so it arrives a frame late; an unsettled point read as "outside every zone"
+        would close a zone visit and emit a `left` transition — every frame, for as long as the echo
+        lags. Deciding the frame rather than the subject is what makes "inside nothing" a statement
+        somebody made rather than something inferred from silence.
+
+        Returns `(points settled, memberships with no matching observation)`. ⚠️ A miss is a real and
+        expected outcome — the frame may have been trimmed by `max_points`, or the identity retired
+        between the frame and its echo — so it is counted rather than raised.
+        """
+        from dataclasses import replace  # noqa: WPS433 - local, one call site
+
+        wanted = {identity: tuple(str(z) for z in zones) for identity, zones in memberships.items()}
+        settled = 0
+        matched: set = set()
+        with self._lock:
+            bucket = self._live.get((tenant_id, camera_id, stream_id))
+            if bucket is None:
+                return 0, len(wanted)
+            for identity, record in bucket.items():
+                zones = wanted.get(identity, ())
+                for offset in range(len(record.points) - 1, -1, -1):
+                    point = record.points[offset]
+                    if point.frame_index != frame_index:
+                        # Points are appended in frame order, so anything older than the target
+                        # cannot become it. Stops the scan at the first point that is too old.
+                        if point.frame_index < frame_index:
+                            break
+                        continue
+                    record.points[offset] = replace(point, zone_ids=zones, zones_settled=True)
+                    settled += 1
+                    if identity in wanted:
+                        matched.add(identity)
+                    if zone_version is not None:
+                        record.zone_version = int(zone_version)
+                    break
+        return settled, len(wanted) - len(matched)
 
     def retire_stale(
         self,
@@ -713,6 +821,38 @@ class TrackHistoryRecorder:
         with self._lock:
             bucket = self._live.get((tenant_id, camera_id, stream_id), {})
             return list(bucket.values())
+
+    def find_live(
+        self,
+        tenant_id: str,
+        *,
+        camera_id: Optional[str] = None,
+        stream_id: Optional[str] = None,
+        identity_id: Optional[str] = None,
+    ) -> List[TrackHistoryRecord]:
+        """Open records matching a query, across cameras and streams.
+
+        ⚠️ The query form of `live_records`, which needs a camera and a stream. An investigation asks
+        "what happened in this analysis" without knowing which cameras it touched, and a caller forced
+        to enumerate cameras would quietly answer for the ones it happened to know about.
+
+        ⚠️ **Open records are not finished ones.** Every interval they carry is still running, so any
+        duration derived from them is a lower bound. The caller reports how many were live for exactly
+        that reason.
+        """
+        with self._lock:
+            out: List[TrackHistoryRecord] = []
+            for (tenant, camera, stream), bucket in self._live.items():
+                if tenant != tenant_id:
+                    continue
+                if camera_id is not None and camera != camera_id:
+                    continue
+                if stream_id is not None and stream != stream_id:
+                    continue
+                for identity, record in bucket.items():
+                    if identity_id is None or identity == identity_id:
+                        out.append(record)
+            return out
 
     def forget_tenant(self, tenant_id: str) -> int:
         """⛔ Erasure covers the live buffer too. A tenant deletion that cleared the archive and left

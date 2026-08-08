@@ -410,6 +410,66 @@ export function registerAssignmentMetrics(
  * an operator made, a dropped frame is a symptom of load. One series covering both would make a
  * correctly configured deployment and an overloaded one produce the same graph.
  */
+/**
+ * Zone evaluation, made measurable (P-8 Phase 7 §Zones, extended by ADR-0053).
+ *
+ * ⛔ **The reading this exists for is `inside_total > 0` with `echoes_sent_total == 0`.** That is
+ * zones resolving correctly on every frame and the behaviour layer never hearing about it — which is
+ * exactly the state slice 2.2 shipped: dwell, visits and transitions all inert, every dashboard
+ * healthy, and no number anywhere that said so.
+ *
+ * ⚠️ These were computed from P-8 Phase 7 onward and published nowhere. The sink's own comment
+ * promised an operator could tell "no zones are configured" from "the plan has not reached this
+ * process yet", and nothing carried either answer out. Found while verifying the echo.
+ */
+export function registerZoneMetrics(
+  registry: Registry,
+  provider: { stats(): FrameSinkStats },
+): void {
+  const series: Array<[string, string, (s: FrameSinkStats) => number]> = [
+    [
+      'media_zones_loaded',
+      'Zones this enforcement point currently holds, across every camera',
+      (s) => s.zones.zonesLoaded,
+    ],
+    [
+      'media_zones_cameras_with_zones',
+      'Cameras with at least one enabled zone',
+      (s) => s.zones.camerasWithZones,
+    ],
+    [
+      'media_zones_detections_tested_total',
+      'Detections tested against at least one zone',
+      (s) => s.zones.detectionsTested,
+    ],
+    [
+      'media_zones_inside_total',
+      'Detection-zone memberships found (a subject in two zones counts twice)',
+      (s) => s.zones.insideDetections,
+    ],
+    [
+      'media_zones_echoes_sent_total',
+      'Membership decisions carried back to the runtime so behaviour primitives can read them',
+      (s) => s.zones.zoneEchoesSent ?? 0,
+    ],
+    [
+      'media_zones_echoes_dropped_total',
+      'Membership decisions replaced before they could be sent (the drop rate of the zone join)',
+      (s) => s.zones.zoneEchoesDropped ?? 0,
+    ],
+  ];
+  for (const [name, help, read] of series) {
+    new Gauge({
+      name,
+      help,
+      registers: [registry],
+      collect() {
+        this.set(read(provider.stats()));
+      },
+    });
+  }
+}
+
 export function registerAssignmentSkipMetrics(
   registry: Registry,
   provider: { stats(): FrameSinkStats },

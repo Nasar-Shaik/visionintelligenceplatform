@@ -43,9 +43,21 @@ from runtime_tracking import RuntimeTracker, TrackingOptions  # noqa: E402
 from track_history import InMemoryTrackHistoryStore, TrackHistoryRecorder  # noqa: E402
 
 
-def point(identity, at, x, y, *, w=0.08, h=0.2, label="person", zones=()):
+def point(identity, at, x, y, *, w=0.08, h=0.2, label="person", zones=(), settled=None):
+    """One observation.
+
+    ⚠️ `settled` defaults to "decided" — these fixtures describe scenes where somebody resolved the
+    zones, so `zones=()` means *outside every zone* rather than *nobody has said yet*. Pass
+    `settled=False` to write the second case, which is what the live path looks like before the
+    membership echo comes back (ADR-0053).
+    """
     return bp.TrackPoint(
-        identity_id=identity, at_seconds=at, bbox=(x, y, w, h), label=label, zone_ids=tuple(zones)
+        identity_id=identity,
+        at_seconds=at,
+        bbox=(x, y, w, h),
+        label=label,
+        zone_ids=tuple(zones),
+        zones_settled=True if settled is None else settled,
     )
 
 
@@ -233,7 +245,25 @@ class ZoneModuleTests(unittest.TestCase):
             zone_membership_present=True,
             at_seconds=2.0,
         )
-        self.assertEqual(output.frame_labels[0].attributes, {"zoneId": "z_till", "count": 2})
+        self.assertEqual(
+            output.frame_labels[0].attributes,
+            # ⚠️ `atSeconds` is the latest instant whose membership has been DECIDED, not "now".
+            # Membership comes back a frame late (ADR-0053), so counting at "now" would report an
+            # empty zone on every frame of a busy shop.
+            {"zoneId": "z_till", "count": 2, "atSeconds": 2.0},
+        )
+
+    def test_occupancy_is_not_reported_at_all_while_membership_is_undecided(self):
+        """⛔ No label, rather than a confident zero. A zone whose membership has not come back yet
+        must not read as a zone nobody is standing in."""
+        subjects = {"idn_1": [point("idn_1", 2.0, 0.5, 0.5, zones=(), settled=False)]}
+        output = self.analyse(
+            subjects=subjects,
+            zones=(bp.MembershipZone("z_till"),),
+            zone_membership_present=True,
+            at_seconds=2.0,
+        )
+        self.assertEqual(list(output.frame_labels), [])
 
     def test_a_polygon_zone_agrees_with_the_runtime_zone_engine(self):
         """⚠️ Delegated, not reimplemented. Two ray-casts that must agree is a defect waiting for a
@@ -287,9 +317,22 @@ class RelationalModuleTests(unittest.TestCase):
         self.assertEqual(output.frame_labels[0].label, "occupancy")
         self.assertEqual(output.frame_labels[0].attributes["count"], 6)
 
-    def test_an_empty_scene_reports_an_occupancy_of_zero_and_no_instances(self):
+    def test_a_stream_with_no_subjects_at_all_states_no_occupancy(self):
+        """⛔ A defect slice 2.2 shipped and a slice 2.3 test found: this reported `count: 0`.
+
+        A stream nothing has ever been seen on is not a room with nobody in it — the camera may be
+        down, the stage may never have run, the analysis may not have started. A confident zero makes
+        all of those look like an empty shop (ADR-0039).
+        """
         output = self.analyse(at_seconds=1.0)
         self.assertEqual(list(output.instances), [])
+        self.assertEqual(list(output.frame_labels), [])
+
+    def test_zero_is_reported_once_there_are_subjects_to_count(self):
+        """⚠️ The other half, and the reason this is not simply "never report zero". Subjects exist
+        and none was present at this instant — that is a measurement, and it must read as one."""
+        subjects = {"idn_1": [point("idn_1", 0.0, 0.5, 0.5)]}
+        output = self.analyse(subjects=subjects, at_seconds=99.0)
         self.assertEqual(output.frame_labels[0].attributes["count"], 0)
 
     def test_the_pairwise_scan_is_capped_and_says_so(self):

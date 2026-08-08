@@ -1,7 +1,19 @@
 /**
- * Behaviour-layer deployment verification (P-11 slice 2.2).
+ * Behaviour-layer deployment verification (P-11 slices 2.2 and 2.3).
  *
- *   node tools/validation/behaviour.mjs --clip .soak-real.mp4 [--fps 2] [--restart] [--out f.json]
+ *   node tools/validation/behaviour.mjs --clip .soak-real.mp4 [--fps 2] [--restart] [--zones] [--out f.json]
+ *
+ * ### ⭐ `--zones` is what proves slice 2.3, and it needs a real zone on a real camera
+ *
+ * Slice 2.2 shipped the zone primitives and measured them never running: membership is resolved one
+ * hop after `/infer` answers, so the runtime never saw a zone. ADR-0053 sends it back on the next
+ * frame. **That join cannot be verified without an operator-drawn polygon in the control plane**, a
+ * plan poll carrying it to media, a frame resolving against it, and the echo travelling back — five
+ * components, none of which a unit test can stand up. So this tool draws the zone itself, waits for
+ * the plan, runs the footage, and then asserts the runtime says `present` rather than `absent`.
+ *
+ * ⚠️ The zones it creates are named `verification-*` and are deleted on the way out, including on
+ * failure. A zone left behind would silently change what the next run measures.
  *
  * ### ⚠️ What this proves that no unit test can
  *
@@ -54,8 +66,13 @@ const CLIP = String(flag('clip', '.soak-real.mp4'));
 const CAMERA = String(flag('camera', process.env.VIP_CAMERA ?? 'cam_4b8cbcbab9ec4685821b35a01c52efd2'));
 const FPS = Number(flag('fps', 2));
 const RESTART = flag('restart', false) === true;
+const ZONES = flag('zones', false) === true;
+const LIVE = flag('live', false) === true;
 const OUT = flag('out', null);
 const TIMEOUT_MS = Number(flag('timeout', 900_000));
+
+/** How long to wait for a drawn zone to reach the enforcement point. Media polls the plan every 5 s. */
+const PLAN_POLL_MS = 20_000;
 
 /** COCO classes the Behaviour Engine's first capability actually needs. */
 const WANTED = ['person', 'bottle', 'cup', 'wine glass', 'backpack', 'handbag', 'suitcase'];
@@ -102,6 +119,64 @@ async function api(path, init = {}, retry = true) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* ── zones (slice 2.3) ─────────────────────────────────────────────────────────────────────────── */
+
+/** ⚠️ `Point2D` is a **tuple**, not `{x, y}` — the geometry layer stores pairs. */
+const rect = (x, y, w, h) => ({
+  points: [
+    [x, y],
+    [x + w, y],
+    [x + w, y + h],
+    [x, y + h],
+  ],
+});
+
+/**
+ * Draw the zones this run needs, and remove any left by a previous one.
+ *
+ * ⚠️ **Two zones, not one, and the shapes are chosen rather than convenient.** `verification-frame`
+ * spans the whole frame so *any* subject produces a dwell — which is what makes a `zoneMembership:
+ * absent` result unambiguous rather than "maybe nobody stood in the right place". `verification-left`
+ * covers the left half so a subject who crosses produces a real entry and a real exit, which is the
+ * only way `zoneEntry`/`zoneExit` get exercised on real footage.
+ */
+async function drawZones() {
+  await removeZones();
+  const made = [];
+  for (const [name, geometry] of [
+    ['verification-frame', rect(0, 0, 1, 1)],
+    ['verification-left', rect(0, 0, 0.5, 1)],
+  ]) {
+    const created = await api('/api/camera/zones', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ cameraId: CAMERA, name, kind: 'area', shape: 'polygon', geometry, enabled: true }),
+    });
+    if (created.status !== 201) {
+      throw new Error(`zone ${name}: HTTP ${created.status} ${JSON.stringify(created.body).slice(0, 300)}`);
+    }
+    made.push({ zoneId: created.body.data.id, name, version: created.body.data.version });
+  }
+  /* ⚠️ Waited for, not assumed. Media polls the assignment plan every 5 s, so a zone drawn and
+   * immediately used would be resolved against nothing — and the run would report `absent` for a
+   * reason that has nothing to do with the code under test. */
+  await sleep(PLAN_POLL_MS);
+  return made;
+}
+
+async function removeZones() {
+  const listed = await api(`/api/camera/zones?cameraId=${encodeURIComponent(CAMERA)}`);
+  const zones = listed.body?.data ?? [];
+  let removed = 0;
+  for (const zone of Array.isArray(zones) ? zones : []) {
+    if (typeof zone?.name === 'string' && zone.name.startsWith('verification-')) {
+      const gone = await api(`/api/camera/zones/${encodeURIComponent(zone.id)}`, { method: 'DELETE' });
+      if (gone.status < 300) removed += 1;
+    }
+  }
+  return removed;
+}
 
 /* ── the run ───────────────────────────────────────────────────────────────────────────────────── */
 
@@ -219,6 +294,204 @@ async function runtimeState() {
   };
 }
 
+/**
+ * The zone join, the scene carrier and the two read APIs (slice 2.3).
+ *
+ * ⛔ **The reading that matters is `insideDetections > 0` with `zoneEchoesSent === 0`** — zones
+ * resolving correctly and the behaviour layer never hearing about it, which is exactly the state
+ * slice 2.2 shipped while every dashboard looked healthy.
+ */
+async function slice23(sessionId) {
+  const [behaviour, primitives, timeline, tracking] = await Promise.all([
+    api('/api/behaviour'),
+    api(`/api/behaviour/primitives?streamId=${encodeURIComponent(sessionId)}`),
+    api(`/api/behaviour/timeline?streamId=${encodeURIComponent(sessionId)}`),
+    api('/api/tracking'),
+  ]);
+
+  const stats = behaviour.body?.data?.stats ?? {};
+  const entries = timeline.body?.data?.entries ?? [];
+  const kinds = new Map();
+  for (const entry of entries) kinds.set(entry.kind, (kinds.get(entry.kind) ?? 0) + 1);
+
+  const identities = primitives.body?.data?.primitives?.identities ?? {};
+  const zoneIdentities = Object.values(identities).filter((p) => p.zone !== undefined);
+  const dwells = zoneIdentities
+    .flatMap((p) => Object.entries(p.zone?.zones ?? {}))
+    .map(([zoneId, z]) => ({ zoneId, dwellSeconds: z.dwellSeconds, visits: z.visits }));
+
+  return {
+    zoneMembership: stats.zoneMembership ?? null,
+    zoneAnnotationsApplied: stats.zoneAnnotationsApplied ?? null,
+    zoneAnnotationsMissed: stats.zoneAnnotationsMissed ?? null,
+    sceneObservations: stats.sceneObservations ?? null,
+    sceneObservationsDropped: stats.sceneObservationsDropped ?? null,
+    /* Media's own view of the join, from the other end of the wire. */
+    zoneEvaluation: tracking.body?.data?.zones ?? null,
+    primitives: {
+      httpStatus: primitives.status,
+      sources: primitives.body?.data?.sources ?? null,
+      identities: Object.keys(identities).length,
+      identitiesWithZoneFacts: zoneIdentities.length,
+      dwells: dwells.slice(0, 8),
+      zoneMembership: primitives.body?.data?.primitives?.zoneMembership ?? null,
+      observedIntervalSeconds: primitives.body?.data?.primitives?.observedIntervalSeconds ?? null,
+      sceneObservations: (primitives.body?.data?.primitives?.scene ?? []).length,
+      moduleFailures: primitives.body?.data?.primitives?.moduleFailures ?? null,
+    },
+    timeline: {
+      httpStatus: timeline.status,
+      entries: entries.length,
+      truncated: timeline.body?.data?.truncated ?? null,
+      kinds: Object.fromEntries([...kinds].sort((a, b) => b[1] - a[1])),
+      declaredKinds: timeline.body?.data?.kinds ?? [],
+      /* ⚠️ Three real sentences, quoted verbatim into the report. A generated explanation nobody
+       * ever reads is how an intent word gets into one. */
+      sample: entries.slice(0, 3).map((e) => e.summary),
+      /* ⛔ Every entry must point at a frame an investigator can seek to. */
+      withoutEvidence: entries.filter((e) => e.evidence?.frameIndex === undefined).length,
+    },
+  };
+}
+
+/* ── the live path (slice 2.3) ─────────────────────────────────────────────────────────────────── */
+
+/**
+ * ⭐ **The same footage down the LIVE path, through `FrameSink.push`.**
+ *
+ * The offline run above uses `FrameSink.deliver`, which awaits every frame. Live cameras use
+ * `push`, which enqueues, drops under back-pressure and may have several frames of one camera in
+ * flight at once. ⛔ That last property is exactly what makes the zone echo hard: the membership
+ * raised for frame *N* can ride on the request for *N+2*, which is why the echo names the frame it
+ * describes. A verification that only ever ran the offline path would never exercise it.
+ *
+ * ⚠️ Frames are cut by ffmpeg **inside the media container**, because the host has none. The clip is
+ * already there — it was uploaded a moment ago — so nothing is copied in.
+ */
+async function liveRun(frames = 40, fps = 4) {
+  const before = await liveCounters();
+
+  const opened = await api(`/api/media/live/${encodeURIComponent(CAMERA)}/open`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ frameRate: fps, agent: 'behaviour-verification' }),
+  });
+  if (opened.status !== 200) {
+    throw new Error(`live open: HTTP ${opened.status} ${JSON.stringify(opened.body).slice(0, 300)}`);
+  }
+
+  /* One JPEG per output frame, at the live rate, straight out of the clip already in the container. */
+  await execFileAsync('docker', ['exec', 'vip-prod-media-1', 'sh', '-c', 'rm -rf /tmp/liveframes && mkdir -p /tmp/liveframes']);
+  await execFileAsync('docker', ['cp', CLIP, 'vip-prod-media-1:/tmp/live.mp4']);
+  await execFileAsync('docker', [
+    'exec',
+    'vip-prod-media-1',
+    'ffmpeg',
+    '-loglevel', 'error',
+    '-i', '/tmp/live.mp4',
+    '-vf', `fps=${String(fps)}`,
+    '-frames:v', String(frames),
+    '-q:v', '4',
+    '/tmp/liveframes/%04d.jpg',
+  ]);
+  const { stdout } = await execFileAsync('docker', [
+    'exec', 'vip-prod-media-1', 'sh', '-c',
+    'for f in /tmp/liveframes/*.jpg; do echo "$(basename "$f") $(base64 -w0 "$f")"; done',
+  ], { maxBuffer: 256 * 1024 * 1024 });
+
+  let accepted = 0;
+  let refused = 0;
+  for (const line of stdout.split('\n').filter(Boolean)) {
+    const image = line.slice(line.indexOf(' ') + 1);
+    const posted = await api(`/api/media/live/${encodeURIComponent(CAMERA)}/frame`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ image, capturedAtMs: Date.now() }),
+    });
+    if (posted.status === 200) accepted += 1;
+    else refused += 1;
+    /* ⚠️ Paced at the declared rate. Firing as fast as the loop allows would exercise the drop
+     * policy rather than the perception path, and the echo would be measured against a queue that a
+     * real camera never produces. */
+    await sleep(Math.round(1000 / fps));
+  }
+
+  await api(`/api/media/live/${encodeURIComponent(CAMERA)}/close`, { method: 'POST' });
+  /* The sweep and the last frames are still in flight — the runtime is push-based here. */
+  await sleep(4000);
+
+  const after = await liveCounters();
+  return {
+    framesPosted: accepted,
+    framesRefused: refused,
+    before,
+    after,
+    /* ⛔ Deltas, not absolutes: the offline run left counters behind, and an absolute reading here
+     * would credit this stage with work the previous one did. */
+    delta: {
+      behaviourFrames: after.behaviourFrames - before.behaviourFrames,
+      subjectsStamped: after.subjectsStamped - before.subjectsStamped,
+      zoneAnnotationsApplied: after.zoneAnnotationsApplied - before.zoneAnnotationsApplied,
+      zoneAnnotationsMissed: after.zoneAnnotationsMissed - before.zoneAnnotationsMissed,
+      sceneObservations: after.sceneObservations - before.sceneObservations,
+      zoneEchoesSent: after.zoneEchoesSent - before.zoneEchoesSent,
+      zoneEchoesDropped: after.zoneEchoesDropped - before.zoneEchoesDropped,
+    },
+  };
+}
+
+/** The counters both ends of the join publish, read off the built containers. */
+async function liveCounters() {
+  const [runtime, media] = await Promise.all([runtimeMetrics(), mediaMetrics()]);
+  return {
+    behaviourFrames: runtime.inference_behaviour_frames_total ?? 0,
+    subjectsStamped: runtime.inference_behaviour_subjects_stamped_total ?? 0,
+    zoneAnnotationsApplied: runtime.inference_behaviour_zone_annotations_total ?? 0,
+    zoneAnnotationsMissed: runtime.inference_behaviour_zone_annotations_missed_total ?? 0,
+    sceneObservations: runtime.inference_behaviour_scene_observations_total ?? 0,
+    zoneMembership: runtime.inference_behaviour_zone_membership ?? -1,
+    zoneEchoesSent: media.media_zones_echoes_sent_total ?? 0,
+    zoneEchoesDropped: media.media_zones_echoes_dropped_total ?? 0,
+    zonesLoaded: media.media_zones_loaded ?? 0,
+  };
+}
+
+async function mediaMetrics() {
+  const { stdout } = await execFileAsync('docker', [
+    'exec',
+    'vip-prod-media-1',
+    'node',
+    '-e',
+    "fetch('http://127.0.0.1:8083/metrics').then(r=>r.text()).then(t=>console.log(t))",
+  ], { maxBuffer: 32 * 1024 * 1024 });
+  return Object.fromEntries(
+    stdout
+      .split('\n')
+      .filter((line) => line.startsWith('media_zones'))
+      .map((line) => [line.slice(0, line.indexOf('{')), Number(line.slice(line.lastIndexOf(' ') + 1))]),
+  );
+}
+
+/** ⭐ The Prometheus series the new join publishes. Read off the built container, not from code. */
+async function runtimeMetrics() {
+  const { stdout } = await execFileAsync('docker', [
+    'exec',
+    'vip-prod-inference-1',
+    'python3',
+    '-c',
+    "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8085/metrics').read().decode())",
+  ]);
+  const wanted = /^inference_(behaviour|track_history)_/;
+  return Object.fromEntries(
+    stdout
+      .split('\n')
+      .filter((line) => wanted.test(line))
+      .map((line) => line.trim().split(/\s+/))
+      .filter((parts) => parts.length === 2)
+      .map(([name, value]) => [name, Number(value)]),
+  );
+}
+
 /** ⭐ ADR-0051's "resume after restart", proved by replacing the container rather than by asserting. */
 async function restartAndReread() {
   const before = (await runtimeState()).history;
@@ -242,6 +515,8 @@ async function main() {
   if (durable !== true) {
     finding('config', 'the runtime is not persisting track history — INFERENCE_TRACK_HISTORY_DIR is unset');
   }
+
+  if (ZONES) report.stages.zones = await drawZones();
 
   const t = Date.now();
   const { analysisId, sessionId, session } = await runAnalysis();
@@ -272,6 +547,59 @@ async function main() {
     finding('functional-bug', 'no event carried behaviour attributes — the layer did not survive the wire');
   }
 
+  report.stages.slice23 = await slice23(sessionId);
+  report.stages.metrics = await runtimeMetrics().catch((err) => ({ error: String(err).slice(0, 200) }));
+
+  const s = report.stages.slice23;
+  if (ZONES) {
+    if (s.zoneMembership !== 'present') {
+      finding(
+        'functional-bug',
+        `zones were drawn and the runtime reports zoneMembership='${String(s.zoneMembership)}' — the ADR-0053 echo did not arrive`,
+      );
+    }
+    if ((s.zoneEvaluation?.insideDetections ?? 0) > 0 && (s.zoneEvaluation?.zoneEchoesSent ?? 0) === 0) {
+      finding('functional-bug', 'media resolved memberships and echoed none — the join is broken at the sink');
+    }
+    if (s.primitives.identitiesWithZoneFacts === 0 && d.events > 0) {
+      finding('functional-bug', 'no identity carried a zone fact after a run with zones drawn');
+    }
+  }
+  if (s.primitives.httpStatus !== 200) finding('functional-bug', `behaviour primitives read: HTTP ${String(s.primitives.httpStatus)}`);
+  if (s.timeline.httpStatus !== 200) finding('functional-bug', `behaviour timeline read: HTTP ${String(s.timeline.httpStatus)}`);
+  if (s.timeline.withoutEvidence > 0) {
+    finding('functional-bug', `${String(s.timeline.withoutEvidence)} timeline entr(ies) cite no frame`);
+  }
+  if (Object.keys(s.primitives.moduleFailures ?? {}).length > 0) {
+    finding('functional-bug', `a primitive module failed on the read path: ${JSON.stringify(s.primitives.moduleFailures)}`);
+  }
+  if (d.events > 0 && s.timeline.entries === 0) {
+    finding('functional-bug', 'the run produced events and an empty timeline');
+  }
+  /* ⛔ The carrier, checked on the built image rather than in a test. Zero here with subjects present
+   * means `DetectionResult.scene` never left the runtime. */
+  if (d.events > 0 && (s.sceneObservations ?? 0) === 0) {
+    finding('functional-bug', 'no scene observation was put on any frame — the ADR-0054 carrier is inert');
+  }
+
+  if (LIVE) {
+    report.stages.live = await liveRun();
+    const l = report.stages.live;
+    if (l.framesPosted === 0) finding('functional-bug', 'the live path accepted no frames at all');
+    if (l.delta.behaviourFrames === 0) {
+      finding('functional-bug', 'the behaviour stage never ran on the live path — it is offline-only');
+    }
+    if (ZONES && l.delta.zoneEchoesSent === 0) {
+      finding('functional-bug', 'no zone membership was echoed back on the live path');
+    }
+    if (ZONES && l.delta.zoneAnnotationsApplied === 0) {
+      finding('functional-bug', 'live zone memberships were echoed and none was applied to a movement path');
+    }
+    if (l.delta.sceneObservations === 0 && l.delta.subjectsStamped > 0) {
+      finding('functional-bug', 'the live path stamped subjects and produced no scene observation');
+    }
+  }
+
   if (RESTART) report.stages.restart = await restartAndReread();
 
   report.finishedAt = new Date().toISOString();
@@ -281,6 +609,11 @@ main()
   .catch((err) => {
     report.error = err instanceof Error ? err.message : String(err);
     finding('error', report.error);
+  })
+  /* ⚠️ Removed on the way out **including after a failure**. A verification zone left on a camera
+   * silently changes what the next run measures, and the next run is the one somebody trusts. */
+  .then(async () => {
+    if (ZONES) report.stages.zonesRemoved = await removeZones().catch(() => null);
   })
   .finally(() => {
     const text = JSON.stringify(report, null, 2);

@@ -72,6 +72,9 @@ describe('P-8.6 · the assignment gate', () => {
       profileId: 'person-tracking',
       /* P-8 Phase 7 — the camera's zones ride on the decision. Empty for a camera with none. */
       zones: [],
+      /* ADR-0053 — and so does the version of them, so a stored movement path can name the
+       * polygons it was scored against. `0` is the contract's own default for a plan with none. */
+      zoneVersion: 0,
     });
     expect(gate.decide(TENANT, 'cam2')).toEqual({ deliver: false, reason: 'unassigned' });
     expect(gate.decide('tnt_b', 'cam1')).toEqual({ deliver: false, reason: 'unassigned' });

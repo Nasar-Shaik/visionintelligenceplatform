@@ -50,6 +50,14 @@ export type GateDecision =
        * not exist when it was captured. Taking them here binds the geometry to the frame.
        */
       zones: readonly PlanZone[];
+      /**
+       * The version of that zone set (ADR-0053).
+       *
+       * ⚠️ Carried alongside the geometry for the same reason the geometry is carried: it describes
+       * the frame being sent. It travels back to the runtime with the resolved membership so a stored
+       * movement path can name the polygons it was scored against.
+       */
+      zoneVersion: number;
     }
   | {
       deliver: false;
@@ -185,6 +193,9 @@ export class AssignmentGate {
       profileId: held.entry.profileId,
       /* ⚠️ `?? []` — a plan from a control plane older than P-8 Phase 7 carries no zones. */
       zones: held.entry.zones ?? [],
+      /* ⚠️ `?? 0` for the same reason: an older plan carries no zone version, and 0 is the contract's
+       * own default rather than a value invented here. */
+      zoneVersion: held.entry.zoneVersion ?? 0,
     };
   }
 

@@ -197,6 +197,11 @@ class DefaultResultTranslator:
             inference_ms=inference_ms,
             at=at,
             detections=identified,
+            # ⭐ The frame-level statements a stage appended on the way past (ADR-0054). Read off the
+            # context rather than passed as an argument: `ResultTranslator` is a Protocol with three
+            # implementations, and widening its signature would have made a carrier out of a stage
+            # boundary. The context already reaches everything.
+            scene=list(ctx.scene),
             correlation_id=ctx.correlation_id,
             frame_latency_ms=frame_latency_ms(captured_at, at),
             preprocessing_version=preprocessing_version,

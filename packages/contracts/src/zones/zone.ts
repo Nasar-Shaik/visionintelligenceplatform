@@ -455,5 +455,23 @@ export const ZoneEvaluationStats = z.object({
   insideDetections: z.number().int().nonnegative(),
   /** Mean wall-clock cost of resolving one frame's detections, or `null` before any were tested. */
   averageResolveMicros: z.number().nonnegative().nullable(),
+  /**
+   * Memberships carried back to the runtime so the behaviour primitives can read them (ADR-0053).
+   *
+   * ⛔ **The reading that matters is `insideDetections > 0` with `zoneEchoesSent === 0`.** That is
+   * zones resolving correctly and the behaviour layer never hearing about it — exactly the state
+   * slice 2.2 shipped, which produced no zone facts at all while every dashboard looked healthy.
+   *
+   * ⚠️ Optional so an older deployment's stats stay valid; absent means "this build did not measure
+   * it", which is a different answer from zero.
+   */
+  zoneEchoesSent: z.number().int().nonnegative().optional(),
+  /**
+   * Echoes replaced before they could be sent — the drop rate of the zone join.
+   *
+   * ⚠️ Non-zero is normal on a busy live camera (frames are answered faster than the next is sent)
+   * and should be zero on an offline analysis, which awaits every frame in order.
+   */
+  zoneEchoesDropped: z.number().int().nonnegative().optional(),
 });
 export type ZoneEvaluationStats = z.infer<typeof ZoneEvaluationStats>;

@@ -271,6 +271,24 @@ class FrameLabel:
             out["span"] = [int(self.span[0]), int(self.span[1])]
         return out
 
+    def to_scene_observation(self) -> dict:
+        """The wire form for `DetectionResult.scene` (ADR-0054).
+
+        ⚠️ `label` becomes `kind`, and the rename is the point rather than a slip. Inside the runtime
+        this *labels a frame*, alongside the labels a model puts on boxes; on the wire it *observes a
+        scene*, and a consumer holding a document with `label` at two nesting depths meaning two
+        different things would have to learn which is which. One shape, spelled once, here — the
+        alternative is each producer inventing its own mapping.
+        """
+        out: dict = {
+            "kind": self.label,
+            "confidence": round(float(self.confidence), 6),
+            "attributes": dict(self.attributes),
+        }
+        if self.span is not None:
+            out["span"] = [int(self.span[0]), int(self.span[1])]
+        return out
+
 
 @dataclass(frozen=True)
 class PerceptionOutput:

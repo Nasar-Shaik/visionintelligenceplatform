@@ -211,16 +211,29 @@ class ZoneModule(_BehaviourModule):
                 _subject_instance(identity, points, {"zone": {"zones": zones_payload, "transitions": transitions}})
             )
 
-        labels = [
-            FrameLabel(
-                "occupancy",
-                attributes={
-                    "zoneId": zone.zone_id,
-                    "count": bp.occupancy_count(dict(prepared.subjects), at_seconds=prepared.at_seconds, zone=zone),
-                },
-            )
-            for zone in prepared.zones
-        ]
+        # ⛔ Counted at the latest instant whose membership has been DECIDED, not at "now".
+        #
+        # Membership comes back a frame after the box (ADR-0053), so at `prepared.at_seconds` every
+        # subject's membership is still unknown — and `holds` answers `False` for unknown. Counting
+        # there would report an empty zone on every frame of a busy shop, which is the most plausible
+        # wrong number this module could produce. `None` when nothing has been decided yet: no label
+        # at all, rather than a confident zero.
+        settled_at = _last_settled(prepared.subjects)
+        labels = (
+            []
+            if settled_at is None
+            else [
+                FrameLabel(
+                    "occupancy",
+                    attributes={
+                        "zoneId": zone.zone_id,
+                        "count": bp.occupancy_count(dict(prepared.subjects), at_seconds=settled_at, zone=zone),
+                        "atSeconds": round(settled_at, 4),
+                    },
+                )
+                for zone in prepared.zones
+            ]
+        )
         return PerceptionOutput(task=TASK_BEHAVIOUR, instances=instances, frame_labels=labels)
 
 
@@ -264,15 +277,28 @@ class RelationalModule(_BehaviourModule):
             others.sort(key=lambda e: (-float(e["coPresenceSeconds"]), str(e["identityId"])))
             instances.append(_subject_instance(identity, points, {"relational": {"near": others}}))
 
-        return PerceptionOutput(
-            task=TASK_BEHAVIOUR,
-            instances=instances,
-            frame_labels=[
+        # ⛔ No subjects at all ⇒ no occupancy statement, rather than `count: 0`.
+        #
+        # A stream nothing has ever been seen on is not a room with nobody in it: the camera may be
+        # down, the stage may never have run, the analysis may not have started. Publishing a
+        # confident zero makes all of those look like an empty shop, which is the failure ADR-0039
+        # exists to prevent — and this module shipped it in slice 2.2. ⚠️ Zero *is* reported once
+        # there are subjects to count and none of them was present at this instant: that is a
+        # measurement, and the difference between the two is the whole point.
+        labels = (
+            []
+            if not prepared.subjects
+            else [
                 FrameLabel(
                     "occupancy",
                     attributes={"count": bp.occupancy_count(dict(prepared.subjects), at_seconds=prepared.at_seconds)},
                 )
-            ],
+            ]
+        )
+        return PerceptionOutput(
+            task=TASK_BEHAVIOUR,
+            instances=instances,
+            frame_labels=labels,
             attributes={"truncated": truncated, "identitiesConsidered": len(identities)},
         )
 
@@ -354,6 +380,18 @@ def default_behaviour_registry() -> PerceptionRegistry:
     registry = PerceptionRegistry()
     register_behaviour_modules(registry)
     return registry
+
+
+def _last_settled(subjects: Mapping[str, Sequence[bp.TrackPoint]]) -> Optional[float]:
+    """The most recent moment for which zone membership has been decided, or `None`."""
+    latest: Optional[float] = None
+    for points in subjects.values():
+        for point in reversed(points):
+            if point.zones_settled:
+                if latest is None or point.at_seconds > latest:
+                    latest = point.at_seconds
+                break
+    return latest
 
 
 def _distance_at(point: bp.TrackPoint, others: Sequence[bp.TrackPoint], *, tolerance: float = 0.001) -> Optional[float]:

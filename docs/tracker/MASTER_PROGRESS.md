@@ -2,7 +2,7 @@
 
 > **The single canonical dashboard. Read this first to know "where are we."** Update it every working session; keep it terse. Companion files: per-slice reviews in [REVIEW_HISTORY](REVIEW_HISTORY.md), narrative logs in [DAILY_LOG](DAILY_LOG.md). Backlog: [TASK-BOARD](../../tracking/TASK-BOARD.md). Roadmap: [PROJECT_ROADMAP](../project/PROJECT_ROADMAP.md).
 
-_Last updated: 2026-08-08 · Claude_
+_Last updated: 2026-08-09 · Claude_
 
 ## Snapshot
 
@@ -793,6 +793,65 @@ _Last updated: 2026-08-08 · Claude_
   Track B is gated on hardware ([P9_HARDWARE_PROCUREMENT](../project/P9_HARDWARE_PROCUREMENT.md)).
   Docs: [TRACK_A_ACCEPTANCE](../project/P9_TRACK_A_ACCEPTANCE.md),
   [P9_IMPLEMENTATION_PLAN](../project/P9_IMPLEMENTATION_PLAN.md).
+
+- **P-11 · Slice 2.3 · The infrastructure before reasoning ✅ (2026-08-09)** — **The zone gap is
+  closed, scene-level facts have a carrier, and behaviour is inspectable independently of the console
+  and of any rule. Four defects, three of them the same mistake wearing different clothes.**
+  ⭐ **Zone membership returns to the runtime as an *observation*, not as configuration**
+  ([ADR-0053](../adr/ADR-0053-zone-membership-returns-as-an-observation.md)). Slice 2.2 shipped the
+  zone primitives and measured them never running — `inference_behaviour_zone_membership 0` on a
+  deployment with real footage. A polygon test needs the boxes inference produces, so membership is
+  necessarily resolved one hop *after* `/infer` answers. It now travels back on the next request for
+  that camera, under one optional field. ⛔ **The rejected alternative matters as much as the chosen
+  one**: sending the zone *plan* into the runtime would have put a second point-in-polygon engine in
+  the platform, and the first time the two disagreed nobody could have said which was right. What
+  flows is a fact about a frame the runtime itself produced, in the runtime's own vocabulary.
+  ⭐ **`DetectionResult.scene`** ([ADR-0054](../adr/ADR-0054-a-scene-observation-is-not-a-detection.md),
+  schema **1.2**) closes slice 2.2's Finding 1. The carrier turned out to already exist:
+  `FrameContext` is built once per `/infer` and threaded through every stage *and* the translator, so
+  a stage appends and the translator drains — no new stage, no widened protocol, no side channel.
+  ⭐ **Two read APIs that store nothing.** `GET /api/behaviour/primitives` and
+  `GET /api/behaviour/timeline` recompute from the movement paths ADR-0051 made durable, and
+  `primitives_for` runs **the same four modules the live path runs** — so Layer 2 cannot drift into
+  two implementations. The timeline's `kind` vocabulary is closed, and an executable test asserts no
+  kind and **no generated sentence** contains a word that names an intent.
+  ⚠️ **ADR-0051 was amended, not overruled.** Its refusal to persist membership rested on
+  "recomputed on re-read" — a step that does not exist, because recomputing needs polygons the
+  runtime deliberately does not hold. Membership was not recomputed; it was lost, and every completed
+  analysis answered the zone question with nothing. It is stored now **because** the record names the
+  `zoneVersion` that decided it: a polygon later found to be drawn two metres off does not silently
+  invalidate history.
+  ⛔ **The four defects, and three of them are one lesson.** *The ambiguity between "no" and "not
+  yet" is where the plausible wrong numbers live.* (1) `zoneIds: []` (decided: inside nothing) versus
+  no key (undecided) — collapsing them ends a zone visit and emits a `left` transition **on every
+  frame** for a subject standing still. (2) `occupancy: 0` on a stream with no subjects at all made a
+  camera that is down, a stage that never ran and an empty shop render identically — **slice 2.2
+  shipped this**, and a slice 2.3 test found it. (3) The echo joined on the runtime's private
+  per-camera frame counter rather than the caller's `frame.seq`, so it matched the previous frame
+  every time — a dwell short by exactly one interval, on a graph nobody would have questioned; history
+  points now store `ctx.frame_number` and `perception-boundary.mjs` §G asserts it. (4) Two upstreams
+  answered one question: on the echo channel the older attribute path settled every frame "outside"
+  one frame before the echo said otherwise. The channels are now mutually exclusive per stream.
+  ⚠️ **Two more found by looking rather than by failing.** `ZoneEvaluationStats` had been computed
+  since P-8 Phase 7 and published **nowhere** — now `media_zones_*`, where the reading that matters is
+  `inside_total > 0` with `echoes_sent_total == 0`. And on real footage the timeline printed instants
+  as `1.77109e+09 s`, because a recording stamped with wall-clock capture times has footage seconds in
+  the billions: durations right, every instant unreadable. Instants are now offsets into the run, with
+  the absolute footage second beside them.
+  **Verified on the deployed stack**, with two operator-drawn zones on a real camera, over the
+  uploaded recording **and** over the live `FrameSink.push` path — which is the one that can have
+  several frames of a camera in flight at once, and therefore the one the frame-sequence join exists
+  for. `zoneMembership: present` on both · 23 and 25 memberships applied · **0 and 1 missed** (the
+  missed one is the design: the last frame of a stream has no successor to carry its echo) · 37 and 40
+  echoes sent, **0 dropped** · dwell 15.0 s over 1 visit and 6.5 s over **2** visits · 3 zone entries,
+  2 exits · 191 scene observations · 98 durable records surviving a container replacement.
+  **Gates:** 1301 Python tests (54 new) · repo gate **70/70** · 70 schemas · perception boundary
+  §A–§G, with §G proven able to fail · browser certification **50 passed**.
+  **Remaining:** no console surface reads any of it — an investigator uses `curl`, not the product.
+  Docs: [ADR-0053](../adr/ADR-0053-zone-membership-returns-as-an-observation.md),
+  [ADR-0054](../adr/ADR-0054-a-scene-observation-is-not-a-detection.md),
+  [BEHAVIOUR_ENGINE §5b–§5c](../architecture/BEHAVIOUR_ENGINE.md),
+  [PHASE2_PLAN §3b](../architecture/PHASE2_PLAN.md).
 
 - **P-11 · Slice 2.2 · The behaviour layer, wired ✅ (2026-08-08)** — **Layer 2 runs on the live
   production path, durable track history is real, and multi-class detection is proved on real

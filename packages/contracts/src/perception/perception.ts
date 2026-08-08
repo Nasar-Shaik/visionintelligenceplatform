@@ -71,6 +71,54 @@ export const Detection = z.object({
 export type Detection = z.infer<typeof Detection>;
 
 /**
+ * One subject's zone membership on one already-analysed frame (ADR-0053).
+ *
+ * ⚠️ Keyed by `identityId`, never `trackingId` — the accumulating primitives that read this group by
+ * identity, and a membership attributed to a track id would split one person's dwell in two the first
+ * time they walked behind a display (ADR-0038, ADR-0041).
+ */
+export const ZoneMembershipSubject = z.object({
+  identityId: z.string().min(1).max(120),
+  /** The zones this subject's floor-contact point was inside. Never empty — absence is absence. */
+  zoneIds: z.array(z.string().min(1).max(120)).min(1).max(32),
+});
+export type ZoneMembershipSubject = z.infer<typeof ZoneMembershipSubject>;
+
+/**
+ * Zone membership carried back to the runtime for a frame it already answered (ADR-0053).
+ *
+ * ⛔ **`frameSeq` is load-bearing, not decoration.** With more than one request in flight per camera,
+ * the echo raised for frame *N* may ride on the request for frame *N+2*; the runtime attaches it to
+ * the history point with this sequence and counts a miss when there is none. Attaching it to
+ * "whichever point is newest" would give one frame's zones to another — a wrong answer shaped exactly
+ * like a right one.
+ */
+export const ZoneMembershipEcho = z.object({
+  /** The frame these memberships describe — NOT the frame carrying them. */
+  frameSeq: z.number().int().nonnegative(),
+  /**
+   * ⭐ **Which polygon set answered** — `AssignmentPlanEntry.zoneVersion`.
+   *
+   * Recorded with the membership so an archive can say *which* geometry produced it. That is what
+   * makes storing membership safe (ADR-0053, amending ADR-0051): a polygon later found to be drawn
+   * two metres off does not silently invalidate history, because history names the version it used
+   * and re-resolving becomes a deliberate act with a visible version change.
+   */
+  zoneVersion: z.number().int().nonnegative().default(0),
+  /**
+   * ⛔ **May be empty, and empty is a real answer**: "for this frame, nobody was inside any zone".
+   *
+   * The echo is sent whenever the camera has zones at all, so its presence settles the whole frame.
+   * Without that, "nobody was in a zone" and "the membership never arrived" are the same absence —
+   * and a dwell computed over the second is a lower bound nobody labelled as one.
+   *
+   * Bounded: a frame with more simultaneous identities than this has a perception problem.
+   */
+  subjects: z.array(ZoneMembershipSubject).max(64),
+});
+export type ZoneMembershipEcho = z.infer<typeof ZoneMembershipEcho>;
+
+/**
  * Reference to the input frame — the wire form of the runtime's `FrameContext`. It carries the full
  * request context (camera/stream/timing) so every capability, event, and log can be correlated
  * without re-plumbing later (multi-camera, multi-tenant, analytics). Pixels travel inline (base64)
@@ -94,6 +142,22 @@ export const FrameRef = z.object({
   source: z.string().optional(),
   /** Correlation id threading the frame → detections → events → incident chain. */
   correlationId: z.string().min(1).optional(),
+  /**
+   * ⭐ **Zone membership for a frame the runtime already answered** (ADR-0053, additive).
+   *
+   * A polygon test needs the boxes inference produces, so membership is necessarily resolved *after*
+   * `/infer` returns — one hop too late for the behaviour primitives that read it. This field carries
+   * it back on the **next** request, so the runtime can attach it to the track history it already
+   * holds.
+   *
+   * ⚠️ **This is an observation, not configuration.** It carries `zoneId` strings the runtime itself
+   * has no opinion about, never polygons — which is what keeps exactly one point-in-polygon engine in
+   * the platform. See ADR-0053 for why a second one is the failure being avoided.
+   *
+   * ⚠️ Absent on the first frame of a stream, on any frame whose predecessor was dropped, and on
+   * every deployment with no zones drawn.
+   */
+  zoneMembership: ZoneMembershipEcho.optional(),
 });
 export type FrameRef = z.infer<typeof FrameRef>;
 
@@ -143,8 +207,48 @@ export type ModelBinding = z.infer<typeof ModelBinding>;
  * `1.1` because the frozen v1.0 contract gained optional fields in P-8 Phase 3 (`detectionId`,
  * `frameLatencyMs`, `model.id`, `schemaVersion`). Additive only; a breaking change needs an ADR and
  * a major bump (ED-0039).
+ *
+ * `1.2` adds `scene` (ADR-0054) — the first statement this contract can make about a frame rather
+ * than about a rectangle in it.
  */
-export const DETECTION_RESULT_SCHEMA_VERSION = '1.1';
+export const DETECTION_RESULT_SCHEMA_VERSION = '1.2';
+
+/**
+ * ⭐ **A statement about the frame, not about a rectangle in it** (ADR-0054, additive).
+ *
+ * The runtime's `FrameLabel` on the wire. "Six identities present", "an object changed hands at
+ * 41.2 s" and "the queue is six long" are all facts no per-detection record can hold, and a frame
+ * with **no** detections can still carry one — occupancy 0 is a fact.
+ *
+ * ⛔ **`kind` is domain-neutral, by the same test as every Layer 2 primitive** (ADR-0052): a
+ * hospital, a warehouse and a school must all be able to use it under their own name. `occupancy`,
+ * `density`, `queueLength` and `handover` pass; `shoplifting` does not, and naming an intent here
+ * would put Layer 3 inside the perception contract.
+ */
+export const SceneObservation = z.object({
+  /** What is being stated, e.g. `occupancy` | `handover`. Open vocabulary, closed semantics. */
+  kind: z.string().min(1).max(64),
+  confidence: Confidence.default(1),
+  /** The statement's own fields, e.g. `{ zoneId, count }`. Generic; no industry semantics. */
+  attributes: z.record(z.string(), z.unknown()).default({}),
+  /**
+   * Frame numbers this statement spans, inclusive. Absent means "this frame only".
+   *
+   * ⚠️ Frames, not seconds — the span is a property of the observation window, and footage seconds
+   * belong in `attributes` where their unit can be named.
+   */
+  span: z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative()]).optional(),
+});
+export type SceneObservation = z.infer<typeof SceneObservation>;
+
+/**
+ * How many scene observations one frame may carry.
+ *
+ * ⚠️ Bounded because this rides a frozen contract onto a broker. One occupancy statement per zone
+ * plus a handful of events is single digits in practice; the cap exists so a stage bug becomes a
+ * truncated document rather than an unbounded publish.
+ */
+export const MAX_SCENE_OBSERVATIONS = 64;
 
 export const DetectionResult = z.object({
   /**
@@ -162,6 +266,14 @@ export const DetectionResult = z.object({
   model: ModelBinding,
   frame: z.object({ seq: z.number().int().nonnegative(), capturedAt: IsoDateTime }),
   detections: z.array(Detection).default([]),
+  /**
+   * ⭐ **Frame-level facts** (ADR-0054, additive, schema 1.2). See {@link SceneObservation}.
+   *
+   * ⚠️ Optional and absent — never `[]` — when nothing was said. An empty array and a missing key
+   * would be a third state meaning the same thing, which is how two consumers come to disagree about
+   * what "no scene observations" looks like (the same rule `zoneIds` follows in the zone resolver).
+   */
+  scene: z.array(SceneObservation).max(MAX_SCENE_OBSERVATIONS).optional(),
   /**
    * How the frame was turned into a tensor, as a reproducible fingerprint — implementation version
    * plus the resolved input spec, e.g. `1.0/letterbox-416x416-NCHW-float32-BGR-pad114`.

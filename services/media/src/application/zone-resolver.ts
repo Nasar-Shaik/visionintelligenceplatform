@@ -33,7 +33,12 @@
  * and a consumer that has never heard of zones is unaffected. The events service reads the key back
  * out when it normalises; nothing else in the platform reads it.
  */
-import { pointInPolygon, zoneAnchor, type PlanZone } from '@vip/contracts';
+import {
+  pointInPolygon,
+  zoneAnchor,
+  type PlanZone,
+  type ZoneMembershipEcho,
+} from '@vip/contracts';
 
 /** ⚠️ The tuple form, not the zod schema. `BBox` is exported as a value, so `type BBox` is the schema. */
 type Box = [number, number, number, number];
@@ -105,6 +110,54 @@ export function resolveZones(
     }
   }
   return { tested, inside };
+}
+
+/** The subset of a detection this module needs to build an echo — identity plus what it was given. */
+interface IdentifiedDetection {
+  identityId?: string | undefined;
+  attributes?: Record<string, unknown> | undefined;
+}
+
+/**
+ * ⭐ **The membership, addressed back to the runtime that produced the boxes** (ADR-0053).
+ *
+ * A polygon test needs the boxes inference produces, so this module necessarily runs *after* `/infer`
+ * answers — one hop too late for the behaviour primitives that read zones. This turns what was just
+ * resolved into an observation the caller carries back on the **next** request for the same camera,
+ * where the runtime attaches it to the track history it already holds.
+ *
+ * ⚠️ **`frameSeq` is the frame these memberships describe**, not the frame that will carry them. With
+ * more than one request in flight per camera the two differ, and the runtime matches on this rather
+ * than on "the newest point" for exactly that reason.
+ *
+ * ⚠️ Keyed by `identityId`, never `trackingId` (ADR-0038/0041) — the accumulating primitives that
+ * read this group by identity, and a membership attributed to a track id would split one person's
+ * dwell in two the first time they walked behind a display.
+ *
+ * ⛔ **An empty `subjects` is returned, not suppressed, and that is the load-bearing part.** The echo
+ * is built whenever the camera has zones at all, so its arrival tells the runtime that *this whole
+ * frame* has been decided — the named subjects were inside those zones and every other subject on the
+ * frame was inside none. Suppressing the empty case would make "nobody was in a zone" and "the
+ * membership never arrived" the same absence, and every duration computed across it would be a lower
+ * bound that nothing labelled as one. It is the same rule `resolveZones` follows one level down, read
+ * from the other end.
+ */
+export function membershipEcho(
+  detections: readonly IdentifiedDetection[],
+  frameSeq: number,
+  zoneVersion: number,
+  limit = 64,
+): ZoneMembershipEcho {
+  const subjects: ZoneMembershipEcho['subjects'] = [];
+  for (const detection of detections) {
+    if (subjects.length >= limit) break;
+    const identityId = detection.identityId;
+    if (typeof identityId !== 'string' || identityId === '') continue;
+    const zoneIds = zonesOf(detection.attributes);
+    if (zoneIds.length === 0) continue;
+    subjects.push({ identityId, zoneIds });
+  }
+  return { frameSeq, zoneVersion, subjects };
 }
 
 /**

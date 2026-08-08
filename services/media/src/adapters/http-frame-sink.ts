@@ -23,10 +23,10 @@
  * No retry. A frame is a perishable observation: by the time a retry lands, a newer frame has been
  * dropped to make room for it. Retrying frames trades fresh data for stale data and costs twice.
  */
-import type { PlanZone, ZoneEvaluationStats } from '@vip/contracts';
+import type { PlanZone, ZoneEvaluationStats, ZoneMembershipEcho } from '@vip/contracts';
 import type { Frame, FrameDelivery, FrameSink } from '../application/ports.js';
 import type { AssignmentGate } from '../application/assignment-gate.js';
-import { ResolveTimer, resolveZones } from '../application/zone-resolver.js';
+import { ResolveTimer, resolveZones, membershipEcho } from '../application/zone-resolver.js';
 
 export interface FrameSinkStats {
   /** Frames handed over by the decoder. */
@@ -161,6 +161,8 @@ interface Queued {
    * operator who redraws a zone retroactively changes what happened in the frames already in flight.
    */
   zones: readonly PlanZone[];
+  /** The version of that zone set, carried back to the runtime with the membership (ADR-0053). */
+  zoneVersion: number;
 }
 
 export interface HttpFrameSinkOptions {
@@ -258,6 +260,21 @@ export class HttpFrameSink implements FrameSink {
   #zoneTested = 0;
   /** ⚠️ Memberships, not detections — a subject in two zones counts twice. See `ZoneEvaluationStats`. */
   #zoneInside = 0;
+  /**
+   * ⭐ **The membership waiting to go back to the runtime, per camera** (ADR-0053).
+   *
+   * Resolved after `/infer` answered for frame *N*; attached to the next request for that camera and
+   * cleared. Only the newest is kept: an echo two frames stale describes a frame the runtime may have
+   * already trimmed, and the runtime counts that as a miss rather than guessing.
+   *
+   * ⚠️ Per camera, keyed exactly like the queues. A single shared slot would send one camera's zone
+   * memberships to another camera's stream, where the identity ids would mostly not match and the few
+   * that did would be wrong.
+   */
+  readonly #zoneEcho = new Map<string, ZoneMembershipEcho>();
+  #zoneEchoSent = 0;
+  /** Echoes replaced before they could be sent — the frame-drop rate of the zone join. */
+  #zoneEchoDropped = 0;
   readonly #zoneResolveMicros = new ResolveTimer();
   readonly #byLabel = new Map<string, number>();
   readonly #inferenceMs = new Rolling(200);
@@ -328,6 +345,7 @@ export class HttpFrameSink implements FrameSink {
     let runtimeId: string | null = null;
     /* ⚠️ No gate ⇒ no zones either. Zones arrive on the plan, and the plan arrives through the gate. */
     let zones: readonly PlanZone[] = [];
+    let zoneVersion = 0;
     if (this.#gate !== undefined) {
       const decision = this.#gate.decide(tenantId, cameraId);
       if (!decision.deliver) {
@@ -350,6 +368,7 @@ export class HttpFrameSink implements FrameSink {
       capabilityId = decision.capabilityId;
       runtimeId = decision.runtimeId;
       zones = decision.zones;
+      zoneVersion = decision.zoneVersion;
     }
 
     return {
@@ -361,6 +380,7 @@ export class HttpFrameSink implements FrameSink {
       capabilityId,
       runtimeId,
       zones,
+      zoneVersion,
     };
   }
 
@@ -399,6 +419,10 @@ export class HttpFrameSink implements FrameSink {
   release(tenantId: string, cameraId: string): void {
     const key = `${tenantId}\0${cameraId}`;
     this.#queues.delete(key);
+    /* ⚠️ The pending echo goes with the queue. A membership held across a released assignment would
+     * be delivered into whatever stream that camera starts next — describing a frame from a run that
+     * has ended, against identities that no longer exist. */
+    this.#zoneEcho.delete(key);
     const per = this.#perCameraStats.get(key);
     if (per !== undefined) {
       per.recent.length = 0;
@@ -496,6 +520,8 @@ export class HttpFrameSink implements FrameSink {
       insideDetections: this.#zoneInside,
       /* ⚠️ `null` until something has been tested — never 0. See `ResolveTimer`. */
       averageResolveMicros: this.#zoneResolveMicros.average,
+      zoneEchoesSent: this.#zoneEchoSent,
+      zoneEchoesDropped: this.#zoneEchoDropped,
     };
   }
 
@@ -610,6 +636,18 @@ export class HttpFrameSink implements FrameSink {
        * multi-runtime deployment work: two cameras in the same process, in the same pump, can be
        * analysed by different containers under different profiles.
        */
+      /*
+       * ⭐ **Taken at SEND time, not at push time** (ADR-0053). The zones a queued frame should carry
+       * back are whatever has been resolved by the moment it actually goes — a frame that waited in
+       * the queue should carry the newest membership, not the one that existed when it was admitted.
+       * The opposite of `runtimeUrl` and `item.zones`, and for the opposite reason: those describe
+       * the frame being sent, this describes a frame already answered.
+       */
+      const echo = this.#zoneEcho.get(key);
+      if (echo !== undefined) {
+        this.#zoneEcho.delete(key);
+        this.#zoneEchoSent += 1;
+      }
       const res = await fetch(`${item.runtimeUrl}/infer`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-internal-key': this.#key },
@@ -621,6 +659,7 @@ export class HttpFrameSink implements FrameSink {
             seq: item.frame.seq,
             capturedAt: item.frame.at.toISOString(),
             source: 'media',
+            ...(echo === undefined ? {} : { zoneMembership: echo }),
             /*
              * ⭐ **The session's correlation key, and the one channel the frozen runtime echoes.**
              *
@@ -677,7 +716,7 @@ export class HttpFrameSink implements FrameSink {
          * Taken from the QUEUED ITEM's frame, like the zones and the runtime url — it is a property
          * of the frame that was sent, not of the sink as it stands now.
          */
-        ...this.#record(body, item.zones, item.frame.provenance?.sessionId),
+        ...this.#record(body, item),
       };
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
@@ -699,9 +738,10 @@ export class HttpFrameSink implements FrameSink {
    */
   #record(
     body: string,
-    zones: readonly PlanZone[] = [],
-    analysisSessionId?: string,
+    item: Queued,
   ): { detections: number; runtimeVersion?: string; modelId?: string; executionProvider?: string } {
+    const zones = item.zones;
+    const analysisSessionId = item.frame.provenance?.sessionId;
     let data: unknown;
     try {
       data = (JSON.parse(body) as { data?: unknown }).data;
@@ -729,6 +769,26 @@ export class HttpFrameSink implements FrameSink {
       this.#zoneResolveMicros.add((performance.now() - startedAt) * 1000);
       this.#zoneTested += resolved.tested;
       this.#zoneInside += resolved.inside;
+      /*
+       * ⭐ **The membership goes back to the runtime on the next frame** (ADR-0053), so the behaviour
+       * primitives that read zones can execute at all. Built here, immediately after resolution and
+       * before the publish, because this is the only moment the platform holds boxes and polygons
+       * together.
+       *
+       * ⚠️ The echo names `item.frame.seq` — the frame just analysed. The request that carries it will
+       * have a different one.
+       */
+      const echo = membershipEcho(
+        detections as { identityId?: string; attributes?: Record<string, unknown> }[],
+        item.frame.seq,
+        item.zoneVersion,
+      );
+      const echoKey = `${item.tenantId}\0${item.cameraId}`;
+      /* ⚠️ Replacing an unsent echo is a real loss, counted rather than absorbed. It means frames are
+       * being answered faster than they are being sent, and the runtime will never hear about the one
+       * being displaced — so its points stay unsettled and its zone facts are never computed. */
+      if (this.#zoneEcho.has(echoKey)) this.#zoneEchoDropped += 1;
+      this.#zoneEcho.set(echoKey, echo);
     }
 
     /*

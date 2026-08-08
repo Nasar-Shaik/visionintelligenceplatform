@@ -80,6 +80,30 @@ archive that froze "was inside `z_till`" could never be corrected when the polyg
 drawn two metres off. Membership is held in memory for the primitives and recomputed on re-read —
 the same rule decision 3 applies to derived motion, one level up.
 
+> ### ⚠️ Amended 2026-08-09 by [ADR-0053](ADR-0053-zone-membership-returns-as-an-observation.md) — membership **is** persisted
+>
+> **The clause above rested on a step that does not exist.** "Recomputed on re-read" requires
+> somebody to hold the polygons at read time, and the runtime deliberately holds none — the whole
+> point of resolving zones once, in media. So membership was not recomputed on re-read; it was simply
+> **lost**, and every completed analysis answered the zone question with nothing at all. The Behaviour
+> API and the timeline (slice 2.3) made that visible by needing an answer.
+>
+> ⭐ **What makes storing it safe is naming the version that decided it.** Each record carries
+> `zoneVersion` — `AssignmentPlanEntry.zoneVersion`, the number the control plane already bumps
+> whenever a camera's zone set changes. A polygon later found to be drawn two metres off does not
+> silently invalidate history: history says which geometry it used, the correction is visible as a
+> version change, and re-resolving becomes a deliberate act rather than a rewrite. The original
+> objection is answered rather than overruled.
+>
+> ⛔ **And a stored membership distinguishes "inside none" from "not yet decided".** `zoneIds: []`
+> means somebody resolved this observation and it was inside no zone; **no key at all** means nobody
+> has decided. Collapsing the two turns an un-echoed frame into a `left` transition that never
+> happened — see ADR-0053.
+>
+> ⚠️ Decision 3 is untouched: dwell, velocity and direction remain computed, never stored. Membership
+> is not a derived value — it is an *observation about a frame*, made by the component that owns the
+> geometry, and it is the one input the runtime cannot reproduce for itself.
+
 ⛔ **Storage may not be able to stop perception, and it may not fail quietly either.** The first
 deployment ran as uid 999 against a root-owned Docker volume; the write raised, the exception
 propagated out of the tracker stage, and **every frame after the first retired identity answered HTTP

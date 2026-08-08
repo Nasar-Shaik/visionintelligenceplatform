@@ -245,6 +245,13 @@ def _behaviour_metrics(registry) -> list:
         ("inference_behaviour_subjects_stamped_total", "counter", stats.get("subjectsStamped", 0)),
         ("inference_behaviour_latency_ms_avg", "gauge", stats.get("averageMs", 0.0)),
         ("inference_behaviour_zone_membership", "gauge", membership),
+        # ⛔ The pair that proves the ADR-0053 join is working. `applied` rising with `missed` flat is
+        # a healthy echo; `missed` rising alone means memberships are arriving for frames the runtime
+        # no longer holds, and every zone primitive is then quietly reading a partial history.
+        ("inference_behaviour_zone_annotations_total", "counter", stats.get("zoneAnnotationsApplied", 0)),
+        ("inference_behaviour_zone_annotations_missed_total", "counter", stats.get("zoneAnnotationsMissed", 0)),
+        ("inference_behaviour_scene_observations_total", "counter", stats.get("sceneObservations", 0)),
+        ("inference_behaviour_scene_observations_dropped_total", "counter", stats.get("sceneObservationsDropped", 0)),
         ("inference_behaviour_module_failures_total", "counter", sum(stats.get("moduleFailures", {}).values())),
     ]
 
@@ -560,6 +567,8 @@ def make_handler(
                 GET /tracking/tracks             live tracks (optionally ?cameraId=&state=)
                 GET /tracking/tracks/{trackId}   one track plus its lifecycle timeline
                 GET /tracking/behaviour          the behaviour stage's own state + recent scene labels
+                GET /tracking/behaviour/primitives  every primitive of an analysis, recomputed
+                GET /tracking/behaviour/timeline    the same facts as an ordered account
                 GET /tracking/history            stored movement paths (ADR-0051)
 
             ### ⚠️ Tenant-scoped, and it is not optional
@@ -615,18 +624,20 @@ def make_handler(
                 self._ok(detail)
             elif len(segs) == 2 and segs[1] == "behaviour":
                 self._behaviour(tenant, q)
+            elif len(segs) == 3 and segs[1] == "behaviour" and segs[2] in ("primitives", "timeline"):
+                self._behaviour_read(tracker, tenant, q, view=segs[2])
             elif len(segs) == 2 and segs[1] == "history":
                 self._track_history(tracker, tenant, q)
             else:
                 self._err(404, "not_found", f"no route for GET {self.path}")
 
         def _behaviour(self, tenant: str, q) -> None:
-            """The behaviour stage's state, plus the scene-level statements it holds for a stream.
+            """The behaviour stage's own state, plus the last few frames' scene observations.
 
-            ⚠️ **Scene labels leave the runtime here rather than as events**, because the frozen
-            `DetectionResult` has no frame-level open map — only `Detection.attributes`, which is per
-            subject. Recorded as a finding of P-11 slice 2.2 rather than worked around by widening a
-            frozen contract.
+            ⚠️ **A debugging read, and the shallowest of the three.** It is bounded to
+            `MAX_SNAPSHOT_FRAMES` and lost on restart. The frame-by-frame carrier is
+            `DetectionResult.scene` (ADR-0054); the durable answer for a whole analysis is
+            `/tracking/behaviour/primitives`, recomputed from track history.
             """
             behaviour = _stage(registry, "scene_labels")
             if behaviour is None:
@@ -636,6 +647,57 @@ def make_handler(
             out = {"enabled": True, "engine": behaviour.describe(), "stats": behaviour.stats()}
             if camera_id:
                 out["sceneLabels"] = behaviour.scene_labels(tenant, camera_id, _first(q.get("streamId")))
+            self._ok(out)
+
+        def _behaviour_read(self, tracker, tenant: str, q, *, view: str) -> None:
+            """Behaviour for a whole analysis, recomputed from track history (P-11 slice 2.3).
+
+                GET /tracking/behaviour/primitives   every primitive, per identity
+                GET /tracking/behaviour/timeline     the same facts as an ordered account
+
+            ⭐ **Independent of the UI and of any rule**, which is the point of both. This says what
+            the primitives *say* — no threshold applied, no verdict attached, no incident implied. A
+            rule that wants "dwell over 60 s" reads this; it does not get to change what this reports,
+            and an investigator can ask the same question the rule asked and see the same answer.
+
+            ⚠️ Nothing here is stored. The primitives are pure functions over the movement paths
+            ADR-0051 made durable, so a corrected formula fixes history rather than being unable to
+            reach it (ADR-0054).
+            """
+            recorder = getattr(tracker, "history", None)
+            if recorder is None:
+                self._ok({"enabled": False, "detail": "track history is not enabled on this runtime"})
+                return
+            import behaviour_timeline as bt  # noqa: WPS433 - keeps the server import light
+
+            camera_id = _first(q.get("cameraId"))
+            stream_id = _first(q.get("streamId"))
+            identity_id = _first(q.get("identityId"))
+            records, sources = bt.collect(
+                recorder,
+                tenant,
+                camera_id=camera_id or None,
+                stream_id=stream_id or None,
+                identity_id=identity_id or None,
+            )
+            out = {
+                "enabled": True,
+                # ⚠️ Echoed back. A caller that mistyped a stream id gets an empty answer either way,
+                # and only this tells them which of the two empties they are looking at.
+                "query": {"cameraId": camera_id, "streamId": stream_id, "identityId": identity_id},
+                # ⭐ `durable` vs `live` — a finished analysis and one that is 3 % through render
+                # identically as a record count, and they mean opposite things about the durations.
+                "sources": sources,
+            }
+            if view == "primitives":
+                out["primitives"] = bt.primitives_for(records)
+            else:
+                entries, truncated = bt.timeline_for(records)
+                out["entries"] = [e.to_dict() for e in entries]
+                out["truncated"] = truncated
+                # The closed vocabulary, published so a viewer can render every kind it may meet
+                # rather than discovering one in production (ADR-0052 — none of them names an intent).
+                out["kinds"] = list(bt.TIMELINE_KINDS)
             self._ok(out)
 
         def _track_history(self, tracker, tenant: str, q) -> None:

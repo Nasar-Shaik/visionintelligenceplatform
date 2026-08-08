@@ -56,16 +56,40 @@ class RecordShapeTests(unittest.TestCase):
         self.assertEqual(restored.points[2].at, "2s")
         self.assertEqual(restored.written_at, "2026-08-08T10:00:00Z")
 
-    def test_zone_membership_is_never_persisted(self):
-        """⛔ A polygon is versioned configuration. An archive that froze 'was inside z_till' could
-        never be corrected when the polygon turned out to be drawn two metres off."""
+    def test_settled_zone_membership_survives_a_round_trip_with_the_version_that_decided_it(self):
+        """⭐ ADR-0053, amending ADR-0051. Membership is stored **because** the record names the
+        polygon version that produced it: a polygon later found to be drawn two metres off does not
+        silently invalidate history, and re-resolving becomes a visible act rather than a rewrite."""
         original = record(points=1)
+        original.zone_version = 7
         original.points[0] = HistoryPoint(
             frame_index=0, at="0s", bbox=(0.1, 0.1, 0.1, 0.1), track_id="trk_1", zone_ids=("z_till",)
         )
-        self.assertEqual(original.points[0].zone_ids, ("z_till",))
-        self.assertNotIn("zoneIds", original.to_dict()["points"][0])
-        self.assertEqual(TrackHistoryRecord.from_dict(original.to_dict()).points[0].zone_ids, ())
+        restored = TrackHistoryRecord.from_dict(original.to_dict())
+        self.assertEqual(restored.points[0].zone_ids, ("z_till",))
+        self.assertTrue(restored.points[0].zones_settled)
+        self.assertEqual(restored.zone_version, 7)
+
+    def test_undecided_membership_is_absent_from_the_document_and_settled_emptiness_is_not(self):
+        """⛔ The distinction the whole zone join rests on. `zoneIds: []` says somebody decided this
+        observation was inside no zone; **no key at all** says nobody has decided yet. Collapsing them
+        turns an un-echoed frame into a `left` transition that never happened."""
+        undecided = HistoryPoint(frame_index=0, at="0s", bbox=(0, 0, 1, 1), track_id="trk_1")
+        outside = HistoryPoint(
+            frame_index=1, at="1s", bbox=(0, 0, 1, 1), track_id="trk_1", zones_settled=True
+        )
+        self.assertNotIn("zoneIds", undecided.to_dict())
+        self.assertEqual(outside.to_dict()["zoneIds"], [])
+        self.assertFalse(HistoryPoint.from_dict(undecided.to_dict()).zones_settled)
+        self.assertTrue(HistoryPoint.from_dict(outside.to_dict()).zones_settled)
+
+    def test_a_point_carrying_zones_cannot_claim_to_be_undecided(self):
+        """⚠️ The contradictory state is unbuildable, not merely discouraged — two readers would
+        reasonably disagree about which half of it to believe."""
+        point = HistoryPoint(
+            frame_index=0, at="0s", bbox=(0, 0, 1, 1), track_id="trk_1", zone_ids=("z_till",), zones_settled=False
+        )
+        self.assertTrue(point.zones_settled)
 
     def test_an_unparseable_timestamp_reads_as_none_and_not_as_the_epoch(self):
         point = HistoryPoint(frame_index=0, at="not-a-time", bbox=(0, 0, 1, 1), track_id="trk_1")

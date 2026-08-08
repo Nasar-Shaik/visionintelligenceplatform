@@ -1,8 +1,9 @@
 # Behaviour Engine — architecture
 
-**Layers 1 and 2 are implemented and deployed (P-11 slice 2.2). Layer 3 is design only.**
-Item 1 (persistent track history) and the domain-neutral primitive set run on the live production
-path; items 2–7 are unbuilt and the sequencing is in [PHASE2_PLAN](PHASE2_PLAN.md).
+**Layers 1 and 2 are implemented and deployed (P-11 slices 2.2 and 2.3). Layer 3 is design only.**
+Item 1 (persistent track history) and the whole domain-neutral primitive set — **including the zone
+primitives, since slice 2.3** — run on the live production path and on the recorded one. Items 2–7
+are unbuilt and the sequencing is in [PHASE2_PLAN](PHASE2_PLAN.md).
 
 > ⭐ **The engine's purpose is to make theft detection unnecessary to special-case.** Every capability
 > the platform will be asked for — retail concealment, hospital fall, warehouse pallet movement,
@@ -164,34 +165,89 @@ remain the same skeleton ([ACTION_FOUNDATION §3](ACTION_FOUNDATION.md)).
 
 ---
 
-## 5b. ⛔ The zone gap — the finding of slice 2.2
+## 5b. ✅ The zone gap — closed in slice 2.3 ([ADR-0053](../adr/ADR-0053-zone-membership-returns-as-an-observation.md))
 
-**Zone membership is resolved downstream of the runtime, so the zone primitives cannot execute inside
-it on the product path.** Stated as a fact rather than as a limitation to be argued away:
+Slice 2.2 shipped the zone primitives and **measured them never running**:
+`inference_behaviour_zone_membership 0` on a deployment with real footage, real identities and real
+events. Membership is resolved one hop after `/infer` answers, so nothing in the runtime ever saw a
+zone.
 
 ```
 media                      runtime                    media                      events
  decode ──frame──▶ /infer ─ detect · track · behave ─▶ resolveZones ──▶ publish ──▶ normalize
-                              ▲                          │
-                              └──── membership lands HERE, one hop too late ───┘
+                    ▲                                     │
+                    └────── membership returns HERE, on the next frame ─────────┘
 ```
 
-`services/media/src/application/zone-resolver.ts` computes membership **after** `/infer` answers —
-necessarily, because a polygon test needs the boxes inference produces — and stamps it into the
-frozen contract's `Detection.attributes["zoneIds"]`. Slice 2.2 therefore treats membership as an
-**input fact** (`MembershipZone`) rather than a computation, and reports its absence rather than
-producing a dwell of 0.0 s for every subject.
+**The membership comes back as an observation**, on the next request for that camera, under one
+optional field. The runtime never sees a polygon; there is still exactly one point-in-polygon engine
+in the platform. ⭐ **It is not a configuration channel** — what flows is a fact about a frame the
+runtime itself produced, computed by the component that owns the geometry, in the runtime's own
+vocabulary (`identityId`, `zoneId`). The three costed options are in ADR-0053 with the reasoning for
+the one taken.
 
-**Three ways to close it, costed. None is free and the choice is the Architect's:**
+**Measured on the deployed stack, with two operator-drawn zones on a real camera:**
 
-| Option | Cost | ⚠️ |
-| --- | --- | --- |
-| **Send the zone plan on `/infer`** — media already holds `PlanZone[]` at the call site | One optional request field | ⛔ A new configuration channel into a frozen runtime, and **two** polygon engines answering "which zone was this person in". The first time they disagree, nobody can say which is right |
-| **Echo the previous frame's membership** on the next `/infer` | One field, no second engine | ⚠️ A one-frame lag and a join by frame sequence — complexity for a fact that is already a frame old by the time a primitive reads it |
-| **Move the zone-dependent primitives downstream**, beside the membership | No runtime change | ⛔ Layer 2 would then live in two places and two languages; the domain-neutrality test could not span both |
+| | Uploaded recording | Live path (`FrameSink.push`) |
+| --- | ---: | ---: |
+| `zoneMembership` | `present` | `present` |
+| Memberships applied | 23 | 25 |
+| Memberships missed | **0** | **1** |
+| Echoes sent · dropped | 37 · 0 | 40 · 0 |
+| Dwell measured | 15.0 s (1 visit) · 6.5 s (**2** visits) | — |
+| Entry/exit transitions | 3 · 2 | — |
 
-⭐ **Everything that needs no zone already works**: motion, proximity, co-presence, observation gaps,
-object association and handover all run today on both the live and the recorded path.
+⚠️ **The one miss on the live path is the design, not a defect.** The last frame of a stream has no
+successor to carry its echo, and a dropped frame drops its membership; ADR-0053 decision 3 says that
+is counted and published rather than back-filled. `missed` rising *alongside* `applied` is healthy;
+`missed` rising alone means the join is broken.
+
+⛔ **Three defects this closed and one it created**, all found before shipping:
+
+1. **`zoneIds: []` and no key at all are different facts.** An explicit empty list says somebody
+   decided this observation was inside no zone; absence says nobody has decided. A zone visit walks
+   consecutive observations, so an undecided point read as "outside" closes the visit and emits a
+   `left` — on **every frame**, for a subject standing still.
+2. **The join was off by one.** History points stored the runtime's private per-camera frame counter
+   rather than the caller's `frame.seq`, so the echo matched the previous frame every time —
+   producing a dwell short by exactly one interval, on a graph nobody would have questioned.
+3. **Two upstreams answered one question.** On the echo channel a detection never carries `zoneIds`,
+   so the older attribute path settled every current frame as "outside" one frame before the echo
+   arrived to say otherwise. The channels are now mutually exclusive per stream.
+4. ⚠️ **`ZoneEvaluationStats` had been computed since P-8 Phase 7 and published nowhere.** Found while
+   trying to verify the join from media's end. Now `media_zones_*`, and the reading that matters is
+   `inside_total > 0` with `echoes_sent_total == 0`.
+
+⭐ **Everything that needs no zone already worked**: motion, proximity, co-presence, observation gaps,
+object association and handover all ran from slice 2.2, on both the live and the recorded path.
+
+## 5c. ✅ Scene observations and the two read APIs (slice 2.3)
+
+**`DetectionResult.scene`** ([ADR-0054](../adr/ADR-0054-a-scene-observation-is-not-a-detection.md),
+schema 1.2) closes slice 2.2's Finding 1 — `FrameLabel` could express a statement about a scene and
+had nowhere to go. ⭐ The carrier turned out to already exist: `FrameContext` is built once per
+`/infer` and threaded through every stage *and* the translator, so a stage appends and the translator
+drains. No new stage, no widened `Tracker` protocol, no side channel.
+
+**Two reads, one substrate.** Both recompute from the movement paths ADR-0051 made durable; nothing
+new is stored, so a corrected formula fixes history rather than being unable to reach it.
+
+| | |
+| --- | --- |
+| `GET /api/behaviour/primitives?streamId=…` | Every primitive, per identity, for a whole analysis. ⭐ It runs **the same four modules the live path runs** — a primitive cannot exist on one path and not the other |
+| `GET /api/behaviour/timeline?streamId=…` | The same facts as an ordered account: `observed` · `gap` · `zoneVisit` · `zoneEntry` · `zoneExit` · `proximity` · `carried` · `handover` |
+
+⛔ **The timeline explains and never accuses.** `kind` is a closed vocabulary; an executable test
+asserts it stays closed, that no kind names an industry, and that **no generated sentence contains a
+word that names an intent**. Every entry carries a footage-time interval and a pointer to the frame
+that established it. A timeline that said "concealed" would have moved Layer 3 into the one component
+an investigator reads as neutral.
+
+⚠️ **Instants are offsets into the run, and that was found on real footage.** A recording stamped with
+wall-clock capture times gives footage seconds around 1.77e9; the first deployed timeline read *"was
+observed from 1.77109e+09 s to 1.77109e+09 s"* — true, useless, and hiding the fifteen seconds
+between. The absolute footage second is kept beside the offset, because that is what a viewer seeks
+to.
 
 ## 6. The behaviour graph (item 6)
 
@@ -222,7 +278,12 @@ starting assumption.
 - ⛔ **No new pipeline stage.** Every component is a registered `PerceptionModule`.
 - ⛔ **No second inference path.** The P-9 structural test (`one-pipeline.test.ts`) still fails the
   build if one appears.
-- ⛔ **No change to the five frozen contracts.** Behaviour output rides in `attributes` and
-  `FrameLabel`, exactly as pose does ([ADR-0050](../adr/ADR-0050-the-perception-vocabulary-is-the-plugin-boundary.md)).
+- ⛔ **No *breaking* change to the five frozen contracts.** Per-subject behaviour rides in
+  `attributes`, exactly as pose does
+  ([ADR-0050](../adr/ADR-0050-the-perception-vocabulary-is-the-plugin-boundary.md)). ⚠️ Slice 2.3
+  added two **optional** fields — `frame.zoneMembership` on the request (ADR-0053) and `scene` on the
+  result (ADR-0054, schema 1.2) — which is the additive path
+  `DETECTION_RESULT_SCHEMA_VERSION` was introduced to allow. An archived `1.1` document stays valid
+  and a consumer that has never heard of either is unaffected.
 - ⛔ **No accusation from the runtime.** It emits observations; a rule names an intent; an incident
   has an owner and an audit trail.

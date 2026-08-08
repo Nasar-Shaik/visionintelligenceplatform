@@ -23,6 +23,7 @@ import {
   registerEventPublisherMetrics,
   registerAssignmentMetrics,
   registerAssignmentSkipMetrics,
+  registerZoneMetrics,
 } from './plugins/observability.js';
 import { createAuth, registerPrincipal } from './plugins/auth.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
@@ -115,6 +116,7 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
   if (opts.perception !== undefined) {
     registerPerceptionMetrics(registry, opts.perception);
     registerAssignmentSkipMetrics(registry, opts.perception);
+    registerZoneMetrics(registry, opts.perception);
   }
   if (opts.eventPublisher !== undefined)
     registerEventPublisherMetrics(registry, opts.eventPublisher);
