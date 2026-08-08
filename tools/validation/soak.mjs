@@ -288,24 +288,54 @@ function dockerStats() {
   }
 }
 
+/**
+ * Restart count and health per container.
+ *
+ * ⛔ **This returned `{}` for the entire 6.5-hour soak and nobody noticed** — including me, twice,
+ * out loud. The template was `{{.State.Health.Status}}`, and `vip-prod-proxy-1` has **no
+ * healthcheck**, so `.State.Health` is nil, `docker inspect` errors on that one container, and the
+ * `try` around the whole loop swallowed the failure and returned an empty object for all seventeen.
+ *
+ * ⚠️ **An empty object compares equal to an empty object**, so the report's "no container
+ * restarted" and my own mid-run status updates were derived from two absences, not from evidence.
+ * The conclusion happened to be true — `docker inspect` afterwards showed counts identical to
+ * baseline — which is exactly what makes this the dangerous shape: a broken check that agrees with
+ * reality is indistinguishable from a working one until the day it does not.
+ *
+ * Two fixes, and the second matters more than the first: `{{if .State.Health}}…{{end}}` so a
+ * container without a healthcheck is handled rather than fatal, and a **per-container** try so one
+ * awkward container can never blank the metric for the rest.
+ */
 function restartCounts() {
+  let names = [];
   try {
-    const raw = execFileSync(
+    names = execFileSync(
       'docker',
       ['ps', '-a', '--filter', 'name=vip-prod-', '--format', '{{.Names}}'],
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 30_000 },
     ).trim().split('\n').filter(Boolean);
-    const out = {};
-    for (const name of raw) {
-      const n = execFileSync('docker', ['inspect', '-f', '{{.RestartCount}}\t{{.State.Health.Status}}', name], {
-        encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
-      }).trim().split('\t');
-      out[name.replace(/^vip-prod-/, '').replace(/-1$/, '')] = { restarts: Number(n[0]), health: n[1] };
-    }
-    return out;
   } catch {
     return {};
   }
+  const out = {};
+  for (const name of names) {
+    try {
+      const raw = execFileSync(
+        'docker',
+        ['inspect', '-f', '{{.RestartCount}}\t{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}', name],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 20_000 },
+      ).trim().split('\t');
+      out[name.replace(/^vip-prod-/, '').replace(/-1$/, '')] = {
+        restarts: Number(raw[0]),
+        health: raw[1],
+      };
+    } catch {
+      /* ⚠️ Named explicitly rather than omitted — a container we could not inspect is a fact the
+       * report should carry, not a silent gap that reads as "nothing to see". */
+      out[name.replace(/^vip-prod-/, '').replace(/-1$/, '')] = { restarts: null, health: 'uninspectable' };
+    }
+  }
+  return out;
 }
 
 async function runtimeMetrics() {
@@ -405,7 +435,23 @@ async function apiLatency() {
 }
 
 async function sample(phase) {
-  const [runtime, latency] = await Promise.all([runtimeMetrics(), apiLatency()]);
+  /*
+   * ⛔ **The API probe goes FIRST and alone.** It used to run in a `Promise.all` with
+   * `runtimeMetrics()`, which is a `docker exec … python -c` — starting a Python interpreter in a
+   * container, on the same host, concurrently with the request being timed.
+   *
+   * Measured in the 2026-08-08 soak: the probe reported 10–20 ms with occasional 77–107 ms
+   * outliers, and the outliers correlated with **nothing in the product** — two of three had no
+   * analysis in flight at all, while plenty of 10–17 ms samples did. Probed cleanly with the host
+   * quiet, the same endpoint returned p50 7 ms / p95 9 ms at the same collection size.
+   *
+   * ⚠️ So the outliers described the measurement, not the platform — the worst kind of metric,
+   * because it is plausible and it moves. Ordering it first is not a full fix (the host is shared
+   * either way), which is why the report quotes the standalone benchmark for latency and treats
+   * this series as indicative only.
+   */
+  const latency = await apiLatency();
+  const runtime = await runtimeMetrics();
   write(metricsFile, {
     phase,
     elapsedMin: Number(((Date.now() - started) / 60000).toFixed(1)),

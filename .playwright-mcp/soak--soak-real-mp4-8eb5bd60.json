@@ -1,0 +1,116 @@
+{
+  "analysisId": "ana_86c4d919c2e842c9a31bb579f71fb3d4",
+  "sessionId": "ases_9a2defa236c04d9989e88fbc8eb5bd60",
+  "tenantId": "tnt_demo_retail",
+  "cameraId": "cam_retail_entrance",
+  "label": "soak .soak-real.mp4",
+  "source": {
+    "originalName": ".soak-real.mp4",
+    "bytes": 22753372,
+    "container": "mp4",
+    "codec": "h264",
+    "width": 1080,
+    "height": 1920,
+    "durationSeconds": 19.036667
+  },
+  "footageStartedAt": "2026-08-07T18:27:00.000Z",
+  "footageStartSource": "container-metadata",
+  "analysisStartedAt": "2026-08-07T21:42:08.537Z",
+  "analysisFinishedAt": "2026-08-07T21:42:11.648Z",
+  "provenance": {
+    "capabilityId": "perception.person-detection",
+    "pipelineVersion": "1.0.0",
+    "runtimeVersion": "0.1.0",
+    "modelId": "yolox-nano",
+    "executionProvider": "CPUExecutionProvider",
+    "analysisFrameRate": 2
+  },
+  "counts": {
+    "framesDecoded": 38,
+    "framesAnalysed": 38,
+    "framesDropped": 0,
+    "detections": 24,
+    "events": 5,
+    "incidents": 2
+  },
+  "findings": [
+    {
+      "kind": "footage-start-assumed",
+      "detail": "the footage start time was taken from the file's own metadata and has not been confirmed by an operator; every incident time in this analysis depends on it"
+    }
+  ],
+  "incidents": [
+    {
+      "incidentId": "e35a2016-659a-4f05-a19d-c6b49544adc4",
+      "title": "Person detected — any camera: perception.person.detected",
+      "status": "raised",
+      "severity": "critical",
+      "ruleId": "rule_demo_retail_afterhours",
+      "ruleName": "Person detected — any camera",
+      "ruleVersion": 2,
+      "triggeredByEventId": "063e5d60-7738-48ad-a87d-f1faee239c89",
+      "matchedCount": 1,
+      "occurredAt": "2026-08-07T18:27:16.000Z",
+      "offsetSeconds": 16
+    },
+    {
+      "incidentId": "92b8e053-4723-40c4-ab6f-58eaf5863936",
+      "title": "Person detected — any camera: perception.person.detected",
+      "status": "raised",
+      "severity": "critical",
+      "ruleId": "rule_demo_retail_afterhours",
+      "ruleName": "Person detected — any camera",
+      "ruleVersion": 2,
+      "triggeredByEventId": "69021470-d741-4ac2-9ffc-32f980b6f8fb",
+      "matchedCount": 1,
+      "occurredAt": "2026-08-07T18:27:10.000Z",
+      "offsetSeconds": 10
+    }
+  ],
+  "tracks": [
+    {
+      "trackId": "trk_cam_retail_entrance_live-tnt_demo_retail-cam_retail_entrance-ases_9a2defa236c04d9989e88fbc8eb5bd60_1",
+      "label": "tie",
+      "fromOffsetSeconds": 0,
+      "toOffsetSeconds": 0,
+      "observations": 1,
+      "peakConfidence": 0.581226
+    },
+    {
+      "trackId": "trk_cam_retail_entrance_live-tnt_demo_retail-cam_retail_entrance-ases_9a2defa236c04d9989e88fbc8eb5bd60_2",
+      "label": "person",
+      "fromOffsetSeconds": 2,
+      "toOffsetSeconds": 2,
+      "observations": 1,
+      "peakConfidence": 0.511752
+    },
+    {
+      "trackId": "trk_cam_retail_entrance_live-tnt_demo_retail-cam_retail_entrance-ases_9a2defa236c04d9989e88fbc8eb5bd60_3",
+      "label": "person",
+      "fromOffsetSeconds": 10,
+      "toOffsetSeconds": 10,
+      "observations": 1,
+      "peakConfidence": 0.91929
+    },
+    {
+      "trackId": "trk_cam_retail_entrance_live-tnt_demo_retail-cam_retail_entrance-ases_9a2defa236c04d9989e88fbc8eb5bd60_4",
+      "label": "tie",
+      "fromOffsetSeconds": 12,
+      "toOffsetSeconds": 12,
+      "observations": 1,
+      "peakConfidence": 0.543848
+    },
+    {
+      "trackId": "trk_cam_retail_entrance_live-tnt_demo_retail-cam_retail_entrance-ases_9a2defa236c04d9989e88fbc8eb5bd60_5",
+      "label": "person",
+      "fromOffsetSeconds": 16,
+      "toOffsetSeconds": 16,
+      "observations": 1,
+      "peakConfidence": 0.774705
+    }
+  ],
+  "truncated": false,
+  "incidentsAvailable": true,
+  "generatedAt": "2026-08-08T01:04:30.873Z",
+  "generatedBy": "usr_demo_retail_mgr"
+}
