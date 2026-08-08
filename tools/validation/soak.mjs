@@ -987,8 +987,40 @@ async function main() {
    * configuration the whole run uses. Media polls the assignment plan every 5 s; a soak that started
    * uploading before the plan landed would spend its first cycles measuring a different deployment. */
   const zoneCameras = [CAMERA, LIVE_CAMERA];
+
+  /*
+   * ⛔ **Clean before drawing, and clean on the way out even when killed.**
+   *
+   * A soak that is stopped mid-run — because it found a defect worth fixing, which is the point of
+   * running one — never reaches its finaliser, so its zones outlive it. The next run then tries to
+   * draw the same names, gets HTTP 409, and proceeds with *half* the zones it thinks it has: the
+   * echo join is exercised on one camera and silently not on the other. That happened between
+   * attempts 1 and 2 of P-11 and cost a restart. Both halves matter — the sweep makes a fresh run
+   * independent of how the last one ended, and the signal handlers stop it happening again.
+   */
+  const swept = await removeSoakZones(zoneCameras).catch(() => 0);
+  if (swept > 0) event('phase', `swept ${String(swept)} verification zone(s) left by an earlier run`);
   const zones = await drawSoakZones(zoneCameras);
   event('phase', `drew ${String(zones.length)} zone(s) for the run`, { zones });
+  /* ⛔ Every zone asked for, or the run measures a configuration nobody chose. */
+  if (zones.length !== zoneCameras.length * 2) {
+    event('fatal', `expected ${String(zoneCameras.length * 2)} zone(s), drew ${String(zones.length)} — refusing to soak a half-configured deployment`);
+    await removeSoakZones(zoneCameras).catch(() => 0);
+    process.exit(1);
+  }
+
+  let closing = false;
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => {
+      if (closing) return;
+      closing = true;
+      event('phase', `${signal} — removing verification zones before exit`);
+      removeSoakZones(zoneCameras)
+        .catch(() => 0)
+        .finally(() => process.exit(130));
+    });
+  }
+
   await sleep(20_000);
 
   await sample('baseline');
