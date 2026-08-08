@@ -262,6 +262,11 @@ def _behaviour_metrics(registry) -> list:
         ("inference_behaviour_zone_annotations_missed_total", "counter", stats.get("zoneAnnotationsMissed", 0)),
         ("inference_behaviour_scene_observations_total", "counter", stats.get("sceneObservations", 0)),
         ("inference_behaviour_scene_observations_dropped_total", "counter", stats.get("sceneObservationsDropped", 0)),
+        # ⛔ Per-stream state the behaviour stage holds, and what the bound has dropped. Published
+        # because the P-11 soak spent two hours attributing a 20 MB/h climb that these two numbers
+        # would have named on the first sample.
+        ("inference_behaviour_streams_tracked", "gauge", stats.get("streamsTracked", 0)),
+        ("inference_behaviour_streams_evicted_total", "counter", stats.get("streamsEvicted", 0)),
         ("inference_behaviour_module_failures_total", "counter", sum(stats.get("moduleFailures", {}).values())),
     ]
 

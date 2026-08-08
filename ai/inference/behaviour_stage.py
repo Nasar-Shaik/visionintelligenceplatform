@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections import OrderedDict
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import behaviour_primitives as bp
@@ -60,6 +61,27 @@ from track_history import TrackHistoryRecorder
 #: Frames of scene-level labels retained per stream for the read API. Bounded like everything else
 #: here: a runtime up for a month must cost what one up for a minute costs.
 MAX_SNAPSHOT_FRAMES = 32
+
+#: Streams whose per-stream state this stage keeps at once, least-recently-seen evicted first.
+#:
+#: ⛔ **The bound `MAX_SNAPSHOT_FRAMES` was assumed to provide and did not.** Every structure here is
+#: keyed by `(tenant, camera, correlationId)`, and `correlationId` is an offline analysis's session
+#: id — so each investigation minted a key that nothing ever removed. The list inside a key was
+#: bounded; the number of keys was not, which is a different sentence.
+#:
+#: Found by the P-11 soak at ~148 KB per analysis, a 20.29 MB/h climb at R²=0.739 across 198
+#: analyses. It survived the first hour looking like noise (R²=0.151) and only resolved into a line
+#: with two hours of samples. The live path was never affected: a live frame carries no
+#: `correlationId`, so it collapses to one stable key per camera.
+#:
+#: ⚠️ `forget_tenant` was the *only* eviction path — a GDPR erasure. A structure whose sole cleanup
+#: is a data-subject request has no lifecycle, it has an accident.
+#:
+#: 256 is generous against real concurrency (a handful of analyses plus one key per live camera)
+#: while capping the stage at a few tens of MB. `TrackHistoryRecorder` bounds its live buckets the
+#: same way, and that precedent is why this is a bound rather than a new lifecycle signal — the
+#: perception path has no "stream ended" event and ADR-0052 is not worth reopening for one dict.
+MAX_TRACKED_STREAMS = 256
 
 #: Smoothing on the observed frame interval. ⚠️ Derived from timestamps rather than from a configured
 #: fps — the two disagree the moment a camera drops frames, and this is the one that was true.
@@ -112,6 +134,9 @@ class BehaviourStage:
         #: Streams whose membership arrives by echo (ADR-0053). ⛔ On those, the
         #: `Detection.attributes["zoneIds"]` path is ignored — see `_apply_membership`.
         self._echo_streams: set = set()
+        #: Every stream key above, most-recently-seen last. The one place their lifetime is decided.
+        self._streams: "OrderedDict[Tuple[str, str, Optional[str]], None]" = OrderedDict()
+        self._streams_evicted = 0
         self._frames = 0
         self._subjects_stamped = 0
         self._zone_frames = 0
@@ -140,6 +165,8 @@ class BehaviourStage:
             return detections
         started = self._clock()
         key = (ctx.tenant_id, ctx.camera_id, ctx.correlation_id)
+        with self._lock:
+            self._touch(key)
 
         applied, missed, membership_seen = self._apply_membership(detections, ctx, key)
         if membership_seen:
@@ -361,6 +388,30 @@ class BehaviourStage:
         with self._lock:
             return list(self._snapshots.get((tenant_id, camera_id, stream_id), []))
 
+    def _touch(self, key: Tuple[str, str, Optional[str]]) -> None:
+        """Mark a stream as most recently seen, dropping the least recent past `MAX_TRACKED_STREAMS`.
+
+        ⚠️ Caller holds `self._lock`. An actively-delivering stream is by definition recent, so it is
+        never the one evicted; a stream that goes quiet long enough to fall off the end and then
+        resumes simply re-learns — the interval re-smooths and membership is re-established by the
+        next echo, both of which are correct initial states rather than wrong ones.
+        """
+        self._streams.pop(key, None)
+        self._streams[key] = None
+        while len(self._streams) > MAX_TRACKED_STREAMS:
+            oldest, _ = self._streams.popitem(last=False)
+            self._forget_stream(oldest)
+
+    def _forget_stream(self, key: Tuple[str, str, Optional[str]]) -> None:
+        """⛔ Every structure keyed by a stream, in one place. A new per-stream cache added without
+        a line here re-opens exactly the leak this exists to close."""
+        self._snapshots.pop(key, None)
+        self._interval.pop(key, None)
+        self._last_at.pop(key, None)
+        self._zone_streams.discard(key)
+        self._echo_streams.discard(key)
+        self._streams_evicted += 1
+
     def forget_tenant(self, tenant_id: str) -> int:
         """Drop every cached scene label for a tenant. Erasure covers derived reads too."""
         with self._lock:
@@ -372,6 +423,8 @@ class BehaviourStage:
                     del holder[key]
             self._zone_streams = {k for k in self._zone_streams if k[0] != tenant_id}
             self._echo_streams = {k for k in self._echo_streams if k[0] != tenant_id}
+            for key in [k for k in self._streams if k[0] == tenant_id]:
+                del self._streams[key]
         return len(keys)
 
     def describe(self) -> dict:
@@ -400,6 +453,13 @@ class BehaviourStage:
                 "zoneAnnotationsMissed": self._zone_missed,
                 "sceneObservations": self._scene_emitted,
                 "sceneObservationsDropped": self._scene_dropped,
+                # ⛔ The pair that would have caught this stage's leak on the first sample instead of
+                # the third hour. `streamsTracked` is what the stage is holding; `streamsEvicted`
+                # rising while tracked sits at its cap is the bound doing its job. Both published,
+                # because a structure nothing measures is a structure nothing can show is bounded.
+                "streamsTracked": len(self._streams),
+                "streamsEvicted": self._streams_evicted,
+                "maxTrackedStreams": MAX_TRACKED_STREAMS,
                 "moduleFailures": dict(self._failures),
             }
 

@@ -464,6 +464,8 @@ const counters = {
   'zone annotations missed': 'behaviour.zoneMissed',
   'scene observations': 'behaviour.sceneObservations',
   'scene observations dropped': 'behaviour.sceneDropped',
+  'behaviour streams tracked': 'behaviour.streamsTracked',
+  'behaviour streams evicted': 'behaviour.streamsEvicted',
   'behaviour module failures': 'behaviour.moduleFailures',
   'history points': 'behaviour.historyPoints',
   'history live identities': 'behaviour.historyLiveIdentities',

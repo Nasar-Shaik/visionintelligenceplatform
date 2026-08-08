@@ -495,6 +495,10 @@ function behaviourMetrics() {
     zoneMissed: m.inference_behaviour_zone_annotations_missed_total,
     sceneObservations: m.inference_behaviour_scene_observations_total,
     sceneDropped: m.inference_behaviour_scene_observations_dropped_total,
+    /* ⛔ The stage's per-stream caches. `streamsTracked` sitting at its cap while `evicted` rises
+     * is the bound working; `tracked` rising without limit is the leak this replaced. */
+    streamsTracked: m.inference_behaviour_streams_tracked,
+    streamsEvicted: m.inference_behaviour_streams_evicted_total,
     moduleFailures: m.inference_behaviour_module_failures_total,
     historyPoints: m.inference_track_history_points_total,
     historyRetired: m.inference_track_history_retired_total,

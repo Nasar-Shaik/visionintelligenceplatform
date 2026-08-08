@@ -665,6 +665,58 @@ class StageIsolationTests(unittest.TestCase):
         self.assertTrue(harness.stage.scene_labels("tnt_b", "cam_1"))
 
 
+class StageBoundednessTests(unittest.TestCase):
+    """⛔ The P-11 soak leak: per-stream state with no per-stream lifecycle.
+
+    Every cache in the stage is keyed by `(tenant, camera, correlationId)`, and `correlationId` is an
+    offline analysis's session id — so each investigation minted a key that only a GDPR erasure ever
+    removed. The list inside each key was bounded; the number of keys was not. It cost ~148 KB per
+    analysis and read as noise (R²=0.151) for a whole hour before resolving into a 20.29 MB/h line.
+    """
+
+    def test_a_thousand_analyses_do_not_grow_the_stage_without_bound(self):
+        from behaviour_stage import MAX_TRACKED_STREAMS
+
+        harness = StageHarness()
+        for run in range(MAX_TRACKED_STREAMS * 4):
+            harness.frame(
+                [detection((0.5, 0.4, 0.08, 0.2))], at="0s", seq=0, stream=f"ana_{run}"
+            )
+
+        stats = harness.stage.stats()
+        self.assertEqual(stats["streamsTracked"], MAX_TRACKED_STREAMS)
+        self.assertGreater(stats["streamsEvicted"], 0)
+        # ⛔ Every structure keyed by a stream, not just the one that was easiest to remember.
+        for name in ("_snapshots", "_interval", "_last_at", "_zone_streams", "_echo_streams"):
+            held = getattr(harness.stage, name)
+            self.assertLessEqual(
+                len(held), MAX_TRACKED_STREAMS, f"{name} is not bounded by MAX_TRACKED_STREAMS"
+            )
+
+    def test_the_evicted_stream_is_the_least_recently_seen_not_the_busiest(self):
+        """⚠️ An actively-delivering stream must never be the one dropped — including a live camera,
+        whose key is `(tenant, camera, None)` because a live frame carries no correlationId."""
+        from behaviour_stage import MAX_TRACKED_STREAMS
+
+        harness = StageHarness()
+        live = (0.5, 0.4, 0.08, 0.2)
+        harness.frame([detection(live)], at="0s", seq=0, stream=None)
+        for run in range(MAX_TRACKED_STREAMS * 2):
+            harness.frame([detection(live)], at="0s", seq=0, stream=f"ana_{run}")
+            harness.frame([detection(live)], at=f"{run + 1}s", seq=run + 1, stream=None)
+
+        self.assertIn(("tnt_a", "cam_1", None), harness.stage._streams)  # noqa: SLF001
+        self.assertEqual(harness.stage.stats()["streamsTracked"], MAX_TRACKED_STREAMS)
+
+    def test_erasing_a_tenant_also_forgets_its_streams(self):
+        harness = StageHarness()
+        for run in range(3):
+            harness.frame([detection((0.5, 0.4, 0.08, 0.2))], at="0s", seq=0, stream=f"ana_{run}")
+        self.assertEqual(harness.stage.stats()["streamsTracked"], 3)
+        harness.stage.forget_tenant("tnt_a")
+        self.assertEqual(harness.stage.stats()["streamsTracked"], 0)
+
+
 class DomainNeutralityTests(unittest.TestCase):
     def test_no_module_names_a_domain_concept(self):
         """⛔ ADR-0052's boundary, made executable. Crude, and it catches the exact regression that
