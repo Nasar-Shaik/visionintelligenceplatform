@@ -1,8 +1,64 @@
 # Benchmark Framework
 
-**Status: DESIGN ONLY** for the comparative harness. The *operational* half already exists
-(`ai/inference/benchmark.py`, AI-5a); what does not exist is the ability to run **two models over one
-dataset and compare them**, which is the requirement this document specifies.
+**Status: IMPLEMENTED (P-10 Workstream B, 2026-08-08).** The comparative harness specified below is
+built and unit-tested. See [BENCHMARK_GUIDE](BENCHMARK_GUIDE.md) for how to run it.
+
+> ⭐ **Three quarters of Workstream B already existed**, which is the third time this milestone has
+> found that. `ai/datasets/` holds a corpus across 18 scenario categories; `dataset.py` verifies
+> footage by digest and carries expectations; `evaluation.py::analyze_case` runs a clip through the
+> **same `VideoAnalyzer` the playground and live runtime use** — decode → detect → track →
+> behaviours → events. What was missing was one axis: **the detector**.
+
+## What P-10 B added
+
+| | |
+| --- | --- |
+| `ai/inference/detector_benchmark.py` | The **model × case matrix**: `DetectorRun`, `run_matrix`, `summarise`, `render_summary`, `model_ref` |
+| `ai/inference/tests/test_detector_benchmark.py` | 17 tests, none of which needs a model, a video or onnxruntime |
+
+⭐ **Model selection required no runtime change.** `ModelAdapter.load()` has always taken a resolved
+catalogue entry, so pointing the pipeline at a different registered detector is a dictionary
+(`model_ref`) rather than a feature. Adding GroundingDINO, Florence-2, YOLO12 or SAM2 to this
+benchmark is a **catalogue entry and nothing else** — if a future detector ever needs a branch in
+`detector_benchmark.py`, the plugin architecture has failed and the branch is the evidence.
+
+## ⛔ The three properties that make a comparison honest
+
+**1. The matrix is dense, and a failure is a row.** Every model runs every case. A model that cannot
+decode a clip produces `status: "error"`; it is never omitted. **Omission is how a detector wins a
+benchmark** — the hard cases vanish from its column and its averages improve. `summarise()` raises
+`UnevenMatrix` when detectors completed different case sets, and names the divergent cases.
+
+**2. The environment is printed above the table, not beneath it.** Every latency, FPS and CPU figure
+is a property of the host as much as of the detector. When `hostContended` is set, the report opens
+with a refusal to let those columns be quoted — detection, track and event counts remain valid,
+because they do not depend on how busy the machine was.
+
+**3. What cannot be measured is named, every time.**
+
+| Absent | Why | What is reported instead |
+| --- | --- | --- |
+| **Precision / recall** | Needs per-frame ground truth the corpus does not carry | Detections per frame — ⚠️ a count, not an accuracy; more detections may be people or may be coat racks |
+| **Ground-truth ID switches** | Needs per-frame identity annotation (MOTA) | `trackReassignments` — how often a `trackingId` changed within one `identityId`, named as the proxy it is |
+| **Incidents** | ⛔ Architecture, not omission: the runtime emits `EventEnvelope` and creates no incidents | `None` at the runtime tier; the platform tier fills it |
+
+## The two tiers
+
+```
+Tier 1 — runtime      video → decode → detect → track → behaviours → events
+                      deterministic · one container · no platform · where detectors are compared
+
+Tier 2 — platform     events → rules → incidents → reports
+                      needs the deployed stack
+```
+
+⚠️ **Incident counts confound the detector with the rule configuration.** Two detectors under one
+rule set produce different incident counts for reasons that are half rules; the tier boundary keeps
+that visible rather than folding it into a single "detector score".
+
+---
+
+*The sections below are the original specification, kept because the reasoning is the useful part.*
 
 ---
 

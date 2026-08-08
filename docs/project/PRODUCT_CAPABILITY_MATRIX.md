@@ -196,6 +196,7 @@ references them rather than restating what a capability is.
 | **C-50** | **Live frame ingest from a browser camera**                |            ✅            |   ✅ `LiveIngest` → the SAME `FrameSink`   |    ✅ Live Capture page    |  ✅  |  ⚠️   |  ⚠️  | **P-9**         | C-19               | media        |
 | **C-51** | **Interchangeable detectors** — one runtime, many families |            ✅            | ✅ `register_decoder`: `yolox` · `rtdetr` · `yolo11` |         n/a         |  ✅  |  ⚠️   |  ⚠️  | **P-10 A2**     | C-19 · **ADR-0050** | ai/inference |
 | **C-52** | **Multi-modal perception contract** — pose · masks · re-id · OCR · action |            ✅            | ⚠️ contract + registry only; **no such model runs** |         ⛔          |  ✅  |  ⛔   |  ⛔  | **P-10 A1**     | C-51               | ai/inference |
+| **C-53** | **Detector benchmark matrix** — one corpus, every detector |            ✅            | ⚠️ framework + 21 tests; **no run executed, no CLI** |         ⛔          |  ✅  |  ⛔   |  ⛔  | **P-10 B**      | C-51               | ai/inference |
 
 > ⭐ **C-50 (P-9) is a producer, not a pipeline, and the ⚠️ in Pilot/Prod is deliberate.** The live
 > path runs through the identical runtime, tracker, publisher, rule engine and incident pipeline as
@@ -219,6 +220,12 @@ references them rather than restating what a capability is.
 > ⛔ **Precision and recall are unmeasured** for every detector: that needs the annotated corpus in
 > DATASET_STRATEGY, and an accuracy figure from unlabelled frames is exactly the instrument failure
 > this project keeps catching. See [DETECTOR_COMPARISON](../validation/DETECTOR_COMPARISON.md).
+
+> ⚠️ **C-53 is a framework with no result, and the ⛔ columns say so.** The matrix runner, the
+> uneven-aggregate guard and the summary generator are built and tested; **no benchmark has been
+> run**. The host was contended at measurement time (VS Code's renderer alone at 496 % CPU), and a
+> latency table produced then would describe an editor. The scene taxonomy in DATASET_STRATEGY is
+> specified and **unpopulated** — that footage does not exist.
 
 > ⚠️ **C-52 is a contract, and a contract is not a capability.** `perception.py` can express
 > keypoints, masks, embeddings, text and frame-level labels, and the registry can hold a module for

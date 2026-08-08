@@ -794,6 +794,39 @@ _Last updated: 2026-08-08 · Claude_
   Docs: [TRACK_A_ACCEPTANCE](../project/P9_TRACK_A_ACCEPTANCE.md),
   [P9_IMPLEMENTATION_PLAN](../project/P9_IMPLEMENTATION_PLAN.md).
 
+- **P-10 · Workstream B · Benchmark framework ⚠️ framework complete, no run executed (2026-08-08)** —
+  ⭐ **Three quarters of B already existed**, the third time this milestone has found that. `ai/datasets/`
+  holds a corpus across **18 scenario categories** with digest-verified footage and per-case
+  expectations; `evaluation.py::analyze_case` already runs a clip through the **same `VideoAnalyzer`
+  the playground and the live runtime use** — decode → detect → track → behaviours → events. The
+  missing axis was **the detector**. **Built**: `detector_benchmark.py` — the model × case matrix
+  (`DetectorRun`, `run_matrix`, `summarise`, `render_summary`, `model_ref`) with **21 tests that need
+  no model, no video and no onnxruntime**, because a benchmark harness testable only by running a
+  benchmark is a harness nobody tests. ⭐ **`PinnedModelAdapter` is the whole reason no runtime code
+  changed**: `VideoAnalyzer.__init__` calls `adapter.load({"labels": …})` unconditionally — correct in
+  production, where the backend resolves its own model, and fatal for a benchmark that must run a
+  *named* detector — so the pin merges the caller's labels into a ref it already holds and the
+  analyzer's own call loads the model the benchmark chose. ⛔ **Three properties make the comparison
+  honest, each enforced rather than intended.** (1) The matrix is **dense** and a failure is a *row*:
+  omission is how a detector wins a benchmark, because the hard cases vanish from its column and its
+  averages improve — `summarise()` raises `UnevenMatrix` when detectors completed different case sets
+  and names the divergent ones, and a test drives exactly that scenario. (2) The **environment is
+  printed above the table**, and a `hostContended` flag makes the report open by refusing to let the
+  timing columns be quoted. (3) What cannot be measured is **named every time**: precision and recall
+  are absent (no per-frame ground truth — a detection count is not an accuracy), ID switches are
+  reported as `trackReassignments` and labelled a proxy rather than a MOTA metric, and **incidents are
+  `None` by architecture** because the runtime emits `EventEnvelope` and creates none.
+  ⛔ **No benchmark was run, deliberately.** The host was measured at **VS Code's renderer alone
+  consuming 496 % CPU** (5 of 10 cores, load average 5.68); latency, FPS and CPU taken then would
+  describe an editor, which is precisely the instrument failure this project has now caught seven
+  times. ⚠️ **Also not done**: the ~60-line CLI runner, and the scene taxonomy in DATASET_STRATEGY
+  (supermarket · warehouse · hospital · classroom · …) is **specified and unpopulated** — that
+  footage does not exist and no framework change substitutes for acquiring it. Adding a future
+  detector (GroundingDINO, Florence-2, YOLO12, SAM2) is a **catalogue entry and nothing else**;
+  a test asserts `detector_benchmark.py` needs no change for one.
+  [BENCHMARK_FRAMEWORK](../architecture/BENCHMARK_FRAMEWORK.md) ·
+  [BENCHMARK_GUIDE](../architecture/BENCHMARK_GUIDE.md) · C-53.
+
 - **P-10 · Workstream A2 · Multi-detector support ✅ (2026-08-08)** — **two detector families added
   through the existing `register_decoder()` seam, with zero changes above
   `adapters/model_formats.py`** — no pipeline change, no second inference path, and nothing outside
