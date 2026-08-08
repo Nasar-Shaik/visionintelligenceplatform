@@ -435,6 +435,195 @@ async function apiLatency() {
   return { ms: Date.now() - t0, status: r.status };
 }
 
+/* ── P-11 additions: what slices 2.2 and 2.3 made measurable ─────────────────────────────── */
+
+/**
+ * Scrape a container's Prometheus endpoint for the series matching a prefix.
+ *
+ * ⛔ **`fetcher` is per container and not a convenience.** The first version used
+ * `wget || curl` everywhere; the media image has both and the inference image has **neither**, so
+ * the behaviour series came back `{}` on every sample of a smoke run — silently, because the
+ * `try` returns an empty object and an empty object compares equal to an empty object. It read as
+ * "the behaviour layer reported nothing", which is indistinguishable from "the behaviour layer did
+ * nothing", for as long as anyone cared to look. Found by comparing the first and last sample of an
+ * eight-minute rehearsal rather than by any assertion.
+ */
+function scrape(container, port, prefix, fetcher = 'wget') {
+  const command =
+    fetcher === 'python'
+      ? `python3 -c "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:${String(port)}/metrics').read().decode())"`
+      : `wget -qO- http://127.0.0.1:${String(port)}/metrics`;
+  try {
+    const raw = execFileSync(
+      'docker',
+      ['exec', container, 'sh', '-c', command],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 25_000, maxBuffer: 32 * 1024 * 1024 },
+    );
+    const out = {};
+    for (const line of raw.split('\n')) {
+      if (line.startsWith('#') || !line.startsWith(prefix)) continue;
+      const space = line.lastIndexOf(' ');
+      if (space === -1) continue;
+      const name = line.slice(0, space).replace(/\{.*\}$/, '');
+      out[name] = Number(line.slice(space + 1));
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The behaviour layer's own series (P-11 slices 2.2–2.3).
+ *
+ * ⛔ **`zoneMembership` is the one that decides whether any zone number below means anything.**
+ * `1` is present, `0` is absent (no upstream ever supplied membership, so every zone primitive was
+ * inert), `-1` is unobserved. A soak reporting hours of 0.0 s dwell with this at `0` has measured a
+ * broken join, not a quiet shop.
+ *
+ * ⚠️ `latency_ms_avg` is the runtime's own average since boot, so it moves slowly by design — a
+ * spike shows as a gentle rise. The per-frame cost is what the benchmark measures, not this.
+ */
+function behaviourMetrics() {
+  const m = scrape('vip-prod-inference-1', 8085, 'inference_', 'python');
+  return {
+    behaviourFrames: m.inference_behaviour_frames_total,
+    subjectsStamped: m.inference_behaviour_subjects_stamped_total,
+    behaviourMsAvg: m.inference_behaviour_latency_ms_avg,
+    zoneMembership: m.inference_behaviour_zone_membership,
+    zoneApplied: m.inference_behaviour_zone_annotations_total,
+    zoneMissed: m.inference_behaviour_zone_annotations_missed_total,
+    sceneObservations: m.inference_behaviour_scene_observations_total,
+    sceneDropped: m.inference_behaviour_scene_observations_dropped_total,
+    moduleFailures: m.inference_behaviour_module_failures_total,
+    historyPoints: m.inference_track_history_points_total,
+    historyRetired: m.inference_track_history_retired_total,
+    /* ⛔ Non-zero means the runtime is perceiving and keeping nothing — a silent data-protection
+     * failure, and the exact defect slice 2.2 shipped and had to fix. */
+    historyWriteFailures: m.inference_track_history_write_failures_total,
+    historyRecords: m.inference_track_history_records,
+    historyUndatedDropped: m.inference_track_history_undated_dropped_total,
+    trackingMsAvg: m.inference_tracking_latency_ms_avg,
+    tracksActive: m.inference_tracking_active,
+    tracksConfirmed: m.inference_tracking_confirmed,
+    tracksLost: m.inference_tracking_lost,
+    tracksCreated: m.inference_tracking_created_total,
+    tracksTerminated: m.inference_tracking_terminated_total,
+    /* ⛔ Identity continuity, as three numbers the report can watch drift apart. A tracker that
+     * stops bridging occlusions produces more tracks per identity every hour — and every
+     * accumulating primitive downstream (dwell, loitering, co-presence) silently halves without a
+     * single error. `recovered / occlusions` is the ratio that falls first. */
+    occlusions: m.inference_tracking_occlusions_total,
+    recovered: m.inference_tracking_recovered_total,
+    reentryOpportunities: m.inference_tracking_reentry_opportunities_total,
+    fragmentation: m.inference_tracking_fragmentation,
+    /* ⛔ Frames the tracker saw out of order. Non-zero means the delivery path reordered, which
+     * makes every duration derived from footage time suspect. */
+    outOfOrder: m.inference_tracking_out_of_order_total,
+    trackingFrames: m.inference_tracking_frames_total,
+  };
+}
+
+/** Media's perception + zone series, including the ADR-0053 echo. */
+function mediaMetrics() {
+  const m = scrape('vip-prod-media-1', 8083, 'media_');
+  return {
+    framesOffered: m.media_perception_frames_offered_total,
+    framesDelivered: m.media_perception_frames_delivered_total,
+    framesDropped: m.media_perception_frames_dropped_total,
+    framesFailed: m.media_perception_frames_failed_total,
+    queueDepth: m.media_perception_queue_depth,
+    inflight: m.media_perception_inflight,
+    deliverMsAvg: m.media_perception_deliver_ms_avg,
+    frameAgeMsAvg: m.media_perception_frame_age_ms_avg,
+    inferenceMsAvg: m.media_perception_inference_ms_avg,
+    detections: m.media_perception_detections_total,
+    zonesLoaded: m.media_zones_loaded,
+    zonesTested: m.media_zones_detections_tested_total,
+    zonesInside: m.media_zones_inside_total,
+    /* ⛔ `zonesInside > 0` with `zoneEchoesSent === 0` is zones resolving and the behaviour layer
+     * never hearing about it — the state slice 2.2 shipped while every dashboard looked healthy. */
+    zoneEchoesSent: m.media_zones_echoes_sent_total,
+    zoneEchoesDropped: m.media_zones_echoes_dropped_total,
+  };
+}
+
+/**
+ * On-disk growth, per data volume, in KiB.
+ *
+ * ⚠️ `du` inside the container rather than a database's own `dbStats`, deliberately: the stats
+ * command needs credentials this harness has no business holding, and the number a customer's disk
+ * runs out of is the one on the filesystem anyway.
+ */
+function storage() {
+  const out = {};
+  for (const [key, container] of [['mongo', 'vip-prod-mongodb-1'], ['redis', 'vip-prod-redis-1'], ['minio', 'vip-prod-minio-1']]) {
+    try {
+      const raw = execFileSync(
+        'docker',
+        ['exec', container, 'sh', '-c', 'du -sk /data 2>/dev/null | tail -1'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 60_000 },
+      ).trim();
+      out[key] = Number(raw.split(/\s+/)[0]);
+    } catch {
+      out[key] = null;
+    }
+  }
+  return out;
+}
+
+/**
+ * Log **rate** — bytes emitted per container since the last sample.
+ *
+ * ⚠️ A rate rather than a total, because a total needs the Docker VM's filesystem and because the
+ * question a soak asks is "is something now logging more than it was". A service that starts
+ * emitting a stack trace per frame shows here hours before the disk notices.
+ */
+function logRates(sinceSeconds) {
+  const out = {};
+  for (const name of ['media', 'inference', 'events', 'gateway', 'workflow', 'rules']) {
+    try {
+      const raw = execFileSync(
+        'sh',
+        ['-c', `docker logs --since ${String(sinceSeconds)}s vip-prod-${name}-1 2>&1 | wc -c`],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 30_000, maxBuffer: 64 * 1024 * 1024 },
+      ).trim();
+      out[name] = Number(raw);
+    } catch {
+      out[name] = null;
+    }
+  }
+  return out;
+}
+
+/**
+ * ⛔ Sessions stuck in a non-terminal state, and how long they have been there.
+ *
+ * A worker that dies mid-analysis leaves a `running` session nothing will ever finish. It costs
+ * nothing, breaks nothing visible, and is exactly the class of defect a soak exists to surface —
+ * one orphan an hour is invisible in a ten-minute test and obvious over seven hours.
+ */
+async function orphanSessions(maxAgeMinutes = 30) {
+  try {
+    const r = await api('GET', '/media/analyses?limit=100');
+    const items = r.data?.items ?? r.data ?? [];
+    const now = Date.now();
+    const stuck = [];
+    for (const a of Array.isArray(items) ? items : []) {
+      for (const s of a.sessions ?? []) {
+        if (['succeeded', 'failed', 'cancelled', 'expired'].includes(s.state)) continue;
+        const startedAt = Date.parse(s.startedAt ?? s.createdAt ?? '');
+        if (!Number.isFinite(startedAt)) continue;
+        const ageMin = (now - startedAt) / 60000;
+        if (ageMin > maxAgeMinutes) stuck.push({ analysisId: a.id, sessionId: s.id, state: s.state, ageMin: Number(ageMin.toFixed(1)) });
+      }
+    }
+    return { checked: Array.isArray(items) ? items.length : 0, stuck };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message.slice(0, 120) : String(err) };
+  }
+}
+
 async function sample(phase) {
   /*
    * ⛔ **The API probe goes FIRST and alone.** It used to run in a `Promise.all` with
@@ -453,6 +642,7 @@ async function sample(phase) {
    */
   const latency = await apiLatency();
   const runtime = await runtimeMetrics();
+  const orphans = await orphanSessions();
   write(metricsFile, {
     phase,
     elapsedMin: Number(((Date.now() - started) / 60000).toFixed(1)),
@@ -463,7 +653,193 @@ async function sample(phase) {
     jetstream: jetstream(),
     runtime,
     api: latency,
+    /* P-11: what slices 2.2–2.3 made measurable, plus the growth and liveness signals a release
+     * soak is supposed to watch. See each collector for what a bad reading looks like. */
+    behaviour: behaviourMetrics(),
+    media: mediaMetrics(),
+    storage: storage(),
+    logBytes: logRates(Math.round(SAMPLE_MS / 1000)),
+    orphans,
   });
+  if (Array.isArray(orphans.stuck) && orphans.stuck.length > 0) {
+    event('finding', `${String(orphans.stuck.length)} orphan session(s) past 30 min`, { stuck: orphans.stuck.slice(0, 5) });
+  }
+}
+
+/**
+ * ⭐ **A burst of live frames through `FrameSink.push`** — the path the offline corpus never touches.
+ *
+ * Offline analysis uses `FrameSink.deliver`, which awaits every frame; a live camera uses `push`,
+ * which enqueues, drops under back-pressure and can have several frames of one camera in flight at
+ * once. ⛔ That last property is why the ADR-0053 zone echo names the frame it describes, and a soak
+ * that only ever ran the offline path would never exercise it — for seven hours, convincingly.
+ *
+ * ⚠️ Frames are cut once, into the media container, and reused for the whole soak. Re-cutting them
+ * every cycle would make ffmpeg the thing under test.
+ */
+let liveFramesReady = false;
+async function ensureLiveFrames(fps = 4, frames = 40) {
+  if (liveFramesReady) return true;
+  const source = REAL ?? `${F}/single-person-walking.mp4`;
+  try {
+    await exec('docker', ['exec', 'vip-prod-media-1', 'sh', '-c', 'rm -rf /tmp/soaklive && mkdir -p /tmp/soaklive'], { timeout: 30_000 });
+    await exec('docker', ['cp', source, 'vip-prod-media-1:/tmp/soaklive.mp4'], { timeout: 120_000 });
+    await exec('docker', [
+      'exec', 'vip-prod-media-1', 'ffmpeg', '-loglevel', 'error',
+      '-i', '/tmp/soaklive.mp4', '-vf', `fps=${String(fps)}`, '-frames:v', String(frames),
+      '-q:v', '4', '/tmp/soaklive/%04d.jpg',
+    ], { timeout: 180_000 });
+    liveFramesReady = true;
+    return true;
+  } catch (err) {
+    event('finding', 'could not prepare live frames — the live path will not be exercised', {
+      detail: err instanceof Error ? err.message.slice(0, 200) : String(err),
+    });
+    return false;
+  }
+}
+
+const LIVE_CAMERA = process.env.SOAK_LIVE_CAMERA ?? 'cam_4b8cbcbab9ec4685821b35a01c52efd2';
+
+/* ── zones, for the duration of the soak (ADR-0053) ──────────────────────────────────────── */
+
+/**
+ * ⭐ **Zones are drawn for the run, because without one the newest code does not execute.**
+ *
+ * `inference_behaviour_zone_membership` is a lifetime three-valued reading, so a runtime that saw
+ * membership once keeps saying `present` until it restarts — which means it cannot tell anyone
+ * whether the join is working *now*. What can is `zoneApplied` rising, and that only happens if a
+ * camera actually has zones. A soak of the zone join with no zones drawn would be six hours of
+ * green that proved nothing, which is the shape of instrument failure this project keeps finding.
+ *
+ * ⚠️ `verification-*` names, removed on the way out including after a crash, because a zone left
+ * behind silently changes what the next run measures.
+ */
+const rect = (x, y, w, h) => ({ points: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]] });
+
+async function drawSoakZones(cameras) {
+  const made = [];
+  for (const cameraId of cameras) {
+    for (const [name, geometry] of [
+      ['verification-frame', rect(0, 0, 1, 1)],
+      ['verification-left', rect(0, 0, 0.5, 1)],
+    ]) {
+      const created = await api('POST', '/camera/zones', {
+        cameraId, name, kind: 'area', shape: 'polygon', geometry, enabled: true,
+      });
+      if (created.ok) made.push({ cameraId, zoneId: created.data.id, name });
+      else event('finding', `could not draw ${name} on ${cameraId}`, { status: created.status });
+    }
+  }
+  return made;
+}
+
+async function removeSoakZones(cameras) {
+  let removed = 0;
+  for (const cameraId of cameras) {
+    const listed = await api('GET', `/camera/zones?cameraId=${encodeURIComponent(cameraId)}`);
+    for (const zone of Array.isArray(listed.data) ? listed.data : []) {
+      if (typeof zone?.name === 'string' && zone.name.startsWith('verification-')) {
+        const gone = await api('DELETE', `/camera/zones/${encodeURIComponent(zone.id)}`);
+        if (gone.ok) removed += 1;
+      }
+    }
+  }
+  return removed;
+}
+
+async function liveBurst(fps = 4) {
+  if (!(await ensureLiveFrames(fps))) return null;
+  const opened = await api('POST', `/media/live/${LIVE_CAMERA}/open`, { frameRate: fps, agent: 'soak' });
+  if (!opened.ok) throw new Error(`live open ${opened.status}: ${JSON.stringify(opened.error).slice(0, 140)}`);
+
+  const { stdout } = await exec(
+    'docker',
+    ['exec', 'vip-prod-media-1', 'sh', '-c', 'for f in /tmp/soaklive/*.jpg; do base64 -w0 "$f"; echo; done'],
+    { timeout: 60_000, maxBuffer: 256 * 1024 * 1024 },
+  );
+  const images = stdout.split('\n').filter(Boolean);
+
+  let accepted = 0;
+  let refused = 0;
+  const lags = [];
+  for (const image of images) {
+    const t0 = Date.now();
+    const posted = await api('POST', `/media/live/${LIVE_CAMERA}/frame`, { image, capturedAtMs: Date.now() });
+    if (posted.ok) accepted += 1;
+    else refused += 1;
+    lags.push(Date.now() - t0);
+    /* ⚠️ Paced at the declared rate. Firing flat out would exercise the drop policy rather than the
+     * perception path, and a real camera never does that. */
+    await sleep(Math.max(0, Math.round(1000 / fps) - (Date.now() - t0)));
+  }
+  await api('POST', `/media/live/${LIVE_CAMERA}/close`, {});
+  return { accepted, refused, postMsP95: pctOf(lags, 95) };
+}
+
+const pctOf = (arr, p) => {
+  if (arr.length === 0) return null;
+  const s = [...arr].sort((a, b) => a - b);
+  return s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))];
+};
+
+/**
+ * ⛔ **The correctness invariants a soak is uniquely able to break**, checked per analysis rather
+ * than once at the end. Each is a defect class the acceptance criteria name.
+ *
+ * ⚠️ Every one of these can legitimately be zero on an empty scene, so absence of a subject is not a
+ * finding — only an *inconsistency between two views of the same run* is.
+ */
+async function checkInvariants(id, sessionId, name) {
+  const [tl, ev, inc] = await Promise.all([
+    api('GET', `/media/analyses/${id}/timeline?sessionId=${sessionId}`),
+    api('GET', `/events/events?analysisSessionId=${sessionId}&limit=200`),
+    api('GET', `/media/analyses/${id}/report?sessionId=${sessionId}`),
+  ]);
+  const problems = [];
+
+  const events = ev.data?.events ?? [];
+  /* ⛔ Event loss: the timeline is built from the same events store, so a timeline naming more
+   * events than the store returns means one of the two lost some. */
+  const timelineEvents = (tl.data?.entries ?? []).filter((e) => e.kind === 'event').length;
+  if (ev.ok && tl.ok && timelineEvents > 0 && events.length === 0) {
+    problems.push(`timeline shows ${String(timelineEvents)} events and the events store returned none`);
+  }
+
+  /* ⛔ Duplicate incidents: one triggering event must not produce two incidents in one run. */
+  const incidents = inc.data?.incidents ?? [];
+  const byTrigger = new Map();
+  for (const i of incidents) {
+    const key = i.triggeringEventId ?? i.triggerEventId ?? null;
+    if (key === null) continue;
+    byTrigger.set(key, (byTrigger.get(key) ?? 0) + 1);
+  }
+  for (const [key, count] of byTrigger) {
+    if (count > 1) problems.push(`incident duplicated for triggering event ${String(key)} (×${String(count)})`);
+  }
+
+  /* ⛔ Timeline corruption: every offset must be a finite, non-negative number of seconds. */
+  for (const e of tl.data?.entries ?? []) {
+    if (typeof e.offsetSeconds === 'number' && (!Number.isFinite(e.offsetSeconds) || e.offsetSeconds < 0)) {
+      problems.push(`timeline entry with offset ${String(e.offsetSeconds)}`);
+      break;
+    }
+  }
+
+  /* ⛔ Identity continuity: an event naming a track must name an identity too (ADR-0041), or every
+   * accumulating primitive downstream silently splits one person into several. */
+  const missingIdentity = events.filter(
+    (e) => e.subjects?.[0]?.trackingId !== undefined && e.subjects?.[0]?.identityId === undefined,
+  ).length;
+  if (missingIdentity > 0) {
+    problems.push(`${String(missingIdentity)} event(s) carry a trackingId with no identityId`);
+  }
+
+  if (problems.length > 0) {
+    findings += 1;
+    event('finding', `invariant violated on ${name}`, { id, sessionId, problems });
+  }
+  return { events: events.length, incidents: incidents.length, problems: problems.length };
 }
 
 /* ── the loop ────────────────────────────────────────────────────────────────────────────── */
@@ -504,6 +880,37 @@ async function runCycle() {
   done.push({ id, sessionId, name, tag: entry.tag, counts });
   write(opsFile, { kind: 'analysis-counts', target: name, ok: true, counts, tag: entry.tag });
   await exerciseSurfaces(id, sessionId);
+
+  /* ⛔ The invariants, per analysis. See `checkInvariants` for what each one catches. */
+  const inv = await op('invariants', name, () => checkInvariants(id, sessionId, name));
+  if (inv.ok) write(opsFile, { kind: 'invariant-counts', target: name, ok: true, ...inv.value });
+
+  /* ⭐ The behaviour read APIs (slice 2.3), exercised for hours rather than once. A recomputation
+   * over a growing archive is exactly where a read path that scales badly shows itself. */
+  await op('behaviour-primitives', name, async () => {
+    const r = await api('GET', `/behaviour/primitives?streamId=${sessionId}`);
+    if (!r.ok) throw new Error(`primitives ${r.status}`);
+    return { identities: Object.keys(r.data?.primitives?.identities ?? {}).length };
+  });
+  await op('behaviour-timeline', name, async () => {
+    const r = await api('GET', `/behaviour/timeline?streamId=${sessionId}`);
+    if (!r.ok) throw new Error(`timeline ${r.status}`);
+    return { entries: (r.data?.entries ?? []).length, truncated: r.data?.truncated };
+  });
+
+  /* ⭐ A live burst every fifth cycle — the `push` path, which the corpus alone never touches. */
+  if (cycle % 5 === 0) {
+    const live = await op('live-burst', LIVE_CAMERA, () => liveBurst());
+    if (!live.ok) {
+      findings += 1;
+      event('finding', 'live ingest burst failed', { detail: live.detail, cycle });
+    } else if (live.value !== null && live.value.accepted === 0) {
+      findings += 1;
+      event('finding', 'live ingest accepted no frames', { cycle, result: live.value });
+    } else if (live.value !== null) {
+      write(opsFile, { kind: 'live-counts', target: LIVE_CAMERA, ok: true, ...live.value });
+    }
+  }
 
   /* ⭐ Re-analysis of something uploaded earlier: ADR-0047's promise that two runs of one
    * recording are independently persisted, exercised for hours rather than once. */
@@ -567,6 +974,15 @@ async function main() {
     );
   }
   await login();
+
+  /* ⭐ Zones first, then a plan-poll wait, then the baseline — so the baseline already describes the
+   * configuration the whole run uses. Media polls the assignment plan every 5 s; a soak that started
+   * uploading before the plan landed would spend its first cycles measuring a different deployment. */
+  const zoneCameras = [CAMERA, LIVE_CAMERA];
+  const zones = await drawSoakZones(zoneCameras);
+  event('phase', `drew ${String(zones.length)} zone(s) for the run`, { zones });
+  await sleep(20_000);
+
   await sample('baseline');
 
   const sampler = setInterval(() => {
@@ -587,6 +1003,10 @@ async function main() {
 
   clearInterval(sampler);
   await sample('final');
+  /* ⚠️ Removed before the report is written, and the count recorded — a zone left on a camera
+   * silently changes what the next run measures, and the next run is the one somebody trusts. */
+  const zonesRemoved = await removeSoakZones(zoneCameras).catch(() => null);
+  event('phase', `removed ${String(zonesRemoved)} verification zone(s)`);
 
   /*
    * ⭐ **The last question, and the one that decides whether the rest may be quoted:** was this

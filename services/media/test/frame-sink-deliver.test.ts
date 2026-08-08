@@ -148,6 +148,41 @@ describe('deliver — the lossless path', () => {
   });
 
   /**
+   * ⛔ **A live-path freshness metric must not be fed by offline frames** (found in P-11 soak
+   * pre-flight, `frameAgeMsAvg: -183058`).
+   *
+   * `frameAgeMs` answers "how stale was this frame when the runtime saw it" — a question about a
+   * camera keeping up. An offline frame's `at` is *footage* time, so a recording analysed faster
+   * than real time contributes frames stamped in the future and drives the mean **negative**. A
+   * negative age published as a health metric is worse than an absent one: it is plausible, it
+   * moves, and it describes something nobody asked about.
+   *
+   * ⚠️ Asserted as "unchanged by an offline frame", not as a value — the point is the sample is
+   * never taken, and clamping it to zero would have read as "every frame was fresh".
+   */
+  it('excludes offline analysis frames from the live frame-age metric', async () => {
+    stubRuntime();
+    const sink = new HttpFrameSink({ url: 'http://rt:8085', internalKey: KEY, capabilityId: 'cap' });
+
+    await sink.deliver('tnt_a', 'cam_1', frame(1, 'ases_7'), never);
+    await sink.deliver('tnt_a', 'cam_1', frame(2, 'ases_7'), never);
+
+    /* No live frame has been delivered, so there is nothing to average — 0 from an empty ring. */
+    expect(sink.stats().frameAgeMsAvg).toBe(0);
+    expect(sink.stats().delivered).toBe(2);
+  });
+
+  it('still measures frame age for a live frame', async () => {
+    stubRuntime();
+    const sink = new HttpFrameSink({ url: 'http://rt:8085', internalKey: KEY, capabilityId: 'cap' });
+
+    await sink.deliver('tnt_a', 'cam_1', frame(1), never);
+
+    /* The fixture's `at` is 2026-02-14, comfortably in the past, so a live frame reads as old. */
+    expect(sink.stats().frameAgeMsAvg).toBeGreaterThan(0);
+  });
+
+  /**
    * ⭐ **Strict ordering, which is what makes the analysis reproducible.**
    *
    * The runtime's tracker *skips* a frame older than the last one it saw. The live path keeps four

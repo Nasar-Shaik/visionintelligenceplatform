@@ -47,7 +47,12 @@ export interface FrameSinkStats {
   activeCameras: number;
   /** Mean transport time (ms) of the last window — request sent → response received. */
   deliverMsAvg: number;
-  /** Mean age (ms) of a delivered frame at the moment it was accepted. Queue time is in here. */
+  /**
+   * Mean age (ms) of a delivered **live** frame at the moment it was accepted. Queue time is in here.
+   *
+   * ⚠️ Offline analysis frames are excluded: their `at` is footage time, not capture time, so a
+   * recording analysed faster than real time contributes a *negative* age. See `#send`.
+   */
   frameAgeMsAvg: number;
   /** Last transport error, redacted to its message. */
   lastError?: string;
@@ -701,7 +706,21 @@ export class HttpFrameSink implements FrameSink {
       const now = Date.now();
       this.#delivered += 1;
       this.#deliverMs.add(now - started);
-      this.#frameAgeMs.add(now - item.frame.at.getTime());
+      /*
+       * ⛔ **Live frames only.** `frameAgeMs` answers "how stale was this frame by the time the
+       * runtime saw it" — a question about a camera keeping up, and the number an operator reads to
+       * decide whether the live view is trustworthy. An offline frame's `at` is *footage* time, so
+       * a ten-minute recording analysed in two minutes contributes frames stamped minutes in the
+       * **future** and the mean goes negative. Measured during soak pre-flight:
+       * `frameAgeMsAvg: -183058` — a negative age, published as a live-path health metric.
+       *
+       * ⚠️ Excluded rather than clamped. Clamping to zero would read as "every frame was fresh",
+       * which is the confident-wrong-number failure this codebase keeps finding; omitting the
+       * sample leaves the metric describing exactly the frames it claims to describe.
+       */
+      if (item.frame.provenance?.sessionId === undefined) {
+        this.#frameAgeMs.add(now - item.frame.at.getTime());
+      }
       per.delivered += 1;
       per.deliverMs.add(now - started);
       per.lastFrameAt = new Date(now).toISOString();
