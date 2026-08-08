@@ -501,7 +501,15 @@ function behaviourMetrics() {
     /* ⛔ Non-zero means the runtime is perceiving and keeping nothing — a silent data-protection
      * failure, and the exact defect slice 2.2 shipped and had to fix. */
     historyWriteFailures: m.inference_track_history_write_failures_total,
+    /* ⚠️ Records on **disk**. Attempt 1 published only this, which made the runtime's own footprint
+     * unmeasurable: inference climbed 33 MB/h and no series could say whether history was filling
+     * as designed or leaking. The three below are the in-memory structures. */
     historyRecords: m.inference_track_history_records,
+    historyLiveIdentities: m.inference_track_history_live_identities,
+    historyLiveStreams: m.inference_track_history_live_streams,
+    /* ⛔ Should sit at zero — `drain_pending` runs every frame. A rising value means writes are
+     * queueing behind a slow or failing store, which is a leak with a different name. */
+    historyPendingWrites: m.inference_track_history_pending_writes,
     historyUndatedDropped: m.inference_track_history_undated_dropped_total,
     trackingMsAvg: m.inference_tracking_latency_ms_avg,
     tracksActive: m.inference_tracking_active,

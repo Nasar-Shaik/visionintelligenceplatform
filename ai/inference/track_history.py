@@ -449,6 +449,44 @@ class JsonlTrackHistoryStore:
                 and (identity_id is None or r.identity_id == identity_id)
             ]
 
+    def _count(self, tenant_id: str) -> int:
+        """How many complete records one tenant's file holds, **without deserialising any of them**.
+
+        ⛔ **`stats()` used to answer this with `len(self._read(tenant_id))`.** That is correct and it
+        is what the `inference_track_history_records` gauge is built from, so every `/metrics` scrape
+        rebuilt the entire durable history as Python objects. Found by the P-11 soak, whose inference
+        container climbed 33 MB/h at R²=0.787 — measured on the running deployment at 713 records:
+
+            /metrics          148 ms      (a 404 on the same server: 0.6 ms)
+            full parse         65 ms      35,889 HistoryPoints constructed
+            newline count     9.3 ms      nothing allocated
+
+        Two defects in one line. The cost grows linearly with retained history — around 0.85 s per
+        scrape at the 4096-record cap, on an endpoint a customer's Prometheus hits every 15 s — and
+        the ~36k short-lived objects per scrape inflate the allocator, so resident size climbs and
+        never comes back. ⭐ The soak's memory measurement was substantially an artefact of the soak's
+        own scraping: the instrument was causing what it reported.
+
+        The class docstring justifies whole-file reads with "queries are rare (an investigation, a
+        report)". That is true of `records()`, which is the branch it was written about. It was never
+        true of the metrics path.
+
+        ⚠️ Counts `b"\\n"`, so a truncated final line — the documented cost of an append-only file
+        whose writer was killed — is not counted, which is exactly how `_read` treats it. The one
+        divergence is a blank line, which `_read` skips and this counts; `write` never produces one.
+        """
+        path = self._path(tenant_id)
+        if not os.path.exists(path):
+            return 0
+        total = 0
+        with open(path, "rb") as handle:
+            while True:
+                chunk = handle.read(1 << 20)
+                if not chunk:
+                    break
+                total += chunk.count(b"\n")
+        return total
+
     def _read(self, tenant_id: str) -> List[TrackHistoryRecord]:
         path = self._path(tenant_id)
         if not os.path.exists(path):
@@ -518,7 +556,8 @@ class JsonlTrackHistoryStore:
                 "durable": True,
                 "backend": "jsonl",
                 "directory": self._dir,
-                "records": sum(len(self._read(t)) for t in tenants),
+                # ⛔ `_count`, never `_read`. See `_count` — this gauge is on the /metrics path.
+                "records": sum(self._count(t) for t in tenants),
                 "tenants": len(tenants),
                 "retentionHours": self._policy.max_age_hours,
             }

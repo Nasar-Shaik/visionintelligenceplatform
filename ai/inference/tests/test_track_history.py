@@ -153,6 +153,44 @@ class JsonlStoreTests(unittest.TestCase):
         self.assertEqual(records[0].identity_id, "idn_survivor")
         self.assertEqual(len(records[0].points), 5)
 
+    def test_stats_counts_records_without_deserialising_any_of_them(self):
+        """⛔ The P-11 soak defect, encoded as a property rather than as a timing.
+
+        `stats()` backs the `inference_track_history_records` gauge, so it runs on every `/metrics`
+        scrape. It used to compute the count as `len(self._read(t))`, rebuilding the entire durable
+        history as `TrackHistoryRecord`/`HistoryPoint` objects each time — 148 ms and ~36k objects
+        per scrape at 713 records on the deployed container, growing linearly with retained data.
+
+        ⭐ Making `_read` explode is what makes this test fail on the old implementation and pass on
+        the new one. A timing assertion would be flaky on a loaded host and would not say *why*.
+        """
+        for i in range(5):
+            self.store.write(record(identity=f"idn_{i}", points=40))
+
+        def explode(_tenant_id):
+            raise AssertionError("stats() must not deserialise records — it is on the /metrics path")
+
+        self.store._read = explode  # noqa: SLF001 - asserting the private call is the point
+        self.assertEqual(self.store.stats()["records"], 5)
+
+    def test_stats_does_not_count_a_truncated_final_record(self):
+        """⚠️ An append-only file whose writer was killed mid-line: `_read` skips the fragment, so
+        the gauge must not count it either. A metric that disagrees with the data it describes sends
+        somebody looking for a record that cannot be read."""
+        self.store.write(record(identity="idn_whole"))
+        with open(os.path.join(self.dir, "tnt_a.jsonl"), "a", encoding="utf-8") as handle:
+            handle.write('{"identityId": "idn_trunc", "poi')
+        self.assertEqual(len(self.store.records("tnt_a")), 1)
+        self.assertEqual(self.store.stats()["records"], 1)
+
+    def test_stats_counts_every_tenant(self):
+        self.store.write(record(tenant="tnt_a"))
+        self.store.write(record(tenant="tnt_b"))
+        self.store.write(record(tenant="tnt_b"))
+        stats = self.store.stats()
+        self.assertEqual(stats["records"], 3)
+        self.assertEqual(stats["tenants"], 2)
+
     def test_records_are_filtered_by_camera_and_identity(self):
         self.store.write(record(identity="idn_1", camera="cam_1"))
         self.store.write(record(identity="idn_2", camera="cam_2"))

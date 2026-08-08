@@ -235,6 +235,16 @@ def _behaviour_metrics(registry) -> list:
                 ("inference_track_history_undated_dropped_total", "counter", record.get("undatedObservationsDropped", 0)),
                 ("inference_track_history_durable", "gauge", 1 if record.get("store", {}).get("durable") else 0),
                 ("inference_track_history_records", "gauge", record.get("store", {}).get("records", 0)),
+                # ⭐ The three structures the runtime actually holds in memory. `records` above counts
+                # what is on disk, and publishing only that made the process's own footprint
+                # unmeasurable: the P-11 soak watched inference climb 33 MB/h with no series that
+                # could say whether history was filling as designed or leaking. `stats()` had all
+                # three all along — nothing computed them into a metric.
+                ("inference_track_history_live_identities", "gauge", record.get("liveIdentities", 0)),
+                ("inference_track_history_live_streams", "gauge", record.get("liveStreams", 0)),
+                # ⚠️ Should sit near zero: `drain_pending` runs every frame. A rising value means
+                # writes are queueing behind a slow or failing store.
+                ("inference_track_history_pending_writes", "gauge", record.get("pendingWrites", 0)),
             ]
         except Exception:  # noqa: BLE001
             history_rows = []
