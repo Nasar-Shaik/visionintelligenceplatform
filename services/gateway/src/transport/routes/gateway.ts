@@ -86,6 +86,28 @@ export function registerGatewayRoutes(app: FastifyInstance, deps: GatewayRoutesD
     reply.status(upstream.status);
     const contentType = upstream.headers.get('content-type');
     if (contentType) reply.header('content-type', contentType);
-    return reply.send(await upstream.text());
+
+    /*
+     * ⛔ **This used to be `await upstream.text()`, and it silently corrupted every binary body.**
+     *
+     * `.text()` decodes the response as UTF-8. For JSON that is correct and it is all this proxy
+     * carried for eight milestones. The first binary payload to cross it — a live evidence frame in
+     * P-9 — arrived as a **188 133-byte** response to a **104 803-byte** JPEG: every byte ≥ 0x80
+     * re-encoded as a two-byte sequence, and every invalid sequence replaced with U+FFFD. The image
+     * still began `FFD8FF`, so it still looked like a JPEG to anything checking the magic number,
+     * and it would not open.
+     *
+     * ⚠️ Nothing failed and nothing logged. A corrupted evidence image is worse than a missing one:
+     * a customer downloads it, cannot open it, and the platform's own records say it was served.
+     *
+     * Bytes are forwarded as bytes. JSON is bytes too, so the JSON path is unchanged — Fastify sends
+     * a Buffer verbatim, and the `content-type` copied above is what tells the client how to read
+     * it. `x-frame-*` headers are forwarded below for the same reason.
+     */
+    for (const name of ['x-frame-seq', 'x-frame-at', 'x-frame-delta-ms', 'content-disposition']) {
+      const value = upstream.headers.get(name);
+      if (value !== null) reply.header(name, value);
+    }
+    return reply.send(Buffer.from(await upstream.arrayBuffer()));
   });
 }

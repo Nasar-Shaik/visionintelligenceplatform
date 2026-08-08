@@ -22,6 +22,19 @@ beforeAll(async () => {
   // Stub upstream that echoes the headers it received.
   upstream = Fastify({ logger: false });
   upstream.all('/echo/*', async (request) => ({ headers: request.headers, url: request.url }));
+  /*
+   * ⛔ A binary body, for the P-9 regression below. Deliberately full of bytes >= 0x80 and of
+   * sequences that are not valid UTF-8 — which is exactly what a JPEG is, and exactly what the
+   * old `.text()` forwarding destroyed.
+   */
+  upstream.get('/binary', async (_request, reply) => {
+    const bytes = Buffer.alloc(512);
+    for (let i = 0; i < bytes.length; i += 1) bytes[i] = i % 256;
+    return reply
+      .header('content-type', 'image/jpeg')
+      .header('x-frame-seq', '7')
+      .send(bytes);
+  });
   upstream.all('/auth/*', async (request) => ({ headers: request.headers, url: request.url }));
   await upstream.listen({ host: '127.0.0.1', port: 0 });
   const addr = upstream.server.address();
@@ -219,5 +232,61 @@ describe('public auth passthrough (login/refresh/logout)', () => {
     expect(
       (await gateway.inject({ method: 'POST', url: '/api/camera/auth/login' })).statusCode,
     ).toBe(401);
+  });
+});
+
+/**
+ * ⛔ **The gateway used to decode every upstream response as UTF-8** (`await upstream.text()`).
+ *
+ * For eight milestones it only ever carried JSON, so nothing noticed. The first binary payload to
+ * cross it — a live evidence frame in P-9 — came back as **188 133 bytes for a 104 803-byte JPEG**:
+ * every byte ≥ 0x80 re-encoded as two, every invalid sequence replaced with U+FFFD. It still began
+ * `FFD8FF`, so it still passed a magic-number check, and it would not open.
+ *
+ * ⚠️ Nothing failed and nothing logged. A corrupted evidence image is worse than a missing one — a
+ * customer downloads it, cannot open it, and the platform's records say it was served correctly.
+ */
+describe('binary responses cross the proxy intact', () => {
+  it('⛔ forwards bytes byte-for-byte rather than decoding them as text', async () => {
+    const res = await gateway.inject({
+      method: 'GET',
+      url: '/api/identity/binary',
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.rawPayload;
+    expect(body.length).toBe(512);
+    for (let i = 0; i < 512; i += 1) expect(body[i]).toBe(i % 256);
+  });
+
+  it('preserves the upstream content-type', async () => {
+    const res = await gateway.inject({
+      method: 'GET',
+      url: '/api/identity/binary',
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.headers['content-type']).toContain('image/jpeg');
+  });
+
+  /** ⚠️ The evidence headers say which frame and how far from the asked-for instant it was. */
+  it('forwards the frame provenance headers', async () => {
+    const res = await gateway.inject({
+      method: 'GET',
+      url: '/api/identity/binary',
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.headers['x-frame-seq']).toBe('7');
+  });
+
+  /** ⭐ And JSON, which is what this proxy actually carries all day, is unaffected. */
+  it('still forwards JSON unchanged', async () => {
+    const res = await gateway.inject({
+      method: 'GET',
+      url: '/api/identity/echo/thing',
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().url).toBe('/echo/thing');
   });
 });

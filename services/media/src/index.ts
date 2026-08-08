@@ -19,6 +19,7 @@ import { HttpCameraSource } from './adapters/http-camera-source.js';
 import { FfmpegDecoder } from './adapters/ffmpeg-decoder.js';
 import { NullFrameSink } from './adapters/null-frame-sink.js';
 import { HttpFrameSink } from './adapters/http-frame-sink.js';
+import { LiveIngest } from './application/live-ingest.js';
 import { BufferedEventPublisher } from './adapters/event-publisher.js';
 import { AssignmentGate } from './application/assignment-gate.js';
 import { AssignmentClient } from './adapters/assignment-client.js';
@@ -288,12 +289,21 @@ async function main(): Promise<void> {
     onLog: (level, msg, fields) => loggerRef.current?.[level]({ ...fields }, msg),
   });
 
+  /*
+   * ⭐ **The same `frameSink` the supervisor was just given** (P-9). That shared reference is the
+   * whole of "one live pipeline, many sources": a browser-captured frame and an RTSP-decoded frame
+   * enter the identical queue, gate, zone capture, runtime call and publisher. If this ever became
+   * a second sink, the claim would quietly stop being true — so it is a reference, not a copy.
+   */
+  const liveIngest = new LiveIngest({ sink: frameSink });
+
   const { app } = await buildServer({
     config,
     supervisor,
     catalog,
     analyses,
     readiness,
+    liveIngest,
     ...(frameSink instanceof HttpFrameSink ? { perception: frameSink } : {}),
     ...(eventPublisher === undefined ? {} : { eventPublisher }),
     ...(gate !== undefined && assignmentClient !== undefined && frameSink instanceof HttpFrameSink

@@ -9,6 +9,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { ServiceConfig } from '../config/env.js';
 import { ReadinessRegistry } from '../application/readiness.js';
 import type { StreamSupervisor } from '../application/stream-supervisor.js';
+import type { LiveIngest } from '../application/live-ingest.js';
 import type { MediaCatalogService } from '../application/media-catalog-service.js';
 import type { CameraFrameStats, FrameSinkStats } from '../adapters/http-frame-sink.js';
 import type { AssignmentClient } from '../adapters/assignment-client.js';
@@ -29,6 +30,7 @@ import { registerHealthRoutes } from './routes/health.js';
 import { registerMetricsRoute } from './routes/metrics.js';
 import { registerRootRoute } from './routes/root.js';
 import { registerStreamRoutes } from './routes/streams.js';
+import { registerLiveRoutes } from './routes/live.js';
 import { registerRecordingRoutes } from './routes/recordings.js';
 import { registerClipRoutes } from './routes/clips.js';
 import { registerPerceptionRoutes } from './routes/perception.js';
@@ -49,6 +51,13 @@ export interface BuildServerOptions {
   eventPublisher?: { stats(): EventPublisherStats };
   /** Injected so the tracking proxy can be driven without a runtime (tests only). */
   trackingFetch?: typeof fetch;
+  /**
+   * Live frame ingest (P-9). Present when a capture agent may push frames into the perception path.
+   *
+   * ⭐ It shares the deployment's one `FrameSink`, so an ingested frame and a decoded one reach the
+   * same runtime through the same gate — see `live-ingest.ts` on why this is not a second pipeline.
+   */
+  liveIngest?: LiveIngest;
   /**
    * Offline video investigation (P-8 Phase 8).
    *
@@ -118,6 +127,11 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
   registerMetricsRoute(app, registry);
   registerRootRoute(app, { name: config.serviceName, version: config.serviceVersion, startedAt });
   registerStreamRoutes(app, { supervisor: opts.supervisor, auth });
+  /*
+   * ⚠️ Optional, like every capability added to this service since Phase 2 — a deployment without a
+   * capture agent has the routes simply absent rather than present and always failing.
+   */
+  if (opts.liveIngest !== undefined) registerLiveRoutes(app, { ingest: opts.liveIngest, auth });
   registerRecordingRoutes(app, { catalog: opts.catalog, auth });
   registerClipRoutes(app, { catalog: opts.catalog, auth });
   registerPerceptionRoutes(app, {

@@ -37,7 +37,21 @@
 		# ⚠️ Deny the device APIs this product has no use for. A surveillance console asking for the
 		# operator's own camera or microphone would be indistinguishable, to a browser, from one that
 		# had been compromised into doing so.
-		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+		#
+		# ⛔ **`camera=(self)` since P-9, and the exception is as narrow as it can be.** The Live
+		# Webcam page uses `getUserMedia` to turn this laptop into a camera the platform ingests, so
+		# the origin genuinely needs the device now. Three things keep the original reasoning intact:
+		#
+		#   - `(self)` — this origin only. No embedded frame, no third party, and `frame-ancestors
+		#     'none'` below means nothing can wrap the console to inherit it.
+		#   - **`microphone=()` stays denied.** The capture path requests video and never audio, and
+		#     this header is what makes that a property of the deployment rather than a promise in
+		#     the page's source. A surveillance console must not be able to listen to a room.
+		#   - The browser still prompts. This header permits the request; the operator grants it.
+		#
+		# Found by the deployment refusing `getUserMedia` before the page existed — the header would
+		# have surfaced as "permission denied", which reads as the operator's choice, not the edge's.
+		Permissions-Policy "camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
 
 		# Caddy advertises itself by default; a version banner is free reconnaissance.
 		-Server
