@@ -153,5 +153,5 @@ multi-stage profiles arrive:
 ## 7. Related
 
 - [MODEL_EVALUATION_PLAN.md](MODEL_EVALUATION_PLAN.md) — the adoption process this feeds
-- [CCTV_BENCHMARK_DATASET.md](CCTV_BENCHMARK_DATASET.md) — the corpus
-- [MODEL_PLUGIN_ARCHITECTURE.md](MODEL_PLUGIN_ARCHITECTURE.md) §6 — a plugin's benchmark obligation
+- [DATASET_STRATEGY.md](DATASET_STRATEGY.md) — the corpus
+- [MODEL_PLUGIN_GUIDE.md](MODEL_PLUGIN_GUIDE.md) §6 — a plugin's benchmark obligation

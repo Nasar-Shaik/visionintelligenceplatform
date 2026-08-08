@@ -1,12 +1,28 @@
-# Perception Engine Architecture
+# Perception Engine
 
-**Status: DESIGN ONLY.** Nothing in this document is implemented, and P-9 implements none of it. It
-describes the shape VIP's perception layer must take to support multiple model families, and — more
-usefully — it identifies exactly which parts of that shape **already exist** and which single seam
-does not.
+**Status: IMPLEMENTED (P-10, 2026-08-08).** Written as a design during P-9, when the runtime was
+frozen; the freeze was lifted by the Principal Architect on 2026-08-08 and the single missing seam
+this document identified is now built. [ADR-0050](../adr/ADR-0050-the-perception-vocabulary-is-the-plugin-boundary.md)
+records both the reversal and the decision.
 
-> **AI Runtime v1.0 is frozen (2026-08-01).** This design is what a future AI-6 would build against,
-> written now so the live-video milestone does not accrete decisions that make it harder.
+> ⭐ **The prediction below turned out to be right, which is why the milestone was an addition rather
+> than a rebuild.** VIP was already a plugin architecture in three of the four places it needed to be.
+> The one gap was `RawDetection` — four slots, so the architecture could swap detectors and nothing
+> else.
+
+## What P-10 built
+
+| | |
+| --- | --- |
+| `ai/inference/perception.py` | The task vocabulary (open registry, not an enum), `Keypoint` · `Mask` · `TextSpan`, `RawInstance` (every field beyond `score` optional), `FrameLabel` (no box — a statement about the frame), `PerceptionOutput`, and the bridges to/from `RawDetection` |
+| `ai/inference/perception_registry.py` | `(task, name) → factory`, fail-closed on unknown tasks, **raises rather than silently overwriting** a duplicate name, and `adapt_model_adapter()` — which lifts the shipped detector in unmodified |
+| `ai/inference/tests/test_perception.py` | 22 tests. The load-bearing one asserts today's detector output is **byte-identical** through the new contract |
+
+⭐ **None of the five frozen platform contracts changed.** Pose rides in
+`Detection.attributes["pose"]`, masks in `["mask"]`, text in `["text"]`, embeddings in the existing
+frozen `embedding` field — so `tools/contracts/perception-boundary.mjs` §D still passes untouched.
+
+The sections below are the original analysis, kept because the reasoning is the useful part.
 
 ---
 
@@ -215,8 +231,8 @@ rather than discovering it after building a pose plugin that assumed per-frame t
 
 ## 6. Related
 
-- [MODEL_PLUGIN_ARCHITECTURE.md](MODEL_PLUGIN_ARCHITECTURE.md) — the plugin contract in detail
+- [MODEL_PLUGIN_GUIDE.md](MODEL_PLUGIN_GUIDE.md) — the plugin contract in detail
 - [AI_ROADMAP.md](AI_ROADMAP.md) — sequencing
 - [BENCHMARK_FRAMEWORK.md](BENCHMARK_FRAMEWORK.md) — how two detectors are compared
-- [BEHAVIOUR_AI_ROADMAP.md](BEHAVIOUR_AI_ROADMAP.md) — detection → theft detection
+- [RETAIL_AI_ROADMAP.md](RETAIL_AI_ROADMAP.md) — detection → theft detection
 - [../validation/LIVE_WEBCAM_VALIDATION.md](../validation/LIVE_WEBCAM_VALIDATION.md) — the source-agnosticism proof this builds on

@@ -794,6 +794,49 @@ _Last updated: 2026-08-08 · Claude_
   Docs: [TRACK_A_ACCEPTANCE](../project/P9_TRACK_A_ACCEPTANCE.md),
   [P9_IMPLEMENTATION_PLAN](../project/P9_IMPLEMENTATION_PLAN.md).
 
+- **P-10 · Professional Perception Foundation — Slice 1 ✅ (2026-08-08)** — ⭐ **the finding is that
+  the plugin architecture was already real and the *vocabulary* was the constraint.** VIP has been
+  model-agnostic since P2-2 through three exercised seams — `EngineRegistry` (engine name → adapter
+  factory), `ModelAdapter` (the only interface to a backend) and `register_decoder()` (output layout
+  → decoder). ⛔ **All three terminate in `List[RawDetection]`, and a `RawDetection` is four slots**:
+  `bbox`, `score`, `class_id`, `label`. So the architecture could swap one detector for another and
+  nothing else — a pose model had nowhere to put a skeleton, segmentation nowhere to put a mask,
+  re-id nowhere to put an embedding, OCR nowhere to put text, and a vision-language model nothing to
+  describe. That diagnosis changed the milestone from a rebuild to an addition. **Built**:
+  `perception.py` — an **open task registry rather than an enum** (`register_task("gaze", …)` is how
+  a module nobody designed for arrives, because `CANONICAL_ENGINES` being a closed tuple is exactly
+  the rigidity this milestone exists to remove), `Keypoint`/`Mask`/`TextSpan`, `RawInstance` whose
+  every field beyond `score` is optional, and ⭐ **`FrameLabel`, which has no bounding box at all** —
+  "a person fell", "the queue is six long" and "this is a checkout area" are outputs no per-object
+  record can hold, and a contract that could not express them would have forced the first such model
+  to invent a side-channel. `perception_registry.py` — `(task, name) → factory`, fail-closed on an
+  unregistered task, and ⛔ **raises rather than silently overwriting a duplicate name**, because two
+  plugins claiming `"yolo11"` is a packaging bug whose failure mode — whichever imported last wins —
+  is invisible in every benchmark that follows. ⭐ **None of the five frozen platform contracts
+  changed**: pose rides in `Detection.attributes["pose"]`, masks in `["mask"]`, text in `["text"]`,
+  embeddings in the already-frozen `embedding` field, so `perception-boundary.mjs` §D — "every field
+  a consumer reads must exist in the frozen schema" — still passes untouched. ⚠️ **The cost is stated
+  rather than hidden**: attributes are untyped at the boundary, so the *names* inside them are the
+  real interface; they are declared once as `ATTR_*` constants and a module that spells `"keypoints"`
+  inline has forked the contract in a way no test catches. **The shipped `yolox-nano` detector is not
+  modified** — `adapt_model_adapter()` lifts any `ModelAdapter` in through the seam it already
+  implements, and the load-bearing test asserts its output is byte-identical through the new
+  contract. ⚠️ **The v1.0 structural freeze (2026-08-01) was lifted by the Architect on 2026-08-08**;
+  recorded in [ADR-0050](../adr/ADR-0050-the-perception-vocabulary-is-the-plugin-boundary.md) so a
+  future reader finds a decision where a freeze ended rather than a document that quietly stopped
+  being true. Every other guardrail held: no new service, runtime still perception-only, still emits
+  `EventEnvelope`, creates no incidents. **22 tests · Python suite 1083 green · gate 70/70.**
+  ⛔ **No AI model was added, and no inference of any new kind runs.** Nine architecture documents
+  consolidated onto the requested names (four renamed with history preserved, four written new).
+  [PERCEPTION_ENGINE](../architecture/PERCEPTION_ENGINE.md) ·
+  [MODEL_PLUGIN_GUIDE](../architecture/MODEL_PLUGIN_GUIDE.md) ·
+  [MODEL_REGISTRY](../architecture/MODEL_REGISTRY.md) ·
+  [PROFESSIONAL_TRACKING](../architecture/PROFESSIONAL_TRACKING.md) ·
+  [POSE_FOUNDATION](../architecture/POSE_FOUNDATION.md) ·
+  [ACTION_FOUNDATION](../architecture/ACTION_FOUNDATION.md) ·
+  [DATASET_STRATEGY](../architecture/DATASET_STRATEGY.md) ·
+  [RETAIL_AI_ROADMAP](../architecture/RETAIL_AI_ROADMAP.md).
+
 - **P-9 · Live Video Validation ✅ complete, ⏳ awaiting review (2026-08-08)** — **live video through
   the production pipeline, and the headline is architectural rather than featural: the live AI
   pipeline already existed in full.** Every producer converges on one door, `FrameSink.push()`, and
@@ -894,7 +937,7 @@ _Last updated: 2026-08-08 · Claude_
   [MANUAL_TEST_GUIDE](../validation/MANUAL_TEST_GUIDE.md) ·
   [COMPLETE_E2E_TEST_GUIDE](../validation/COMPLETE_E2E_TEST_GUIDE.md) ·
   [OVERNIGHT_SOAK](../runbooks/OVERNIGHT_SOAK.md) ·
-  [PERCEPTION_ENGINE_ARCHITECTURE](../architecture/PERCEPTION_ENGINE_ARCHITECTURE.md) ·
+  [PERCEPTION_ENGINE](../architecture/PERCEPTION_ENGINE.md) ·
   [AI_ROADMAP](../architecture/AI_ROADMAP.md).
 
 - **P-8 Phase 7 FREEZE 🔒 (2026-08-07) — and the two nightlies that found nine defects, none of them

@@ -431,7 +431,7 @@ this milestone. Six harnesses and one fixture did.
 | **The real built-in webcam** | ⚠️ **NOT EXECUTED by this automated run.** Requires a human; see [MANUAL_TEST_GUIDE.md](MANUAL_TEST_GUIDE.md). The matrix reports it as `NOT EXECUTED` rather than omitting it |
 | **Firefox / Safari capture** | ⛔ Chromium-only. The fake-device flags are Chromium switches; the specs skip explicitly rather than reporting a Chromium pass as a WebKit one |
 | **Mobile browsers** | ⛔ Untested |
-| **Detector accuracy on real surveillance footage** | ⛔ **VIP has no measured accuracy on real CCTV footage.** See [../architecture/CCTV_BENCHMARK_DATASET.md](../architecture/CCTV_BENCHMARK_DATASET.md) |
+| **Detector accuracy on real surveillance footage** | ⛔ **VIP has no measured accuracy on real CCTV footage.** See [../architecture/DATASET_STRATEGY.md](../architecture/DATASET_STRATEGY.md) |
 | **Sustained load beyond 30 minutes** | ⛔ Not established |
 | **Demographic fairness** | ⛔ Not characterised. The corpus derives from one CC0 photograph of two people |
 
@@ -487,4 +487,4 @@ Full entries in [../project/KNOWN_LIMITATIONS.md](../project/KNOWN_LIMITATIONS.m
 - [LIVE_PERFORMANCE_BASELINE.md](LIVE_PERFORMANCE_BASELINE.md) — the permanent comparison baseline
 - [MANUAL_TEST_GUIDE.md](MANUAL_TEST_GUIDE.md) — the real-camera run a human must do
 - [COMPLETE_E2E_TEST_GUIDE.md](COMPLETE_E2E_TEST_GUIDE.md) — reproducing every automated result
-- [../architecture/PERCEPTION_ENGINE_ARCHITECTURE.md](../architecture/PERCEPTION_ENGINE_ARCHITECTURE.md) — where multi-model perception goes next
+- [../architecture/PERCEPTION_ENGINE.md](../architecture/PERCEPTION_ENGINE.md) — where multi-model perception goes next

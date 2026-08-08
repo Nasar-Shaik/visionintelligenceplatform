@@ -53,7 +53,7 @@ graph LR
 better?", and there is currently no dataset that can answer it for real surveillance footage. The
 harness is built (`evaluation.py`, `dataset.py`); the corpus is empty.
 
-- Acquire and licence the corpus in [CCTV_BENCHMARK_DATASET.md](CCTV_BENCHMARK_DATASET.md).
+- Acquire and licence the corpus in [DATASET_STRATEGY.md](DATASET_STRATEGY.md).
 - Annotate: boxes, identities across occlusion, per-scenario expectations, **negative controls**.
 - Freeze it. Publish the baseline for the *current* model, warts included.
 
@@ -75,7 +75,7 @@ finding.
 ### AI-8 — The task plugin seam
 
 Implement `PerceptionOutput` and the task registry
-([MODEL_PLUGIN_ARCHITECTURE.md](MODEL_PLUGIN_ARCHITECTURE.md)). No new capability ships — detection
+([MODEL_PLUGIN_GUIDE.md](MODEL_PLUGIN_GUIDE.md)). No new capability ships — detection
 is migrated onto the new shape and must produce byte-identical results.
 
 **Exit:** the fixture corpus produces identical `DetectionResult` documents before and after. ⭐ Byte
@@ -90,13 +90,13 @@ Two-stage profile (detect → pose), per-stage budgets, `onError: degrade` expli
 ### AI-10 — Re-identification
 
 Embeddings on `Detection.embedding` (the field exists). ⛔ **Recorded alongside the geometric linker,
-never replacing it** — see MODEL_PLUGIN_ARCHITECTURE §5.
+never replacing it** — see MODEL_PLUGIN_GUIDE §5.
 
 ### AI-11 — Temporal perception
 
 The hard one. A per-span perception stage: bounded per-camera frame buffer, a result whose `frameSeq`
 is a range, sliding-window dedup semantics, clip-based evidence. Stated as a problem in
-PERCEPTION_ENGINE_ARCHITECTURE §4 so it is not discovered mid-implementation.
+PERCEPTION_ENGINE §4 so it is not discovered mid-implementation.
 
 ### AI-12 — Cross-camera identity
 
@@ -105,7 +105,7 @@ already carries the estate hierarchy; the adjacency graph does not exist.
 
 ### AI-13 / AI-14 — Behaviour and retail intelligence
 
-Covered in [BEHAVIOUR_AI_ROADMAP.md](BEHAVIOUR_AI_ROADMAP.md). ⭐ Both land on registries that
+Covered in [RETAIL_AI_ROADMAP.md](RETAIL_AI_ROADMAP.md). ⭐ Both land on registries that
 already exist, which is why they are last rather than hardest.
 
 ---

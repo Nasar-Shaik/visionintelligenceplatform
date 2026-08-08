@@ -157,5 +157,5 @@ nobody has measured produces a Δ against an unknown.
 ## 8. Related
 
 - [BENCHMARK_FRAMEWORK.md](BENCHMARK_FRAMEWORK.md)
-- [CCTV_BENCHMARK_DATASET.md](CCTV_BENCHMARK_DATASET.md)
+- [DATASET_STRATEGY.md](DATASET_STRATEGY.md)
 - [AI_ROADMAP.md](AI_ROADMAP.md) — AI-6 is this plan's first execution

@@ -35,7 +35,7 @@ time. Both work on **tracks**, not pixels.
 
 ⭐ **Rungs 5 and 6 are further along than the ladder suggests**, because trajectory and track-derived
 temporal memory were built for loitering. What is missing at rung 6 is *pixel*-level temporal
-perception — see [PERCEPTION_ENGINE_ARCHITECTURE.md](PERCEPTION_ENGINE_ARCHITECTURE.md) §4.
+perception — see [PERCEPTION_ENGINE.md](PERCEPTION_ENGINE.md) §4.
 
 ---
 
@@ -114,7 +114,7 @@ performance metric — it is the rate at which the product causes an innocent pe
 Any theft capability requires: a human in the loop by default, a per-tenant confidence floor, an
 audit trail of what evidence produced the call, and a measured false-positive rate on a corpus
 containing many hours of ordinary shopping. That corpus does not exist
-([CCTV_BENCHMARK_DATASET.md](CCTV_BENCHMARK_DATASET.md)).
+([DATASET_STRATEGY.md](DATASET_STRATEGY.md)).
 
 ---
 
@@ -150,7 +150,7 @@ would miss it.
 
 ## 7. Related
 
-- [PERCEPTION_ENGINE_ARCHITECTURE.md](PERCEPTION_ENGINE_ARCHITECTURE.md) — §4, the temporal problem
-- [MODEL_PLUGIN_ARCHITECTURE.md](MODEL_PLUGIN_ARCHITECTURE.md)
+- [PERCEPTION_ENGINE.md](PERCEPTION_ENGINE.md) — §4, the temporal problem
+- [MODEL_PLUGIN_GUIDE.md](MODEL_PLUGIN_GUIDE.md)
 - [AI_ROADMAP.md](AI_ROADMAP.md) — AI-13/AI-14
-- [CCTV_BENCHMARK_DATASET.md](CCTV_BENCHMARK_DATASET.md)
+- [DATASET_STRATEGY.md](DATASET_STRATEGY.md)

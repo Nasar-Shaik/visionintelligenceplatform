@@ -1,10 +1,46 @@
-# Model Plugin Architecture
+# Model Plugin Guide
 
-**Status: DESIGN ONLY.** No plugin described here is implemented. P-9 adds no model, no engine and no
-task. AI Runtime v1.0 remains frozen.
+**Status: the interface is IMPLEMENTED (P-10); no additional model ships with it.**
 
-This document specifies the contract a perception plugin must satisfy, and — because half of it
-already exists — is explicit about which half.
+This is the guide for writing a perception plugin. The interface it describes is real as of
+2026-08-08 — see [PERCEPTION_ENGINE](PERCEPTION_ENGINE.md) and
+[ADR-0050](../adr/ADR-0050-the-perception-vocabulary-is-the-plugin-boundary.md).
+
+## Writing one, in full
+
+```python
+from perception import PerceptionOutput, RawInstance, Keypoint, TASK_POSE
+from perception_registry import PerceptionRegistry
+
+class RtmPoseModule:
+    task = TASK_POSE
+    execution_provider = "CPUExecutionProvider"
+
+    def load(self, ref: dict) -> None: ...          # resolve the artifact, build a session
+    def preprocess(self, ctx) -> object: ...        # FrameContext → tensor
+    def analyse(self, prepared) -> PerceptionOutput:
+        return PerceptionOutput(
+            task=TASK_POSE,
+            instances=[RawInstance(score=0.86, bbox=(...), keypoints=[Keypoint(...)], skeleton="coco-17")],
+        )
+    def unload(self) -> None: ...
+
+registry.register(TASK_POSE, "rtmpose-s", RtmPoseModule)
+```
+
+**Four rules a plugin must hold**, each of which the registry or the contract enforces:
+
+| Rule | Enforced by |
+| --- | --- |
+| A task must be registered before it can be used | `describe_task()` raises `UnknownTask` |
+| A module name must be unique per task | `register()` raises unless `replace=True` |
+| Coordinates are normalized `[0,1]`, origin top-left | Convention — ⚠️ **not** machine-checked; a plugin emitting pixels renders in the wrong place and nothing fails |
+| Construction is deferred to the factory | Heavy imports must not run at registration, or an unavailable dependency breaks startup instead of one module |
+
+⭐ **Bringing a task nobody designed for** is `register_task("gaze", "Where a subject is looking")` —
+no change to any module in the runtime.
+
+The sections below are the original P-9 analysis of which seams already existed.
 
 ---
 
@@ -23,7 +59,7 @@ today: register a factory in `engines.py`. That seam is done.
 
 What does not exist is a registry of **tasks**. `perception.person-detection` is a capability
 manifest, and every capability manifest resolves to a model whose `infer()` returns boxes (see
-[PERCEPTION_ENGINE_ARCHITECTURE.md](PERCEPTION_ENGINE_ARCHITECTURE.md) §1). A task registry is the
+[PERCEPTION_ENGINE.md](PERCEPTION_ENGINE.md) §1). A task registry is the
 new thing.
 
 ---
@@ -168,7 +204,7 @@ no way to say whether the next one is better.
 
 ## 7. Related
 
-- [PERCEPTION_ENGINE_ARCHITECTURE.md](PERCEPTION_ENGINE_ARCHITECTURE.md)
+- [PERCEPTION_ENGINE.md](PERCEPTION_ENGINE.md)
 - [BENCHMARK_FRAMEWORK.md](BENCHMARK_FRAMEWORK.md)
 - [MODEL_EVALUATION_PLAN.md](MODEL_EVALUATION_PLAN.md)
-- [CCTV_BENCHMARK_DATASET.md](CCTV_BENCHMARK_DATASET.md)
+- [DATASET_STRATEGY.md](DATASET_STRATEGY.md)
