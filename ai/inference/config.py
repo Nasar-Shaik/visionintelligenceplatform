@@ -92,6 +92,23 @@ class InferenceConfig:
     # How long a departed identity stays eligible to be re-entered, and how far away it may reappear.
     tracking_reentry_seconds: float
     tracking_reentry_distance: float
+    # --- behaviour primitives + durable track history (P-11 slice 2.2) -------------
+    # ⚠️ ON by default, for the same reason tracking is: a stage that is off in production is a stage
+    # nobody has verified in production. It adds no model and no inference — it reads the track
+    # history the tracker already keeps.
+    behaviour_enabled: bool
+    # Comma-separated module names, in execution order. Empty = every registered default.
+    behaviour_modules: str
+    # Where retired identities are persisted. ⛔ EMPTY BY DEFAULT, and that is deliberate: a movement
+    # path is personal data, and a deployment gets one because an operator configured a location for
+    # it — never because a module was imported. Empty means history is held in memory only.
+    track_history_dir: str
+    # How long a stored path is kept, in hours of WALL-CLOCK time since it was written. ⚠️ Not
+    # footage time: purging by footage time would erase an archive analysis the instant it was
+    # written and keep tomorrow's live footage for ever.
+    track_history_retention_hours: float
+    # Points retained per identity, and identities retained per stream. Bounded like everything else.
+    track_history_max_points: int
     # --- deployment profile (AI-5c) ------------------------------------------------
     # Operational defaults as configuration (retail/warehouse/office/school/hospital/factory/parking).
     # Empty = use the env settings above directly (no profile).
@@ -136,6 +153,11 @@ _DEFAULTS: Mapping[str, str] = {
     "INFERENCE_TRACKING_HISTORY_MAX": "50",
     "INFERENCE_TRACKING_REENTRY_SECONDS": "12",
     "INFERENCE_TRACKING_REENTRY_DISTANCE": "0.35",
+    "INFERENCE_BEHAVIOUR_ENABLED": "1",
+    "INFERENCE_BEHAVIOUR_MODULES": "",
+    "INFERENCE_TRACK_HISTORY_DIR": "",
+    "INFERENCE_TRACK_HISTORY_RETENTION_HOURS": "72",
+    "INFERENCE_TRACK_HISTORY_MAX_POINTS": "512",
     "INFERENCE_DEPLOYMENT_PROFILE": "",
     "INFERENCE_HEARTBEAT_SECONDS": "30",
 }
@@ -241,6 +263,15 @@ def load_config(env: Optional[Mapping[str, str]] = None) -> InferenceConfig:
         ),
         tracking_reentry_distance=_unit_interval(
             value("INFERENCE_TRACKING_REENTRY_DISTANCE"), "INFERENCE_TRACKING_REENTRY_DISTANCE"
+        ),
+        behaviour_enabled=_flag(value("INFERENCE_BEHAVIOUR_ENABLED"), "INFERENCE_BEHAVIOUR_ENABLED"),
+        behaviour_modules=value("INFERENCE_BEHAVIOUR_MODULES").strip(),
+        track_history_dir=value("INFERENCE_TRACK_HISTORY_DIR").strip(),
+        track_history_retention_hours=_positive_float(
+            value("INFERENCE_TRACK_HISTORY_RETENTION_HOURS"), "INFERENCE_TRACK_HISTORY_RETENTION_HOURS"
+        ),
+        track_history_max_points=_positive_int(
+            value("INFERENCE_TRACK_HISTORY_MAX_POINTS"), "INFERENCE_TRACK_HISTORY_MAX_POINTS"
         ),
     )
 

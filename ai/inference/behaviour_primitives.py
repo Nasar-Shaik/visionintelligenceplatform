@@ -35,7 +35,7 @@ Stdlib-only, pure, deterministic. No I/O, no model, no clock.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
 
 Box = Tuple[float, float, float, float]  # (x, y, w, h), normalized, origin top-left
 
@@ -51,6 +51,15 @@ class TrackPoint:
     track_id: Optional[str] = None
     frame_index: Optional[int] = None
     confidence: float = 1.0
+    #: Zones this point was **already found to be inside**, decided upstream (P-11 slice 2.2).
+    #:
+    #: ⭐ **Membership is an input fact here, not a computation.** The platform resolves it exactly
+    #: once, in `services/media/src/application/zone-resolver.ts`, against operator-drawn polygons
+    #: that are deployment configuration rather than perception. A second polygon engine in this
+    #: layer would be a second answer to "which zone was this person in", and the first time the two
+    #: disagreed nobody would be able to say which was right. `MembershipZone` reads this; the
+    #: geometric zones below are for callers that hold the geometry themselves.
+    zone_ids: Tuple[str, ...] = ()
 
     @property
     def centroid(self) -> Tuple[float, float]:
@@ -70,13 +79,25 @@ class TrackPoint:
         return (x + w / 2.0, y + h)
 
 
+class ZoneRegion(Protocol):
+    """What every zone-shaped thing must answer: *was this observation inside me?*
+
+    ⭐ **The seam takes the whole `TrackPoint`, not a coordinate**, and that is what lets membership
+    arrive as a fact (`MembershipZone`) or be computed from geometry (`Zone`, `PolygonZone`) behind
+    one interface. A coordinate-only seam would have forced every caller to hold the geometry.
+    """
+
+    zone_id: str
+
+    def holds(self, point: "TrackPoint", *, use_foot_point: bool = True) -> bool: ...
+
+
 @dataclass(frozen=True)
 class Zone:
     """An axis-aligned region of the frame, in normalized coordinates.
 
-    ⚠️ Deliberately a rectangle for now. VIP's operator-drawn zones are polygons, and the polygon
-    test belongs with them rather than being reimplemented here — `contains()` is the seam where that
-    plugs in, and a rectangle is the honest subset until it does.
+    ⚠️ A rectangle, and honest about it. VIP's operator-drawn zones are polygons — use `PolygonZone`,
+    which delegates to the runtime's existing `zones.point_in_polygon` rather than reimplementing it.
     """
 
     zone_id: str
@@ -85,6 +106,51 @@ class Zone:
     def contains(self, point: Tuple[float, float]) -> bool:
         x, y, w, h = self.bbox
         return x <= point[0] <= x + w and y <= point[1] <= y + h
+
+    def holds(self, point: "TrackPoint", *, use_foot_point: bool = True) -> bool:
+        return self.contains(point.foot_point if use_foot_point else point.centroid)
+
+
+@dataclass(frozen=True)
+class PolygonZone:
+    """An operator-drawn zone, as the platform actually stores them.
+
+    ⚠️ `point_in_polygon` is imported from the runtime's `zones` module rather than copied. Two
+    ray-casts that must agree is a defect waiting for a boundary case, and this layer is not where
+    that question gets a second opinion.
+    """
+
+    zone_id: str
+    points: Sequence[Tuple[float, float]]
+
+    def contains(self, point: Tuple[float, float]) -> bool:
+        from zones import point_in_polygon  # noqa: WPS433 - local, keeps this module import-light
+
+        return point_in_polygon(point, self.points)
+
+    def holds(self, point: "TrackPoint", *, use_foot_point: bool = True) -> bool:
+        return self.contains(point.foot_point if use_foot_point else point.centroid)
+
+
+@dataclass(frozen=True)
+class MembershipZone:
+    """A zone whose membership was decided upstream and travels on the point.
+
+    ⭐ **The production shape.** The platform resolves zones once, in media, and stamps the result
+    into the frozen contract's `Detection.attributes["zoneIds"]`. This reads that back, so dwell,
+    visits and transitions are computed from the same membership every event in the system already
+    carries — no second polygon engine, no second answer.
+
+    ⛔ **A point with no `zone_ids` is outside every zone, which is indistinguishable from a point
+    whose membership was never resolved.** That ambiguity is real and it is why the behaviour stage
+    reports whether membership was present at all, rather than publishing a confident 0.0 s dwell for
+    a deployment that simply never sent it.
+    """
+
+    zone_id: str
+
+    def holds(self, point: "TrackPoint", *, use_foot_point: bool = True) -> bool:
+        return self.zone_id in point.zone_ids
 
 
 @dataclass(frozen=True)
@@ -181,7 +247,7 @@ def direction_degrees(points: Sequence[TrackPoint]) -> Optional[float]:
 # --- zones ----------------------------------------------------------------------------------------
 
 
-def zone_visits(points: Sequence[TrackPoint], zone: Zone, *, use_foot_point: bool = True) -> List[ZoneVisit]:
+def zone_visits(points: Sequence[TrackPoint], zone: ZoneRegion, *, use_foot_point: bool = True) -> List[ZoneVisit]:
     """Every continuous stay in `zone`, in time order.
 
     ⭐ **Returns visits, not a boolean.** "Was this person in the zone" cannot express someone who
@@ -198,7 +264,7 @@ def zone_visits(points: Sequence[TrackPoint], zone: Zone, *, use_foot_point: boo
     previous_at = points[0].at_seconds
 
     for point in points:
-        inside = zone.contains(point.foot_point if use_foot_point else point.centroid)
+        inside = zone.holds(point, use_foot_point=use_foot_point)
         if inside and start is None:
             start = point.at_seconds
         elif not inside and start is not None:
@@ -211,7 +277,7 @@ def zone_visits(points: Sequence[TrackPoint], zone: Zone, *, use_foot_point: boo
     return visits
 
 
-def dwell_seconds(points: Sequence[TrackPoint], zone: Zone, **kwargs) -> float:
+def dwell_seconds(points: Sequence[TrackPoint], zone: ZoneRegion, **kwargs) -> float:
     """Total time inside `zone`, summed across every visit.
 
     ⛔ Summed across visits deliberately: a shopper who steps out of frame and returns has one dwell,
@@ -220,7 +286,9 @@ def dwell_seconds(points: Sequence[TrackPoint], zone: Zone, **kwargs) -> float:
     return round(sum(v.interval.seconds for v in zone_visits(points, zone, **kwargs)), 4)
 
 
-def zone_transitions(points: Sequence[TrackPoint], zones: Sequence[Zone], **kwargs) -> List[Tuple[float, str, str]]:
+def zone_transitions(
+    points: Sequence[TrackPoint], zones: Sequence[ZoneRegion], **kwargs
+) -> List[Tuple[float, str, str]]:
     """`(at_seconds, event, zone_id)` where event is `entered` or `left`, in time order."""
     events: List[Tuple[float, str, str]] = []
     for zone in zones:
@@ -277,6 +345,33 @@ def co_presence_seconds(a: Sequence[TrackPoint], b: Sequence[TrackPoint], *, thr
         if partner is not None and near(previous, partner, threshold=threshold):
             total += current.at_seconds - previous.at_seconds
     return round(total, 4)
+
+
+def occupancy_count(
+    subjects: Dict[str, Sequence[TrackPoint]],
+    *,
+    at_seconds: float,
+    zone: Optional[ZoneRegion] = None,
+    tolerance: float = 0.001,
+    use_foot_point: bool = True,
+) -> int:
+    """How many identities were present at one instant, optionally inside one zone.
+
+    ⭐ **Identities, not detections.** Counting boxes double-counts a subject the detector split
+    across two overlapping proposals, and counting `track_id`s double-counts anyone who was briefly
+    occluded — the same trap as dwell, in a number an operator reads on a dashboard.
+
+    ⚠️ `tolerance` exists because footage timestamps are floats: two subjects observed on the same
+    frame can differ in the last decimal, and an exact match would report an empty room.
+    """
+    total = 0
+    for points in subjects.values():
+        match = next((p for p in points if abs(p.at_seconds - at_seconds) <= tolerance), None)
+        if match is None:
+            continue
+        if zone is None or zone.holds(match, use_foot_point=use_foot_point):
+            total += 1
+    return total
 
 
 # --- presence and occlusion -------------------------------------------------------------------------

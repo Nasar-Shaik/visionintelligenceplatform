@@ -236,6 +236,40 @@ console.log(`\nperception boundary · ${files.length} TypeScript source(s) outsi
   }
 }
 
+/*
+ * ### §F the three places that name an attribute key agree
+ *
+ * ⛔ **Zone membership is written under one string by media, read under it by events, and now read
+ * under it by the Python behaviour stage.** Three copies of `'zoneIds'` in two languages that cannot
+ * import one another, each carrying a comment saying the others must match — which is a defect
+ * waiting for a typo, and it would fail **silently**: every detection would simply carry no zone,
+ * every dwell would read 0.0 s, and a zone-scoped rule would decline for ever without an error.
+ *
+ * ⚠️ The general form of §E one level down. §E compares *versions*; this compares the *names* inside
+ * the frozen contract's open `attributes` map, which is exactly where P-10 and P-11 agreed that new
+ * modalities would ride rather than widening the contract. An open map buys additive evolution at
+ * the cost of untyped keys, and this is the check that pays that cost back.
+ */
+{
+  const sites = [
+    ['services/media/src/application/zone-resolver.ts', /ZONE_ATTRIBUTE = '([^']+)'/],
+    ['services/events/src/domain/event-normalizer.ts', /ZONE_ATTRIBUTE = '([^']+)'/],
+    ['ai/inference/behaviour_modules.py', /^ZONE_ATTRIBUTE = "([^"]+)"/m],
+  ];
+  const found = sites.map(([file, pattern]) => {
+    const match = readFileSync(join(ROOT, file), 'utf8').match(pattern);
+    return { file, value: match ? match[1] : null };
+  });
+  const values = new Set(found.map((f) => f.value));
+  check(
+    values.size === 1 && !values.has(null),
+    '§F the zone attribute key agrees across media, events and the runtime',
+    values.size === 1 && !values.has(null)
+      ? `'${found[0].value}' in ${String(found.length)} places`
+      : found.map((f) => `${f.file}=${f.value ?? 'not found'}`).join(' '),
+  );
+}
+
 console.log(
   failures === 0
     ? '\nperception boundary: OK — the runtime is the only thing that knows how a model works.\n'

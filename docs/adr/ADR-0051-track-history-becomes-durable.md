@@ -68,6 +68,32 @@ write on **track retirement**, not per frame, so the hot path stays a stream.
 retention or dwell computation that assumes wall-clock ageing will be wrong, and P-9 found this by
 reading the runtime rather than by any test.
 
+### Implemented 2026-08-08 (P-11 slice 2.2) — three things the deployment taught
+
+⭐ **Retention counts wall-clock receipt time, not footage time.** Decision 4 says every *timestamp*
+is footage time, and that stands. Retention is a different clock: it is a promise about how long *we
+have held* the data. Purging by footage time would erase a 2019 archive the instant it was analysed
+and keep tomorrow's live footage for ever. Records carry both — `at` per point, `writtenAt` once.
+
+⛔ **Zone membership is not persisted.** It is decided by versioned deployment configuration, and an
+archive that froze "was inside `z_till`" could never be corrected when the polygon turns out to be
+drawn two metres off. Membership is held in memory for the primitives and recomputed on re-read —
+the same rule decision 3 applies to derived motion, one level up.
+
+⛔ **Storage may not be able to stop perception, and it may not fail quietly either.** The first
+deployment ran as uid 999 against a root-owned Docker volume; the write raised, the exception
+propagated out of the tracker stage, and **every frame after the first retired identity answered HTTP
+500** while the container reported healthy. The store now probes writability at construction and
+refuses to start on an unwritable location, and a write failure at runtime is contained, counted, and
+published as `writeFailures` + `lastWriteError` in `/tracking` and `/metrics`. ⚠️ Contained, not
+retried: an unbounded retry queue on a permanently unwritable volume ends the same outage more slowly.
+
+⚠️ **Erasure is implemented at the runtime and is deliberately not a console button.** ADR decision 5
+requires a tenant-scoped delete to remove history *alongside the incidents that cite it*; a control
+that removed one and left the other would report success while the evidence trail still named the
+person. `DELETE /tracking/history` exists, is verified and is idempotent; joining it to platform-wide
+tenant deletion remains open.
+
 ⛔ **What this ADR does not license.** It does not persist per-frame *detections* — ADR-0049 stands
 for those. It does not persist raw frames or embeddings-per-frame (embedding history is item 4 and
 gets its own decision). It does not put behaviour reasoning in the runtime; see

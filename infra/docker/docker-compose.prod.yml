@@ -363,6 +363,22 @@ services:
       # ⚠️ Warm-up stays ON in production. It is exposed here only so the hardening verification can
       # turn it off and MEASURE what it buys — a claim nobody had numbers for until P-8 Phase 3H.
       INFERENCE_ONNX_WARMUP: ${INFERENCE_ONNX_WARMUP:-1}
+      # ── behaviour primitives + durable track history (P-11 slice 2.2, ADR-0051) ────────────────
+      # ⚠️ ON, like tracking, and for the same reason: a stage that is off in production is a stage
+      # nobody has verified in production. It adds no model and no inference.
+      INFERENCE_BEHAVIOUR_ENABLED: ${INFERENCE_BEHAVIOUR_ENABLED:-1}
+      # ⛔ A movement path is personal data. The directory is what turns history durable, so it is
+      # named here EXPLICITLY rather than defaulted inside the runtime — a deployment keeps paths
+      # because an operator configured somewhere to keep them, never because a module was imported.
+      INFERENCE_TRACK_HISTORY_DIR: ${INFERENCE_TRACK_HISTORY_DIR:-/var/lib/vip/track-history}
+      # ⚠️ WALL-CLOCK hours since a record was written, never footage time. Purging by footage time
+      # would erase an archive analysis the instant it was written.
+      INFERENCE_TRACK_HISTORY_RETENTION_HOURS: ${INFERENCE_TRACK_HISTORY_RETENTION_HOURS:-72}
+    volumes:
+      # ⚠️ A named volume, so history survives a container replacement — which is the whole of
+      # ADR-0051's "resume after restart". A bind mount would tie it to this host's filesystem
+      # layout; an anonymous volume would be discarded by `docker compose down -v` alongside caches.
+      - track-history:/var/lib/vip/track-history
 
   gateway:
     <<: *service-common
@@ -501,3 +517,7 @@ volumes:
   nats_data:
   caddy_data:
   caddy_config:
+  # ⚠️ Movement paths (ADR-0051). Named separately from the databases because it holds personal data
+  # under its own retention, and an operator honouring an erasure request needs to be able to see
+  # exactly which volume that is.
+  track-history:

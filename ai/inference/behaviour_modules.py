@@ -1,0 +1,367 @@
+"""Behaviour primitives as perception plugins (P-11 slice 2.2) — Layer 2, behind the P-10 registry.
+
+    registry.register(TASK_BEHAVIOUR, "motion", MotionModule)
+    registry.create(TASK_BEHAVIOUR, "motion").analyse(context)  → PerceptionOutput
+
+⭐ **`register_task("behaviour", …)` is the point of this module, and it is the P-10 design being
+tested rather than described.** The perception registry was built with an *open* task set precisely
+so a plugin could bring a task nobody had designed for; behaviour is the first one to actually do it.
+Nothing in `perception.py`, `perception_registry.py` or the pipeline changes to accommodate it. If
+this file had needed either widened, the P-10 design would have been wrong and that would have been
+the finding.
+
+### ⚠️ These modules consume tracks, not pixels
+
+A `PerceptionModule` is defined by its four verbs (`load`/`preprocess`/`analyse`/`unload`), not by
+taking an image. `preprocess` here receives a `BehaviourContext` — identities, their points, the
+zones — and `analyse` returns the same `PerceptionOutput` a pose model would. That is why the P-10
+contract made `bbox` optional and gave `FrameLabel` no box at all: a statement about the *scene*
+("six identities present") and a statement about a *subject* ("stationary for 47 s") are both
+expressible without inventing a side-channel.
+
+### ⛔ Domain-neutral or it does not belong here
+
+Every module below passes the hospital test ([ADR-0052]): a hospital, a warehouse, a school and a
+factory can all use it without renaming it. `dwell` passes; `concealment` does not, and its absence
+is enforced by an executable test that scans this module's exported names for domain words.
+
+Stdlib-only, pure, deterministic. No clock, no I/O, no model.
+
+[ADR-0052]: ../../docs/adr/ADR-0052-behaviour-reasoning-is-not-perception.md
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
+
+import behaviour_primitives as bp
+from perception import FrameLabel, PerceptionOutput, RawInstance, register_task
+from perception_registry import PerceptionRegistry
+
+#: The task this milestone brings. Registered at import, exactly as a third-party plugin would.
+TASK_BEHAVIOUR = "behaviour"
+
+register_task(
+    TASK_BEHAVIOUR,
+    "Geometric and temporal facts derived from tracked subjects — never an intent",
+)
+
+#: Where a subject's behaviour facts ride inside the frozen `Detection.attributes` map. Declared once
+#: here for the same reason `ATTR_POSE` is declared once in `perception.py`: a module that spells it
+#: inline has forked the contract in a way no test would notice.
+ATTR_BEHAVIOUR = "behaviour"
+
+#: The attribute media stamps zone membership into, decided in
+#: `services/media/src/application/zone-resolver.ts`. ⚠️ **This string must equal `ZONE_ATTRIBUTE`
+#: there**, and the two cannot import each other across the language boundary — the same note that
+#: file carries about `services/events`. A `tools/contracts` check asserts they agree.
+ZONE_ATTRIBUTE = "zoneIds"
+
+#: Identities compared pairwise per frame. The relational scan is O(n²) under the caller's lock, so
+#: it is capped rather than left to grow — a frame with more simultaneous identities than this has a
+#: perception problem, not a proximity-metric problem. Mirrors `MAX_CROSSING_TRACKS` in the tracker.
+MAX_RELATIONAL_IDENTITIES = 32
+
+
+@dataclass(frozen=True)
+class BehaviourContext:
+    """One frame's worth of tracked history, prepared for the primitive modules.
+
+    ⚠️ `subjects` and `objects` are split by label rather than by anything the model said, because
+    the *question* differs: a subject moves under its own power and a thing is carried. Both are
+    grouped by `identity_id` — never `track_id` — before they get here.
+    """
+
+    tenant_id: str
+    camera_id: str
+    stream_id: Optional[str] = None
+    frame_index: int = 0
+    at_seconds: float = 0.0
+    subjects: Mapping[str, Sequence[bp.TrackPoint]] = field(default_factory=dict)
+    objects: Mapping[str, Sequence[bp.TrackPoint]] = field(default_factory=dict)
+    zones: Sequence[bp.ZoneRegion] = ()
+    #: Frame interval in footage seconds, used to tell an occlusion from a normal sampling gap.
+    #: ⚠️ Derived from observed timestamps by the caller, never from a configured fps: the two
+    #: disagree the moment a camera drops frames, and this is the one that was actually true.
+    expected_interval_seconds: float = 0.5
+    #: ⛔ False when no detection carried zone membership. Without it every dwell is 0.0, which is
+    #: indistinguishable from "nobody lingered" — see `BehaviourStage` for why it is reported.
+    zone_membership_present: bool = False
+
+    def all_identities(self) -> Dict[str, Sequence[bp.TrackPoint]]:
+        merged: Dict[str, Sequence[bp.TrackPoint]] = dict(self.subjects)
+        merged.update(self.objects)
+        return merged
+
+
+class _BehaviourModule:
+    """The shared four verbs. ⚠️ `load`/`unload` are genuinely empty here and that is not an
+    oversight: a primitive has no weights to bring into memory, and pretending otherwise by faking a
+    load would make the registry's lifecycle report lie about what a deployment is holding."""
+
+    task = TASK_BEHAVIOUR
+    execution_provider = "cpu"
+    name = "behaviour"
+
+    def __init__(self) -> None:
+        self._ref: Dict[str, object] = {}
+
+    def load(self, ref: Optional[dict] = None) -> None:
+        self._ref = dict(ref or {})
+
+    def preprocess(self, ctx: BehaviourContext) -> BehaviourContext:
+        return ctx
+
+    def analyse(self, prepared: BehaviourContext) -> PerceptionOutput:  # pragma: no cover - abstract
+        raise NotImplementedError
+
+    def unload(self) -> None:
+        self._ref = {}
+
+
+def _subject_instance(identity_id: str, points: Sequence[bp.TrackPoint], payload: dict) -> RawInstance:
+    """One statement about one identity, boxed at its most recent observation.
+
+    ⚠️ The box is the *latest* point's, so a behaviour fact drawn on a frame lands where the subject
+    is now rather than where the span began. `identityId` rides in `attributes` because a
+    `RawInstance` has no identity field — it describes a region, and identity is the tracker's answer
+    about that region rather than the model's.
+    """
+    last = points[-1]
+    return RawInstance(
+        score=float(last.confidence),
+        bbox=last.bbox,
+        label=last.label,
+        attributes={"identityId": identity_id, **payload},
+    )
+
+
+class MotionModule(_BehaviourModule):
+    """Path, speed, heading and the gaps in between — one identity at a time.
+
+    ⚠️ Speed is **frame widths per second** and is named that way in the payload, because a number
+    called `speed` that means 0.3 screens/s will be read as m/s by the first person who sees it.
+    `None` where it cannot be measured, never `0.0`.
+    """
+
+    name = "motion"
+
+    def analyse(self, prepared: BehaviourContext) -> PerceptionOutput:
+        instances: List[RawInstance] = []
+        for identity, points in prepared.all_identities().items():
+            if not points:
+                continue
+            gaps = (
+                bp.observation_gaps(points, expected_interval=prepared.expected_interval_seconds)
+                if prepared.expected_interval_seconds > 0
+                else []
+            )
+            payload: Dict[str, object] = {
+                "samples": len(points),
+                "durationSeconds": round(points[-1].at_seconds - points[0].at_seconds, 4),
+                "pathLengthNormalized": bp.path_length(points),
+                "speedNormalizedPerSecond": bp.velocity_frames_per_second(points),
+                "directionDegrees": bp.direction_degrees(points),
+                "observationGaps": [
+                    {"fromSeconds": g.start_seconds, "toSeconds": g.end_seconds, "seconds": g.seconds}
+                    for g in gaps
+                ],
+            }
+            instances.append(_subject_instance(identity, points, {"motion": payload}))
+        return PerceptionOutput(task=TASK_BEHAVIOUR, instances=instances)
+
+
+class ZoneModule(_BehaviourModule):
+    """Dwell, visits and transitions — for every zone whose membership reached this frame.
+
+    ⛔ **Emits nothing at all when no zone membership is present.** A dwell of 0.0 s for every subject
+    is what an unconfigured deployment and an empty shop both look like, and publishing the first as
+    though it were the second is the exact failure this project has now met eight times. The absence
+    is reported by the stage instead, where an operator can see it.
+    """
+
+    name = "zone"
+
+    def analyse(self, prepared: BehaviourContext) -> PerceptionOutput:
+        if not prepared.zones or not prepared.zone_membership_present:
+            return PerceptionOutput(task=TASK_BEHAVIOUR)
+
+        instances: List[RawInstance] = []
+        for identity, points in prepared.subjects.items():
+            if not points:
+                continue
+            zones_payload: Dict[str, object] = {}
+            for zone in prepared.zones:
+                visits = bp.zone_visits(points, zone)
+                if not visits:
+                    continue
+                zones_payload[zone.zone_id] = {
+                    "dwellSeconds": round(sum(v.interval.seconds for v in visits), 4),
+                    "visits": len(visits),
+                    "present": any(v.open_ended for v in visits),
+                }
+            transitions = [
+                {"atSeconds": at, "transition": event, "zoneId": zone_id}
+                for at, event, zone_id in bp.zone_transitions(points, prepared.zones)
+            ]
+            if not zones_payload and not transitions:
+                continue
+            instances.append(
+                _subject_instance(identity, points, {"zone": {"zones": zones_payload, "transitions": transitions}})
+            )
+
+        labels = [
+            FrameLabel(
+                "occupancy",
+                attributes={
+                    "zoneId": zone.zone_id,
+                    "count": bp.occupancy_count(dict(prepared.subjects), at_seconds=prepared.at_seconds, zone=zone),
+                },
+            )
+            for zone in prepared.zones
+        ]
+        return PerceptionOutput(task=TASK_BEHAVIOUR, instances=instances, frame_labels=labels)
+
+
+class RelationalModule(_BehaviourModule):
+    """Who was near whom, and for how long.
+
+    ⚠️ Capped at `MAX_RELATIONAL_IDENTITIES` and the cap is reported in the output's attributes, not
+    swallowed. A truncated pairwise scan that said nothing about being truncated would show a crowded
+    scene as a quiet one.
+    """
+
+    name = "relational"
+
+    def analyse(self, prepared: BehaviourContext) -> PerceptionOutput:
+        identities = sorted(prepared.subjects)
+        truncated = len(identities) > MAX_RELATIONAL_IDENTITIES
+        identities = identities[:MAX_RELATIONAL_IDENTITIES]
+
+        instances: List[RawInstance] = []
+        for identity in identities:
+            points = prepared.subjects[identity]
+            if not points:
+                continue
+            others: List[dict] = []
+            for other in identities:
+                if other == identity:
+                    continue
+                other_points = prepared.subjects[other]
+                if not other_points:
+                    continue
+                seconds = bp.co_presence_seconds(points, other_points)
+                distance = _distance_at(points[-1], other_points)
+                if seconds <= 0.0 and distance is None:
+                    continue
+                entry: Dict[str, object] = {"identityId": other, "coPresenceSeconds": seconds}
+                if distance is not None:
+                    entry["distanceNormalized"] = distance
+                others.append(entry)
+            if not others:
+                continue
+            others.sort(key=lambda e: (-float(e["coPresenceSeconds"]), str(e["identityId"])))
+            instances.append(_subject_instance(identity, points, {"relational": {"near": others}}))
+
+        return PerceptionOutput(
+            task=TASK_BEHAVIOUR,
+            instances=instances,
+            frame_labels=[
+                FrameLabel(
+                    "occupancy",
+                    attributes={"count": bp.occupancy_count(dict(prepared.subjects), at_seconds=prepared.at_seconds)},
+                )
+            ],
+            attributes={"truncated": truncated, "identitiesConsidered": len(identities)},
+        )
+
+
+class AssociationModule(_BehaviourModule):
+    """Which subject an object travelled with, and when it changed hands.
+
+    ⭐ **The primitive under `picked_object`, `returned_object` and `handover`** — one mechanism, three
+    business words, which is what keeps all three out of Layer 3's way. ⚠️ Nearest-subject-per-frame
+    is a heuristic and is named as one: two people reaching at once will make the association
+    alternate, and that alternation is a signal a rule should read as *ambiguous*.
+    """
+
+    name = "association"
+
+    def analyse(self, prepared: BehaviourContext) -> PerceptionOutput:
+        if not prepared.objects or not prepared.subjects:
+            return PerceptionOutput(task=TASK_BEHAVIOUR)
+
+        subjects = {identity: list(points) for identity, points in prepared.subjects.items()}
+        instances: List[RawInstance] = []
+        labels: List[FrameLabel] = []
+        for identity, points in prepared.objects.items():
+            if not points:
+                continue
+            spans = bp.associations(points, subjects)
+            if not spans:
+                continue
+            payload = {
+                "heldBy": [
+                    {
+                        "identityId": span.subject_identity,
+                        "fromSeconds": span.interval.start_seconds,
+                        "toSeconds": span.interval.end_seconds,
+                        "seconds": span.interval.seconds,
+                        "current": span.open_ended,
+                    }
+                    for span in spans
+                ]
+            }
+            instances.append(_subject_instance(identity, points, {"association": payload}))
+            for at_seconds, giver, taker in bp.handovers(spans):
+                labels.append(
+                    FrameLabel(
+                        "handover",
+                        attributes={
+                            "objectIdentityId": identity,
+                            "fromIdentityId": giver,
+                            "toIdentityId": taker,
+                            "atSeconds": at_seconds,
+                        },
+                    )
+                )
+        return PerceptionOutput(task=TASK_BEHAVIOUR, instances=instances, frame_labels=labels)
+
+
+#: The modules a deployment gets unless it configures otherwise, in execution order.
+#:
+#: ⚠️ Order is deterministic and matters only for reproducibility — no module reads another's output,
+#: which is what "no module should know about another module's implementation" reduces to here.
+DEFAULT_MODULES: Tuple[Tuple[str, type], ...] = (
+    ("motion", MotionModule),
+    ("zone", ZoneModule),
+    ("relational", RelationalModule),
+    ("association", AssociationModule),
+)
+
+
+def register_behaviour_modules(registry: PerceptionRegistry, *, replace: bool = False) -> List[str]:
+    """Register every default primitive module. Returns the names registered."""
+    for name, factory in DEFAULT_MODULES:
+        registry.register(TASK_BEHAVIOUR, name, factory, replace=replace)
+    return [name for name, _ in DEFAULT_MODULES]
+
+
+def default_behaviour_registry() -> PerceptionRegistry:
+    """A registry holding only the behaviour modules — what the composition root builds when no wider
+    perception registry exists yet."""
+    registry = PerceptionRegistry()
+    register_behaviour_modules(registry)
+    return registry
+
+
+def _distance_at(point: bp.TrackPoint, others: Sequence[bp.TrackPoint], *, tolerance: float = 0.001) -> Optional[float]:
+    """Distance to another identity **at the same instant**, or `None` if it was not observed then.
+
+    ⛔ `None` rather than the distance to its last known position. Two subjects one frame apart can be
+    anywhere relative to each other, and a stale distance presented as a current one is a proximity
+    claim nobody made.
+    """
+    match = next((p for p in others if abs(p.at_seconds - point.at_seconds) <= tolerance), None)
+    return None if match is None else bp.distance_between(point, match)

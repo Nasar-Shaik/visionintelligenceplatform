@@ -160,10 +160,10 @@ def _tracking_metrics(registry) -> list:
     scoped, so labelling by tenant would publish one customer's activity to everyone reading it.
     Per-camera numbers live behind `/tracking/cameras`, which requires a tenant.
     """
-    tracker = getattr(registry, "tracker", None)
+    tracker = _stage(registry, "tracks")
     if not callable(getattr(tracker, "stats", None)):
         return [("inference_tracking_enabled", "gauge", 0)]
-    try:
+    try:  # noqa: WPS229 - kept in step with `_tracking_summary`'s stage resolution
         stats = tracker.stats()
     except Exception:  # noqa: BLE001 - a metrics scrape must never fail the endpoint
         return [("inference_tracking_enabled", "gauge", 0)]
@@ -200,7 +200,53 @@ def _tracking_metrics(registry) -> list:
         value = stats.get(key)
         if isinstance(value, (int, float)):
             rows.append((name, "gauge", value))
+    rows.extend(_behaviour_metrics(registry))
     return rows
+
+
+def _behaviour_metrics(registry) -> list:
+    """The behaviour stage's permanent series (P-11 slice 2.2). No tenant labels, same as tracking.
+
+    ⛔ `inference_behaviour_zone_membership` is the one that matters operationally: `0` means no
+    upstream ever supplied zone membership, so every zone primitive was inert. Without it, a
+    deployment whose zones were never wired looks exactly like a shop where nobody lingered — and
+    the dashboard would show a confident 0.0 s dwell for both.
+    """
+    behaviour = _stage(registry, "scene_labels")
+    if behaviour is None:
+        return [("inference_behaviour_enabled", "gauge", 0)]
+    try:  # noqa: WPS229 - a metrics scrape must never fail the endpoint
+        stats = behaviour.stats()
+    except Exception:  # noqa: BLE001
+        return [("inference_behaviour_enabled", "gauge", 0)]
+    membership = {"present": 1, "absent": 0, "unobserved": -1}.get(str(stats.get("zoneMembership")), -1)
+    tracker = _stage(registry, "tracks")
+    history = getattr(tracker, "history", None)
+    history_rows = []
+    if history is not None:
+        try:  # noqa: WPS229 - a metrics scrape must never fail the endpoint
+            record = history.stats()
+            history_rows = [
+                ("inference_track_history_points_total", "counter", record.get("pointsObserved", 0)),
+                ("inference_track_history_retired_total", "counter", record.get("identitiesRetired", 0)),
+                # ⛔ The series an alert belongs on. A store that cannot be written to is a silent
+                # data-protection failure — the runtime keeps perceiving and keeps nothing.
+                ("inference_track_history_write_failures_total", "counter", record.get("writeFailures", 0)),
+                ("inference_track_history_undated_dropped_total", "counter", record.get("undatedObservationsDropped", 0)),
+                ("inference_track_history_durable", "gauge", 1 if record.get("store", {}).get("durable") else 0),
+                ("inference_track_history_records", "gauge", record.get("store", {}).get("records", 0)),
+            ]
+        except Exception:  # noqa: BLE001
+            history_rows = []
+    return history_rows + [
+        ("inference_behaviour_enabled", "gauge", 1 if stats.get("enabled") else 0),
+        ("inference_behaviour_modules", "gauge", len(stats.get("modules", []))),
+        ("inference_behaviour_frames_total", "counter", stats.get("frames", 0)),
+        ("inference_behaviour_subjects_stamped_total", "counter", stats.get("subjectsStamped", 0)),
+        ("inference_behaviour_latency_ms_avg", "gauge", stats.get("averageMs", 0.0)),
+        ("inference_behaviour_zone_membership", "gauge", membership),
+        ("inference_behaviour_module_failures_total", "counter", sum(stats.get("moduleFailures", {}).values())),
+    ]
 
 
 def runtime_view(registry, supervisor, service_name: str, version: str, model_store=None) -> dict:
@@ -283,6 +329,34 @@ def runtime_view(registry, supervisor, service_name: str, version: str, model_st
     }
 
 
+def _stage(registry, attribute: str):
+    """The pipeline stage exposing `attribute`, unwrapping a `StageChain` when one is installed.
+
+    ⚠️ The tracker slot holds one stage or a chain of them (P-11 slice 2.2), and every reader here
+    wants a *specific* one. Selecting by a distinctive method rather than by position is what stops a
+    reordering of the chain from silently pointing `/tracking` at the wrong stage — the failure would
+    be a 200 with plausible, wrong numbers.
+    """
+    tracker = getattr(registry, "tracker", None)
+    finder = getattr(tracker, "find", None)
+    if callable(finder):
+        return finder(attribute)
+    return tracker if hasattr(tracker, attribute) else None
+
+
+def _live_records(recorder, tenant: str, q) -> list:
+    """Open (still-moving) paths for one camera.
+
+    ⚠️ Requires `cameraId`. The recorder is keyed by stream and there is deliberately no "every
+    camera" read: that is the surface Camera Processing Assignment will use, and a list that spanned
+    cameras would say which sites a tenant is watching in one unauthenticated-by-camera call.
+    """
+    camera_id = _first(q.get("cameraId"))
+    if not camera_id:
+        return []
+    return recorder.live_records(tenant, camera_id, _first(q.get("streamId")))
+
+
 def _tracking_summary(registry) -> dict:
     """What the runtime can say about tracking without naming a tenant.
 
@@ -290,13 +364,18 @@ def _tracking_summary(registry) -> dict:
     look different from one where nobody has walked past a camera, and on a status page those two
     render identically unless the difference is stated.
     """
-    tracker = getattr(registry, "tracker", None)
+    tracker = _stage(registry, "tracks")
     if not callable(getattr(tracker, "stats", None)):
         return {"enabled": False}
     try:
-        return {"enabled": True, "engine": tracker.describe(), "stats": tracker.stats()}
+        out = {"enabled": True, "engine": tracker.describe(), "stats": tracker.stats()}
     except Exception as exc:  # noqa: BLE001 - a status page must never be the thing that breaks
         return {"enabled": True, "error": str(exc)[:200]}
+    behaviour = _stage(registry, "scene_labels")
+    # ⚠️ Stated either way. "This deployment computes no behaviour primitives" and "nothing has
+    # happened yet" are different facts that render identically unless one of them is spelled out.
+    out["behaviour"] = {"enabled": False} if behaviour is None else behaviour.stats()
+    return out
 
 
 def _available_cores():
@@ -480,6 +559,8 @@ def make_handler(
                 GET /tracking/cameras            the same metrics, per camera
                 GET /tracking/tracks             live tracks (optionally ?cameraId=&state=)
                 GET /tracking/tracks/{trackId}   one track plus its lifecycle timeline
+                GET /tracking/behaviour          the behaviour stage's own state + recent scene labels
+                GET /tracking/history            stored movement paths (ADR-0051)
 
             ### ⚠️ Tenant-scoped, and it is not optional
 
@@ -494,7 +575,7 @@ def make_handler(
             consequence of frames arriving, not a thing an operator steers, and a control that
             configures nothing would be worse than an absent one.
             """
-            tracker = getattr(registry, "tracker", None)
+            tracker = _stage(registry, "tracks")
             reads_tracks = callable(getattr(tracker, "tracks", None))
             if not reads_tracks:
                 # ⚠️ A first-class answer, not an error: `INFERENCE_TRACKING_ENABLED=0` is a valid
@@ -532,8 +613,56 @@ def make_handler(
                     self._err(404, "not_found", f"no live track '{segs[2]}'")
                     return
                 self._ok(detail)
+            elif len(segs) == 2 and segs[1] == "behaviour":
+                self._behaviour(tenant, q)
+            elif len(segs) == 2 and segs[1] == "history":
+                self._track_history(tracker, tenant, q)
             else:
                 self._err(404, "not_found", f"no route for GET {self.path}")
+
+        def _behaviour(self, tenant: str, q) -> None:
+            """The behaviour stage's state, plus the scene-level statements it holds for a stream.
+
+            ⚠️ **Scene labels leave the runtime here rather than as events**, because the frozen
+            `DetectionResult` has no frame-level open map — only `Detection.attributes`, which is per
+            subject. Recorded as a finding of P-11 slice 2.2 rather than worked around by widening a
+            frozen contract.
+            """
+            behaviour = _stage(registry, "scene_labels")
+            if behaviour is None:
+                self._ok({"enabled": False, "detail": "behaviour primitives are not enabled on this runtime"})
+                return
+            camera_id = _first(q.get("cameraId"))
+            out = {"enabled": True, "engine": behaviour.describe(), "stats": behaviour.stats()}
+            if camera_id:
+                out["sceneLabels"] = behaviour.scene_labels(tenant, camera_id, _first(q.get("streamId")))
+            self._ok(out)
+
+        def _track_history(self, tracker, tenant: str, q) -> None:
+            """Stored movement paths for one tenant (ADR-0051).
+
+            ⚠️ Tenant-scoped and fail-closed like every other route here — a movement path is the
+            most personal thing this runtime holds. `durable: false` in the payload says the runtime
+            is keeping paths in memory only, which an operator must be able to tell apart from a
+            tenant that has none.
+            """
+            recorder = getattr(tracker, "history", None)
+            if recorder is None:
+                self._ok({"enabled": False, "detail": "track history is not enabled on this runtime"})
+                return
+            records = recorder.store.records(
+                tenant,
+                camera_id=_first(q.get("cameraId")),
+                identity_id=_first(q.get("identityId")),
+            )
+            self._ok(
+                {
+                    "enabled": True,
+                    "records": [r.to_dict() for r in records],
+                    "live": [r.to_dict() for r in _live_records(recorder, tenant, q)],
+                    "stats": recorder.stats(),
+                }
+            )
 
         def _supervisor_stats(self) -> None:
             """Multi-camera capacity + fleet health (tenant-scoped counts stay per-tenant elsewhere;
@@ -578,6 +707,45 @@ def make_handler(
                 self._err(400, "bad_request", "x-tenant-id header is required")
                 return
             self._ok(fn(tenant))
+
+        def do_DELETE(self) -> None:  # noqa: N802
+            """Tenant erasure (ADR-0051 decision 5).
+
+                DELETE /tracking/history    remove every movement path held for this tenant
+
+            ⭐ **A first-class operation, not a retention side effect.** Retention answers "how long
+            do we keep this by default"; erasure answers "delete mine now", and a platform that can
+            only do the first cannot honour the second. It clears the durable store, the in-memory
+            paths the behaviour stage is reading, and the live tracking state in one call — an
+            erasure that left the in-flight identities behind would answer "deleted" while the next
+            frame published them.
+
+            ⚠️ Idempotent: erasing a tenant with nothing stored is a 200 with zeroes, never a 404.
+            "There was nothing to delete" and "the delete failed" must not look the same to a caller
+            implementing a data-subject request.
+            """
+            self._t0 = time.perf_counter()
+            if not hmac.compare_digest(self.headers.get("x-internal-key", ""), internal_key):
+                self._err(401, "unauthenticated", "invalid internal credentials")
+                return
+            path, _ = _split(self.path)
+            if path != "/tracking/history":
+                self._err(404, "not_found", f"no route for DELETE {self.path}")
+                return
+            tenant = self._tenant()
+            if tenant is None:
+                self._err(400, "bad_request", "x-tenant-id header is required")
+                return
+            tracker = _stage(registry, "forget_tenant")
+            if tracker is None:
+                self._ok({"enabled": False, "detail": "track history is not enabled on this runtime"})
+                return
+            out = dict(tracker.forget_tenant(tenant))
+            behaviour = _stage(registry, "scene_labels")
+            if behaviour is not None:
+                out["sceneLabelStreamsCleared"] = behaviour.forget_tenant(tenant)
+            obslog.log("info", "tenant history erased", tenantId=tenant, **{k: v for k, v in out.items() if k != "tenantId"})
+            self._ok(out)
 
         def do_POST(self) -> None:  # noqa: N802
             self._t0 = time.perf_counter()

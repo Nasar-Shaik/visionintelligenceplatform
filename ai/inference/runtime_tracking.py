@@ -49,6 +49,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from contracts import Detection, FrameContext
 from reentry import ReentryResolver
+from track_history import TrackHistoryRecorder
 from track_manager import TrackManager
 from track_motion import seconds_of
 from tracker import PredictiveIouAssociator, iou
@@ -226,9 +227,21 @@ class RuntimeTracker:
     drops into the capability pipeline where `NoopTracker` was and nothing above it changes.
     """
 
-    def __init__(self, options: Optional[TrackingOptions] = None, *, session_id: str = "live") -> None:
+    def __init__(
+        self,
+        options: Optional[TrackingOptions] = None,
+        *,
+        session_id: str = "live",
+        history: Optional["TrackHistoryRecorder"] = None,
+    ) -> None:
         self._options = options or TrackingOptions()
         self._session_id = session_id
+        #: Where retired identities go instead of being evicted (P-11 slice 2.2, ADR-0051).
+        #:
+        #: ⚠️ Optional and `None` by default, so every existing caller and every existing test is
+        #: unchanged and no deployment starts keeping movement paths because a module was imported.
+        #: The recorder is written here and read by the behaviour stage; neither knows the other.
+        self._history = history
         self._lock = threading.RLock()
         self._cameras: Dict[Tuple[str, str], _CameraState] = {}
         self._tracking_ms_total = 0.0
@@ -314,6 +327,7 @@ class RuntimeTracker:
             self._count_crossings(state, tracks, ctx.tenant_id, ctx.camera_id)
 
             stamped = self._stamp(detections, state.manager.assignment(), state)
+            self._record_history(stamped, ctx, state, at=at, captured=captured)
             self._sweep(now=state.last_touched)
             elapsed_ms = (time.perf_counter() - started) * 1000.0
             self._tracking_ms_total += elapsed_ms
@@ -321,7 +335,76 @@ class RuntimeTracker:
             self._record_timing(ctx.tenant_id, ctx.camera_id, elapsed_ms)
             if self._recorder is not None:
                 self._recorder.record(ctx, detections, stamped, state.frame_index)
+        # ⚠️ Outside the lock, deliberately. The update lock guards association and lifecycle only —
+        # microseconds — and a durable write inside it would put file I/O on the path every frame of
+        # every camera shares. See `TrackHistoryRecorder.drain_pending`.
+        if self._history is not None:
+            self._history.drain_pending()
         return stamped
+
+    # --- durable history (ADR-0051) ----------------------------------------------
+
+    def _record_history(
+        self,
+        stamped: Sequence[Detection],
+        ctx: FrameContext,
+        state: "_CameraState",
+        *,
+        at: str,
+        captured: Optional[float],
+    ) -> None:
+        """Append this frame's observations, keyed by identity, and close identities that have gone.
+
+        ⛔ **By `identity_id`, never `tracking_id`.** A briefly occluded person returns with a new
+        track id (ADR-0038 forbids reuse); a history keyed by track id would record two short visits
+        where one long one happened, and every dwell derived from it would be plausible and wrong.
+
+        ⚠️ Staleness is measured against `reentryGapSeconds`, not against track removal. A removed
+        track's identity can still be adopted by a new one inside that window, and closing the record
+        when the *track* died would split the very path the re-entry resolver exists to keep whole.
+        """
+        if self._history is None:
+            return
+        for detection in stamped:
+            if detection.identity_id is None or detection.tracking_id is None:
+                continue
+            self._history.observe(
+                tenant_id=ctx.tenant_id,
+                camera_id=ctx.camera_id,
+                stream_id=ctx.correlation_id,
+                identity_id=detection.identity_id,
+                track_id=detection.tracking_id,
+                frame_index=state.frame_index,
+                at=at,
+                bbox=detection.bbox,
+                label=detection.label,
+                confidence=detection.confidence,
+            )
+        if captured is not None:
+            self._history.retire_stale(
+                tenant_id=ctx.tenant_id,
+                camera_id=ctx.camera_id,
+                stream_id=ctx.correlation_id,
+                now_seconds=captured,
+                older_than_seconds=self._options.reentry_gap_seconds,
+            )
+
+    def forget_tenant(self, tenant_id: str) -> dict:
+        """Tenant erasure (ADR-0051 decision 5) — drop live tracking state **and** stored history.
+
+        ⛔ Both, in one call. An erasure that cleared the archive and left the in-flight paths in
+        memory would answer "deleted" while still holding them, and the identities in memory are the
+        ones a live camera is about to publish.
+        """
+        with self._lock:
+            keys = [k for k in self._cameras if k[0] == tenant_id]
+            for key in keys:
+                del self._cameras[key]
+            self._totals.pop(tenant_id, None)
+            for camera_key in [k for k in self._camera_totals if k[0] == tenant_id]:
+                del self._camera_totals[camera_key]
+        records = 0 if self._history is None else self._history.forget_tenant(tenant_id)
+        return {"tenantId": tenant_id, "camerasReleased": len(keys), "historyRecordsRemoved": records}
 
     # --- identity ----------------------------------------------------------------
 
@@ -546,6 +629,7 @@ class RuntimeTracker:
     def _evict_oldest(self) -> None:
         oldest = min(self._cameras.items(), key=lambda kv: kv[1].last_touched, default=None)
         if oldest is not None:
+            self._close_history(oldest[0])
             del self._cameras[oldest[0]]
             self._evictions += 1
 
@@ -553,7 +637,19 @@ class RuntimeTracker:
         """Release cameras that have gone quiet. Runs on the update path — no timer, no thread."""
         stale = [k for k, s in self._cameras.items() if now - s.last_touched > CAMERA_IDLE_SECONDS]
         for key in stale:
+            self._close_history(key)
             del self._cameras[key]
+
+    def _close_history(self, key: Tuple[str, str, Optional[str]]) -> None:
+        """Close every open identity on a stream whose tracking state is about to be released.
+
+        ⚠️ The second of the two clocks. `retire_stale` ages identities in *footage* time, which stops
+        moving when a camera stops sending; this is the *wall-clock* path, and without it a camera
+        that went quiet mid-shift would leave its last subjects unwritten for ever.
+        """
+        if self._history is None:
+            return
+        self._history.retire_stream(tenant_id=key[0], camera_id=key[1], stream_id=key[2])
 
     # --- reads (tenant-scoped, fail-closed) --------------------------------------
 
@@ -775,9 +871,19 @@ class RuntimeTracker:
             recorder, self._recorder = self._recorder, None
         return recorder
 
+    @property
+    def history(self) -> Optional[TrackHistoryRecorder]:
+        """The durable-history recorder, or `None` when this deployment keeps no movement paths."""
+        return self._history
+
     def describe(self) -> dict:
         """What this tracker is, for the runtime's self-description. No tenant data."""
-        return self._options.describe()
+        out = dict(self._options.describe())
+        # ⚠️ Reported even when off, and reported as `False` rather than omitted. "This deployment
+        # keeps no track history" is an operational fact somebody has to be able to read; an absent
+        # key reads as "an older runtime that did not say", which is a different thing.
+        out["trackHistory"] = {"enabled": False} if self._history is None else self._history.stats()
+        return out
 
 
 def _mean(values: Sequence[float]) -> Optional[float]:

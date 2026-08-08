@@ -167,7 +167,7 @@ export function registerSystemRoutes(app: FastifyInstance, deps: SystemRoutesDep
    * either a leak or a lockout. The gateway does not vouch for a principal, and it never substitutes
    * a service key for one, because that would be a hidden privilege escalation.
    */
-  const trackingProxy = async (
+  const perceptionProxy = async (
     request: FastifyRequest,
     reply: FastifyReply,
     path: string,
@@ -176,7 +176,7 @@ export function registerSystemRoutes(app: FastifyInstance, deps: SystemRoutesDep
     const search = request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : '';
     try {
       const response = await doFetch(
-        `${deps.mediaUrl.replace(/\/$/, '')}/perception/tracking${path}${search}`,
+        `${deps.mediaUrl.replace(/\/$/, '')}${path}${search}`,
         {
           signal: AbortSignal.timeout(AI_RUNTIME_TIMEOUT_MS),
           headers: {
@@ -201,6 +201,12 @@ export function registerSystemRoutes(app: FastifyInstance, deps: SystemRoutesDep
     }
   };
 
+  const trackingProxy = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    path: string,
+  ): Promise<unknown> => perceptionProxy(request, reply, `/perception/tracking${path}`);
+
   app.get('/api/tracking', async (request, reply) => trackingProxy(request, reply, ''));
   app.get('/api/tracking/cameras', async (request, reply) =>
     trackingProxy(request, reply, '/cameras'),
@@ -212,5 +218,23 @@ export function registerSystemRoutes(app: FastifyInstance, deps: SystemRoutesDep
     '/api/tracking/tracks/:trackId',
     async (request, reply) =>
       trackingProxy(request, reply, `/tracks/${encodeURIComponent(request.params.trackId)}`),
+  );
+
+  /*
+   * Behaviour primitives + stored movement paths (P-11 slice 2.2).
+   *
+   *   GET /api/behaviour        the behaviour stage's state and recent scene-level statements
+   *   GET /api/track-history    stored movement paths for the caller's tenant (ADR-0051)
+   *
+   * ⚠️ Same proxy, same absent permission check, same reason: media authorises `track:read` against
+   * the caller's own forwarded token, and a second copy here would be a second thing to keep true.
+   * ⚠️ No `DELETE`. Erasure must remove history alongside the incidents that cite it, and a route
+   * that did half of that would report success while the evidence trail still named the person.
+   */
+  app.get('/api/behaviour', async (request, reply) =>
+    perceptionProxy(request, reply, '/perception/behaviour'),
+  );
+  app.get('/api/track-history', async (request, reply) =>
+    perceptionProxy(request, reply, '/perception/track-history'),
   );
 }

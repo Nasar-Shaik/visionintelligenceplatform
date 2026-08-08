@@ -106,7 +106,8 @@ def _build_tracker(config: InferenceConfig):
         return NoopTracker()
     from runtime_tracking import RuntimeTracker, TrackingOptions  # noqa: WPS433 - keeps imports lean
 
-    return RuntimeTracker(
+    recorder = _build_track_history(config)
+    tracker = RuntimeTracker(
         TrackingOptions(
             enabled=True,
             min_iou=config.tracking_min_iou,
@@ -116,8 +117,56 @@ def _build_tracker(config: InferenceConfig):
             history_max=config.tracking_history_max,
             reentry_gap_seconds=config.tracking_reentry_seconds,
             reentry_distance=config.tracking_reentry_distance,
-        )
+        ),
+        history=recorder,
     )
+    if recorder is None or not config.behaviour_enabled:
+        return tracker
+
+    # ⭐ Two stages in the ONE slot the pipeline already has (P-11 slice 2.2). `StageChain` is itself
+    # `Tracker`-shaped, so `CapabilityRuntime` still sees exactly one tracker and the frozen runtime
+    # architecture gains no layer. Order is not a preference: behaviour reads the identity tracking
+    # assigns, so it must run second.
+    from behaviour_stage import BehaviourStage  # noqa: WPS433 - keeps imports lean
+    from pipeline import StageChain  # noqa: WPS433
+
+    modules = [m.strip() for m in config.behaviour_modules.split(",") if m.strip()] or None
+    return StageChain(tracker, BehaviourStage(recorder=recorder, modules=modules))
+
+
+def _build_track_history(config: InferenceConfig):
+    """The durable track-history recorder (ADR-0051), or `None` when this deployment keeps none.
+
+    ⛔ **`None` when neither behaviour nor a storage directory is configured**, and that is the point
+    of the branch: a runtime that keeps nobody's movement path should hold no structure that could
+    start. When behaviour is on but no directory is set, history exists in memory for the primitives
+    and is never written — `stats()["store"]["durable"]` reads `False` so an operator can see which
+    of the two they have.
+    """
+    from track_history import (  # noqa: WPS433 - keeps imports lean
+        JsonlTrackHistoryStore,
+        NullTrackHistoryStore,
+        RetentionPolicy,
+        TrackHistoryRecorder,
+    )
+
+    if not config.behaviour_enabled and not config.track_history_dir:
+        return None
+    policy = RetentionPolicy(
+        max_age_hours=config.track_history_retention_hours,
+        max_points=config.track_history_max_points,
+    )
+    store = (
+        JsonlTrackHistoryStore(config.track_history_dir, policy)
+        if config.track_history_dir
+        else NullTrackHistoryStore()
+    )
+    if config.track_history_dir:
+        # ⚠️ On start, not on a timer. A runtime that has been down for a week must not serve records
+        # that outlived their retention while it was off, and a purge thread would be a second clock
+        # to reason about for a job that costs milliseconds at boot.
+        store.purge()
+    return TrackHistoryRecorder(store=store, max_points=config.track_history_max_points)
 
 
 def build_registry(config: InferenceConfig):

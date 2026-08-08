@@ -72,6 +72,17 @@ RUN if [ "$INFERENCE_BACKEND" = "onnx" ]; then \
       echo "stub backend: no model artifacts"; \
     fi
 
+# ⛔ **Created and chowned HERE, in the image, or a named volume mounted over it is root-owned.**
+#
+# Docker seeds a fresh named volume from the image's directory at that path, ownership included — and
+# from *nothing* when the path does not exist, which yields `root:root` and a runtime running as
+# `vip` that cannot write a byte. That is exactly what shipped on 2026-08-08: the container reported
+# healthy, tracking ran, and every frame after the first retired identity answered HTTP 500 because
+# the history write raised inside the perception path. Two fixes came out of it and this is the one
+# that makes the failure impossible rather than survivable (see `TrackHistoryUnavailable`).
+ENV INFERENCE_TRACK_HISTORY_DIR=/var/lib/vip/track-history
+RUN mkdir -p "$INFERENCE_TRACK_HISTORY_DIR" && chown -R vip:vip "$INFERENCE_TRACK_HISTORY_DIR"
+
 # ⚠️ Recorded on the image, because "which backend is this?" must be answerable from the deployment
 # rather than from whoever ran the build. Gate 0 reads it.
 LABEL vip.inference.backend="${INFERENCE_BACKEND}"

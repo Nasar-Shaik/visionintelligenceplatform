@@ -67,6 +67,43 @@ class Tracker(Protocol):
     def run(self, detections: List[Detection], ctx: FrameContext) -> List[Detection]: ...
 
 
+class StageChain:
+    """Several `Tracker`-shaped stages in the one slot the pipeline already has (P-11 slice 2.2).
+
+    ⭐ **This is how a stage is added without adding a stage.** `Tracker` is a structural Protocol —
+    detections in, detections out — so anything with that shape composes into the same position.
+    `CapabilityRuntime` still sees exactly one tracker, the frozen runtime architecture gains no
+    layer, and the standing guardrail *"no new pipeline stages"* is held literally.
+
+    ⚠️ Order is the caller's and it matters: a stage that reads identity must run after the one that
+    assigns it. The chain does not reorder, retry, or swallow — a stage that raises fails the frame,
+    because a pipeline that silently continued past a broken stage would report a clean run.
+    """
+
+    def __init__(self, *stages: Tracker) -> None:
+        self._stages = [s for s in stages if s is not None]
+
+    @property
+    def stages(self) -> List[Tracker]:
+        return list(self._stages)
+
+    def run(self, detections: List[Detection], ctx: FrameContext) -> List[Detection]:
+        for stage in self._stages:
+            detections = stage.run(detections, ctx)
+        return detections
+
+    def find(self, attribute: str):  # noqa: ANN201 - returns the first stage exposing `attribute`
+        """The first stage carrying a named attribute, or `None`.
+
+        ⚠️ Used by the composition root to reach a stage's own reads (tracking stats, behaviour
+        stats) without the chain having to know what kinds of stage exist.
+        """
+        for stage in self._stages:
+            if hasattr(stage, attribute):
+                return stage
+        return None
+
+
 class ResultTranslator(Protocol):
     def run(
         self,

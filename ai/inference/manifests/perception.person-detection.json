@@ -16,6 +16,10 @@
   "tracking": false,
   "preprocessing": "letterbox",
   "postprocessing": "confidence-threshold",
-  "generatedEvents": ["perception.person.detected"],
+  "generatedEvents": [
+    "perception.person.detected",
+    "perception.vehicle.detected",
+    "perception.object.detected"
+  ],
   "placement": ["cloud", "edge"]
 }

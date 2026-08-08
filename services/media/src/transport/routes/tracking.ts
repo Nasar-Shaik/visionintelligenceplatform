@@ -5,6 +5,8 @@
  *   GET /perception/tracking/cameras            the same metrics, per camera
  *   GET /perception/tracking/tracks             live tracks (?cameraId= &state=)
  *   GET /perception/tracking/tracks/:trackId    one track plus its lifecycle timeline
+ *   GET /perception/behaviour                   the behaviour stage's state (?cameraId= &streamId=)
+ *   GET /perception/track-history               stored movement paths (?cameraId= &identityId=)
  *
  * ### ⚠️ Why this lives in media, like the runtime view above it
  *
@@ -132,6 +134,49 @@ export function registerTrackingRoutes(app: FastifyInstance, deps: TrackingRoute
           error: { code: 'not_found', message: 'that track is no longer live' },
         });
       return reply.send(success(detail));
+    },
+  );
+
+  /*
+   * ⚠️ **`track:read`, the same permission as a track, and not a weaker one.** A behaviour primitive
+   * is a statement about how a person moved — dwell, proximity, who they were near — which is more
+   * revealing than the track it was derived from, never less. A separate, softer permission would be
+   * the kind of mistake that only shows up in an audit.
+   */
+  app.get<{ Querystring: { cameraId?: string; streamId?: string } }>(
+    '/perception/behaviour',
+    { preHandler: deps.auth.authorize('track:read') },
+    async (request, reply) => {
+      const params = new URLSearchParams();
+      if (request.query.cameraId !== undefined) params.set('cameraId', request.query.cameraId);
+      if (request.query.streamId !== undefined) params.set('streamId', request.query.streamId);
+      const query = params.size > 0 ? `?${params.toString()}` : '';
+      return reply.send(
+        success(await unreachableAsAnswer(() => proxy(request, '/tracking/behaviour', query))),
+      );
+    },
+  );
+
+  /*
+   * ⚠️ Stored movement paths (ADR-0051). Read-only here, deliberately: **erasure is not a console
+   * button.** A tenant-scoped delete must remove history alongside the incidents that cite it, and a
+   * control that removed one and left the other would answer "deleted" while the evidence trail
+   * still named the person. The runtime's `DELETE /tracking/history` exists and is verified; joining
+   * it to platform-wide tenant deletion is recorded as a remaining blocker rather than half-wired.
+   */
+  app.get<{ Querystring: { cameraId?: string; identityId?: string; streamId?: string } }>(
+    '/perception/track-history',
+    { preHandler: deps.auth.authorize('track:read') },
+    async (request, reply) => {
+      const params = new URLSearchParams();
+      for (const key of ['cameraId', 'identityId', 'streamId'] as const) {
+        const value = request.query[key];
+        if (value !== undefined) params.set(key, value);
+      }
+      const query = params.size > 0 ? `?${params.toString()}` : '';
+      return reply.send(
+        success(await unreachableAsAnswer(() => proxy(request, '/tracking/history', query))),
+      );
     },
   );
 }

@@ -205,7 +205,22 @@ test.describe('the overlay draws what is stored, and nothing else', () => {
       v.dispatchEvent(new Event('timeupdate'));
     }, gap!);
 
-    await expect(page.getByTestId('overlay-status')).toContainText(/no analysed frame/i);
+    /*
+     * ⛔ **The assertion is that nothing is DRAWN, not that a particular sentence is on screen.**
+     *
+     * This line read `/no analysed frame/i` and had been red since `bfa4e1d` (V-17), one commit
+     * after it was written: the console deliberately stopped saying that — *"'no analysed frame at
+     * this instant' is true and useless… the nearest stored moment is the thing the operator can act
+     * on"* — and the certification kept asserting the superseded copy. A check pinned to wording
+     * fails when the wording improves, which is the same family as asserting a table by text instead
+     * of by heading.
+     *
+     * Both statements the console may make here mean "this instant was not analysed"; either is
+     * correct, and the box count below is what the test is actually for.
+     */
+    await expect(page.getByTestId('overlay-status')).toContainText(
+      /nearest stored frame|nothing stored for this run/i,
+    );
     const boxes = page.locator('[data-testid="analysis-player"] .absolute.rounded-xs.border-2');
     await expect.poll(async () => boxes.count()).toBe(0);
   });

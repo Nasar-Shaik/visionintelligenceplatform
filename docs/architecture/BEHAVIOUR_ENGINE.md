@@ -1,7 +1,8 @@
 # Behaviour Engine — architecture
 
-**Design only. No component described here is implemented.** This document exists to be argued with
-before any of it is built.
+**Layers 1 and 2 are implemented and deployed (P-11 slice 2.2). Layer 3 is design only.**
+Item 1 (persistent track history) and the domain-neutral primitive set run on the live production
+path; items 2–7 are unbuilt and the sequencing is in [PHASE2_PLAN](PHASE2_PLAN.md).
 
 > ⭐ **The engine's purpose is to make theft detection unnecessary to special-case.** Every capability
 > the platform will be asked for — retail concealment, hospital fall, warehouse pallet movement,
@@ -38,7 +39,7 @@ that failure is the signal it belongs in Layer 3.
 
 | # | Item | Layer | Depends on |
 | --- | --- | --- | --- |
-| 1 | Persistent track history | **2** | Nothing new — the runtime already computes it and discards it |
+| 1 | Persistent track history — ✅ **shipped, slice 2.2** | **2** | Nothing new — the runtime already computes it and discards it |
 | 2 | Pose plugin | **1** | Perception registry (exists) · ⚠️ compute (§4) |
 | 3 | Segmentation plugin | **1** | Perception registry (exists) · ⚠️ compute |
 | 4 | Re-identification embeddings | **1 + 2** | `Detection.embedding` (frozen field, exists) |
@@ -162,6 +163,35 @@ Pose and trajectory make a *demo* look close; without object identity, "taking" 
 remain the same skeleton ([ACTION_FOUNDATION §3](ACTION_FOUNDATION.md)).
 
 ---
+
+## 5b. ⛔ The zone gap — the finding of slice 2.2
+
+**Zone membership is resolved downstream of the runtime, so the zone primitives cannot execute inside
+it on the product path.** Stated as a fact rather than as a limitation to be argued away:
+
+```
+media                      runtime                    media                      events
+ decode ──frame──▶ /infer ─ detect · track · behave ─▶ resolveZones ──▶ publish ──▶ normalize
+                              ▲                          │
+                              └──── membership lands HERE, one hop too late ───┘
+```
+
+`services/media/src/application/zone-resolver.ts` computes membership **after** `/infer` answers —
+necessarily, because a polygon test needs the boxes inference produces — and stamps it into the
+frozen contract's `Detection.attributes["zoneIds"]`. Slice 2.2 therefore treats membership as an
+**input fact** (`MembershipZone`) rather than a computation, and reports its absence rather than
+producing a dwell of 0.0 s for every subject.
+
+**Three ways to close it, costed. None is free and the choice is the Architect's:**
+
+| Option | Cost | ⚠️ |
+| --- | --- | --- |
+| **Send the zone plan on `/infer`** — media already holds `PlanZone[]` at the call site | One optional request field | ⛔ A new configuration channel into a frozen runtime, and **two** polygon engines answering "which zone was this person in". The first time they disagree, nobody can say which is right |
+| **Echo the previous frame's membership** on the next `/infer` | One field, no second engine | ⚠️ A one-frame lag and a join by frame sequence — complexity for a fact that is already a frame old by the time a primitive reads it |
+| **Move the zone-dependent primitives downstream**, beside the membership | No runtime change | ⛔ Layer 2 would then live in two places and two languages; the domain-neutrality test could not span both |
+
+⭐ **Everything that needs no zone already works**: motion, proximity, co-presence, observation gaps,
+object association and handover all run today on both the live and the recorded path.
 
 ## 6. The behaviour graph (item 6)
 

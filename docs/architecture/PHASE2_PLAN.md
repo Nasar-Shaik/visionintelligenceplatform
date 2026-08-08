@@ -13,8 +13,8 @@ decisions it rests on are [ADR-0051](../adr/ADR-0051-track-history-becomes-durab
 
 | Slice | What ships | Blocked by | Gate before starting |
 | --- | --- | --- | --- |
-| **2.1** | Persistent track history + motion primitives | — | — |
-| **2.2** | Behaviour primitive seam (`register_task("behaviour")`) + zone/relational primitives | 2.1 | — |
+| **2.1** | ✅ Motion primitives, as pure functions | — | — |
+| **2.2** | ✅ The seam (`register_task("behaviour")`), the four modules on the live path, durable track history, multi-class verified | 2.1 | — |
 | **2.3** | ⛔ **Detector benchmark on a quiet host** | — | Runs *before* any new model is chosen |
 | **2.4** | Pose plugin | 2.3 | ⛔ **Compute gate** — §4 |
 | **2.5** | Re-identification embeddings | 2.3 | Compute gate |
@@ -75,6 +75,30 @@ and erasure.
 ⭐ **No new contract, no new stage.** The P-10 registry already accepts a task nobody designed for,
 and `FrameLabel` already carries a boxless statement about the scene. If this slice needs either
 widened, the P-10 design was wrong and that is the finding.
+
+### ✅ What actually shipped, and the three findings
+
+**The prediction held.** `register_task("behaviour", …)` needed no change to `perception.py`,
+`perception_registry.py` or the pipeline, and `StageChain` — itself `Tracker`-shaped — put a second
+stage in the one slot that already existed. Per-subject facts ride in
+`Detection.attributes["behaviour"]` and reach the events store intact, verified on the deployed
+stack over real footage.
+
+⛔ **Finding 1 — `FrameLabel` has nowhere to go.** The contract can *express* a scene-level statement,
+but `DetectionResult` has no frame-level open map to carry one: only `Detection.attributes`, which is
+per subject. Occupancy and handover therefore leave through `GET /tracking/behaviour` rather than as
+events. Nothing is lost for a rule that wants a handover — the per-object `association.heldBy` array
+shows the object changing hands and *does* ride the detection — but the asymmetry is real and is
+recorded rather than fixed by widening a frozen contract.
+
+⛔ **Finding 2 — zone membership arrives one hop too late.** See
+[BEHAVIOUR_ENGINE §5b](BEHAVIOUR_ENGINE.md); three costed options, the Architect's call.
+
+⛔ **Finding 3 — two defects that only a deployment could find**, both in slice 2.2's own code: a
+root-owned Docker volume against a uid-999 runtime, and — much worse — a history write failure that
+propagated into the perception path and answered **HTTP 500 on every frame** while the container
+reported healthy. Both fixed, both regression-tested, and the second changed a design rule: *a
+secondary duty must never be able to stop the primary one.*
 
 **The domain-neutrality test is executable**: a test asserts that no primitive's name or output
 vocabulary contains a domain word (`shelf`, `theft`, `patient`, `pallet`). ⚠️ Crude, and it catches

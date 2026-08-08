@@ -794,6 +794,75 @@ _Last updated: 2026-08-08 · Claude_
   Docs: [TRACK_A_ACCEPTANCE](../project/P9_TRACK_A_ACCEPTANCE.md),
   [P9_IMPLEMENTATION_PLAN](../project/P9_IMPLEMENTATION_PLAN.md).
 
+- **P-11 · Slice 2.2 · The behaviour layer, wired ✅ (2026-08-08)** — **Layer 2 runs on the live
+  production path, durable track history is real, and multi-class detection is proved on real
+  footage. Two defects were found by deploying and neither was reachable from any test.**
+  ⭐ **A stage was added without adding a stage.** `pipeline.Tracker` is a *structural* Protocol —
+  detections in, detections out — so `StageChain(RuntimeTracker, BehaviourStage)` composes two of
+  them into the one slot `CapabilityRuntime` already had. No new pipeline stage, no second inference
+  path, no new configuration channel, and the frozen `DetectionResult` gained no field: behaviour
+  rides in `Detection.attributes["behaviour"]`, exactly where ADR-0050 said a new modality would.
+  ⭐ **`register_task("behaviour", …)` is the P-10 design under test rather than described** — the
+  perception registry was built with an *open* task set so a plugin could bring a task nobody had
+  designed for, and behaviour is the first to actually do it. `perception.py`,
+  `perception_registry.py` and the pipeline are unchanged. Four modules ship as `PerceptionModule`s
+  (`motion` · `zone` · `relational` · `association`), each returning a `PerceptionOutput`.
+  ⭐ **One path serves live and recorded**, because there is only one: both reach the runtime through
+  `POST /infer`, whose single caller is enforced by `perception-boundary.mjs` §A. The stage never
+  sees a model, a tensor or a class id.
+  **ADR-0051 implemented**: `TrackHistoryRecorder` (in memory, bounded, one writer/one reader) plus a
+  JSONL store, keyed by `identityId` and by stream, with wall-clock retention, tenant erasure and
+  resume-after-restart. ⚠️ **Two clocks, kept apart**: points carry *footage* time, `writtenAt`
+  carries *wall-clock* — purging by footage time would erase a 2019 archive the instant it was
+  analysed and keep tomorrow's live footage for ever. ⛔ **Zone membership is deliberately not
+  persisted**: a polygon is versioned configuration, and an archive that froze "was inside `z_till`"
+  could never be corrected when the polygon turned out to be drawn two metres off.
+  ⛔ **The two defects the deployment found.** (1) **A named Docker volume is seeded root-owned when
+  the image has no directory at that path**, and the runtime runs as uid 999 — so every history write
+  raised `EPERM`. (2) **Far worse, that exception propagated out of `RuntimeTracker.run` into
+  `CapabilityRuntime.process`, so every frame after the first retired identity answered HTTP 500**
+  while the container went on reporting healthy. Both fixed and both regression-tested: the image now
+  creates and chowns the path, `JsonlTrackHistoryStore` **writes a probe file at construction** and
+  refuses to start on an unwritable location (`os.access` was not used — it answers about permission
+  bits, which is a different question from "can this process write here" under a read-only mount, a
+  full disk or a root-owned volume), and `drain_pending` now **contains** a storage failure, counts
+  it, and publishes `writeFailures` + `lastWriteError` in `stats()` and `/metrics`. ⭐ Keeping
+  movement paths is a secondary duty; seeing people is the primary one, and a secondary duty that can
+  stop the primary one is a defect in the wiring rather than in the storage.
+  ⛔ **A third defect, found by a test**: `zone_membership_present` was computed from the *current*
+  frame, so the moment a subject stepped out of every zone all zone facts vanished — including the
+  `left` transition that had just happened. Presence is now per stream, and the stage reports
+  `zoneMembership` as **`present` / `absent` / `unobserved`** rather than publishing a confident
+  0.0 s dwell for a deployment that never supplied membership.
+  ⚠️ **The zone finding, stated plainly.** Zone membership is resolved *downstream* of `/infer`, in
+  media, by an argued decision that keeps polygon geometry out of perception — so on the product path
+  it never reaches the runtime and the zone primitives are **inert today**. Rather than open a new
+  configuration channel into a frozen runtime or stand up a second polygon engine, membership is
+  taken as an **input fact** (`MembershipZone` reads `Detection.attributes["zoneIds"]`, media's own
+  key) and its absence is reported. Closing this is an architectural call, costed in
+  [BEHAVIOUR_ENGINE](../architecture/BEHAVIOUR_ENGINE.md).
+  ⚠️ **Scene-level statements do not ride the frozen contract**: `DetectionResult` has no frame-level
+  open map, only per-subject `attributes`. Occupancy and handover leave through
+  `GET /tracking/behaviour` instead. Recorded as a finding, not worked around by widening a contract.
+  **Verified on the deployed stack**, `https://localhost`, image rebuilt: real footage produced
+  **two distinct COCO classes** (`person` ×3, `tie` ×2 — proving `labels` is a lookup table and not a
+  person filter), **5 of 5 events carried `subjects[0].attributes.behaviour`** through four hops and
+  two languages, the camera sweep wrote **2 durable records** as uid `vip`, those records **survived a
+  container restart**, and one of them carried **two `trackIds` under one `identityId`** — a real
+  occlusion on real footage, bridged, which is the defect this whole phase was most likely to ship.
+  Erasure removed both and was idempotent on the second call. ⚠️ `bottle`/`backpack` did not appear
+  because nothing carrying one walked past; the classes not seen are **named** in the report rather
+  than folded into a total.
+  **New**: `track_history.py` · `behaviour_modules.py` · `behaviour_stage.py` · `pipeline.StageChain`
+  · `tools/validation/behaviour.mjs` · `GET /api/behaviour` · `GET /api/track-history` ·
+  `DELETE /tracking/history` (runtime-internal) · **`perception-boundary.mjs` §F** — the zone
+  attribute key is now asserted to agree across media, events and the runtime; three copies of
+  `'zoneIds'` in two languages that cannot import one another, whose mismatch fails silently and
+  totally. **1244 Python tests green** (81 new) · gate **70/70** · contracts + boundary clean.
+  ⚠️ **A tooling lesson worth the note**: a mutation swapping `identity_id` ↔ `tracking_id` is
+  *size-neutral*, so CPython's `(mtime, size)` bytecode cache silently reused the mutated `.pyc` and
+  the restored code appeared broken. Mutation checks now run with `python3 -B`. C-54 · C-55.
+
 - **P-11 · Slice 2.1 · Behaviour primitives ✅ (2026-08-08)** — **15 pure primitives over track
   history, 29 tests, no new model and no pipeline change.** ⭐ **The Architect's diagram corrected a
   claim this project had made twice.** Both the design docs and the capability matrix said object

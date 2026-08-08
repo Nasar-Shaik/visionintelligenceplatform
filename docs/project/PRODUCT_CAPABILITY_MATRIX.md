@@ -197,8 +197,9 @@ references them rather than restating what a capability is.
 | **C-51** | **Interchangeable detectors** — one runtime, many families |            ✅            | ✅ `register_decoder`: `yolox` · `rtdetr` · `yolo11` |         n/a         |  ✅  |  ⚠️   |  ⚠️  | **P-10 A2**     | C-19 · **ADR-0050** | ai/inference |
 | **C-52** | **Multi-modal perception contract** — pose · masks · re-id · OCR · action |            ✅            | ⚠️ contract + registry only; **no such model runs** |         ⛔          |  ✅  |  ⛔   |  ⛔  | **P-10 A1**     | C-51               | ai/inference |
 | **C-53** | **Detector benchmark matrix** — one corpus, every detector |            ✅            | ⚠️ framework + 21 tests; **no run executed, no CLI** |         ⛔          |  ✅  |  ⛔   |  ⛔  | **P-10 B**      | C-51               | ai/inference |
-| **C-54** | **Behaviour primitives** — motion · zones · relational · object association |            ✅            | ⚠️ 15 pure primitives + 29 tests; **not yet wired to the pipeline** |         ⛔          |  ✅  |  ⛔   |  ⛔  | **P-11 slice 2.1** | C-52 · **ADR-0051/0052** | ai/inference |
-| **C-55** | **Retail reasoning** — shelf interaction · concealment · no-checkout |            ⛔ design only            | ⛔ nothing implemented — ships as **rules**, not runtime |         ⛔          |  ⛔  |  ⛔   |  ⛔  | **P-11 (planned)** | C-54               | rules        |
+| **C-54** | **Behaviour primitives** — motion · zones · relational · object association |            ✅            | ✅ 4 modules on the live path; ⚠️ **zone primitives inert — no membership reaches the runtime** |    ⚠️ `GET /api/behaviour`    |  ✅  |  ⚠️   |  ⚠️  | **P-11 slice 2.2** | C-52 · **ADR-0051/0052** | ai/inference |
+| **C-56** | **Durable track history** — trajectory per identity, retention, erasure |            ✅            | ✅ JSONL store, tenant-scoped, resume verified across a restart |  ⚠️ `GET /api/track-history`  |  ✅  |  ⚠️   |  ⚠️  | **P-11 slice 2.2** | C-54 · **ADR-0051** | ai/inference |
+| **C-55** | **Retail reasoning** — shelf interaction · concealment · no-checkout |            ⛔ design only            | ⛔ nothing implemented — ships as **rules**, not runtime |         ⛔          |  ⛔  |  ⛔   |  ⛔  | **P-11 (planned)** | C-54 · C-56        | rules        |
 
 > ⭐ **C-50 (P-9) is a producer, not a pipeline, and the ⚠️ in Pilot/Prod is deliberate.** The live
 > path runs through the identical runtime, tracker, publisher, rule engine and incident pipeline as
@@ -223,8 +224,19 @@ references them rather than restating what a capability is.
 > DATASET_STRATEGY, and an accuracy figure from unlabelled frames is exactly the instrument failure
 > this project keeps catching. See [DETECTOR_COMPARISON](../validation/DETECTOR_COMPARISON.md).
 
-> ⛔ **C-54 and C-55 are DESIGN ONLY and every column is deliberately empty.** They are listed so
-> the Behaviour Engine's boundary is visible before it is built, not to suggest progress.
+> ⭐ **C-54 and C-56 shipped in P-11 slice 2.2 and run on the deployed stack; C-55 remains DESIGN
+> ONLY.** The behaviour layer is composed into the existing tracker slot via `StageChain` — a
+> structural `Tracker` — so no pipeline stage, contract or configuration channel was added, and both
+> the live and recorded paths execute it because both reach the runtime through the one `/infer`.
+> ⚠️ **The ⚠️ in Pilot/Prod is the zone gap and it is not cosmetic.** Zone membership is resolved
+> *downstream* of `/infer`, in media, so on the product path the runtime never receives it and
+> `dwell` / `zone_visits` / `zone_transitions` are **inert**. The stage reports
+> `zoneMembership: "absent"` rather than publishing a 0.0 s dwell, because an unconfigured deployment
+> and an empty shop produce the same number. Closing it is an architectural call, costed in
+> [BEHAVIOUR_ENGINE §5b](../architecture/BEHAVIOUR_ENGINE.md).
+> ⚠️ **Scene-level statements (occupancy, handover) do not reach the event stream**: the frozen
+> `DetectionResult` has no frame-level open map, only per-subject `attributes`. They leave through
+> `GET /tracking/behaviour`. Per-subject facts *do* travel end to end, verified on real footage.
 > ⭐ **C-55 sits in `rules`, not `ai/inference`, and that placement is the architectural decision**
 > ([ADR-0052](../adr/ADR-0052-behaviour-reasoning-is-not-perception.md)): the runtime emits
 > observations, a rule names an intent. A concealment heuristic inside the runtime would have to be
