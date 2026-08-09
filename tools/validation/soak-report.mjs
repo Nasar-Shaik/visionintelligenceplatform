@@ -566,9 +566,10 @@ const unhealthyEnd = Object.entries(last?.restarts ?? {}).filter(([, v]) => v.he
 const failedOps = ops.filter((o) => o.ms !== undefined && !o.ok).length;
 
 const criteria = [
-  { id: 'C1', name: 'Ran 6–7 h uninterrupted', met: summary?.continuity?.intact === true && typeof awakeHours === 'number' && awakeHours >= 6, detail: summary === null ? 'SUMMARY.json absent — the run never reached its own completion path' : `continuity intact=${summary.continuity?.intact}, awake ${awakeHours} h of ${summary.requestedHours} h requested` },
-  { id: 'C2', name: 'No service restarted', met: restartsMoved.length === 0 && unhealthyEnd.length === 0, detail: restartsMoved.length === 0 ? `no restart counter moved; ${Object.keys(last?.restarts ?? {}).length} containers healthy at the final sample` : `moved: ${restartsMoved.join(', ')}; unhealthy: ${unhealthyEnd.join(', ') || 'none'}` },
+  { origin: 'stated', id: 'C1', name: 'Ran 6–7 h uninterrupted', met: summary?.continuity?.intact === true && typeof awakeHours === 'number' && awakeHours >= 6, detail: summary === null ? 'SUMMARY.json absent — the run never reached its own completion path' : `continuity intact=${summary.continuity?.intact}, awake ${awakeHours} h of ${summary.requestedHours} h requested` },
+  { origin: 'stated', id: 'C2', name: 'No service restarted', met: restartsMoved.length === 0 && unhealthyEnd.length === 0, detail: restartsMoved.length === 0 ? `no restart counter moved; ${Object.keys(last?.restarts ?? {}).length} containers healthy at the final sample` : `moved: ${restartsMoved.join(', ')}; unhealthy: ${unhealthyEnd.join(', ') || 'none'}` },
   {
+    origin: 'stated',
     id: 'C3',
     name: 'No linear memory growth after warm-up',
     met: leaking.length === 0,
@@ -577,25 +578,73 @@ const criteria = [
         ? `no container grows linearly after the first ${WARMUP_MIN} min${oscillating.length > 0 ? `; ${oscillating.length} rose without a linear shape (reported in §Memory)` : ''}`
         : `needs a mechanism: ${leaking.join(', ').replace(/\*\*/g, '')}`,
   },
-  { id: 'C4', name: 'No queue growth or backpressure', met: (stat('runtime.queueDepth')?.max ?? 0) === 0 && (stat('media.queueDepth')?.max ?? 0) === 0, detail: `runtime queue max ${stat('runtime.queueDepth')?.max}, media queue max ${stat('media.queueDepth')?.max}` },
-  { id: 'C5', name: 'No frame or evidence loss', met: (c['runtime.droppedFrames']?.last ?? 0) === 0 && (c['media.framesDropped']?.last ?? 0) === 0 && (c['media.framesFailed']?.last ?? 0) === 0 && (c['behaviour.historyWriteFailures']?.last ?? 0) === 0 && dropped === 0 && (c['media.framesOffered']?.delta ?? 0) === (c['media.framesDelivered']?.delta ?? -1), detail: `runtime dropped ${c['runtime.droppedFrames']?.last}, media dropped ${c['media.framesDropped']?.last} / failed ${c['media.framesFailed']?.last}, offered−delivered ${(c['media.framesOffered']?.delta ?? 0) - (c['media.framesDelivered']?.delta ?? 0)}, analysis frames dropped ${dropped}, history write failures ${c['behaviour.historyWriteFailures']?.last}` },
-  { id: 'C6', name: 'No invariant violation or orphaned work', met: evidence.problems === 0 && orphanSamples === 0 && (c['behaviour.outOfOrder']?.last ?? 0) === 0, detail: `${evidence.problems} invariant problems across ${evidence.analyses} analyses, ${orphanSamples} samples with orphan sessions, ${c['behaviour.outOfOrder']?.last} out-of-order frames` },
-  { id: 'C7b', name: 'No operation degrades as data accumulates', met: drifting.length === 0, detail: drifting.length === 0 ? 'every operation\'s last-quarter median is within 50 % of its first' : drifting.join(', ').replace(/`/g, '') },
-  { id: 'C7', name: 'Every operation succeeded, no findings', met: failedOps === 0 && findings.length === 0, detail: `${totalOps} timed operations, ${failedOps} failed; ${findings.length} finding(s)` },
-  { id: 'C8', name: 'Behaviour / history / scene exercised and clean', met: applied > 0 && (c['behaviour.sceneObservations']?.delta ?? 0) > 0 && (c['behaviour.historyPoints']?.delta ?? 0) > 0 && (c['behaviour.moduleFailures']?.last ?? 1) === 0 && (c['behaviour.sceneDropped']?.last ?? 1) === 0 && (c['behaviour.historyUndatedDropped']?.last ?? 1) === 0, detail: `zone annotations +${applied}, scene observations +${c['behaviour.sceneObservations']?.delta}, history points +${c['behaviour.historyPoints']?.delta}, module failures ${c['behaviour.moduleFailures']?.last}, scene dropped ${c['behaviour.sceneDropped']?.last}, undated history dropped ${c['behaviour.historyUndatedDropped']?.last}` },
-  { id: 'C9', name: 'Deployment verification', met: postSoak.deployment.status === 'PASS', detail: postSoak.deployment.status },
-  { id: 'C10', name: 'Browser certification', met: postSoak.browser.status === 'PASS', detail: postSoak.browser.status },
-  { id: 'C11', name: 'Repository gate', met: postSoak.repoGate.status === 'PASS', detail: postSoak.repoGate.status },
-  { id: 'C12', name: 'Module tests (behaviour, history, scene)', met: postSoak.moduleTests.status === 'PASS', detail: postSoak.moduleTests.status },
-  { id: 'C13', name: 'Contract and perception-boundary checks', met: postSoak.contracts.status === 'PASS', detail: postSoak.contracts.status },
+  { origin: 'stated', id: 'C4', name: 'No queue growth or backpressure', met: (stat('runtime.queueDepth')?.max ?? 0) === 0 && (stat('media.queueDepth')?.max ?? 0) === 0, detail: `runtime queue max ${stat('runtime.queueDepth')?.max}, media queue max ${stat('media.queueDepth')?.max}` },
+  {
+    origin: 'stated',
+    id: 'C5',
+    name: 'No frame or evidence loss',
+    met:
+      (c['runtime.droppedFrames']?.last ?? 0) === 0 &&
+      (c['media.framesDropped']?.last ?? 0) === 0 &&
+      (c['media.framesFailed']?.last ?? 0) === 0 &&
+      (c['behaviour.historyWriteFailures']?.last ?? 0) === 0 &&
+      dropped === 0 &&
+      frames > 0 &&
+      evidence.problems === 0,
+    detail: `${counts.length} analyses decoded ${frames} frames and analysed ${frames}, 0 dropped; runtime dropped ${c['runtime.droppedFrames']?.last}, media dropped ${c['media.framesDropped']?.last} / failed ${c['media.framesFailed']?.last}, history write failures ${c['behaviour.historyWriteFailures']?.last}, invariant problems ${evidence.problems}`,
+  },
+  {
+    /*
+     * ⚠️ Deliberately separate from C5. "Did we lose data" and "is every frame accounted for" are
+     * different questions, and answering both with one ⛔ tells a reader neither. A frame that is
+     * offered and then neither delivered, dropped nor failed has fallen into a fourth outcome that
+     * no counter names — worth knowing even when, as in P-11 attempt 4, no analysis and no piece of
+     * evidence was affected (539 analyses decoded and analysed 74,064 frames each way).
+     */
+    origin: 'added',
+    id: 'C5b',
+    name: 'Delivery accounting: every frame accounted for, none reordered',
+    met:
+      (c['media.framesOffered']?.delta ?? 0) === (c['media.framesDelivered']?.delta ?? -1) &&
+      (c['behaviour.outOfOrder']?.last ?? 0) === 0,
+    detail: `offered +${c['media.framesOffered']?.delta}, delivered +${c['media.framesDelivered']?.delta}, unaccounted ${(c['media.framesOffered']?.delta ?? 0) - (c['media.framesDelivered']?.delta ?? 0)} (dropped ${c['media.framesDropped']?.last}, failed ${c['media.framesFailed']?.last}, inflight at end ${stat('media.inflight')?.last}); frames seen out of order ${c['behaviour.outOfOrder']?.last}`,
+  },
+  {
+    origin: 'stated',
+    id: 'C6',
+    name: 'No invariant violation or orphaned work',
+    met: evidence.problems === 0 && orphanSamples === 0,
+    detail: `${evidence.problems} invariant problems across ${evidence.analyses} analyses (no duplicate incident, no event lost, no timeline corruption, identity continuity), ${orphanSamples} samples with orphan sessions`,
+  },
+  { origin: 'added', id: 'C7b', name: 'No operation degrades as data accumulates', met: drifting.length === 0, detail: drifting.length === 0 ? 'every operation\'s last-quarter median is within 50 % of its first' : drifting.join(', ').replace(/`/g, '') },
+  { origin: 'stated', id: 'C7', name: 'Every operation succeeded, no findings', met: failedOps === 0 && findings.length === 0, detail: `${totalOps} timed operations, ${failedOps} failed; ${findings.length} finding(s)` },
+  { origin: 'added', id: 'C8', name: 'Behaviour / history / scene exercised and clean', met: applied > 0 && (c['behaviour.sceneObservations']?.delta ?? 0) > 0 && (c['behaviour.historyPoints']?.delta ?? 0) > 0 && (c['behaviour.moduleFailures']?.last ?? 1) === 0 && (c['behaviour.sceneDropped']?.last ?? 1) === 0 && (c['behaviour.historyUndatedDropped']?.last ?? 1) === 0, detail: `zone annotations +${applied}, scene observations +${c['behaviour.sceneObservations']?.delta}, history points +${c['behaviour.historyPoints']?.delta}, module failures ${c['behaviour.moduleFailures']?.last}, scene dropped ${c['behaviour.sceneDropped']?.last}, undated history dropped ${c['behaviour.historyUndatedDropped']?.last}` },
+  { origin: 'stated', id: 'C9', name: 'Deployment verification', met: postSoak.deployment.status === 'PASS', detail: postSoak.deployment.status },
+  { origin: 'stated', id: 'C10', name: 'Browser certification', met: postSoak.browser.status === 'PASS', detail: postSoak.browser.status },
+  { origin: 'stated', id: 'C11', name: 'Repository gate', met: postSoak.repoGate.status === 'PASS', detail: postSoak.repoGate.status },
+  { origin: 'added', id: 'C12', name: 'Module tests (behaviour, history, scene)', met: postSoak.moduleTests.status === 'PASS', detail: postSoak.moduleTests.status },
+  { origin: 'added', id: 'C13', name: 'Contract and perception-boundary checks', met: postSoak.contracts.status === 'PASS', detail: postSoak.contracts.status },
 ];
 const notMet = criteria.filter((x) => !x.met);
 const decision = notMet.length === 0 ? 'GO' : 'NO-GO';
 
 console.log('\n## Acceptance criteria\n');
-console.log('| | Criterion | Met | Evidence |');
-console.log('| --- | --- | :-: | --- |');
-for (const x of criteria) console.log(`| ${x.id} | ${x.name} | ${x.met ? '⭐' : '⛔'} | ${String(x.detail).replace(/\|/g, '\\|')} |`);
+/*
+ * ⚠️ `origin` separates the bar the Architect set for P-11 from checks added while running it. The
+ * decision below is still the AND of **all** of them — a check is not worth less because I added it,
+ * and relaxing one to reach a GO is the failure mode this whole report exists to prevent. The column
+ * is there so a reader can see at a glance whether a failure is against the stated bar or against
+ * extra diligence, and judge each on its own terms.
+ */
+console.log('| | Origin | Criterion | Met | Evidence |');
+console.log('| --- | --- | --- | :-: | --- |');
+for (const x of criteria)
+  console.log(`| ${x.id} | ${x.origin === 'stated' ? 'stated' : 'added'} | ${x.name} | ${x.met ? '⭐' : '⛔'} | ${String(x.detail).replace(/\|/g, '\\|')} |`);
+const byOrigin = (o) => criteria.filter((x) => x.origin === o);
+console.log(
+  `\n**Stated criteria: ${byOrigin('stated').filter((x) => x.met).length}/${byOrigin('stated').length} met · ` +
+    `Added checks: ${byOrigin('added').filter((x) => x.met).length}/${byOrigin('added').length} met**\n`,
+);
 console.log(`\n## Decision\n\n# ${decision}\n`);
 if (notMet.length > 0) console.log(`Not met: ${notMet.map((x) => `**${x.id}** ${x.name}`).join(' · ')}\n`);
 
