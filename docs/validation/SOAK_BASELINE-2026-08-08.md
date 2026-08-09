@@ -136,7 +136,7 @@ that URL from the object store**, snapshot capture and an events query.
 
 ## Related
 
-- [SOAK_REPORT](SOAK_REPORT.md) — the run and its verdict
-- [SOAK_METRICS](SOAK_METRICS.md) — measured series
-- [SOAK_FINDINGS](SOAK_FINDINGS.md) — every issue found
+- [SOAK_REPORT](SOAK_REPORT-2026-08-08.md) — the run and its verdict
+- [SOAK_METRICS](SOAK_METRICS-2026-08-08.md) — measured series
+- [SOAK_FINDINGS](SOAK_FINDINGS-2026-08-08.md) — every issue found
 - [KNOWN_LIMITATIONS](../project/KNOWN_LIMITATIONS.md)

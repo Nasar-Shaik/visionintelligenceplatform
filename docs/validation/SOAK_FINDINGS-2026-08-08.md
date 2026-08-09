@@ -169,6 +169,6 @@ the standalone benchmark for latency and treats the in-run series as indicative 
 
 ## Related
 
-- [SOAK_REPORT](SOAK_REPORT.md) — the verdict · [SOAK_METRICS](SOAK_METRICS.md) — the series
-- [SOAK_BASELINE](SOAK_BASELINE.md) · [SOAK_REGRESSION_TESTS](SOAK_REGRESSION_TESTS.md)
+- [SOAK_REPORT](SOAK_REPORT-2026-08-08.md) — the verdict · [SOAK_METRICS](SOAK_METRICS-2026-08-08.md) — the series
+- [SOAK_BASELINE](SOAK_BASELINE-2026-08-08.md) · [SOAK_REGRESSION_TESTS](SOAK_REGRESSION_TESTS-2026-08-08.md)
 - [KNOWN_LIMITATIONS](../project/KNOWN_LIMITATIONS.md) — L-69, L-70, L-71

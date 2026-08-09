@@ -25,17 +25,38 @@ proposal — every document reports what was observed, on which build, with what
 | --- | --- |
 | [DETECTOR_COMPARISON](DETECTOR_COMPARISON.md) | ⭐ **Two detector families through one unchanged runtime.** Latency, throughput, memory, ONNX operator inventory, licensing — and the cross-model localisation check (mean IoU **0.95**) that verifies the decoder without ground truth |
 
-## Release soak — (2026-08-05)
+## Release soaks
 
 | Document | What it answers |
 | --- | --- |
 | [⭐ OVERNIGHT_SOAK runbook](../runbooks/OVERNIGHT_SOAK.md) | **How to run one so it counts** — pre-flight, the six ways a long run is silently invalidated, and the GO/NO-GO rule |
-| [SOAK_REPORT](SOAK_REPORT.md) | The GO/NO-GO and what the 6.5-hour run exercised |
-| [SOAK_BASELINE](SOAK_BASELINE.md) | The pre-soak state the run started from |
-| [SOAK_METRICS](SOAK_METRICS.md) | What was sampled, and how often |
-| [SOAK_FINDINGS](SOAK_FINDINGS.md) | Every defect and every broken instrument |
-| [SOAK_TIMELINE](SOAK_TIMELINE.md) | What happened, in order |
-| [SOAK_REGRESSION_TESTS](SOAK_REGRESSION_TESTS.md) | The tests added so each finding cannot recur |
+
+### Soak runs, newest first
+
+⛔ **Every run keeps its own dated report and nothing is overwritten.** A release soak is the record
+of a decision taken on a date, against a named commit; replacing it with the next run's answer
+destroys the only account of why the last decision was made. The date in the filename is the run's,
+not the file's.
+
+| Run | Verdict | Duration | Report |
+| --- | --- | --- | --- |
+| **2026-08-09** (P-11, behaviour layer) | ⛔ **NO-GO** — browser certification, delivery accounting | 6.49 h uninterrupted | [SOAK_REPORT-2026-08-09](SOAK_REPORT-2026-08-09.md) · [SOAK_FINDINGS-2026-08-09](SOAK_FINDINGS-2026-08-09.md) · [soak-2026-08-09.json](soak-2026-08-09.json) |
+| 2026-08-08 (release soak) | ⭐ GO, with one finding to schedule | 6.51 h uninterrupted | [SOAK_REPORT-2026-08-08](SOAK_REPORT-2026-08-08.md) |
+| 2026-08-07 (platform soak) | ⚠️ INTERRUPTED — 5.51 h of 6.5 h, instrument went half-blind | 5.51 h measured | [review/SOAK_REPORT](../review/SOAK_REPORT.md) |
+
+Supporting documents for the **2026-08-08** run:
+
+| Document | What it answers |
+| --- | --- |
+| [SOAK_BASELINE](SOAK_BASELINE-2026-08-08.md) | The pre-soak state the run started from |
+| [SOAK_METRICS](SOAK_METRICS-2026-08-08.md) | What was sampled, and how often |
+| [SOAK_FINDINGS](SOAK_FINDINGS-2026-08-08.md) | Every defect and every broken instrument |
+| [SOAK_TIMELINE](SOAK_TIMELINE-2026-08-08.md) | What happened, in order |
+| [SOAK_REGRESSION_TESTS](SOAK_REGRESSION_TESTS-2026-08-08.md) | The tests added so each finding cannot recur |
+
+⚠️ The 2026-08-09 run is self-contained: its report carries the baseline, metrics, findings, timeline
+and acceptance table in one generated file; [SOAK_FINDINGS-2026-08-09](SOAK_FINDINGS-2026-08-09.md) carries the root-cause analysis a generator cannot derive. Raw evidence for it lives in
+`.soak-p11/` (and `.soak-p11-aborted-defect{3,4,5}/` for the three runs stopped to fix defects).
 
 ---
 

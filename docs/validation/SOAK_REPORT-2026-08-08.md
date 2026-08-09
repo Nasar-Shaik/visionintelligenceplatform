@@ -128,7 +128,7 @@ instantaneous rate and the workload is bursty. `framesProcessed` rose monotonica
   22+ decreases across the run, largest single drop **−226 MB**, a clear sawtooth. ⚠️ At the 2-hour
   mark this looked like unbounded growth at 163 MB/h and was written up as a production risk; the
   later releases retired that reading. The mid-run conclusion was wrong and the correction is
-  recorded in [SOAK_FINDINGS](SOAK_FINDINGS.md).
+  recorded in [SOAK_FINDINGS](SOAK_FINDINGS-2026-08-08.md).
 - **MongoDB is flat.** It sat at exactly 292 MB for 18 consecutive samples, touched 454 MB for a
   single sample, and was back at 294 MB on the next — WiredTiger checkpointing.
 - **`media` ended 21.6 MB *below* baseline** after 644 analyses. Peak CPU 262 % and inference 856 %
@@ -167,7 +167,7 @@ instantaneous rate and the workload is bursty. `framesProcessed` rose monotonica
 
 ## 6 · Findings
 
-**One product finding. Zero failures.** Full detail in [SOAK_FINDINGS](SOAK_FINDINGS.md).
+**One product finding. Zero failures.** Full detail in [SOAK_FINDINGS](SOAK_FINDINGS-2026-08-08.md).
 
 | # | Severity | Finding |
 | --- | --- | --- |
@@ -250,6 +250,6 @@ production-environment validation.**
 
 ## Related
 
-- [SOAK_BASELINE](SOAK_BASELINE.md) · [SOAK_METRICS](SOAK_METRICS.md) · [SOAK_FINDINGS](SOAK_FINDINGS.md)
-- [SOAK_TIMELINE](SOAK_TIMELINE.md) · [SOAK_REGRESSION_TESTS](SOAK_REGRESSION_TESTS.md)
+- [SOAK_BASELINE](SOAK_BASELINE-2026-08-08.md) · [SOAK_METRICS](SOAK_METRICS-2026-08-08.md) · [SOAK_FINDINGS](SOAK_FINDINGS-2026-08-08.md)
+- [SOAK_TIMELINE](SOAK_TIMELINE-2026-08-08.md) · [SOAK_REGRESSION_TESTS](SOAK_REGRESSION_TESTS-2026-08-08.md)
 - [KNOWN_LIMITATIONS](../project/KNOWN_LIMITATIONS.md) — L-69, L-70, L-71 added by this session

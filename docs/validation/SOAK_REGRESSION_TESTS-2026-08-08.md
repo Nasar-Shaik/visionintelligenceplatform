@@ -105,5 +105,5 @@ tests. Verified on the deployment and in Chrome before the soak started.
 
 ## Related
 
-- [SOAK_REPORT](SOAK_REPORT.md) · [SOAK_FINDINGS](SOAK_FINDINGS.md) · [SOAK_BASELINE](SOAK_BASELINE.md)
+- [SOAK_REPORT](SOAK_REPORT-2026-08-08.md) · [SOAK_FINDINGS](SOAK_FINDINGS-2026-08-08.md) · [SOAK_BASELINE](SOAK_BASELINE-2026-08-08.md)
 - [KNOWN_LIMITATIONS](../project/KNOWN_LIMITATIONS.md) — L-69, L-70, L-71 added by this session

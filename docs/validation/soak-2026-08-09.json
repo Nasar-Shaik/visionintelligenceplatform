@@ -1,0 +1,5016 @@
+{
+  "decision": "NO-GO",
+  "generatedAt": "2026-08-09T10:55:13.129Z",
+  "run": {
+    "started": "2026-08-09T03:56:41.482Z",
+    "ended": "2026-08-09T10:26:53.123Z",
+    "requestedHours": 6.5,
+    "awakeHours": 6.49,
+    "continuity": {
+      "intervalMs": 60000,
+      "factor": 3,
+      "thresholdSeconds": 180,
+      "undatedSamples": 0,
+      "sampleCount": 391,
+      "inconclusive": false,
+      "intact": true,
+      "totalSeconds": 23380.6,
+      "suspendedSeconds": 0,
+      "suspensions": [],
+      "backwardsSteps": [],
+      "uninterrupted": {
+        "fromIndex": 0,
+        "toIndex": 390,
+        "count": 391,
+        "fromAt": "2026-08-09T03:57:12.497Z",
+        "toAt": "2026-08-09T10:26:53.055Z",
+        "seconds": 23380.6
+      }
+    },
+    "samples": 391,
+    "cycles": 656,
+    "analyses": 580,
+    "hours": 6.49
+  },
+  "criteria": [
+    {
+      "origin": "stated",
+      "id": "C1",
+      "name": "Ran 6–7 h uninterrupted",
+      "met": true,
+      "detail": "continuity intact=true, awake 6.49 h of 6.5 h requested"
+    },
+    {
+      "origin": "stated",
+      "id": "C2",
+      "name": "No service restarted",
+      "met": true,
+      "detail": "no restart counter moved; 18 containers healthy at the final sample"
+    },
+    {
+      "origin": "stated",
+      "id": "C3",
+      "name": "No linear memory growth after warm-up",
+      "met": true,
+      "detail": "no container grows linearly after the first 10 min; 1 rose without a linear shape (reported in §Memory)"
+    },
+    {
+      "origin": "stated",
+      "id": "C4",
+      "name": "No queue growth or backpressure",
+      "met": true,
+      "detail": "runtime queue max 0, media queue max 0"
+    },
+    {
+      "origin": "stated",
+      "id": "C5",
+      "name": "No frame or evidence loss",
+      "met": true,
+      "detail": "580 analyses decoded 78902 frames and analysed 78902, 0 dropped; runtime dropped 0, media dropped 0 / failed 0, history write failures 0, invariant problems 0"
+    },
+    {
+      "origin": "added",
+      "id": "C5b",
+      "name": "Delivery accounting: every frame accounted for, none reordered",
+      "met": false,
+      "detail": "offered +121852, delivered +121794, unaccounted 58 (dropped 0, failed 0, inflight at end 0); frames seen out of order 1"
+    },
+    {
+      "origin": "stated",
+      "id": "C6",
+      "name": "No invariant violation or orphaned work",
+      "met": true,
+      "detail": "0 invariant problems across 580 analyses (no duplicate incident, no event lost, no timeline corruption, identity continuity), 0 samples with orphan sessions"
+    },
+    {
+      "origin": "added",
+      "id": "C7b",
+      "name": "No operation degrades as data accumulates",
+      "met": true,
+      "detail": "every operation's last-quarter median is within 50 % of its first"
+    },
+    {
+      "origin": "stated",
+      "id": "C7",
+      "name": "Every operation succeeded, no findings",
+      "met": true,
+      "detail": "6271 timed operations, 0 failed; 0 finding(s)"
+    },
+    {
+      "origin": "added",
+      "id": "C8",
+      "name": "Behaviour / history / scene exercised and clean",
+      "met": true,
+      "detail": "zone annotations +105259, scene observations +308952, history points +105977, module failures 0, scene dropped 0, undated history dropped 0"
+    },
+    {
+      "origin": "stated",
+      "id": "C9",
+      "name": "Deployment verification",
+      "met": true,
+      "detail": "PASS"
+    },
+    {
+      "origin": "stated",
+      "id": "C10",
+      "name": "Browser certification",
+      "met": false,
+      "detail": "FAIL"
+    },
+    {
+      "origin": "stated",
+      "id": "C11",
+      "name": "Repository gate",
+      "met": true,
+      "detail": "PASS"
+    },
+    {
+      "origin": "added",
+      "id": "C12",
+      "name": "Module tests (behaviour, history, scene)",
+      "met": true,
+      "detail": "PASS"
+    },
+    {
+      "origin": "added",
+      "id": "C13",
+      "name": "Contract and perception-boundary checks",
+      "met": true,
+      "detail": "PASS"
+    }
+  ],
+  "operations": {
+    "upload+analyse": {
+      "ok": 656,
+      "failed": 0,
+      "p50": 6144,
+      "p95": 36501,
+      "max": 96749
+    },
+    "timeline": {
+      "ok": 580,
+      "failed": 0,
+      "p50": 23,
+      "p95": 37,
+      "max": 9583
+    },
+    "report": {
+      "ok": 580,
+      "failed": 0,
+      "p50": 21,
+      "p95": 32,
+      "max": 78
+    },
+    "playback": {
+      "ok": 580,
+      "failed": 0,
+      "p50": 9,
+      "p95": 14,
+      "max": 80
+    },
+    "playback-fetch": {
+      "ok": 580,
+      "failed": 0,
+      "p50": 3,
+      "p95": 6,
+      "max": 23
+    },
+    "snapshot": {
+      "ok": 580,
+      "failed": 0,
+      "p50": 72,
+      "p95": 135,
+      "max": 9942
+    },
+    "events-query": {
+      "ok": 580,
+      "failed": 0,
+      "p50": 8,
+      "p95": 14,
+      "max": 60
+    },
+    "invariants": {
+      "ok": 580,
+      "failed": 0,
+      "p50": 20,
+      "p95": 31,
+      "max": 84
+    },
+    "behaviour-primitives": {
+      "ok": 580,
+      "failed": 0,
+      "p50": 82,
+      "p95": 131,
+      "max": 10225
+    },
+    "behaviour-timeline": {
+      "ok": 580,
+      "failed": 0,
+      "p50": 71,
+      "p95": 86,
+      "max": 8784
+    },
+    "re-analyse": {
+      "ok": 145,
+      "failed": 0,
+      "p50": 6070,
+      "p95": 32607,
+      "max": 92482
+    },
+    "live-burst": {
+      "ok": 116,
+      "failed": 0,
+      "p50": 10194,
+      "p95": 20647,
+      "max": 23419
+    },
+    "parallel-upload": {
+      "ok": 134,
+      "failed": 0,
+      "p50": 6233,
+      "p95": 47867,
+      "max": 114473
+    }
+  },
+  "analyses": {
+    "runs": 580,
+    "framesAnalysed": 78902,
+    "detections": 66624,
+    "framesDropped": 0,
+    "byTag": {
+      "one-person": {
+        "runs": 20,
+        "frames": 1200,
+        "dets": 960
+      },
+      "multi-person": {
+        "runs": 20,
+        "frames": 1200,
+        "dets": 2320
+      },
+      "crowded": {
+        "runs": 40,
+        "frames": 2400,
+        "dets": 14400
+      },
+      "occlusion": {
+        "runs": 20,
+        "frames": 1200,
+        "dets": 620
+      },
+      "dwell": {
+        "runs": 20,
+        "frames": 2400,
+        "dets": 2380
+      },
+      "res-180p": {
+        "runs": 20,
+        "frames": 1200,
+        "dets": 960
+      },
+      "res-360p": {
+        "runs": 20,
+        "frames": 1200,
+        "dets": 960
+      },
+      "res-720p": {
+        "runs": 20,
+        "frames": 1200,
+        "dets": 960
+      },
+      "res-1080p": {
+        "runs": 20,
+        "frames": 1200,
+        "dets": 960
+      },
+      "night": {
+        "runs": 19,
+        "frames": 1140,
+        "dets": 893
+      },
+      "weather": {
+        "runs": 19,
+        "frames": 1140,
+        "dets": 855
+      },
+      "blur": {
+        "runs": 19,
+        "frames": 1140,
+        "dets": 912
+      },
+      "shake": {
+        "runs": 19,
+        "frames": 1140,
+        "dets": 855
+      },
+      "lighting": {
+        "runs": 19,
+        "frames": 1140,
+        "dets": 912
+      },
+      "fast": {
+        "runs": 19,
+        "frames": 1140,
+        "dets": 1007
+      },
+      "partial": {
+        "runs": 19,
+        "frames": 1140,
+        "dets": 1140
+      },
+      "low-fps": {
+        "runs": 19,
+        "frames": 1140,
+        "dets": 912
+      },
+      "high-fps": {
+        "runs": 19,
+        "frames": 1140,
+        "dets": 931
+      },
+      "angle": {
+        "runs": 38,
+        "frames": 2280,
+        "dets": 1368
+      },
+      "codec": {
+        "runs": 57,
+        "frames": 3420,
+        "dets": 2736
+      },
+      "medium": {
+        "runs": 38,
+        "frames": 13680,
+        "dets": 8322
+      },
+      "large": {
+        "runs": 38,
+        "frames": 34200,
+        "dets": 20805
+      },
+      "portrait-real": {
+        "runs": 19,
+        "frames": 722,
+        "dets": 456
+      },
+      "empty": {
+        "runs": 19,
+        "frames": 1140,
+        "dets": 0
+      }
+    }
+  },
+  "live": {
+    "bursts": 116,
+    "accepted": 4640,
+    "refused": 0
+  },
+  "evidence": {
+    "analyses": 580,
+    "events": 7536,
+    "incidents": 1747,
+    "problems": 0
+  },
+  "counters": {
+    "runtime.framesProcessed": {
+      "first": 38,
+      "last": 121832,
+      "delta": 121794,
+      "perHour": 18753.1,
+      "resets": 0
+    },
+    "runtime.droppedFrames": {
+      "first": 0,
+      "last": 0,
+      "delta": 0,
+      "perHour": 0,
+      "resets": 0
+    },
+    "media.framesOffered": {
+      "first": 140000,
+      "last": 261852,
+      "delta": 121852,
+      "perHour": 18762.1,
+      "resets": 0
+    },
+    "media.framesDelivered": {
+      "first": 140000,
+      "last": 261794,
+      "delta": 121794,
+      "perHour": 18753.1,
+      "resets": 0
+    },
+    "media.framesDropped": {
+      "first": 0,
+      "last": 0,
+      "delta": 0,
+      "perHour": 0,
+      "resets": 0
+    },
+    "media.framesFailed": {
+      "first": 0,
+      "last": 0,
+      "delta": 0,
+      "perHour": 0,
+      "resets": 0
+    },
+    "media.zoneEchoesSent": {
+      "first": 139991,
+      "last": 261777,
+      "delta": 121786,
+      "perHour": 18751.9,
+      "resets": 0
+    },
+    "media.zoneEchoesDropped": {
+      "first": 2,
+      "last": 9,
+      "delta": 7,
+      "perHour": 1.1,
+      "resets": 0
+    },
+    "behaviour.zoneApplied": {
+      "first": 23,
+      "last": 105282,
+      "delta": 105259,
+      "perHour": 16207.2,
+      "resets": 0
+    },
+    "behaviour.zoneMissed": {
+      "first": 0,
+      "last": 716,
+      "delta": 716,
+      "perHour": 110.2,
+      "resets": 0
+    },
+    "behaviour.sceneObservations": {
+      "first": 100,
+      "last": 309052,
+      "delta": 308952,
+      "perHour": 47570.6,
+      "resets": 0
+    },
+    "behaviour.sceneDropped": {
+      "first": 0,
+      "last": 0,
+      "delta": 0,
+      "perHour": 0,
+      "resets": 0
+    },
+    "behaviour.streamsTracked": {
+      "first": 1,
+      "last": 256,
+      "delta": 255,
+      "perHour": 39.3,
+      "resets": 0
+    },
+    "behaviour.streamsEvicted": {
+      "first": 0,
+      "last": 605,
+      "delta": 605,
+      "perHour": 93.2,
+      "resets": 0
+    },
+    "behaviour.moduleFailures": {
+      "first": 0,
+      "last": 0,
+      "delta": 0,
+      "perHour": 0,
+      "resets": 0
+    },
+    "behaviour.historyPoints": {
+      "first": 24,
+      "last": 106001,
+      "delta": 105977,
+      "perHour": 16317.7,
+      "resets": 0
+    },
+    "behaviour.historyLiveIdentities": {
+      "first": 2,
+      "last": 42,
+      "delta": 40,
+      "perHour": 6.2,
+      "resets": 183
+    },
+    "behaviour.historyLiveStreams": {
+      "first": 1,
+      "last": 17,
+      "delta": 16,
+      "perHour": 2.5,
+      "resets": 155
+    },
+    "behaviour.historyPendingWrites": {
+      "first": 0,
+      "last": 0,
+      "delta": 0,
+      "perHour": 0,
+      "resets": 0
+    },
+    "behaviour.historyWriteFailures": {
+      "first": 0,
+      "last": 0,
+      "delta": 0,
+      "perHour": 0,
+      "resets": 0
+    },
+    "behaviour.historyUndatedDropped": {
+      "first": 0,
+      "last": 0,
+      "delta": 0,
+      "perHour": 0,
+      "resets": 0
+    },
+    "behaviour.tracksCreated": {
+      "first": 5,
+      "last": 2231,
+      "delta": 2226,
+      "perHour": 342.7,
+      "resets": 0
+    },
+    "behaviour.occlusions": {
+      "first": 4,
+      "last": 2209,
+      "delta": 2205,
+      "perHour": 339.5,
+      "resets": 0
+    },
+    "behaviour.outOfOrder": {
+      "first": 0,
+      "last": 1,
+      "delta": 1,
+      "perHour": 0.2,
+      "resets": 0
+    }
+  },
+  "storage": {
+    "storage.mongo": {
+      "first": 369080,
+      "last": 392892,
+      "delta": 23812,
+      "perHour": 3666.4,
+      "resets": 112
+    },
+    "storage.redis": {
+      "first": 20,
+      "last": 20,
+      "delta": 0,
+      "perHour": 0,
+      "resets": 0
+    },
+    "storage.minio": {
+      "first": 12718792,
+      "last": 13697676,
+      "delta": 978884,
+      "perHour": 150722.8,
+      "resets": 45
+    },
+    "jetstream.messages": {
+      "first": 646743,
+      "last": 770834,
+      "delta": 124091,
+      "perHour": 19106.8,
+      "resets": 0
+    },
+    "jetstream.bytes": {
+      "first": 974626691,
+      "last": 1248403405,
+      "delta": 273776714,
+      "perHour": 42154518.7,
+      "resets": 0
+    }
+  },
+  "logs": {
+    "media": {
+      "first": 3168,
+      "last": 19758,
+      "delta": 16590,
+      "perHour": 2554.4,
+      "resets": 210
+    },
+    "inference": {
+      "first": 2322,
+      "last": 2684,
+      "delta": 362,
+      "perHour": 55.7,
+      "resets": 180
+    },
+    "events": {
+      "first": 1802,
+      "last": 46101,
+      "delta": 44299,
+      "perHour": 6820.9,
+      "resets": 179
+    },
+    "gateway": {
+      "first": 6021,
+      "last": 19402,
+      "delta": 13381,
+      "perHour": 2060.3,
+      "resets": 207
+    },
+    "workflow": {
+      "first": 1801,
+      "last": 5506,
+      "delta": 3705,
+      "perHour": 570.5,
+      "resets": 198
+    },
+    "rules": {
+      "first": 1799,
+      "last": 6255,
+      "delta": 4456,
+      "perHour": 686.1,
+      "resets": 188
+    }
+  },
+  "memory": {
+    "warmupMinExcluded": 10,
+    "perContainer": {
+      "inference": {
+        "q1": 128.49,
+        "q3": 167.17,
+        "q5": 167.63,
+        "totalPct": 30.5,
+        "earlyRise": 38.68,
+        "lateRise": 0.45,
+        "verdict": "plateau"
+      },
+      "media": {
+        "q1": 165.96,
+        "q3": 167.6,
+        "q5": 166.34,
+        "totalPct": 0.2,
+        "earlyRise": 1.65,
+        "lateRise": -1.26,
+        "verdict": "stable"
+      },
+      "gateway": {
+        "q1": 120.43,
+        "q3": 132.81,
+        "q5": 135.08,
+        "totalPct": 12.2,
+        "earlyRise": 12.38,
+        "lateRise": 2.27,
+        "verdict": "plateau"
+      },
+      "notify": {
+        "q1": 117.13,
+        "q3": 120.7,
+        "q5": 120.92,
+        "totalPct": 3.2,
+        "earlyRise": 3.57,
+        "lateRise": 0.22,
+        "verdict": "stable"
+      },
+      "evidence": {
+        "q1": 108.66,
+        "q3": 108,
+        "q5": 107.69,
+        "totalPct": -0.9,
+        "earlyRise": -0.66,
+        "lateRise": -0.31,
+        "verdict": "stable"
+      },
+      "tenant": {
+        "q1": 101.1,
+        "q3": 101.59,
+        "q5": 102.44,
+        "totalPct": 1.3,
+        "earlyRise": 0.49,
+        "lateRise": 0.85,
+        "verdict": "stable"
+      },
+      "identity": {
+        "q1": 103.34,
+        "q3": 103.62,
+        "q5": 103.53,
+        "totalPct": 0.2,
+        "earlyRise": 0.28,
+        "lateRise": -0.08,
+        "verdict": "stable"
+      },
+      "camera": {
+        "q1": 107.94,
+        "q3": 108.12,
+        "q5": 108.41,
+        "totalPct": 0.4,
+        "earlyRise": 0.18,
+        "lateRise": 0.29,
+        "verdict": "stable"
+      },
+      "events": {
+        "q1": 112.24,
+        "q3": 113.16,
+        "q5": 113.28,
+        "totalPct": 0.9,
+        "earlyRise": 0.92,
+        "lateRise": 0.12,
+        "verdict": "stable"
+      },
+      "rules": {
+        "q1": 108.16,
+        "q3": 108.23,
+        "q5": 108.69,
+        "totalPct": 0.5,
+        "earlyRise": 0.07,
+        "lateRise": 0.46,
+        "verdict": "stable"
+      },
+      "console": {
+        "q1": 16.94,
+        "q3": 16.75,
+        "q5": 16.6,
+        "totalPct": -2,
+        "earlyRise": -0.19,
+        "lateRise": -0.15,
+        "verdict": "stable"
+      },
+      "workflow": {
+        "q1": 101.63,
+        "q3": 111.12,
+        "q5": 108.24,
+        "totalPct": 6.5,
+        "earlyRise": 9.49,
+        "lateRise": -2.87,
+        "verdict": "stable"
+      },
+      "proxy": {
+        "q1": 39.4,
+        "q3": 38.97,
+        "q5": 38.54,
+        "totalPct": -2.2,
+        "earlyRise": -0.42,
+        "lateRise": -0.43,
+        "verdict": "stable"
+      },
+      "redis": {
+        "q1": 1.77,
+        "q3": 1.8,
+        "q5": 1.87,
+        "totalPct": 5.5,
+        "earlyRise": 0.03,
+        "lateRise": 0.07,
+        "verdict": "unbounded"
+      },
+      "nats": {
+        "q1": 86.08,
+        "q3": 91.04,
+        "q5": 78.35,
+        "totalPct": -9,
+        "earlyRise": 4.96,
+        "lateRise": -12.69,
+        "verdict": "stable"
+      },
+      "mongodb": {
+        "q1": 248.48,
+        "q3": 294.36,
+        "q5": 285.39,
+        "totalPct": 14.9,
+        "earlyRise": 45.88,
+        "lateRise": -8.97,
+        "verdict": "stable"
+      },
+      "minio": {
+        "q1": 363.81,
+        "q3": 308.46,
+        "q5": 300.86,
+        "totalPct": -17.3,
+        "earlyRise": -55.34,
+        "lateRise": -7.6,
+        "verdict": "stable"
+      }
+    },
+    "slopes": {
+      "inference": {
+        "perHour": 6.42,
+        "r2": 0.348
+      },
+      "media": {
+        "perHour": -0.18,
+        "r2": 0.001
+      },
+      "gateway": {
+        "perHour": 2.45,
+        "r2": 0.546
+      },
+      "notify": {
+        "perHour": 0.77,
+        "r2": 0.3
+      },
+      "evidence": {
+        "perHour": -0.18,
+        "r2": 0.264
+      },
+      "tenant": {
+        "perHour": 0.23,
+        "r2": 0.264
+      },
+      "identity": {
+        "perHour": 0.02,
+        "r2": 0.001
+      },
+      "camera": {
+        "perHour": 0.1,
+        "r2": 0.219
+      },
+      "events": {
+        "perHour": 0.17,
+        "r2": 0.423
+      },
+      "rules": {
+        "perHour": 0.08,
+        "r2": 0.115
+      },
+      "console": {
+        "perHour": -0.14,
+        "r2": 0.01
+      },
+      "workflow": {
+        "perHour": 0.98,
+        "r2": 0.207
+      },
+      "proxy": {
+        "perHour": -0.46,
+        "r2": 0.072
+      },
+      "redis": {
+        "perHour": 0.02,
+        "r2": 0.011
+      },
+      "nats": {
+        "perHour": -1.59,
+        "r2": 0.042
+      },
+      "mongodb": {
+        "perHour": 8.11,
+        "r2": 0.196
+      },
+      "minio": {
+        "perHour": -12.68,
+        "r2": 0.127
+      }
+    },
+    "climbingLinearly": [],
+    "roseWithoutLinearShape": [
+      "**redis** (+5.5 %, but R²=0.011 — a band, not a line)"
+    ],
+    "inferenceVersusStore": [
+      {
+        "min": 0.3,
+        "rss": 118.4,
+        "self": 369.65,
+        "onDisk": 2745,
+        "liveIds": 2,
+        "liveStreams": 1,
+        "pending": 0,
+        "retired": 0
+      },
+      {
+        "min": 1.5,
+        "rss": 128.2,
+        "self": 369.65,
+        "onDisk": 2745,
+        "liveIds": 13,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 0
+      },
+      {
+        "min": 2.5,
+        "rss": 106.6,
+        "self": 369.65,
+        "onDisk": 2745,
+        "liveIds": 22,
+        "liveStreams": 8,
+        "pending": 0,
+        "retired": 0
+      },
+      {
+        "min": 3.5,
+        "rss": 107.5,
+        "self": 369.65,
+        "onDisk": 2746,
+        "liveIds": 23,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 1
+      },
+      {
+        "min": 4.5,
+        "rss": 106.8,
+        "self": 369.65,
+        "onDisk": 2746,
+        "liveIds": 34,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1
+      },
+      {
+        "min": 5.5,
+        "rss": 106.7,
+        "self": 369.65,
+        "onDisk": 2750,
+        "liveIds": 35,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 5
+      },
+      {
+        "min": 6.5,
+        "rss": 106.7,
+        "self": 369.65,
+        "onDisk": 2753,
+        "liveIds": 35,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 8
+      },
+      {
+        "min": 7.5,
+        "rss": 119.6,
+        "self": 369.65,
+        "onDisk": 2767,
+        "liveIds": 24,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 22
+      },
+      {
+        "min": 8.5,
+        "rss": 120.7,
+        "self": 369.65,
+        "onDisk": 2771,
+        "liveIds": 29,
+        "liveStreams": 18,
+        "pending": 0,
+        "retired": 26
+      },
+      {
+        "min": 9.5,
+        "rss": 120.7,
+        "self": 369.65,
+        "onDisk": 2781,
+        "liveIds": 21,
+        "liveStreams": 17,
+        "pending": 0,
+        "retired": 36
+      },
+      {
+        "min": 10.5,
+        "rss": 120.8,
+        "self": 369.65,
+        "onDisk": 2788,
+        "liveIds": 21,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 43
+      },
+      {
+        "min": 11.5,
+        "rss": 115.6,
+        "self": 369.65,
+        "onDisk": 2790,
+        "liveIds": 21,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 45
+      },
+      {
+        "min": 12.5,
+        "rss": 115.7,
+        "self": 369.65,
+        "onDisk": 2798,
+        "liveIds": 20,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 53
+      },
+      {
+        "min": 13.5,
+        "rss": 111.5,
+        "self": 369.65,
+        "onDisk": 2810,
+        "liveIds": 15,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 65
+      },
+      {
+        "min": 14.5,
+        "rss": 119.1,
+        "self": 369.65,
+        "onDisk": 2817,
+        "liveIds": 12,
+        "liveStreams": 9,
+        "pending": 0,
+        "retired": 72
+      },
+      {
+        "min": 15.5,
+        "rss": 120.6,
+        "self": 369.65,
+        "onDisk": 2826,
+        "liveIds": 9,
+        "liveStreams": 7,
+        "pending": 0,
+        "retired": 81
+      },
+      {
+        "min": 16.5,
+        "rss": 132.6,
+        "self": 369.65,
+        "onDisk": 2838,
+        "liveIds": 6,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 93
+      },
+      {
+        "min": 17.5,
+        "rss": 136.2,
+        "self": 369.65,
+        "onDisk": 2838,
+        "liveIds": 7,
+        "liveStreams": 5,
+        "pending": 0,
+        "retired": 93
+      },
+      {
+        "min": 18.5,
+        "rss": 132.6,
+        "self": 369.65,
+        "onDisk": 2841,
+        "liveIds": 6,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 96
+      },
+      {
+        "min": 19.5,
+        "rss": 119.7,
+        "self": 369.65,
+        "onDisk": 2844,
+        "liveIds": 7,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 99
+      },
+      {
+        "min": 20.5,
+        "rss": 119.2,
+        "self": 369.65,
+        "onDisk": 2846,
+        "liveIds": 10,
+        "liveStreams": 6,
+        "pending": 0,
+        "retired": 101
+      },
+      {
+        "min": 21.5,
+        "rss": 119.5,
+        "self": 369.65,
+        "onDisk": 2846,
+        "liveIds": 23,
+        "liveStreams": 9,
+        "pending": 0,
+        "retired": 101
+      },
+      {
+        "min": 22.5,
+        "rss": 121.2,
+        "self": 369.65,
+        "onDisk": 2849,
+        "liveIds": 27,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 104
+      },
+      {
+        "min": 23.5,
+        "rss": 121.3,
+        "self": 369.65,
+        "onDisk": 2849,
+        "liveIds": 29,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 104
+      },
+      {
+        "min": 24.5,
+        "rss": 133,
+        "self": 369.65,
+        "onDisk": 2855,
+        "liveIds": 29,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 110
+      },
+      {
+        "min": 25.5,
+        "rss": 122.9,
+        "self": 369.65,
+        "onDisk": 2864,
+        "liveIds": 25,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 119
+      },
+      {
+        "min": 26.5,
+        "rss": 121.3,
+        "self": 369.65,
+        "onDisk": 2876,
+        "liveIds": 16,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 131
+      },
+      {
+        "min": 27.5,
+        "rss": 121.3,
+        "self": 369.65,
+        "onDisk": 2878,
+        "liveIds": 20,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 133
+      },
+      {
+        "min": 28.5,
+        "rss": 121.3,
+        "self": 369.65,
+        "onDisk": 2886,
+        "liveIds": 19,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 141
+      },
+      {
+        "min": 29.5,
+        "rss": 118.8,
+        "self": 369.65,
+        "onDisk": 2888,
+        "liveIds": 20,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 143
+      },
+      {
+        "min": 30.5,
+        "rss": 118.9,
+        "self": 369.65,
+        "onDisk": 2892,
+        "liveIds": 21,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 147
+      },
+      {
+        "min": 31.5,
+        "rss": 119.9,
+        "self": 369.65,
+        "onDisk": 2894,
+        "liveIds": 24,
+        "liveStreams": 18,
+        "pending": 0,
+        "retired": 149
+      },
+      {
+        "min": 32.5,
+        "rss": 120.7,
+        "self": 369.65,
+        "onDisk": 2906,
+        "liveIds": 18,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 161
+      },
+      {
+        "min": 33.5,
+        "rss": 123.2,
+        "self": 369.65,
+        "onDisk": 2914,
+        "liveIds": 16,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 169
+      },
+      {
+        "min": 34.5,
+        "rss": 123.3,
+        "self": 369.65,
+        "onDisk": 2922,
+        "liveIds": 13,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 177
+      },
+      {
+        "min": 35.5,
+        "rss": 119,
+        "self": 369.65,
+        "onDisk": 2933,
+        "liveIds": 12,
+        "liveStreams": 9,
+        "pending": 0,
+        "retired": 188
+      },
+      {
+        "min": 36.5,
+        "rss": 119,
+        "self": 369.65,
+        "onDisk": 2934,
+        "liveIds": 11,
+        "liveStreams": 8,
+        "pending": 0,
+        "retired": 189
+      },
+      {
+        "min": 37.5,
+        "rss": 118.9,
+        "self": 369.65,
+        "onDisk": 2940,
+        "liveIds": 7,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 195
+      },
+      {
+        "min": 38.5,
+        "rss": 118.9,
+        "self": 369.65,
+        "onDisk": 2943,
+        "liveIds": 6,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 198
+      },
+      {
+        "min": 39.5,
+        "rss": 118.9,
+        "self": 369.65,
+        "onDisk": 2945,
+        "liveIds": 17,
+        "liveStreams": 6,
+        "pending": 0,
+        "retired": 200
+      },
+      {
+        "min": 40.5,
+        "rss": 123.1,
+        "self": 369.65,
+        "onDisk": 2945,
+        "liveIds": 25,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 200
+      },
+      {
+        "min": 41.5,
+        "rss": 132.9,
+        "self": 369.65,
+        "onDisk": 2948,
+        "liveIds": 27,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 203
+      },
+      {
+        "min": 42.5,
+        "rss": 121.4,
+        "self": 369.65,
+        "onDisk": 2948,
+        "liveIds": 37,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 203
+      },
+      {
+        "min": 43.5,
+        "rss": 119.3,
+        "self": 369.65,
+        "onDisk": 2952,
+        "liveIds": 36,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 207
+      },
+      {
+        "min": 44.5,
+        "rss": 119.2,
+        "self": 369.65,
+        "onDisk": 2965,
+        "liveIds": 30,
+        "liveStreams": 18,
+        "pending": 0,
+        "retired": 220
+      },
+      {
+        "min": 45.5,
+        "rss": 153.2,
+        "self": 369.65,
+        "onDisk": 2972,
+        "liveIds": 25,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 227
+      },
+      {
+        "min": 46.5,
+        "rss": 121.3,
+        "self": 369.65,
+        "onDisk": 2978,
+        "liveIds": 27,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 233
+      },
+      {
+        "min": 47.5,
+        "rss": 121.1,
+        "self": 369.65,
+        "onDisk": 2988,
+        "liveIds": 20,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 243
+      },
+      {
+        "min": 48.5,
+        "rss": 121.2,
+        "self": 369.65,
+        "onDisk": 2990,
+        "liveIds": 29,
+        "liveStreams": 18,
+        "pending": 0,
+        "retired": 245
+      },
+      {
+        "min": 49.5,
+        "rss": 121.2,
+        "self": 369.65,
+        "onDisk": 2997,
+        "liveIds": 27,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 252
+      },
+      {
+        "min": 50.5,
+        "rss": 120.5,
+        "self": 369.65,
+        "onDisk": 3005,
+        "liveIds": 26,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 260
+      },
+      {
+        "min": 51.5,
+        "rss": 122.2,
+        "self": 369.65,
+        "onDisk": 3012,
+        "liveIds": 22,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 267
+      },
+      {
+        "min": 52.5,
+        "rss": 122.2,
+        "self": 369.65,
+        "onDisk": 3023,
+        "liveIds": 18,
+        "liveStreams": 9,
+        "pending": 0,
+        "retired": 278
+      },
+      {
+        "min": 53.5,
+        "rss": 122.2,
+        "self": 369.65,
+        "onDisk": 3043,
+        "liveIds": 7,
+        "liveStreams": 5,
+        "pending": 0,
+        "retired": 298
+      },
+      {
+        "min": 54.5,
+        "rss": 119.2,
+        "self": 369.65,
+        "onDisk": 3044,
+        "liveIds": 7,
+        "liveStreams": 5,
+        "pending": 0,
+        "retired": 299
+      },
+      {
+        "min": 55.5,
+        "rss": 131.3,
+        "self": 369.65,
+        "onDisk": 3047,
+        "liveIds": 6,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 302
+      },
+      {
+        "min": 56.5,
+        "rss": 123.1,
+        "self": 369.65,
+        "onDisk": 3047,
+        "liveIds": 7,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 302
+      },
+      {
+        "min": 57.5,
+        "rss": 119.2,
+        "self": 369.65,
+        "onDisk": 3050,
+        "liveIds": 22,
+        "liveStreams": 7,
+        "pending": 0,
+        "retired": 305
+      },
+      {
+        "min": 58.5,
+        "rss": 130.9,
+        "self": 369.65,
+        "onDisk": 3050,
+        "liveIds": 37,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 305
+      },
+      {
+        "min": 59.5,
+        "rss": 119.3,
+        "self": 369.65,
+        "onDisk": 3051,
+        "liveIds": 39,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 306
+      },
+      {
+        "min": 60.5,
+        "rss": 119.3,
+        "self": 369.65,
+        "onDisk": 3054,
+        "liveIds": 41,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 309
+      },
+      {
+        "min": 61.5,
+        "rss": 119.3,
+        "self": 369.65,
+        "onDisk": 3056,
+        "liveIds": 45,
+        "liveStreams": 18,
+        "pending": 0,
+        "retired": 311
+      },
+      {
+        "min": 62.5,
+        "rss": 119.6,
+        "self": 369.65,
+        "onDisk": 3075,
+        "liveIds": 28,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 330
+      },
+      {
+        "min": 63.5,
+        "rss": 122.8,
+        "self": 369.65,
+        "onDisk": 3090,
+        "liveIds": 19,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 345
+      },
+      {
+        "min": 64.5,
+        "rss": 121.3,
+        "self": 369.65,
+        "onDisk": 3093,
+        "liveIds": 21,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 348
+      },
+      {
+        "min": 65.5,
+        "rss": 137.4,
+        "self": 369.65,
+        "onDisk": 3098,
+        "liveIds": 23,
+        "liveStreams": 18,
+        "pending": 0,
+        "retired": 353
+      },
+      {
+        "min": 66.5,
+        "rss": 119.9,
+        "self": 369.65,
+        "onDisk": 3100,
+        "liveIds": 23,
+        "liveStreams": 18,
+        "pending": 0,
+        "retired": 355
+      },
+      {
+        "min": 67.5,
+        "rss": 120.4,
+        "self": 369.65,
+        "onDisk": 3106,
+        "liveIds": 20,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 361
+      },
+      {
+        "min": 68.5,
+        "rss": 120.4,
+        "self": 369.65,
+        "onDisk": 3111,
+        "liveIds": 20,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 366
+      },
+      {
+        "min": 69.5,
+        "rss": 120.9,
+        "self": 369.65,
+        "onDisk": 3122,
+        "liveIds": 15,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 377
+      },
+      {
+        "min": 70.5,
+        "rss": 121.4,
+        "self": 369.65,
+        "onDisk": 3135,
+        "liveIds": 11,
+        "liveStreams": 9,
+        "pending": 0,
+        "retired": 390
+      },
+      {
+        "min": 71.5,
+        "rss": 119.8,
+        "self": 369.65,
+        "onDisk": 3147,
+        "liveIds": 9,
+        "liveStreams": 7,
+        "pending": 0,
+        "retired": 402
+      },
+      {
+        "min": 72.5,
+        "rss": 119.9,
+        "self": 369.65,
+        "onDisk": 3156,
+        "liveIds": 6,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 411
+      },
+      {
+        "min": 73.5,
+        "rss": 119.9,
+        "self": 369.65,
+        "onDisk": 3167,
+        "liveIds": 1,
+        "liveStreams": 1,
+        "pending": 0,
+        "retired": 422
+      },
+      {
+        "min": 74.5,
+        "rss": 119.9,
+        "self": 369.65,
+        "onDisk": 3172,
+        "liveIds": 3,
+        "liveStreams": 1,
+        "pending": 0,
+        "retired": 427
+      },
+      {
+        "min": 75.5,
+        "rss": 130.5,
+        "self": 369.65,
+        "onDisk": 3172,
+        "liveIds": 3,
+        "liveStreams": 1,
+        "pending": 0,
+        "retired": 427
+      },
+      {
+        "min": 76.5,
+        "rss": 168,
+        "self": 369.65,
+        "onDisk": 3175,
+        "liveIds": 5,
+        "liveStreams": 2,
+        "pending": 0,
+        "retired": 430
+      },
+      {
+        "min": 77.5,
+        "rss": 156.6,
+        "self": 369.65,
+        "onDisk": 3175,
+        "liveIds": 10,
+        "liveStreams": 6,
+        "pending": 0,
+        "retired": 430
+      },
+      {
+        "min": 78.5,
+        "rss": 153.3,
+        "self": 369.65,
+        "onDisk": 3175,
+        "liveIds": 20,
+        "liveStreams": 8,
+        "pending": 0,
+        "retired": 430
+      },
+      {
+        "min": 79.5,
+        "rss": 208.3,
+        "self": 369.65,
+        "onDisk": 3178,
+        "liveIds": 25,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 433
+      },
+      {
+        "min": 80.5,
+        "rss": 155.1,
+        "self": 369.65,
+        "onDisk": 3178,
+        "liveIds": 27,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 433
+      },
+      {
+        "min": 81.5,
+        "rss": 160.6,
+        "self": 369.65,
+        "onDisk": 3183,
+        "liveIds": 28,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 438
+      },
+      {
+        "min": 82.5,
+        "rss": 158.8,
+        "self": 369.65,
+        "onDisk": 3188,
+        "liveIds": 27,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 443
+      },
+      {
+        "min": 83.5,
+        "rss": 158.9,
+        "self": 369.65,
+        "onDisk": 3199,
+        "liveIds": 26,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 454
+      },
+      {
+        "min": 84.5,
+        "rss": 207,
+        "self": 369.65,
+        "onDisk": 3207,
+        "liveIds": 23,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 462
+      },
+      {
+        "min": 85.5,
+        "rss": 157.2,
+        "self": 369.65,
+        "onDisk": 3209,
+        "liveIds": 28,
+        "liveStreams": 17,
+        "pending": 0,
+        "retired": 464
+      },
+      {
+        "min": 86.5,
+        "rss": 157.2,
+        "self": 369.65,
+        "onDisk": 3214,
+        "liveIds": 25,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 469
+      },
+      {
+        "min": 87.5,
+        "rss": 160.1,
+        "self": 369.65,
+        "onDisk": 3218,
+        "liveIds": 25,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 473
+      },
+      {
+        "min": 88.5,
+        "rss": 161.8,
+        "self": 369.65,
+        "onDisk": 3220,
+        "liveIds": 28,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 475
+      },
+      {
+        "min": 89.5,
+        "rss": 158.6,
+        "self": 369.65,
+        "onDisk": 3229,
+        "liveIds": 21,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 484
+      },
+      {
+        "min": 90.5,
+        "rss": 157.3,
+        "self": 369.65,
+        "onDisk": 3243,
+        "liveIds": 19,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 498
+      },
+      {
+        "min": 91.5,
+        "rss": 157.7,
+        "self": 369.65,
+        "onDisk": 3250,
+        "liveIds": 16,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 505
+      },
+      {
+        "min": 92.5,
+        "rss": 157.9,
+        "self": 369.65,
+        "onDisk": 3255,
+        "liveIds": 14,
+        "liveStreams": 8,
+        "pending": 0,
+        "retired": 510
+      },
+      {
+        "min": 93.5,
+        "rss": 161,
+        "self": 369.65,
+        "onDisk": 3265,
+        "liveIds": 9,
+        "liveStreams": 5,
+        "pending": 0,
+        "retired": 520
+      },
+      {
+        "min": 94.5,
+        "rss": 161.5,
+        "self": 369.65,
+        "onDisk": 3275,
+        "liveIds": 8,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 530
+      },
+      {
+        "min": 95.5,
+        "rss": 175.2,
+        "self": 369.65,
+        "onDisk": 3278,
+        "liveIds": 8,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 533
+      },
+      {
+        "min": 96.5,
+        "rss": 157.5,
+        "self": 369.65,
+        "onDisk": 3278,
+        "liveIds": 8,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 533
+      },
+      {
+        "min": 97.5,
+        "rss": 158.3,
+        "self": 369.65,
+        "onDisk": 3284,
+        "liveIds": 7,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 539
+      },
+      {
+        "min": 98.5,
+        "rss": 158.6,
+        "self": 369.65,
+        "onDisk": 3284,
+        "liveIds": 11,
+        "liveStreams": 6,
+        "pending": 0,
+        "retired": 539
+      },
+      {
+        "min": 99.5,
+        "rss": 159.3,
+        "self": 369.65,
+        "onDisk": 3284,
+        "liveIds": 23,
+        "liveStreams": 8,
+        "pending": 0,
+        "retired": 539
+      },
+      {
+        "min": 100.5,
+        "rss": 159.4,
+        "self": 369.65,
+        "onDisk": 3289,
+        "liveIds": 31,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 544
+      },
+      {
+        "min": 101.5,
+        "rss": 160.5,
+        "self": 369.65,
+        "onDisk": 3289,
+        "liveIds": 34,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 544
+      },
+      {
+        "min": 102.5,
+        "rss": 160.5,
+        "self": 369.65,
+        "onDisk": 3291,
+        "liveIds": 34,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 546
+      },
+      {
+        "min": 103.5,
+        "rss": 160.5,
+        "self": 369.65,
+        "onDisk": 3298,
+        "liveIds": 34,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 553
+      },
+      {
+        "min": 104.5,
+        "rss": 160.6,
+        "self": 369.65,
+        "onDisk": 3310,
+        "liveIds": 24,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 565
+      },
+      {
+        "min": 105.5,
+        "rss": 156.3,
+        "self": 369.65,
+        "onDisk": 3315,
+        "liveIds": 29,
+        "liveStreams": 17,
+        "pending": 0,
+        "retired": 570
+      },
+      {
+        "min": 106.5,
+        "rss": 156.3,
+        "self": 369.65,
+        "onDisk": 3326,
+        "liveIds": 22,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 581
+      },
+      {
+        "min": 107.5,
+        "rss": 158.2,
+        "self": 369.65,
+        "onDisk": 3328,
+        "liveIds": 30,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 583
+      },
+      {
+        "min": 108.5,
+        "rss": 159.2,
+        "self": 369.65,
+        "onDisk": 3334,
+        "liveIds": 29,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 589
+      },
+      {
+        "min": 109.5,
+        "rss": 159.3,
+        "self": 369.65,
+        "onDisk": 3337,
+        "liveIds": 31,
+        "liveStreams": 18,
+        "pending": 0,
+        "retired": 592
+      },
+      {
+        "min": 110.5,
+        "rss": 159.3,
+        "self": 369.65,
+        "onDisk": 3347,
+        "liveIds": 26,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 602
+      },
+      {
+        "min": 111.5,
+        "rss": 159.1,
+        "self": 369.65,
+        "onDisk": 3357,
+        "liveIds": 21,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 612
+      },
+      {
+        "min": 112.5,
+        "rss": 158.4,
+        "self": 369.65,
+        "onDisk": 3370,
+        "liveIds": 13,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 625
+      },
+      {
+        "min": 113.5,
+        "rss": 158.6,
+        "self": 369.65,
+        "onDisk": 3377,
+        "liveIds": 11,
+        "liveStreams": 9,
+        "pending": 0,
+        "retired": 632
+      },
+      {
+        "min": 114.5,
+        "rss": 191,
+        "self": 369.65,
+        "onDisk": 3389,
+        "liveIds": 5,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 644
+      },
+      {
+        "min": 115.5,
+        "rss": 157.2,
+        "self": 369.65,
+        "onDisk": 3389,
+        "liveIds": 5,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 644
+      },
+      {
+        "min": 116.5,
+        "rss": 157.7,
+        "self": 369.65,
+        "onDisk": 3393,
+        "liveIds": 3,
+        "liveStreams": 2,
+        "pending": 0,
+        "retired": 648
+      },
+      {
+        "min": 117.5,
+        "rss": 160.5,
+        "self": 369.65,
+        "onDisk": 3394,
+        "liveIds": 7,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 649
+      },
+      {
+        "min": 118.5,
+        "rss": 161.5,
+        "self": 369.65,
+        "onDisk": 3394,
+        "liveIds": 17,
+        "liveStreams": 6,
+        "pending": 0,
+        "retired": 649
+      },
+      {
+        "min": 119.5,
+        "rss": 161.7,
+        "self": 369.65,
+        "onDisk": 3394,
+        "liveIds": 27,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 649
+      },
+      {
+        "min": 120.5,
+        "rss": 161.7,
+        "self": 369.65,
+        "onDisk": 3397,
+        "liveIds": 28,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 652
+      },
+      {
+        "min": 121.5,
+        "rss": 157.7,
+        "self": 369.65,
+        "onDisk": 3399,
+        "liveIds": 29,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 654
+      },
+      {
+        "min": 122.5,
+        "rss": 157.8,
+        "self": 369.65,
+        "onDisk": 3400,
+        "liveIds": 30,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 655
+      },
+      {
+        "min": 123.5,
+        "rss": 156.4,
+        "self": 369.65,
+        "onDisk": 3414,
+        "liveIds": 24,
+        "liveStreams": 17,
+        "pending": 0,
+        "retired": 669
+      },
+      {
+        "min": 124.5,
+        "rss": 163.3,
+        "self": 369.65,
+        "onDisk": 3424,
+        "liveIds": 16,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 679
+      },
+      {
+        "min": 125.5,
+        "rss": 161.8,
+        "self": 369.65,
+        "onDisk": 3425,
+        "liveIds": 19,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 680
+      },
+      {
+        "min": 126.5,
+        "rss": 165.6,
+        "self": 369.65,
+        "onDisk": 3431,
+        "liveIds": 21,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 686
+      },
+      {
+        "min": 127.5,
+        "rss": 160.5,
+        "self": 369.65,
+        "onDisk": 3433,
+        "liveIds": 21,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 688
+      },
+      {
+        "min": 128.5,
+        "rss": 161.7,
+        "self": 369.65,
+        "onDisk": 3439,
+        "liveIds": 21,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 694
+      },
+      {
+        "min": 129.5,
+        "rss": 161.2,
+        "self": 369.65,
+        "onDisk": 3443,
+        "liveIds": 21,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 698
+      },
+      {
+        "min": 130.5,
+        "rss": 161.2,
+        "self": 369.65,
+        "onDisk": 3445,
+        "liveIds": 22,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 700
+      },
+      {
+        "min": 131.5,
+        "rss": 164.5,
+        "self": 369.65,
+        "onDisk": 3457,
+        "liveIds": 15,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 712
+      },
+      {
+        "min": 132.5,
+        "rss": 181.2,
+        "self": 369.65,
+        "onDisk": 3466,
+        "liveIds": 13,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 721
+      },
+      {
+        "min": 133.5,
+        "rss": 161.9,
+        "self": 369.65,
+        "onDisk": 3477,
+        "liveIds": 8,
+        "liveStreams": 6,
+        "pending": 0,
+        "retired": 732
+      },
+      {
+        "min": 134.5,
+        "rss": 160.3,
+        "self": 369.65,
+        "onDisk": 3485,
+        "liveIds": 14,
+        "liveStreams": 5,
+        "pending": 0,
+        "retired": 740
+      },
+      {
+        "min": 135.5,
+        "rss": 160.4,
+        "self": 369.65,
+        "onDisk": 3485,
+        "liveIds": 14,
+        "liveStreams": 5,
+        "pending": 0,
+        "retired": 740
+      },
+      {
+        "min": 136.5,
+        "rss": 161,
+        "self": 369.65,
+        "onDisk": 3488,
+        "liveIds": 13,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 743
+      },
+      {
+        "min": 137.5,
+        "rss": 164.7,
+        "self": 369.65,
+        "onDisk": 3491,
+        "liveIds": 11,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 746
+      },
+      {
+        "min": 138.5,
+        "rss": 164.7,
+        "self": 369.65,
+        "onDisk": 3491,
+        "liveIds": 37,
+        "liveStreams": 9,
+        "pending": 0,
+        "retired": 746
+      },
+      {
+        "min": 139.5,
+        "rss": 164.2,
+        "self": 369.65,
+        "onDisk": 3491,
+        "liveIds": 42,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 746
+      },
+      {
+        "min": 140.5,
+        "rss": 179.7,
+        "self": 369.65,
+        "onDisk": 3503,
+        "liveIds": 35,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 758
+      },
+      {
+        "min": 141.5,
+        "rss": 160,
+        "self": 369.65,
+        "onDisk": 3507,
+        "liveIds": 36,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 762
+      },
+      {
+        "min": 142.5,
+        "rss": 160.6,
+        "self": 369.65,
+        "onDisk": 3509,
+        "liveIds": 36,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 764
+      },
+      {
+        "min": 143.5,
+        "rss": 165.1,
+        "self": 369.65,
+        "onDisk": 3533,
+        "liveIds": 24,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 788
+      },
+      {
+        "min": 144.5,
+        "rss": 165.3,
+        "self": 369.65,
+        "onDisk": 3540,
+        "liveIds": 21,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 795
+      },
+      {
+        "min": 145.5,
+        "rss": 164.1,
+        "self": 369.65,
+        "onDisk": 3542,
+        "liveIds": 22,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 797
+      },
+      {
+        "min": 146.5,
+        "rss": 160.8,
+        "self": 369.65,
+        "onDisk": 3543,
+        "liveIds": 25,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 798
+      },
+      {
+        "min": 147.5,
+        "rss": 178.9,
+        "self": 369.65,
+        "onDisk": 3549,
+        "liveIds": 26,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 804
+      },
+      {
+        "min": 148.5,
+        "rss": 161.9,
+        "self": 369.65,
+        "onDisk": 3568,
+        "liveIds": 14,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 823
+      },
+      {
+        "min": 149.5,
+        "rss": 186.2,
+        "self": 369.65,
+        "onDisk": 3571,
+        "liveIds": 15,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 826
+      },
+      {
+        "min": 150.5,
+        "rss": 163.5,
+        "self": 369.65,
+        "onDisk": 3574,
+        "liveIds": 14,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 829
+      },
+      {
+        "min": 151.5,
+        "rss": 161.7,
+        "self": 369.65,
+        "onDisk": 3581,
+        "liveIds": 12,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 836
+      },
+      {
+        "min": 152.5,
+        "rss": 161.7,
+        "self": 369.65,
+        "onDisk": 3582,
+        "liveIds": 13,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 837
+      },
+      {
+        "min": 153.5,
+        "rss": 164,
+        "self": 369.65,
+        "onDisk": 3588,
+        "liveIds": 12,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 843
+      },
+      {
+        "min": 154.5,
+        "rss": 165.7,
+        "self": 369.65,
+        "onDisk": 3598,
+        "liveIds": 11,
+        "liveStreams": 9,
+        "pending": 0,
+        "retired": 853
+      },
+      {
+        "min": 155.5,
+        "rss": 166.3,
+        "self": 369.65,
+        "onDisk": 3608,
+        "liveIds": 9,
+        "liveStreams": 7,
+        "pending": 0,
+        "retired": 863
+      },
+      {
+        "min": 156.5,
+        "rss": 165.8,
+        "self": 369.65,
+        "onDisk": 3618,
+        "liveIds": 4,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 873
+      },
+      {
+        "min": 157.5,
+        "rss": 160.2,
+        "self": 369.65,
+        "onDisk": 3623,
+        "liveIds": 5,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 878
+      },
+      {
+        "min": 158.5,
+        "rss": 199.8,
+        "self": 369.65,
+        "onDisk": 3631,
+        "liveIds": 4,
+        "liveStreams": 2,
+        "pending": 0,
+        "retired": 886
+      },
+      {
+        "min": 159.5,
+        "rss": 162.1,
+        "self": 369.65,
+        "onDisk": 3631,
+        "liveIds": 4,
+        "liveStreams": 2,
+        "pending": 0,
+        "retired": 886
+      },
+      {
+        "min": 160.5,
+        "rss": 162.2,
+        "self": 369.65,
+        "onDisk": 3632,
+        "liveIds": 5,
+        "liveStreams": 2,
+        "pending": 0,
+        "retired": 887
+      },
+      {
+        "min": 161.5,
+        "rss": 162.5,
+        "self": 369.65,
+        "onDisk": 3632,
+        "liveIds": 10,
+        "liveStreams": 6,
+        "pending": 0,
+        "retired": 887
+      },
+      {
+        "min": 162.5,
+        "rss": 162.7,
+        "self": 369.65,
+        "onDisk": 3635,
+        "liveIds": 20,
+        "liveStreams": 8,
+        "pending": 0,
+        "retired": 890
+      },
+      {
+        "min": 163.5,
+        "rss": 164.9,
+        "self": 369.65,
+        "onDisk": 3635,
+        "liveIds": 29,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 890
+      },
+      {
+        "min": 164.5,
+        "rss": 162.2,
+        "self": 369.65,
+        "onDisk": 3635,
+        "liveIds": 31,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 890
+      },
+      {
+        "min": 165.5,
+        "rss": 162.7,
+        "self": 369.65,
+        "onDisk": 3640,
+        "liveIds": 36,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 895
+      },
+      {
+        "min": 166.5,
+        "rss": 160,
+        "self": 369.65,
+        "onDisk": 3644,
+        "liveIds": 34,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 899
+      },
+      {
+        "min": 167.5,
+        "rss": 162.3,
+        "self": 369.65,
+        "onDisk": 3655,
+        "liveIds": 26,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 910
+      },
+      {
+        "min": 168.5,
+        "rss": 163.9,
+        "self": 369.65,
+        "onDisk": 3666,
+        "liveIds": 20,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 921
+      },
+      {
+        "min": 169.5,
+        "rss": 162.7,
+        "self": 369.65,
+        "onDisk": 3669,
+        "liveIds": 24,
+        "liveStreams": 17,
+        "pending": 0,
+        "retired": 924
+      },
+      {
+        "min": 170.5,
+        "rss": 162.8,
+        "self": 369.65,
+        "onDisk": 3679,
+        "liveIds": 19,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 934
+      },
+      {
+        "min": 171.5,
+        "rss": 161.1,
+        "self": 369.65,
+        "onDisk": 3681,
+        "liveIds": 20,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 936
+      },
+      {
+        "min": 172.5,
+        "rss": 161.2,
+        "self": 369.65,
+        "onDisk": 3683,
+        "liveIds": 20,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 938
+      },
+      {
+        "min": 173.5,
+        "rss": 162.3,
+        "self": 369.65,
+        "onDisk": 3689,
+        "liveIds": 22,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 944
+      },
+      {
+        "min": 174.5,
+        "rss": 162.3,
+        "self": 369.65,
+        "onDisk": 3701,
+        "liveIds": 16,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 956
+      },
+      {
+        "min": 175.5,
+        "rss": 162.6,
+        "self": 369.65,
+        "onDisk": 3709,
+        "liveIds": 13,
+        "liveStreams": 9,
+        "pending": 0,
+        "retired": 964
+      },
+      {
+        "min": 176.5,
+        "rss": 163.3,
+        "self": 369.65,
+        "onDisk": 3716,
+        "liveIds": 11,
+        "liveStreams": 7,
+        "pending": 0,
+        "retired": 971
+      },
+      {
+        "min": 177.5,
+        "rss": 163.5,
+        "self": 369.65,
+        "onDisk": 3724,
+        "liveIds": 9,
+        "liveStreams": 5,
+        "pending": 0,
+        "retired": 979
+      },
+      {
+        "min": 178.5,
+        "rss": 163.5,
+        "self": 369.65,
+        "onDisk": 3735,
+        "liveIds": 7,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 990
+      },
+      {
+        "min": 179.5,
+        "rss": 162.6,
+        "self": 369.65,
+        "onDisk": 3735,
+        "liveIds": 7,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 990
+      },
+      {
+        "min": 180.5,
+        "rss": 163,
+        "self": 369.65,
+        "onDisk": 3741,
+        "liveIds": 6,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 996
+      },
+      {
+        "min": 181.5,
+        "rss": 161.8,
+        "self": 369.65,
+        "onDisk": 3741,
+        "liveIds": 7,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 996
+      },
+      {
+        "min": 182.5,
+        "rss": 162.2,
+        "self": 369.65,
+        "onDisk": 3741,
+        "liveIds": 18,
+        "liveStreams": 7,
+        "pending": 0,
+        "retired": 996
+      },
+      {
+        "min": 183.5,
+        "rss": 175.1,
+        "self": 369.65,
+        "onDisk": 3744,
+        "liveIds": 23,
+        "liveStreams": 9,
+        "pending": 0,
+        "retired": 999
+      },
+      {
+        "min": 184.5,
+        "rss": 163.9,
+        "self": 369.65,
+        "onDisk": 3745,
+        "liveIds": 34,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1000
+      },
+      {
+        "min": 185.5,
+        "rss": 161.8,
+        "self": 369.65,
+        "onDisk": 3750,
+        "liveIds": 34,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1005
+      },
+      {
+        "min": 186.5,
+        "rss": 161.8,
+        "self": 369.65,
+        "onDisk": 3756,
+        "liveIds": 33,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1011
+      },
+      {
+        "min": 187.5,
+        "rss": 161.9,
+        "self": 369.65,
+        "onDisk": 3761,
+        "liveIds": 30,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1016
+      },
+      {
+        "min": 188.5,
+        "rss": 163.2,
+        "self": 369.65,
+        "onDisk": 3773,
+        "liveIds": 20,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1028
+      },
+      {
+        "min": 189.5,
+        "rss": 162.6,
+        "self": 369.65,
+        "onDisk": 3787,
+        "liveIds": 16,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 1042
+      },
+      {
+        "min": 190.5,
+        "rss": 164.2,
+        "self": 369.65,
+        "onDisk": 3789,
+        "liveIds": 18,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 1044
+      },
+      {
+        "min": 191.5,
+        "rss": 163.4,
+        "self": 369.65,
+        "onDisk": 3793,
+        "liveIds": 20,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1048
+      },
+      {
+        "min": 192.5,
+        "rss": 163.4,
+        "self": 369.65,
+        "onDisk": 3796,
+        "liveIds": 19,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1051
+      },
+      {
+        "min": 193.5,
+        "rss": 161.5,
+        "self": 369.65,
+        "onDisk": 3798,
+        "liveIds": 21,
+        "liveStreams": 17,
+        "pending": 0,
+        "retired": 1053
+      },
+      {
+        "min": 194.5,
+        "rss": 215.8,
+        "self": 369.65,
+        "onDisk": 3805,
+        "liveIds": 19,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1060
+      },
+      {
+        "min": 195.5,
+        "rss": 161.4,
+        "self": 369.65,
+        "onDisk": 3814,
+        "liveIds": 15,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1069
+      },
+      {
+        "min": 196.5,
+        "rss": 162.3,
+        "self": 369.65,
+        "onDisk": 3821,
+        "liveIds": 15,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 1076
+      },
+      {
+        "min": 197.5,
+        "rss": 165.1,
+        "self": 369.65,
+        "onDisk": 3827,
+        "liveIds": 13,
+        "liveStreams": 9,
+        "pending": 0,
+        "retired": 1082
+      },
+      {
+        "min": 198.5,
+        "rss": 164.7,
+        "self": 369.65,
+        "onDisk": 3837,
+        "liveIds": 9,
+        "liveStreams": 5,
+        "pending": 0,
+        "retired": 1092
+      },
+      {
+        "min": 199.5,
+        "rss": 176.5,
+        "self": 369.65,
+        "onDisk": 3841,
+        "liveIds": 7,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 1096
+      },
+      {
+        "min": 200.5,
+        "rss": 160.4,
+        "self": 369.65,
+        "onDisk": 3841,
+        "liveIds": 7,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 1096
+      },
+      {
+        "min": 201.5,
+        "rss": 187.8,
+        "self": 369.65,
+        "onDisk": 3848,
+        "liveIds": 6,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 1103
+      },
+      {
+        "min": 202.5,
+        "rss": 162.8,
+        "self": 369.65,
+        "onDisk": 3848,
+        "liveIds": 9,
+        "liveStreams": 5,
+        "pending": 0,
+        "retired": 1103
+      },
+      {
+        "min": 203.5,
+        "rss": 162.5,
+        "self": 369.65,
+        "onDisk": 3848,
+        "liveIds": 21,
+        "liveStreams": 7,
+        "pending": 0,
+        "retired": 1103
+      },
+      {
+        "min": 204.5,
+        "rss": 162.5,
+        "self": 369.65,
+        "onDisk": 3851,
+        "liveIds": 25,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 1106
+      },
+      {
+        "min": 205.5,
+        "rss": 163.7,
+        "self": 369.65,
+        "onDisk": 3853,
+        "liveIds": 25,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 1108
+      },
+      {
+        "min": 206.5,
+        "rss": 163.1,
+        "self": 369.65,
+        "onDisk": 3858,
+        "liveIds": 25,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1113
+      },
+      {
+        "min": 207.5,
+        "rss": 163.4,
+        "self": 369.65,
+        "onDisk": 3867,
+        "liveIds": 23,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 1122
+      },
+      {
+        "min": 208.5,
+        "rss": 179.4,
+        "self": 369.65,
+        "onDisk": 3877,
+        "liveIds": 15,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 1132
+      },
+      {
+        "min": 209.5,
+        "rss": 162,
+        "self": 369.65,
+        "onDisk": 3886,
+        "liveIds": 10,
+        "liveStreams": 8,
+        "pending": 0,
+        "retired": 1141
+      },
+      {
+        "min": 210.5,
+        "rss": 163.4,
+        "self": 369.65,
+        "onDisk": 3888,
+        "liveIds": 13,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 1143
+      },
+      {
+        "min": 211.5,
+        "rss": 163.4,
+        "self": 369.65,
+        "onDisk": 3893,
+        "liveIds": 13,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 1148
+      },
+      {
+        "min": 212.5,
+        "rss": 212.3,
+        "self": 369.65,
+        "onDisk": 3893,
+        "liveIds": 18,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1148
+      },
+      {
+        "min": 213.5,
+        "rss": 161.3,
+        "self": 369.65,
+        "onDisk": 3894,
+        "liveIds": 19,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1149
+      },
+      {
+        "min": 214.5,
+        "rss": 209.7,
+        "self": 369.65,
+        "onDisk": 3899,
+        "liveIds": 25,
+        "liveStreams": 18,
+        "pending": 0,
+        "retired": 1154
+      },
+      {
+        "min": 215.5,
+        "rss": 163.5,
+        "self": 369.65,
+        "onDisk": 3904,
+        "liveIds": 22,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1159
+      },
+      {
+        "min": 216.5,
+        "rss": 162.6,
+        "self": 369.65,
+        "onDisk": 3905,
+        "liveIds": 30,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 1160
+      },
+      {
+        "min": 217.5,
+        "rss": 219.7,
+        "self": 369.65,
+        "onDisk": 3919,
+        "liveIds": 24,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 1174
+      },
+      {
+        "min": 218.5,
+        "rss": 162.5,
+        "self": 369.65,
+        "onDisk": 3922,
+        "liveIds": 23,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 1177
+      },
+      {
+        "min": 219.5,
+        "rss": 160.2,
+        "self": 369.65,
+        "onDisk": 3935,
+        "liveIds": 15,
+        "liveStreams": 6,
+        "pending": 0,
+        "retired": 1190
+      },
+      {
+        "min": 220.5,
+        "rss": 160.5,
+        "self": 369.65,
+        "onDisk": 3945,
+        "liveIds": 13,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 1200
+      },
+      {
+        "min": 221.5,
+        "rss": 161.3,
+        "self": 369.65,
+        "onDisk": 3947,
+        "liveIds": 20,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 1202
+      },
+      {
+        "min": 222.5,
+        "rss": 161.6,
+        "self": 369.65,
+        "onDisk": 3947,
+        "liveIds": 20,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 1202
+      },
+      {
+        "min": 223.5,
+        "rss": 163.6,
+        "self": 369.65,
+        "onDisk": 3959,
+        "liveIds": 10,
+        "liveStreams": 2,
+        "pending": 0,
+        "retired": 1214
+      },
+      {
+        "min": 224.5,
+        "rss": 173.2,
+        "self": 369.65,
+        "onDisk": 3959,
+        "liveIds": 32,
+        "liveStreams": 8,
+        "pending": 0,
+        "retired": 1214
+      },
+      {
+        "min": 225.5,
+        "rss": 171.7,
+        "self": 369.65,
+        "onDisk": 3959,
+        "liveIds": 44,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 1214
+      },
+      {
+        "min": 226.5,
+        "rss": 163.7,
+        "self": 369.65,
+        "onDisk": 3967,
+        "liveIds": 38,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 1222
+      },
+      {
+        "min": 227.5,
+        "rss": 161.7,
+        "self": 369.65,
+        "onDisk": 3970,
+        "liveIds": 40,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1225
+      },
+      {
+        "min": 228.5,
+        "rss": 161.8,
+        "self": 369.65,
+        "onDisk": 3972,
+        "liveIds": 40,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1227
+      },
+      {
+        "min": 229.5,
+        "rss": 160.7,
+        "self": 369.65,
+        "onDisk": 3982,
+        "liveIds": 36,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 1237
+      },
+      {
+        "min": 230.5,
+        "rss": 162.7,
+        "self": 369.65,
+        "onDisk": 4002,
+        "liveIds": 19,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1257
+      },
+      {
+        "min": 231.5,
+        "rss": 198.5,
+        "self": 369.65,
+        "onDisk": 4007,
+        "liveIds": 17,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1262
+      },
+      {
+        "min": 232.5,
+        "rss": 161.8,
+        "self": 369.65,
+        "onDisk": 4013,
+        "liveIds": 18,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1268
+      },
+      {
+        "min": 233.5,
+        "rss": 174.6,
+        "self": 369.65,
+        "onDisk": 4015,
+        "liveIds": 24,
+        "liveStreams": 17,
+        "pending": 0,
+        "retired": 1270
+      },
+      {
+        "min": 234.5,
+        "rss": 174.3,
+        "self": 369.65,
+        "onDisk": 4020,
+        "liveIds": 21,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1275
+      },
+      {
+        "min": 235.5,
+        "rss": 160.5,
+        "self": 369.65,
+        "onDisk": 4024,
+        "liveIds": 21,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1279
+      },
+      {
+        "min": 236.5,
+        "rss": 161.6,
+        "self": 369.65,
+        "onDisk": 4026,
+        "liveIds": 22,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1281
+      },
+      {
+        "min": 237.5,
+        "rss": 162.9,
+        "self": 369.65,
+        "onDisk": 4034,
+        "liveIds": 19,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1289
+      },
+      {
+        "min": 238.5,
+        "rss": 171.3,
+        "self": 369.65,
+        "onDisk": 4048,
+        "liveIds": 10,
+        "liveStreams": 8,
+        "pending": 0,
+        "retired": 1303
+      },
+      {
+        "min": 239.5,
+        "rss": 171.5,
+        "self": 369.65,
+        "onDisk": 4057,
+        "liveIds": 9,
+        "liveStreams": 8,
+        "pending": 0,
+        "retired": 1312
+      },
+      {
+        "min": 240.5,
+        "rss": 171.6,
+        "self": 369.65,
+        "onDisk": 4067,
+        "liveIds": 8,
+        "liveStreams": 7,
+        "pending": 0,
+        "retired": 1322
+      },
+      {
+        "min": 241.5,
+        "rss": 161,
+        "self": 369.65,
+        "onDisk": 4075,
+        "liveIds": 5,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 1330
+      },
+      {
+        "min": 242.5,
+        "rss": 165,
+        "self": 369.65,
+        "onDisk": 4081,
+        "liveIds": 4,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 1336
+      },
+      {
+        "min": 243.5,
+        "rss": 164.3,
+        "self": 369.65,
+        "onDisk": 4087,
+        "liveIds": 3,
+        "liveStreams": 2,
+        "pending": 0,
+        "retired": 1342
+      },
+      {
+        "min": 244.5,
+        "rss": 174.9,
+        "self": 369.65,
+        "onDisk": 4087,
+        "liveIds": 3,
+        "liveStreams": 2,
+        "pending": 0,
+        "retired": 1342
+      },
+      {
+        "min": 245.5,
+        "rss": 161.5,
+        "self": 369.65,
+        "onDisk": 4090,
+        "liveIds": 2,
+        "liveStreams": 1,
+        "pending": 0,
+        "retired": 1345
+      },
+      {
+        "min": 246.5,
+        "rss": 160.9,
+        "self": 369.65,
+        "onDisk": 4091,
+        "liveIds": 6,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 1346
+      },
+      {
+        "min": 247.5,
+        "rss": 160.7,
+        "self": 369.65,
+        "onDisk": 4091,
+        "liveIds": 19,
+        "liveStreams": 7,
+        "pending": 0,
+        "retired": 1346
+      },
+      {
+        "min": 248.5,
+        "rss": 173.8,
+        "self": 369.65,
+        "onDisk": 4091,
+        "liveIds": 27,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 1346
+      },
+      {
+        "min": 249.5,
+        "rss": 174.4,
+        "self": 369.65,
+        "onDisk": 4094,
+        "liveIds": 29,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 1349
+      },
+      {
+        "min": 250.5,
+        "rss": 159.2,
+        "self": 369.65,
+        "onDisk": 4096,
+        "liveIds": 31,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1351
+      },
+      {
+        "min": 251.5,
+        "rss": 161,
+        "self": 369.65,
+        "onDisk": 4100,
+        "liveIds": 29,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1355
+      },
+      {
+        "min": 252.5,
+        "rss": 175,
+        "self": 369.65,
+        "onDisk": 4113,
+        "liveIds": 22,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1368
+      },
+      {
+        "min": 253.5,
+        "rss": 160.2,
+        "self": 369.65,
+        "onDisk": 4121,
+        "liveIds": 16,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1376
+      },
+      {
+        "min": 254.5,
+        "rss": 208.7,
+        "self": 369.65,
+        "onDisk": 4123,
+        "liveIds": 18,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1378
+      },
+      {
+        "min": 255.5,
+        "rss": 162,
+        "self": 369.65,
+        "onDisk": 4130,
+        "liveIds": 18,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1385
+      },
+      {
+        "min": 256.5,
+        "rss": 162.1,
+        "self": 369.65,
+        "onDisk": 4133,
+        "liveIds": 17,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1388
+      },
+      {
+        "min": 257.5,
+        "rss": 162.7,
+        "self": 369.65,
+        "onDisk": 4136,
+        "liveIds": 18,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1391
+      },
+      {
+        "min": 258.5,
+        "rss": 164.8,
+        "self": 369.65,
+        "onDisk": 4140,
+        "liveIds": 19,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1395
+      },
+      {
+        "min": 259.5,
+        "rss": 165.8,
+        "self": 369.65,
+        "onDisk": 4146,
+        "liveIds": 18,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1401
+      },
+      {
+        "min": 260.5,
+        "rss": 161.2,
+        "self": 369.65,
+        "onDisk": 4154,
+        "liveIds": 14,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 1409
+      },
+      {
+        "min": 261.5,
+        "rss": 161.3,
+        "self": 369.65,
+        "onDisk": 4161,
+        "liveIds": 12,
+        "liveStreams": 9,
+        "pending": 0,
+        "retired": 1416
+      },
+      {
+        "min": 262.5,
+        "rss": 162.3,
+        "self": 369.65,
+        "onDisk": 4169,
+        "liveIds": 9,
+        "liveStreams": 7,
+        "pending": 0,
+        "retired": 1424
+      },
+      {
+        "min": 263.5,
+        "rss": 162.3,
+        "self": 369.65,
+        "onDisk": 4179,
+        "liveIds": 7,
+        "liveStreams": 5,
+        "pending": 0,
+        "retired": 1434
+      },
+      {
+        "min": 264.5,
+        "rss": 165.1,
+        "self": 369.65,
+        "onDisk": 4188,
+        "liveIds": 5,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 1443
+      },
+      {
+        "min": 265.5,
+        "rss": 165.5,
+        "self": 369.65,
+        "onDisk": 4188,
+        "liveIds": 5,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 1443
+      },
+      {
+        "min": 266.5,
+        "rss": 159.2,
+        "self": 369.65,
+        "onDisk": 4189,
+        "liveIds": 6,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 1444
+      },
+      {
+        "min": 267.5,
+        "rss": 160.8,
+        "self": 369.65,
+        "onDisk": 4189,
+        "liveIds": 12,
+        "liveStreams": 6,
+        "pending": 0,
+        "retired": 1444
+      },
+      {
+        "min": 268.5,
+        "rss": 160.8,
+        "self": 369.65,
+        "onDisk": 4192,
+        "liveIds": 20,
+        "liveStreams": 7,
+        "pending": 0,
+        "retired": 1447
+      },
+      {
+        "min": 269.5,
+        "rss": 165.1,
+        "self": 369.65,
+        "onDisk": 4193,
+        "liveIds": 25,
+        "liveStreams": 9,
+        "pending": 0,
+        "retired": 1448
+      },
+      {
+        "min": 270.5,
+        "rss": 161.7,
+        "self": 369.65,
+        "onDisk": 4193,
+        "liveIds": 29,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1448
+      },
+      {
+        "min": 271.5,
+        "rss": 162.5,
+        "self": 369.65,
+        "onDisk": 4198,
+        "liveIds": 29,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1453
+      },
+      {
+        "min": 272.5,
+        "rss": 160.3,
+        "self": 369.65,
+        "onDisk": 4204,
+        "liveIds": 29,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1459
+      },
+      {
+        "min": 273.5,
+        "rss": 160.3,
+        "self": 369.65,
+        "onDisk": 4217,
+        "liveIds": 18,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1472
+      },
+      {
+        "min": 274.5,
+        "rss": 162.5,
+        "self": 369.65,
+        "onDisk": 4225,
+        "liveIds": 20,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 1480
+      },
+      {
+        "min": 275.5,
+        "rss": 226.5,
+        "self": 369.65,
+        "onDisk": 4230,
+        "liveIds": 19,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1485
+      },
+      {
+        "min": 276.5,
+        "rss": 162.7,
+        "self": 369.65,
+        "onDisk": 4235,
+        "liveIds": 21,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1490
+      },
+      {
+        "min": 277.5,
+        "rss": 158.9,
+        "self": 369.65,
+        "onDisk": 4236,
+        "liveIds": 23,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 1491
+      },
+      {
+        "min": 278.5,
+        "rss": 158.9,
+        "self": 369.65,
+        "onDisk": 4241,
+        "liveIds": 26,
+        "liveStreams": 19,
+        "pending": 0,
+        "retired": 1496
+      },
+      {
+        "min": 279.5,
+        "rss": 161.9,
+        "self": 369.65,
+        "onDisk": 4250,
+        "liveIds": 20,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 1505
+      },
+      {
+        "min": 280.5,
+        "rss": 166,
+        "self": 369.65,
+        "onDisk": 4260,
+        "liveIds": 16,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1515
+      },
+      {
+        "min": 281.5,
+        "rss": 163.1,
+        "self": 369.65,
+        "onDisk": 4267,
+        "liveIds": 14,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 1522
+      },
+      {
+        "min": 282.5,
+        "rss": 181.2,
+        "self": 369.65,
+        "onDisk": 4282,
+        "liveIds": 9,
+        "liveStreams": 8,
+        "pending": 0,
+        "retired": 1537
+      },
+      {
+        "min": 283.5,
+        "rss": 160.8,
+        "self": 369.65,
+        "onDisk": 4284,
+        "liveIds": 10,
+        "liveStreams": 8,
+        "pending": 0,
+        "retired": 1539
+      },
+      {
+        "min": 284.5,
+        "rss": 161.2,
+        "self": 369.65,
+        "onDisk": 4290,
+        "liveIds": 6,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 1545
+      },
+      {
+        "min": 285.5,
+        "rss": 164.3,
+        "self": 369.65,
+        "onDisk": 4297,
+        "liveIds": 6,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 1552
+      },
+      {
+        "min": 286.5,
+        "rss": 166.1,
+        "self": 369.65,
+        "onDisk": 4299,
+        "liveIds": 8,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 1554
+      },
+      {
+        "min": 287.5,
+        "rss": 182.1,
+        "self": 369.65,
+        "onDisk": 4299,
+        "liveIds": 20,
+        "liveStreams": 6,
+        "pending": 0,
+        "retired": 1554
+      },
+      {
+        "min": 288.5,
+        "rss": 159.2,
+        "self": 369.65,
+        "onDisk": 4302,
+        "liveIds": 24,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 1557
+      },
+      {
+        "min": 289.5,
+        "rss": 160.4,
+        "self": 369.65,
+        "onDisk": 4302,
+        "liveIds": 26,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 1557
+      },
+      {
+        "min": 290.5,
+        "rss": 161.6,
+        "self": 369.65,
+        "onDisk": 4307,
+        "liveIds": 27,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1562
+      },
+      {
+        "min": 291.5,
+        "rss": 169.3,
+        "self": 369.65,
+        "onDisk": 4308,
+        "liveIds": 28,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1563
+      },
+      {
+        "min": 292.5,
+        "rss": 179.9,
+        "self": 369.65,
+        "onDisk": 4318,
+        "liveIds": 23,
+        "liveStreams": 18,
+        "pending": 0,
+        "retired": 1573
+      },
+      {
+        "min": 293.5,
+        "rss": 166,
+        "self": 369.65,
+        "onDisk": 4328,
+        "liveIds": 18,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 1583
+      },
+      {
+        "min": 294.5,
+        "rss": 166,
+        "self": 369.65,
+        "onDisk": 4331,
+        "liveIds": 21,
+        "liveStreams": 17,
+        "pending": 0,
+        "retired": 1586
+      },
+      {
+        "min": 295.5,
+        "rss": 166,
+        "self": 369.65,
+        "onDisk": 4337,
+        "liveIds": 19,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1592
+      },
+      {
+        "min": 296.5,
+        "rss": 159.4,
+        "self": 369.65,
+        "onDisk": 4339,
+        "liveIds": 22,
+        "liveStreams": 18,
+        "pending": 0,
+        "retired": 1594
+      },
+      {
+        "min": 297.5,
+        "rss": 208.6,
+        "self": 369.65,
+        "onDisk": 4344,
+        "liveIds": 20,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 1599
+      },
+      {
+        "min": 298.5,
+        "rss": 162.7,
+        "self": 369.65,
+        "onDisk": 4352,
+        "liveIds": 20,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 1607
+      },
+      {
+        "min": 299.5,
+        "rss": 163.9,
+        "self": 369.65,
+        "onDisk": 4360,
+        "liveIds": 14,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 1615
+      },
+      {
+        "min": 300.5,
+        "rss": 213,
+        "self": 369.65,
+        "onDisk": 4368,
+        "liveIds": 13,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 1623
+      },
+      {
+        "min": 301.5,
+        "rss": 162.4,
+        "self": 369.65,
+        "onDisk": 4383,
+        "liveIds": 8,
+        "liveStreams": 6,
+        "pending": 0,
+        "retired": 1638
+      },
+      {
+        "min": 302.5,
+        "rss": 162.6,
+        "self": 369.65,
+        "onDisk": 4394,
+        "liveIds": 5,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 1649
+      },
+      {
+        "min": 303.5,
+        "rss": 163,
+        "self": 369.65,
+        "onDisk": 4394,
+        "liveIds": 5,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 1649
+      },
+      {
+        "min": 304.5,
+        "rss": 160.9,
+        "self": 369.65,
+        "onDisk": 4399,
+        "liveIds": 2,
+        "liveStreams": 1,
+        "pending": 0,
+        "retired": 1654
+      },
+      {
+        "min": 305.5,
+        "rss": 214.4,
+        "self": 369.65,
+        "onDisk": 4399,
+        "liveIds": 6,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 1654
+      },
+      {
+        "min": 306.5,
+        "rss": 186.3,
+        "self": 369.65,
+        "onDisk": 4399,
+        "liveIds": 29,
+        "liveStreams": 8,
+        "pending": 0,
+        "retired": 1654
+      },
+      {
+        "min": 307.5,
+        "rss": 167,
+        "self": 369.65,
+        "onDisk": 4402,
+        "liveIds": 34,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 1657
+      },
+      {
+        "min": 308.5,
+        "rss": 163.9,
+        "self": 369.65,
+        "onDisk": 4402,
+        "liveIds": 37,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1657
+      },
+      {
+        "min": 309.5,
+        "rss": 177.8,
+        "self": 369.65,
+        "onDisk": 4404,
+        "liveIds": 37,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1659
+      },
+      {
+        "min": 310.5,
+        "rss": 161.8,
+        "self": 369.65,
+        "onDisk": 4407,
+        "liveIds": 41,
+        "liveStreams": 18,
+        "pending": 0,
+        "retired": 1662
+      },
+      {
+        "min": 311.5,
+        "rss": 166.3,
+        "self": 369.65,
+        "onDisk": 4431,
+        "liveIds": 20,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1686
+      },
+      {
+        "min": 312.5,
+        "rss": 168.5,
+        "self": 369.65,
+        "onDisk": 4436,
+        "liveIds": 18,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 1691
+      },
+      {
+        "min": 313.5,
+        "rss": 160.2,
+        "self": 369.65,
+        "onDisk": 4442,
+        "liveIds": 18,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1697
+      },
+      {
+        "min": 314.5,
+        "rss": 160.3,
+        "self": 369.65,
+        "onDisk": 4444,
+        "liveIds": 21,
+        "liveStreams": 17,
+        "pending": 0,
+        "retired": 1699
+      },
+      {
+        "min": 315.5,
+        "rss": 160.9,
+        "self": 369.65,
+        "onDisk": 4451,
+        "liveIds": 19,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1706
+      },
+      {
+        "min": 316.5,
+        "rss": 161.4,
+        "self": 369.65,
+        "onDisk": 4453,
+        "liveIds": 21,
+        "liveStreams": 17,
+        "pending": 0,
+        "retired": 1708
+      },
+      {
+        "min": 317.5,
+        "rss": 221.9,
+        "self": 369.65,
+        "onDisk": 4458,
+        "liveIds": 19,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1713
+      },
+      {
+        "min": 318.5,
+        "rss": 163.4,
+        "self": 369.65,
+        "onDisk": 4469,
+        "liveIds": 15,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1724
+      },
+      {
+        "min": 319.5,
+        "rss": 160.2,
+        "self": 369.65,
+        "onDisk": 4483,
+        "liveIds": 11,
+        "liveStreams": 9,
+        "pending": 0,
+        "retired": 1738
+      },
+      {
+        "min": 320.5,
+        "rss": 160.4,
+        "self": 369.65,
+        "onDisk": 4496,
+        "liveIds": 8,
+        "liveStreams": 6,
+        "pending": 0,
+        "retired": 1751
+      },
+      {
+        "min": 321.5,
+        "rss": 176.6,
+        "self": 369.65,
+        "onDisk": 4504,
+        "liveIds": 5,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 1759
+      },
+      {
+        "min": 322.5,
+        "rss": 159.9,
+        "self": 369.65,
+        "onDisk": 4514,
+        "liveIds": 4,
+        "liveStreams": 2,
+        "pending": 0,
+        "retired": 1769
+      },
+      {
+        "min": 323.5,
+        "rss": 183.3,
+        "self": 369.65,
+        "onDisk": 4516,
+        "liveIds": 3,
+        "liveStreams": 1,
+        "pending": 0,
+        "retired": 1771
+      },
+      {
+        "min": 324.5,
+        "rss": 163.3,
+        "self": 369.65,
+        "onDisk": 4519,
+        "liveIds": 2,
+        "liveStreams": 1,
+        "pending": 0,
+        "retired": 1774
+      },
+      {
+        "min": 325.5,
+        "rss": 187.9,
+        "self": 369.65,
+        "onDisk": 4519,
+        "liveIds": 8,
+        "liveStreams": 6,
+        "pending": 0,
+        "retired": 1774
+      },
+      {
+        "min": 326.5,
+        "rss": 198.8,
+        "self": 369.65,
+        "onDisk": 4519,
+        "liveIds": 20,
+        "liveStreams": 8,
+        "pending": 0,
+        "retired": 1774
+      },
+      {
+        "min": 327.5,
+        "rss": 179.4,
+        "self": 369.65,
+        "onDisk": 4519,
+        "liveIds": 26,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 1774
+      },
+      {
+        "min": 328.5,
+        "rss": 163.5,
+        "self": 369.65,
+        "onDisk": 4522,
+        "liveIds": 28,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1777
+      },
+      {
+        "min": 329.5,
+        "rss": 221.2,
+        "self": 369.65,
+        "onDisk": 4524,
+        "liveIds": 31,
+        "liveStreams": 17,
+        "pending": 0,
+        "retired": 1779
+      },
+      {
+        "min": 330.5,
+        "rss": 160.5,
+        "self": 369.65,
+        "onDisk": 4532,
+        "liveIds": 26,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1787
+      },
+      {
+        "min": 331.5,
+        "rss": 161,
+        "self": 369.65,
+        "onDisk": 4546,
+        "liveIds": 19,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1801
+      },
+      {
+        "min": 332.5,
+        "rss": 160.6,
+        "self": 369.65,
+        "onDisk": 4553,
+        "liveIds": 15,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1808
+      },
+      {
+        "min": 333.5,
+        "rss": 160.6,
+        "self": 369.65,
+        "onDisk": 4558,
+        "liveIds": 17,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1813
+      },
+      {
+        "min": 334.5,
+        "rss": 163.7,
+        "self": 369.65,
+        "onDisk": 4563,
+        "liveIds": 16,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1818
+      },
+      {
+        "min": 335.5,
+        "rss": 163.4,
+        "self": 369.65,
+        "onDisk": 4565,
+        "liveIds": 16,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1820
+      },
+      {
+        "min": 336.5,
+        "rss": 159.9,
+        "self": 369.65,
+        "onDisk": 4569,
+        "liveIds": 21,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 1824
+      },
+      {
+        "min": 337.5,
+        "rss": 159.9,
+        "self": 369.65,
+        "onDisk": 4570,
+        "liveIds": 23,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 1825
+      },
+      {
+        "min": 338.5,
+        "rss": 161.4,
+        "self": 369.65,
+        "onDisk": 4578,
+        "liveIds": 22,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1833
+      },
+      {
+        "min": 339.5,
+        "rss": 161.5,
+        "self": 369.65,
+        "onDisk": 4591,
+        "liveIds": 15,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 1846
+      },
+      {
+        "min": 340.5,
+        "rss": 185.3,
+        "self": 369.65,
+        "onDisk": 4600,
+        "liveIds": 14,
+        "liveStreams": 9,
+        "pending": 0,
+        "retired": 1855
+      },
+      {
+        "min": 341.5,
+        "rss": 163,
+        "self": 369.65,
+        "onDisk": 4612,
+        "liveIds": 8,
+        "liveStreams": 6,
+        "pending": 0,
+        "retired": 1867
+      },
+      {
+        "min": 342.5,
+        "rss": 170.3,
+        "self": 369.65,
+        "onDisk": 4618,
+        "liveIds": 7,
+        "liveStreams": 5,
+        "pending": 0,
+        "retired": 1873
+      },
+      {
+        "min": 343.5,
+        "rss": 161.3,
+        "self": 369.65,
+        "onDisk": 4618,
+        "liveIds": 7,
+        "liveStreams": 5,
+        "pending": 0,
+        "retired": 1873
+      },
+      {
+        "min": 344.5,
+        "rss": 161.3,
+        "self": 369.65,
+        "onDisk": 4621,
+        "liveIds": 6,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 1876
+      },
+      {
+        "min": 345.5,
+        "rss": 170,
+        "self": 369.65,
+        "onDisk": 4625,
+        "liveIds": 9,
+        "liveStreams": 5,
+        "pending": 0,
+        "retired": 1880
+      },
+      {
+        "min": 346.5,
+        "rss": 223.8,
+        "self": 369.65,
+        "onDisk": 4625,
+        "liveIds": 21,
+        "liveStreams": 7,
+        "pending": 0,
+        "retired": 1880
+      },
+      {
+        "min": 347.5,
+        "rss": 164.1,
+        "self": 369.65,
+        "onDisk": 4626,
+        "liveIds": 28,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 1881
+      },
+      {
+        "min": 348.5,
+        "rss": 159.7,
+        "self": 369.65,
+        "onDisk": 4629,
+        "liveIds": 30,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1884
+      },
+      {
+        "min": 349.5,
+        "rss": 169.7,
+        "self": 369.65,
+        "onDisk": 4631,
+        "liveIds": 31,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1886
+      },
+      {
+        "min": 350.5,
+        "rss": 170,
+        "self": 369.65,
+        "onDisk": 4637,
+        "liveIds": 30,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 1892
+      },
+      {
+        "min": 351.5,
+        "rss": 171.2,
+        "self": 369.65,
+        "onDisk": 4649,
+        "liveIds": 25,
+        "liveStreams": 18,
+        "pending": 0,
+        "retired": 1904
+      },
+      {
+        "min": 352.5,
+        "rss": 164.2,
+        "self": 369.65,
+        "onDisk": 4657,
+        "liveIds": 22,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 1912
+      },
+      {
+        "min": 353.5,
+        "rss": 164.3,
+        "self": 369.65,
+        "onDisk": 4662,
+        "liveIds": 22,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 1917
+      },
+      {
+        "min": 354.5,
+        "rss": 161.8,
+        "self": 369.65,
+        "onDisk": 4664,
+        "liveIds": 22,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 1919
+      },
+      {
+        "min": 355.5,
+        "rss": 161.8,
+        "self": 369.65,
+        "onDisk": 4670,
+        "liveIds": 24,
+        "liveStreams": 18,
+        "pending": 0,
+        "retired": 1925
+      },
+      {
+        "min": 356.5,
+        "rss": 167,
+        "self": 369.65,
+        "onDisk": 4673,
+        "liveIds": 23,
+        "liveStreams": 17,
+        "pending": 0,
+        "retired": 1928
+      },
+      {
+        "min": 357.5,
+        "rss": 163.4,
+        "self": 369.65,
+        "onDisk": 4688,
+        "liveIds": 14,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 1943
+      },
+      {
+        "min": 358.5,
+        "rss": 182.4,
+        "self": 369.65,
+        "onDisk": 4696,
+        "liveIds": 12,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 1951
+      },
+      {
+        "min": 359.5,
+        "rss": 162.6,
+        "self": 369.65,
+        "onDisk": 4705,
+        "liveIds": 10,
+        "liveStreams": 8,
+        "pending": 0,
+        "retired": 1960
+      },
+      {
+        "min": 360.5,
+        "rss": 161,
+        "self": 369.65,
+        "onDisk": 4720,
+        "liveIds": 5,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 1975
+      },
+      {
+        "min": 361.5,
+        "rss": 162.9,
+        "self": 369.65,
+        "onDisk": 4720,
+        "liveIds": 5,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 1975
+      },
+      {
+        "min": 362.5,
+        "rss": 163.2,
+        "self": 369.65,
+        "onDisk": 4722,
+        "liveIds": 5,
+        "liveStreams": 2,
+        "pending": 0,
+        "retired": 1977
+      },
+      {
+        "min": 363.5,
+        "rss": 161.3,
+        "self": 369.65,
+        "onDisk": 4722,
+        "liveIds": 7,
+        "liveStreams": 4,
+        "pending": 0,
+        "retired": 1977
+      },
+      {
+        "min": 364.5,
+        "rss": 161.7,
+        "self": 369.65,
+        "onDisk": 4725,
+        "liveIds": 17,
+        "liveStreams": 6,
+        "pending": 0,
+        "retired": 1980
+      },
+      {
+        "min": 365.5,
+        "rss": 162.9,
+        "self": 369.65,
+        "onDisk": 4725,
+        "liveIds": 25,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 1980
+      },
+      {
+        "min": 366.5,
+        "rss": 162.5,
+        "self": 369.65,
+        "onDisk": 4725,
+        "liveIds": 27,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 1980
+      },
+      {
+        "min": 367.5,
+        "rss": 180.2,
+        "self": 369.65,
+        "onDisk": 4728,
+        "liveIds": 31,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 1983
+      },
+      {
+        "min": 368.5,
+        "rss": 162.6,
+        "self": 369.65,
+        "onDisk": 4731,
+        "liveIds": 30,
+        "liveStreams": 16,
+        "pending": 0,
+        "retired": 1986
+      },
+      {
+        "min": 369.5,
+        "rss": 163.7,
+        "self": 369.65,
+        "onDisk": 4750,
+        "liveIds": 21,
+        "liveStreams": 15,
+        "pending": 0,
+        "retired": 2005
+      },
+      {
+        "min": 370.5,
+        "rss": 163.4,
+        "self": 369.65,
+        "onDisk": 4763,
+        "liveIds": 15,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 2018
+      },
+      {
+        "min": 371.5,
+        "rss": 163.9,
+        "self": 369.65,
+        "onDisk": 4765,
+        "liveIds": 15,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 2020
+      },
+      {
+        "min": 372.5,
+        "rss": 162.1,
+        "self": 369.65,
+        "onDisk": 4773,
+        "liveIds": 15,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 2028
+      },
+      {
+        "min": 373.5,
+        "rss": 161.5,
+        "self": 369.65,
+        "onDisk": 4779,
+        "liveIds": 14,
+        "liveStreams": 10,
+        "pending": 0,
+        "retired": 2034
+      },
+      {
+        "min": 374.5,
+        "rss": 165.2,
+        "self": 369.65,
+        "onDisk": 4780,
+        "liveIds": 18,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 2035
+      },
+      {
+        "min": 375.5,
+        "rss": 165.4,
+        "self": 369.65,
+        "onDisk": 4783,
+        "liveIds": 17,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 2038
+      },
+      {
+        "min": 376.5,
+        "rss": 164.7,
+        "self": 369.65,
+        "onDisk": 4788,
+        "liveIds": 20,
+        "liveStreams": 14,
+        "pending": 0,
+        "retired": 2043
+      },
+      {
+        "min": 377.5,
+        "rss": 164.7,
+        "self": 369.65,
+        "onDisk": 4796,
+        "liveIds": 17,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 2051
+      },
+      {
+        "min": 378.5,
+        "rss": 161.9,
+        "self": 369.65,
+        "onDisk": 4803,
+        "liveIds": 16,
+        "liveStreams": 12,
+        "pending": 0,
+        "retired": 2058
+      },
+      {
+        "min": 379.5,
+        "rss": 163.9,
+        "self": 369.65,
+        "onDisk": 4813,
+        "liveIds": 11,
+        "liveStreams": 7,
+        "pending": 0,
+        "retired": 2068
+      },
+      {
+        "min": 380.5,
+        "rss": 162.8,
+        "self": 369.65,
+        "onDisk": 4825,
+        "liveIds": 9,
+        "liveStreams": 5,
+        "pending": 0,
+        "retired": 2080
+      },
+      {
+        "min": 381.5,
+        "rss": 173.1,
+        "self": 369.65,
+        "onDisk": 4838,
+        "liveIds": 4,
+        "liveStreams": 2,
+        "pending": 0,
+        "retired": 2093
+      },
+      {
+        "min": 382.5,
+        "rss": 163.5,
+        "self": 369.65,
+        "onDisk": 4839,
+        "liveIds": 3,
+        "liveStreams": 1,
+        "pending": 0,
+        "retired": 2094
+      },
+      {
+        "min": 383.5,
+        "rss": 158.1,
+        "self": 369.65,
+        "onDisk": 4842,
+        "liveIds": 5,
+        "liveStreams": 2,
+        "pending": 0,
+        "retired": 2097
+      },
+      {
+        "min": 384.5,
+        "rss": 158.3,
+        "self": 369.65,
+        "onDisk": 4844,
+        "liveIds": 5,
+        "liveStreams": 3,
+        "pending": 0,
+        "retired": 2099
+      },
+      {
+        "min": 385.5,
+        "rss": 157.8,
+        "self": 369.65,
+        "onDisk": 4844,
+        "liveIds": 22,
+        "liveStreams": 7,
+        "pending": 0,
+        "retired": 2099
+      },
+      {
+        "min": 386.5,
+        "rss": 157.9,
+        "self": 369.65,
+        "onDisk": 4846,
+        "liveIds": 35,
+        "liveStreams": 9,
+        "pending": 0,
+        "retired": 2101
+      },
+      {
+        "min": 387.5,
+        "rss": 158.7,
+        "self": 369.65,
+        "onDisk": 4846,
+        "liveIds": 37,
+        "liveStreams": 11,
+        "pending": 0,
+        "retired": 2101
+      },
+      {
+        "min": 388.5,
+        "rss": 172.3,
+        "self": 369.65,
+        "onDisk": 4848,
+        "liveIds": 38,
+        "liveStreams": 13,
+        "pending": 0,
+        "retired": 2103
+      },
+      {
+        "min": 389.5,
+        "rss": 169.6,
+        "self": 369.65,
+        "onDisk": 4851,
+        "liveIds": 42,
+        "liveStreams": 17,
+        "pending": 0,
+        "retired": 2106
+      },
+      {
+        "min": 390,
+        "rss": 156.9,
+        "self": 369.65,
+        "onDisk": 4851,
+        "liveIds": 42,
+        "liveStreams": 17,
+        "pending": 0,
+        "retired": 2106
+      }
+    ]
+  },
+  "restarts": {
+    "moved": [],
+    "unhealthyAtEnd": [],
+    "lifetime": {
+      "inference": {
+        "restarts": 0,
+        "health": "healthy"
+      },
+      "media": {
+        "restarts": 0,
+        "health": "healthy"
+      },
+      "gateway": {
+        "restarts": 0,
+        "health": "healthy"
+      },
+      "notify": {
+        "restarts": 0,
+        "health": "healthy"
+      },
+      "evidence": {
+        "restarts": 0,
+        "health": "healthy"
+      },
+      "tenant": {
+        "restarts": 0,
+        "health": "healthy"
+      },
+      "identity": {
+        "restarts": 0,
+        "health": "healthy"
+      },
+      "camera": {
+        "restarts": 0,
+        "health": "healthy"
+      },
+      "events": {
+        "restarts": 0,
+        "health": "healthy"
+      },
+      "rules": {
+        "restarts": 0,
+        "health": "healthy"
+      },
+      "console": {
+        "restarts": 0,
+        "health": "healthy"
+      },
+      "workflow": {
+        "restarts": 0,
+        "health": "healthy"
+      },
+      "proxy": {
+        "restarts": 0,
+        "health": "none"
+      },
+      "createbuckets": {
+        "restarts": 0,
+        "health": "none"
+      },
+      "redis": {
+        "restarts": 0,
+        "health": "healthy"
+      },
+      "nats": {
+        "restarts": 0,
+        "health": "healthy"
+      },
+      "mongodb": {
+        "restarts": 10,
+        "health": "healthy"
+      },
+      "minio": {
+        "restarts": 14,
+        "health": "healthy"
+      }
+    }
+  },
+  "series": {
+    "fps": {
+      "min": 1.15,
+      "med": 18.43,
+      "max": 26.67,
+      "last": 18.52,
+      "growth": {
+        "q1": 16.63,
+        "q3": 15.14,
+        "q5": 18.37,
+        "totalPct": 10.5,
+        "earlyRise": -1.49,
+        "lateRise": 3.23,
+        "verdict": "late-rise"
+      },
+      "spark": "▂▇▆▄▅▅▄▆▆▆▃▅▁▄▇▆▄▄▄▆▂▄▄▄▅▆▄▂▄▄▄▃▄▃▃▄▄▇▆▅▅▇▅▄▆▅▅▆▇██▅▅▅▄▅"
+    },
+    "latencyAvgMs": {
+      "min": 41.42,
+      "med": 46.74,
+      "max": 58.67,
+      "last": 46.13,
+      "growth": {
+        "q1": 42.24,
+        "q3": 47.88,
+        "q5": 46.65,
+        "totalPct": 10.4,
+        "earlyRise": 5.64,
+        "lateRise": -1.23,
+        "verdict": "stable"
+      },
+      "spark": "▆▁▁▁▁▁▁▁▁▁▁▂▂▃▄▄▄▄▅▅▅▆▆▇▇▇▇▇▇▇████████████▇▇▇▇▆▆▆▆▆▅▅▅▅▅"
+    },
+    "latencyP95Ms": {
+      "min": 55.2,
+      "med": 76.88,
+      "max": 260.38,
+      "last": 82.04,
+      "growth": {
+        "q1": 74.83,
+        "q3": 91.91,
+        "q5": 68.89,
+        "totalPct": -7.9,
+        "earlyRise": 17.08,
+        "lateRise": -23.02,
+        "verdict": "stable"
+      },
+      "spark": "▃▂▂▁▂▂▂▂▃▂▂▅█▅▃▂▄▃▆▃▇▆▃▄▄▃▃▃▇▄▅▆▄▄▄▅▅▃▁▁▁▁▁▁▁▁▂▁▁▁▁▂▁▃▃▁"
+    },
+    "runtimeQueueDepth": {
+      "min": 0,
+      "med": 0,
+      "max": 0,
+      "last": 0,
+      "growth": {
+        "q1": 0,
+        "q3": 0,
+        "q5": 0,
+        "totalPct": null,
+        "earlyRise": 0,
+        "lateRise": 0,
+        "verdict": "stable"
+      },
+      "spark": "▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁ (flat)"
+    },
+    "mediaQueueDepth": {
+      "min": 0,
+      "med": 0,
+      "max": 0,
+      "last": 0,
+      "growth": {
+        "q1": 0,
+        "q3": 0,
+        "q5": 0,
+        "totalPct": null,
+        "earlyRise": 0,
+        "lateRise": 0,
+        "verdict": "stable"
+      },
+      "spark": "▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁ (flat)"
+    },
+    "mediaDeliverMs": {
+      "min": 42.33,
+      "med": 52.85,
+      "max": 97.51,
+      "last": 50.52,
+      "growth": {
+        "q1": 51.5,
+        "q3": 60.54,
+        "q5": 48.9,
+        "totalPct": -5,
+        "earlyRise": 9.04,
+        "lateRise": -11.63,
+        "verdict": "stable"
+      },
+      "spark": "▃▁▂▁▂▂▂▂▂▂▄▅▇▄▃▃▅▄▅▃▆▅▃▄▃▄▃▄█▅▄▅▄▄▄▆▆▃▁▁▁▁▁▁▁▁▁▁▁▁▁▁▂▃▃▁"
+    },
+    "frameAgeMs": {
+      "min": 63.33,
+      "med": 70,
+      "max": 106,
+      "last": 65.14,
+      "growth": {
+        "q1": 67.05,
+        "q3": 76.94,
+        "q5": 65.02,
+        "totalPct": -3,
+        "earlyRise": 9.89,
+        "lateRise": -11.92,
+        "verdict": "stable"
+      },
+      "spark": "▂▁▁▁▁▁▁▁▁▁▂▇█▄▄▂▂▂▂▂▂▂▃▃▃▃▃▃▃▄▃▃▄▅▃▄▅▄▃▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▂▁"
+    },
+    "apiMs": {
+      "min": 6,
+      "med": 19,
+      "max": 144,
+      "last": 19,
+      "growth": {
+        "q1": 16.81,
+        "q3": 25.51,
+        "q5": 23.51,
+        "totalPct": 39.9,
+        "earlyRise": 8.71,
+        "lateRise": -2,
+        "verdict": "stable"
+      },
+      "spark": "▂▂▁▁▂▂▂▁▁▁▃▄▁▃▄▄▃█▄▇▂▇▂▇▃▆▃▆▂▂▆▂▇▃█▄▂▄▇▃▆▂█▃▄▃▁▁▃█▂▇▄▅▂▃"
+    },
+    "fragmentation": {
+      "min": 1.45,
+      "med": 150.44,
+      "max": 2178,
+      "last": 76.93,
+      "growth": {
+        "q1": 78.53,
+        "q3": 280.68,
+        "q5": 718.43,
+        "totalPct": 814.8,
+        "earlyRise": 202.15,
+        "lateRise": 437.76,
+        "verdict": "unbounded"
+      },
+      "spark": "▁▁▁▁▁▁▁▁▁▁▂▁▁▁▁▁▃▁▁▁▁▃▄▁▂▃▁▂▃▁▂▁▁▂▄▂▂▄▁▂▃▂▄▅▂▅▄▃▃▃▂█▂▄▆▁"
+    }
+  },
+  "findings": [],
+  "postSoak": {
+    "browser": {
+      "status": "FAIL",
+      "detail": "FAIL  Browser certification (exit 1)\ncommand: pnpm --filter @vip/e2e-browser certify\nduration: 677s\n\n  ✓   85 [firefox] › test/journey.spec.ts:27:3 › the investigation journey › signs in, uploads a recording, and analyses it end to end (8.8s)\n  ✓   86 [firefox] › test/journey.spec.ts:172:3 › the investigation journey › an empty recording produces no events, and says so rather than rendering blank (6.5s)\n  ✓   87 [firefox] › test/journey.spec.ts:201:3 › the investigation journey › demonstration mode paces the same pipeline at real time (12.2s)\n  ✓   88 [firefox] › test/journey.spec.ts:229:3 › the investigation journey › survives a refresh and a direct deep link (3.6s)\n  ✓   89 [firefox] › test/performance.spec.ts:27:3 › declared limits › refuses a file larger than the stated ceiling before any bytes move (80ms)\n  ✓   90 [firefox] › test/performance.spec.ts:45:3 › declared limits › states the limits on the upload form (1.0s)\n  ✓   91 [firefox] › test/performance.spec.ts:55:3 › declared limits › accepts only mp4 in the file picker (1.5s)\n  ✓   92 [firefox] › test/performance.spec.ts:74:3 › large recordings › uploads a 30-minute recording and starts analysing it (2.2s)\n  ✓   93 [firefox] › test/performance.spec.ts:120:3 › multiple uploads › keeps three uploads separate and independently queryable (6.0s)\n  ✓   94 [firefox] › test/performance.spec.ts:159:3 › live isolation › offline incidents never appear in the live queue (131ms)\n  ✓   95 [firefox] › test/performance.spec.ts:171:3 › live isolation › offline events never appear in an unfiltered event read (95ms)\n  ✘   96 [firefox] › test/security.spec.ts:17:3 › the edge › serves the console over HTTPS with the security headers that were specified (13ms)\n  ✓   97 [firefox] › test/security.spec.ts:39:3 › the edge › redirects plaintext to HTTPS rather than refusing it (25ms)\n  ✓   98 [firefox] › test/security.spec.ts:47:3 › authorisation › refuses an unauthenticated read of customer data (30ms)\n  ✓   99 [firefox] › test/security.spec.ts:54:3 › authorisation › refuses a cross-tenant read (96ms)\n  ✓  100 [firefox] › test/security.spec.ts:73:3 › authorisation › hides the upload control from a viewer (1.5s)\n  ✓  101 [firefox] › test/security.spec.ts:93:3 › error paths › ⛔ never returns a signed url in an error message (131ms)\n  ✓  102 [firefox] › test/security.spec.ts:129:3 › error paths › refuses each kind of unusable upload with a reason (184ms)\n  ✓  103 [firefox] › test/security.spec.ts:162:3 › error paths › renders a real page for an analysis that does not exist (737ms)\n  ✓  104 [firefox] › test/security.spec.ts:180:3 › object storage › is reachable through the edge, not on a second origin (6ms)\n  ✓  105 [firefox] › test/surface.spec.ts:67:3 › the recording is on the page › plays the uploaded recording, and the browser really decoded it (7.2s)\n  ✓  106 [firefox] › test/surface.spec.ts:86:3 › the recording is on the page › seeks to the exact footage offset a timeline row names (8.0s)\n  ✓  107 [firefox] › test/surface.spec.ts:131:3 › the overlay draws what is stored, and nothing else › every drawn box matches the stored bbox for that frame (7.3s)\n  ✓  108 [firefox] › test/surface.spec.ts:188:3 › the overlay draws what is stored, and nothing else › draws no box at an instant with no analysed frame (7.1s)\n  ✓  109 [firefox] › test/surface.spec.ts:229:3 › the overlay draws what is stored, and nothing else › turns the overlay off and on (7.2s)\n  ✓  110 [firefox] › test/surface.spec.ts:242:3 › the lanes agree with the payload › renders incidents, events, tracks and density with the payload’s own counts (7.4s)\n  ✓  111 [firefox] › test/surface.spec.ts:271:3 › the lanes agree with the payload › every offset is exactly its distance from the footage start (7.3s)\n  ✓  112 [firefox] › test/surface.spec.ts:290:3 › the lanes agree with the payload › reports confidences inside [0, 1] (8.0s)\n  ✓  113 [firefox] › test/surface.spec.ts:311:3 › the lanes agree with the payload › every event’s track appears in the track lane, and vice versa (7.3s)\n  ✓  114 [firefox] › test/surface.spec.ts:340:3 › the lanes agree with the payload › each incident names a triggering event that belongs to this run (7.5s)\n  ✓  115 [firefox] › test/surface.spec.ts:364:3 › the rest of the surface › shows the full analysis metadata (7.6s)\n  ✓  116 [firefox] › test/surface.spec.ts:375:3 › the rest of the surface › downloads the export report (7.3s)\n  ✓  117 [firefox] › test/surface.spec.ts:390:3 › the rest of the surface › opens one run’s events in the explorer, labelled as offline (7.8s)\n  -  118 [firefox] › test/livecam.spec.ts:86:3 › live capture — the page works › captures, uploads and reports every browser stage with a real sample count\n  -  119 [firefox] › test/livecam.spec.ts:112:3 › live capture — the page works › the clock offset is reported with its uncertainty, never as a bare number\n  -  120 [firefox] › test/livecam.spec.ts:127:3 › live capture — recovery › stopping closes the session, so the camera is released immediately\n  -  121 [firefox] › test/livecam.spec.ts:144:3 › live capture — recovery › a page refresh ends the capture rather than leaving a second one running\n  -  122 [firefox] › test/livecam.spec.ts:164:3 › live capture — recovery › a capture can be started again after being stopped, on the same camera\n  -  123 [firefox] › test/livecam.spec.ts:180:3 › live capture — recovery › ⛔ a device that stops producing video stops the capture instead of repeating a frame\n  -  124 [firefox] › test/livecam.spec.ts:205:3 › live capture — recovery › closing the tab without stopping leaves at most one session, reaped by the platform\n  -  125 [firefox] › test/livecam.spec.ts:228:3 › live capture — permission › a denied permission is an instruction the operator can act on\n  -  126 [firefox] › test/livecam.spec.ts:272:3 › live capture — the edge permits the camera › Permissions-Policy allows the camera for this origin and still denies the microphone\n  ✓  127 [webkit] › test/journey.spec.ts:27:3 › the investigation journey › signs in, uploads a recording, and analyses it end to end (10.2s)\n  ✓  128 [webkit] › test/journey.spec.ts:172:3 › the investigation journey › an empty recording produces no events, and says so rather than rendering blank (6.7s)\n  ✓  129 [webkit] › test/journey.spec.ts:201:3 › the investigation journey › demonstration mode paces the same pipeline at real time (12.3s)\n  ✓  130 [webkit] › test/journey.spec.ts:229:3 › the investigation journey › survives a refresh and a direct deep link (4.0s)\n  ✓  131 [webkit] › test/performance.spec.ts:27:3 › declared limits › refuses a file larger than the stated ceiling before any bytes move (83ms)\n  ✓  132 [webkit] › test/performance.spec.ts:45:3 › declared limits › states the limits on the upload form (1.5s)\n  ✓  133 [webkit] › test/performance.spec.ts:55:3 › declared limits › accepts only mp4 in the file picker (1.5s)\n  ✓  134 [webkit] › test/performance.spec.ts:74:3 › large recordings › uploads a 30-minute recording and starts analysing it (2.4s)\n  ✓  135 [webkit] › test/performance.spec.ts:120:3 › multiple uploads › keeps three uploads separate and independently queryable (5.9s)\n  ✓  136 [webkit] › test/performance.spec.ts:159:3 › live isolation › offline incidents never appear in the live queue (108ms)\n  ✓  137 [webkit] › test/performance.spec.ts:171:3 › live isolation › offline events never appear in an unfiltered event read (95ms)\n  ✘  138 [webkit] › test/security.spec.ts:17:3 › the edge › serves the console over HTTPS with the security headers that were specified (12ms)\n  ✓  139 [webkit] › test/security.spec.ts:39:3 › the edge › redirects plaintext to HTTPS rather than refusing it (25ms)\n  ✓  140 [webkit] › test/security.spec.ts:47:3 › authorisation › refuses an unauthenticated read of customer data (25ms)\n  ✓  141 [webkit] › test/security.spec.ts:54:3 › authorisation › refuses a cross-tenant read (93ms)\n  ✓  142 [webkit] › test/security.spec.ts:73:3 › authorisation › hides the upload control from a viewer (960ms)\n  ✓  143 [webkit] › test/security.spec.ts:93:3 › error paths › ⛔ never returns a signed url in an error message (165ms)\n  ✓  144 [webkit] › test/security.spec.ts:129:3 › error paths › refuses each kind of unusable upload with a reason (185ms)\n  ✓  145 [webkit] › test/security.spec.ts:162:3 › error paths › renders a real page for an analysis that does not exist (901ms)\n  ✓  146 [webkit] › test/security.spec.ts:180:3 › object storage › is reachable through the edge, not on a second origin (8ms)\n  ✓  147 [webkit] › test/surface.spec.ts:67:3 › the recording is on the page › plays the uploaded recording, and the browser really decoded it (7.3s)\n  ✓  148 [webkit] › test/surface.spec.ts:86:3 › the recording is on the page › seeks to the exact footage offset a timeline row names (7.1s)\n  ✓  149 [webkit] › test/surface.spec.ts:131:3 › the overlay draws what is stored, and nothing else › every drawn box matches the stored bbox for that frame (7.1s)\n  ✓  150 [webkit] › test/surface.spec.ts:188:3 › the overlay draws what is stored, and nothing else › draws no box at an instant with no analysed frame (7.1s)\n  ✓  151 [webkit] › test/surface.spec.ts:229:3 › the overlay draws what is stored, and nothing else › turns the overlay off and on (7.8s)\n  ✓  152 [webkit] › test/surface.spec.ts:242:3 › the lanes agree with the payload › renders incidents, events, tracks and density with the payload’s own counts (7.5s)\n  ✓  153 [webkit] › test/surface.spec.ts:271:3 › the lanes agree with the payload › every offset is exactly its distance from the footage start (7.3s)\n  ✓  154 [webkit] › test/surface.spec.ts:290:3 › the lanes agree with the payload › reports confidences inside [0, 1] (7.3s)\n  ✓  155 [webkit] › test/surface.spec.ts:311:3 › the lanes agree with the payload › every event’s track appears in the track lane, and vice versa (7.0s)\n  ✓  156 [webkit] › test/surface.spec.ts:340:3 › the lanes agree with the payload › each incident names a triggering event that belongs to this run (7.1s)\n  ✓  157 [webkit] › test/surface.spec.ts:364:3 › the rest of the surface › shows the full analysis metadata (7.0s)\n  ✓  158 [webkit] › test/surface.spec.ts:375:3 › the rest of the surface › downloads the export report (7.6s)\n  ✓  159 [webkit] › test/surface.spec.ts:390:3 › the rest of the surface › opens one run’s events in the explorer, labelled as offline (8.1s)\n  -  160 [webkit] › test/livecam.spec.ts:86:3 › live capture — the page works › captures, uploads and reports every browser stage with a real sample count\n  -  161 [webkit] › test/livecam.spec.ts:112:3 › live capture — the page works › the clock offset is reported with its uncertainty, never as a bare number\n  -  162 [webkit] › test/livecam.spec.ts:127:3 › live capture — recovery › stopping closes the session, so the camera is released immediately\n  -  163 [webkit] › test/livecam.spec.ts:144:3 › live capture — recovery › a page refresh ends the capture rather than leaving a second one running\n  -  164 [webkit] › test/livecam.spec.ts:164:3 › live capture — recovery › a capture can be started again after being stopped, on the same camera\n  -  165 [webkit] › test/livecam.spec.ts:180:3 › live capture — recovery › ⛔ a device that stops producing video stops the capture instead of repeating a frame\n  -  166 [webkit] › test/livecam.spec.ts:205:3 › live capture — recovery › closing the tab without stopping leaves at most one session, reaped by the platform\n  -  167 [webkit] › test/livecam.spec.ts:228:3 › live capture — permission › a denied permission is an instruction the operator can act on\n  -  168 [webkit] › test/livecam.spec.ts:272:3 › live capture — the edge permits the camera › Permissions-Policy allows the camera for this origin and still denies the microphone\n\n\n  1) [chromium] › test/security.spec.ts:17:3 › the edge › serves the console over HTTPS with the security headers that were specified \n\n    Error: expect(received).toContain(expected) // indexOf\n\n    Expected substring: \"camera=()\"\n    Received string:    \"camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()\"\n\n      26 |     /* ⚠️ A surveillance console asking for the operator's own camera would be indistinguishable,\n      27 |      * to a browser, from one that had been compromised into doing so. */\n    > 28 |     expect(h['permissions-policy']).toContain('camera=()');\n         |                                     ^\n      29 |     /* ⚠️ A version banner is free reconnaissance. */\n      30 |     expect(h['server']).toBeUndefined();\n      31 |   });\n        at /Users/mac/projects/VisionIntelligencePlatform/tools/e2e-browser/test/security.spec.ts:28:37\n\n    Error Context: artifacts/output/security-the-edge-serves-t-fde00-headers-that-were-specified-chromium/error-context.md\n\n    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────\n    artifacts/output/security-the-edge-serves-t-fde00-headers-that-were-specified-chromium/trace.zip\n    Usage:\n\n        pnpm exec playwright show-trace artifacts/output/security-the-edge-serves-t-fde00-headers-that-were-specified-chromium/trace.zip\n\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n  2) [edge] › test/security.spec.ts:17:3 › the edge › serves the console over HTTPS with the security headers that were specified \n\n    Error: expect(received).toContain(expected) // indexOf\n\n    Expected substring: \"camera=()\"\n    Received string:    \"camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()\"\n\n      26 |     /* ⚠️ A surveillance console asking for the operator's own camera would be indistinguishable,\n      27 |      * to a browser, from one that had been compromised into doing so. */\n    > 28 |     expect(h['permissions-policy']).toContain('camera=()');\n         |                                     ^\n      29 |     /* ⚠️ A version banner is free reconnaissance. */\n      30 |     expect(h['server']).toBeUndefined();\n      31 |   });\n        at /Users/mac/projects/VisionIntelligencePlatform/tools/e2e-browser/test/security.spec.ts:28:37\n\n    Error Context: artifacts/output/security-the-edge-serves-t-fde00-headers-that-were-specified-edge/error-context.md\n\n    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────\n    artifacts/output/security-the-edge-serves-t-fde00-headers-that-were-specified-edge/trace.zip\n    Usage:\n\n        pnpm exec playwright show-trace artifacts/output/security-the-edge-serves-t-fde00-headers-that-were-specified-edge/trace.zip\n\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n  3) [firefox] › test/security.spec.ts:17:3 › the edge › serves the console over HTTPS with the security headers that were specified \n\n    Error: expect(received).toContain(expected) // indexOf\n\n    Expected substring: \"camera=()\"\n    Received string:    \"camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()\"\n\n      26 |     /* ⚠️ A surveillance console asking for the operator's own camera would be indistinguishable,\n      27 |      * to a browser, from one that had been compromised into doing so. */\n    > 28 |     expect(h['permissions-policy']).toContain('camera=()');\n         |                                     ^\n      29 |     /* ⚠️ A version banner is free reconnaissance. */\n      30 |     expect(h['server']).toBeUndefined();\n      31 |   });\n        at /Users/mac/projects/VisionIntelligencePlatform/tools/e2e-browser/test/security.spec.ts:28:37\n\n    Error Context: artifacts/output/security-the-edge-serves-t-fde00-headers-that-were-specified-firefox/error-context.md\n\n    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────\n    artifacts/output/security-the-edge-serves-t-fde00-headers-that-were-specified-firefox/trace.zip\n    Usage:\n\n        pnpm exec playwright show-trace artifacts/output/security-the-edge-serves-t-fde00-headers-that-were-specified-firefox/trace.zip\n\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n  4) [webkit] › test/security.spec.ts:17:3 › the edge › serves the console over HTTPS with the security headers that were specified \n\n    Error: expect(received).toContain(expected) // indexOf\n\n    Expected substring: \"camera=()\"\n    Received string:    \"camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()\"\n\n      26 |     /* ⚠️ A surveillance console asking for the operator's own camera would be indistinguishable,\n      27 |      * to a browser, from one that had been compromised into doing so. */\n    > 28 |     expect(h['permissions-policy']).toContain('camera=()');\n         |                                     ^\n      29 |     /* ⚠️ A version banner is free reconnaissance. */\n      30 |     expect(h['server']).toBeUndefined();\n      31 |   });\n        at /Users/mac/projects/VisionIntelligencePlatform/tools/e2e-browser/test/security.spec.ts:28:37\n\n    Error Context: artifacts/output/security-the-edge-serves-t-fde00-headers-that-were-specified-webkit/error-context.md\n\n    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────\n    artifacts/output/security-the-edge-serves-t-fde00-headers-that-were-specified-webkit/trace.zip\n    Usage:\n\n        pnpm exec playwright show-trace artifacts/output/security-the-edge-serves-t-fde00-headers-that-were-specified-webkit/trace.zip\n\n    ────────────────────────────────────────────────────────────────────────────────────────────────\n\n  4 failed\n    [chromium] › test/security.spec.ts:17:3 › the edge › serves the console over HTTPS with the security headers that were specified \n    [edge] › test/security.spec.ts:17:3 › the edge › serves the console over HTTPS with the security headers that were specified \n    [firefox] › test/security.spec.ts:17:3 › the edge › serves the console over HTTPS with the security headers that were specified \n    [webkit] › test/security.spec.ts:17:3 › the edge › serves the console over HTTPS with the security headers that were specified \n  18 skipped\n  146 passed (11.3m)\n/Users/mac/projects/VisionIntelligencePlatform/tools/e2e-browser:\n[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @vip/e2e-browser@0.1.0 certify: `playwright test`\nExit status 1"
+    },
+    "deployment": {
+      "status": "PASS",
+      "detail": "PASS  Deployment verification\ncommand: node tools/validation/verify-deployment.mjs\nduration: 1s\n\n\nVIP deployment verification\n\ncontainers\n  ✓ proxy      — Up 28 hours\n  ✓ console    — Up 15 hours (healthy)\n  ✓ gateway    — Up 15 hours (healthy)\n  ✓ identity   — Up 15 hours (healthy)\n  ✓ tenant     — Up 15 hours (healthy)\n  ✓ camera     — Up 15 hours (healthy)\n  ✓ media      — Up 15 hours (healthy)\n  ✓ events     — Up 15 hours (healthy)\n  ✓ inference  — Up 7 hours (healthy)\n  ✓ rules      — Up 15 hours (healthy)\n  ✓ workflow   — Up 15 hours (healthy)\n  ✓ notify     — Up 15 hours (healthy)\n  ✓ evidence   — Up 15 hours (healthy)\n  ✓ mongodb    — Up 16 hours (healthy)\n  ✓ nats       — Up 2 days (healthy)\n  ✓ minio      — Up 16 hours (healthy)\n  ✓ redis      — Up 5 days (healthy)\n\nedge (TLS, headers, the single origin)\n(node:39767) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.\n(Use `node --trace-warnings ...` to show where the warning was created)\n  ✓ console served over HTTPS — HTTP 200\n  ✓ HSTS present — max-age=63072000; includeSubDomains\n  ✓ CSP locks the origin down — default-src 'self'; script-src 'self'; style-src 'self' 'uns\n  ✓ no version banner — absent\n  ✓ plaintext redirects to HTTPS — HTTP 308\n\ngateway and identity\n  ✓ unauthenticated API call refused — HTTP 401\n  ✓ login issues a token — HTTP 200\n\nservices (reached through the gateway, with a real token)\n  ✓ camera     — HTTP 200\n  ✓ media      — HTTP 200\n  ✓ events     — HTTP 200\n  ✓ workflow   — HTTP 200\n  ✓ rules      — HTTP 200\n  ✓ evidence   — HTTP 200\n  ✓ tenant     — HTTP 403\n  ✓ notify     — HTTP 200\n\nAI runtime (a real frame, not a health endpoint)\n  ✓ inference reports healthy — ok\n  ✓ frame probe — ⓘ not measured here — `tools/dataset/generate.mjs --verify` is the real measurement\n\nobject storage\n  ✓ MinIO has buckets — vip-recordings\n  ✓ object storage reachable through the edge — HTTP 200\n\nconsole\n  ✓ index.html references a hashed entry bundle — /assets/index-CprEEimd.js\n  ✓ entry bundle downloads — HTTP 200 text/javascript; charset=utf-8\n\nmessaging\n  ✓ JetStream has streams — 5 stream(s), 770834 message(s)\n\n─────────────────────────────────────────\n  ✓ containers   17/17\n  ✓ edge         5/5\n  ✓ gateway      2/2\n  ✓ services     8/8\n  ✓ runtime      2/2\n  ✓ storage      2/2\n  ✓ console      2/2\n  ✓ messaging    1/1\n─────────────────────────────────────────\n\n✓ the deployment is online"
+    },
+    "repoGate": {
+      "status": "PASS",
+      "detail": "PASS  Repository gate (turbo lint typecheck test)\ncommand: pnpm turbo lint typecheck test\nduration: 1s\n\n@vip/console:test: \n@vip/console:test: This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act\n@vip/console:test: An update to ForwardRef(SelectItemText) inside a test was not wrapped in act(...).\n@vip/console:test: \n@vip/console:test: When testing, code that causes React state updates should be wrapped into act(...):\n@vip/console:test: \n@vip/console:test: act(() => {\n@vip/console:test:   /* fire events that update state */\n@vip/console:test: });\n@vip/console:test: /* assert on the output */\n@vip/console:test: \n@vip/console:test: This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act\n@vip/console:test: An update to ForwardRef(SelectItem) inside a test was not wrapped in act(...).\n@vip/console:test: \n@vip/console:test: When testing, code that causes React state updates should be wrapped into act(...):\n@vip/console:test: \n@vip/console:test: act(() => {\n@vip/console:test:   /* fire events that update state */\n@vip/console:test: });\n@vip/console:test: /* assert on the output */\n@vip/console:test: \n@vip/console:test: This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act\n@vip/console:test: An update to SelectProvider inside a test was not wrapped in act(...).\n@vip/console:test: \n@vip/console:test: When testing, code that causes React state updates should be wrapped into act(...):\n@vip/console:test: \n@vip/console:test: act(() => {\n@vip/console:test:   /* fire events that update state */\n@vip/console:test: });\n@vip/console:test: /* assert on the output */\n@vip/console:test: \n@vip/console:test: This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act\n@vip/console:test: An update to ForwardRef(SelectItemText) inside a test was not wrapped in act(...).\n@vip/console:test: \n@vip/console:test: When testing, code that causes React state updates should be wrapped into act(...):\n@vip/console:test: \n@vip/console:test: act(() => {\n@vip/console:test:   /* fire events that update state */\n@vip/console:test: });\n@vip/console:test: /* assert on the output */\n@vip/console:test: \n@vip/console:test: This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act\n@vip/console:test: An update to ForwardRef(SelectItem) inside a test was not wrapped in act(...).\n@vip/console:test: \n@vip/console:test: When testing, code that causes React state updates should be wrapped into act(...):\n@vip/console:test: \n@vip/console:test: act(() => {\n@vip/console:test:   /* fire events that update state */\n@vip/console:test: });\n@vip/console:test: /* assert on the output */\n@vip/console:test: \n@vip/console:test: This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act\n@vip/console:test: An update to SelectProvider inside a test was not wrapped in act(...).\n@vip/console:test: \n@vip/console:test: When testing, code that causes React state updates should be wrapped into act(...):\n@vip/console:test: \n@vip/console:test: act(() => {\n@vip/console:test:   /* fire events that update state */\n@vip/console:test: });\n@vip/console:test: /* assert on the output */\n@vip/console:test: \n@vip/console:test: This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act\n@vip/console:test: An update to ForwardRef(SelectItemText) inside a test was not wrapped in act(...).\n@vip/console:test: \n@vip/console:test: When testing, code that causes React state updates should be wrapped into act(...):\n@vip/console:test: \n@vip/console:test: act(() => {\n@vip/console:test:   /* fire events that update state */\n@vip/console:test: });\n@vip/console:test: /* assert on the output */\n@vip/console:test: \n@vip/console:test: This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act\n@vip/console:test: An update to ForwardRef(SelectItem) inside a test was not wrapped in act(...).\n@vip/console:test: \n@vip/console:test: When testing, code that causes React state updates should be wrapped into act(...):\n@vip/console:test: \n@vip/console:test: act(() => {\n@vip/console:test:   /* fire events that update state */\n@vip/console:test: });\n@vip/console:test: /* assert on the output */\n@vip/console:test: \n@vip/console:test: This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act\n@vip/console:test: \n@vip/console:test:  \u001b[32m✓\u001b[39m src/features/rules/ruleEditor.regression.test.tsx \u001b[2m(\u001b[22m\u001b[2m30 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[33m 19792\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a draft/critical rule without losing either value \u001b[33m 1882\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a draft/high rule without losing either value \u001b[33m 1130\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a draft/medium rule without losing either value \u001b[33m 1580\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a draft/low rule without losing either value \u001b[33m 1313\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a draft/info rule without losing either value \u001b[33m 1420\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a validated/critical rule without losing either value \u001b[33m 1035\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a validated/high rule without losing either value \u001b[33m 602\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a validated/medium rule without losing either value \u001b[33m 752\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a validated/low rule without losing either value \u001b[33m 638\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a validated/info rule without losing either value \u001b[33m 882\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a enabled/critical rule without losing either value \u001b[33m 720\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a enabled/high rule without losing either value \u001b[33m 1026\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a enabled/medium rule without losing either value \u001b[33m 828\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a enabled/low rule without losing either value \u001b[33m 764\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a enabled/info rule without losing either value \u001b[33m 549\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a disabled/critical rule without losing either value \u001b[33m 783\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a disabled/high rule without losing either value \u001b[33m 848\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a disabled/medium rule without losing either value \u001b[33m 522\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:      \u001b[33m\u001b[2m✓\u001b[22m\u001b[39m loads and saves a disabled/low rule without losing either value \u001b[33m 505\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:  \u001b[32m✓\u001b[39m src/features/playback/codecs.test.ts \u001b[2m(\u001b[22m\u001b[2m18 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 8\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:  \u001b[32m✓\u001b[39m src/features/investigations/overlay.test.ts \u001b[2m(\u001b[22m\u001b[2m20 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 8\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:  \u001b[32m✓\u001b[39m src/features/playback/shortcuts.test.ts \u001b[2m(\u001b[22m\u001b[2m18 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 6\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:  \u001b[32m✓\u001b[39m src/features/workspace/workspace.test.tsx \u001b[2m(\u001b[22m\u001b[2m27 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 67\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:  \u001b[32m✓\u001b[39m src/features/workspace/layout-size.test.ts \u001b[2m(\u001b[22m\u001b[2m4 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 5\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test:  \u001b[32m✓\u001b[39m src/features/incidents/incident-lifecycle.test.ts \u001b[2m(\u001b[22m\u001b[2m5 tests\u001b[22m\u001b[2m)\u001b[22m\u001b[32m 6\u001b[2mms\u001b[22m\u001b[39m\n@vip/console:test: \n@vip/console:test: \u001b[2m Test Files \u001b[22m \u001b[1m\u001b[32m41 passed\u001b[39m\u001b[22m\u001b[90m (41)\u001b[39m\n@vip/console:test: \u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m561 passed\u001b[39m\u001b[22m\u001b[90m (561)\u001b[39m\n@vip/console:test: \u001b[2m   Start at \u001b[22m 00:27:33\n@vip/console:test: \u001b[2m   Duration \u001b[22m 31.72s\u001b[2m (transform 23.41s, setup 29.13s, import 109.49s, tests 94.49s, environment 33.71s)\u001b[22m\n@vip/console:test: \n\n Tasks:    70 successful, 70 total\nCached:    70 cached, 70 total\n  Time:    113ms >>> FULL TURBO"
+    },
+    "moduleTests": {
+      "status": "PASS",
+      "detail": "PASS  Runtime module tests (behaviour, track history, scene)\ncommand: bash -c cd '/Users/mac/projects/VisionIntelligencePlatform/ai/inference' && python3 -B -m unittest discover -s tests -p 'test_*.py' -v 2>&1\nduration: 14s\n\ntest_one_identity_across_two_track_ids_is_one_record (test_track_history.RecorderTests)\n⛔ The single most likely defect in the phase. A briefly occluded person returns with a ... ok\ntest_retire_stale_closes_only_identities_past_the_reentry_window (test_track_history.RecorderTests) ... ok\ntest_retiring_a_stream_closes_every_open_identity_on_it (test_track_history.RecorderTests) ... ok\ntest_stats_report_the_store_so_an_operator_can_see_whether_anything_is_durable (test_track_history.RecorderTests) ... ok\ntest_the_identity_buffer_is_bounded_and_the_overflow_is_kept_not_dropped (test_track_history.RecorderTests) ... ok\ntest_two_analyses_of_one_recording_do_not_share_a_history (test_track_history.RecorderTests)\n⚠️ ADR-0047: runs are independently queryable. Keyed by stream, not only by camera. ... ok\ntest_a_record_with_no_receipt_time_is_not_expired (test_track_history.RetentionTests)\n⚠️ Missing metadata is a bug in the writer. Deleting data because of it fails in the ... ok\ntest_points_are_trimmed_from_the_oldest_end (test_track_history.RetentionTests) ... ok\ntest_retention_counts_wall_clock_receipt_time_not_footage_time (test_track_history.RetentionTests)\n⛔ The defect this exists to prevent: purging by footage time erases a 2019 archive the ... ok\ntest_a_write_failure_does_not_requeue_and_grow_without_bound (test_track_history.UnwritableStoreTests)\n⚠️ Dropped rather than retried. An unbounded retry queue on a permanently unwritable ... ok\ntest_a_write_failure_is_contained_counted_and_reported (test_track_history.UnwritableStoreTests)\n⛔ Keeping movement paths is a secondary duty. A secondary duty that can stop the primary ... ok\ntest_an_unwritable_directory_is_refused_at_construction (test_track_history.UnwritableStoreTests)\n⛔ Fail fast. An operator who configured a history location asked for paths to be kept; ... ok\ntest_a_recording_replays_to_identical_identities (test_track_replay.ReplayTests) ... ok\ntest_a_truncated_recording_still_replays_up_to_the_cut (test_track_replay.ReplayTests)\nA recording is usually stopped by killing the runtime, so a half-written last line is the ... ok\ntest_a_tuning_change_that_breaks_identity_shows_as_a_difference (test_track_replay.ReplayTests)\nThe regression case. An engine that can no longer coast splits the identity, and the ... ok\ntest_an_occlusion_replays_identically (test_track_replay.ReplayTests) ... ok\ntest_an_unknown_format_version_is_refused_not_guessed (test_track_replay.ReplayTests) ... ok\ntest_comparison_ignores_the_literal_id_and_compares_the_identity_shape (test_track_replay.ReplayTests)\n⚠️ Track ids embed a session id, so two runs of the same input give different strings for ... ok\ntest_nothing_is_recorded_unless_a_recorder_is_attached (test_track_replay.ReplayTests)\n⚠️ A recording holds bounding boxes, camera ids and a tenant id. It is never on by ... ok\ntest_recording_is_bounded_and_says_when_it_stopped (test_track_replay.ReplayTests) ... ok\ntest_replay_needs_no_video_model_or_camera (test_track_replay.ReplayTests)\nThe whole point: the recording IS the tracker's input, so nothing else is required. ... ok\ntest_stopping_a_recording_stops_it (test_track_replay.ReplayTests) ... ok\ntest_the_recording_carries_the_engine_it_was_made_with (test_track_replay.ReplayTests)\nReplaying against different tuning and calling the difference a regression would be an ... ok\ntest_two_cameras_replay_independently (test_track_replay.ReplayTests) ... ok\ntest_track_ids_carry_camera_identity (test_tracking.AnalyzerIntegrationTests) ... ok\ntest_tracking_can_be_disabled (test_tracking.AnalyzerIntegrationTests) ... ok\ntest_tracks_and_zone_counting_flow_end_to_end (test_tracking.AnalyzerIntegrationTests) ... ok\ntest_iou_and_greedy_association (test_tracking.AssociatorTests) ... ok\ntest_label_mismatch_and_low_iou_leave_unmatched (test_tracking.AssociatorTests) ... ok\ntest_enter_exit_occupancy_on_confirmed_only (test_tracking.CountingEngineTests) ... ok\ntest_tentative_tracks_are_not_counted (test_tracking.CountingEngineTests) ... ok\ntest_bounded_history (test_tracking.TrackManagerTests) ... ok\ntest_id_policy_unique_session_scoped_never_reused (test_tracking.TrackManagerTests) ... ok\ntest_lifecycle_created_tentative_confirmed (test_tracking.TrackManagerTests) ... ok\ntest_lost_then_removed (test_tracking.TrackManagerTests) ... ok\ntest_counting_event_shape (test_tracking.TrackingEventTests) ... ok\ntest_zone_transition_event_shape (test_tracking.TrackingEventTests) ... ok\ntest_areas_containing_is_camera_scoped (test_tracking.ZoneEngineTests) ... ok\ntest_point_in_polygon (test_tracking.ZoneEngineTests) ... ok\ntest_segments_intersect (test_tracking.ZoneEngineTests) ... ok\ntest_detections_carry_no_tracking_id (test_tracking_http.TrackingDisabledTests) ... ok\ntest_runtime_view_reports_tracking_disabled (test_tracking_http.TrackingDisabledTests) ... ok\ntest_tracking_route_says_not_enabled (test_tracking_http.TrackingDisabledTests) ... ok\ntest_a_tenant_cannot_read_another_tenants_track (test_tracking_http.TrackingHttpTests) ... {\"level\": 40, \"time\": 1786272210214, \"service\": \"inference\", \"msg\": \"request\", \"method\": \"GET\", \"path\": \"/tracking/tracks/trk_cam_o_live-tnt_owner-cam_o_1\", \"status\": 404, \"durationMs\": 0.08}\nok\ntest_a_tenant_with_no_tracks_gets_an_empty_list_not_everyone_elses (test_tracking_http.TrackingHttpTests) ... ok\ntest_an_unknown_track_is_404 (test_tracking_http.TrackingHttpTests) ... {\"level\": 40, \"time\": 1786272210219, \"service\": \"inference\", \"msg\": \"request\", \"method\": \"GET\", \"path\": \"/tracking/tracks/trk_nope\", \"status\": 404, \"durationMs\": 0.08}\nok\ntest_camera_filter (test_tracking_http.TrackingHttpTests) ... ok\ntest_every_tracking_route_requires_a_tenant (test_tracking_http.TrackingHttpTests)\n⚠️ A read path that works without a tenant is one API change away from leaking movements. ... {\"level\": 40, \"time\": 1786272210231, \"service\": \"inference\", \"msg\": \"request\", \"method\": \"GET\", \"path\": \"/tracking\", \"status\": 400, \"durationMs\": 0.07}\n{\"level\": 40, \"time\": 1786272210231, \"service\": \"inference\", \"msg\": \"request\", \"method\": \"GET\", \"path\": \"/tracking/cameras\", \"status\": 400, \"durationMs\": 0.07}\n{\"level\": 40, \"time\": 1786272210232, \"service\": \"inference\", \"msg\": \"request\", \"method\": \"GET\", \"path\": \"/tracking/tracks\", \"status\": 400, \"durationMs\": 0.06}\n{\"level\": 40, \"time\": 1786272210233, \"service\": \"inference\", \"msg\": \"request\", \"method\": \"GET\", \"path\": \"/tracking/tracks/anything\", \"status\": 400, \"durationMs\": 0.2}\nok\ntest_inference_produces_tracks_and_the_detections_carry_ids (test_tracking_http.TrackingHttpTests) ... ok\ntest_live_tracks_route_returns_contract_shaped_tracks (test_tracking_http.TrackingHttpTests) ... ok\ntest_per_camera_route_never_shows_another_tenants_cameras (test_tracking_http.TrackingHttpTests) ... {\"level\": 30, \"time\": 1786272210246, \"service\": \"inference\", \"msg\": \"request\", \"method\": \"GET\", \"path\": \"/tracking/cameras\", \"status\": 200, \"durationMs\": 0.08}\nok\ntest_per_camera_route_reports_each_camera (test_tracking_http.TrackingHttpTests) ... {\"level\": 30, \"time\": 1786272210252, \"service\": \"inference\", \"msg\": \"request\", \"method\": \"GET\", \"path\": \"/tracking/cameras\", \"status\": 200, \"durationMs\": 0.11}\nok\ntest_prometheus_carries_tracking_and_omits_what_it_cannot_measure (test_tracking_http.TrackingHttpTests)\n⚠️ ADR-0039 in the one place it is hardest to honour: Prometheus has no null, so an ... ok\ntest_runtime_reports_tracking_without_naming_a_tenant (test_tracking_http.TrackingHttpTests) ... ok\ntest_track_detail_route_carries_the_timeline (test_tracking_http.TrackingHttpTests) ... {\"level\": 30, \"time\": 1786272210262, \"service\": \"inference\", \"msg\": \"request\", \"method\": \"GET\", \"path\": \"/tracking/tracks/trk_cam_d_live-tnt_detail-cam_d_1\", \"status\": 200, \"durationMs\": 0.1}\nok\ntest_tracking_stats_route (test_tracking_http.TrackingHttpTests) ... ok\ntest_detection_result_stays_ai_neutral (test_video_pipeline.AnalyzerTests) ... ok\ntest_produces_person_detections_and_events (test_video_pipeline.AnalyzerTests) ... ok\ntest_records_per_stage_timings (test_video_pipeline.AnalyzerTests) ... ok\ntest_sampling_reduces_processed_frames (test_video_pipeline.AnalyzerTests) ... ok\ntest_sub_threshold_confidence_drops_detections (test_video_pipeline.AnalyzerTests) ... ok\ntest_decoder_preserves_immutable_metadata (test_video_pipeline.FrameMetadataTests) ... ok\ntest_no_target_keeps_all (test_video_pipeline.SamplerTests) ... ok\ntest_target_fps_derives_stride_and_counts_drops (test_video_pipeline.SamplerTests) ... ok\ntest_an_echo_for_a_frame_nobody_holds_is_counted_rather_than_raised (test_zone_echo.EchoJoinTests) ... ok\ntest_an_echo_two_frames_late_still_lands_on_its_own_frame (test_zone_echo.EchoJoinTests)\n⛔ The reason `frameSeq` is on the wire. With more than one request in flight per camera ... ok\ntest_membership_lands_on_the_frame_it_describes (test_zone_echo.EchoJoinTests) ... ok\ntest_the_version_that_decided_membership_is_kept_on_the_record (test_zone_echo.EchoJoinTests)\n⭐ ADR-0053 amending ADR-0051 — membership may be stored *because* the record can name the ... ok\ntest_the_stored_frame_index_is_the_callers_sequence (test_zone_echo.FrameSequenceTests)\n⛔ The defect found while building this slice. The runtime stored its own per-camera ... ok\ntest_a_missing_echo_is_none_rather_than_an_empty_decision (test_zone_echo.MalformedEchoTests) ... ok\ntest_a_negative_or_absent_frame_sequence_is_refused (test_zone_echo.MalformedEchoTests) ... ok\ntest_an_echo_with_no_subjects_parses_to_a_decision_with_none (test_zone_echo.MalformedEchoTests) ... ok\ntest_the_subject_cap_is_applied_at_the_boundary (test_zone_echo.MalformedEchoTests) ... ok\ntest_unusable_subjects_are_dropped_and_the_frame_is_still_decided (test_zone_echo.MalformedEchoTests) ... ok\ntest_a_geometric_zone_answers_for_every_point_because_it_holds_the_polygon (test_zone_echo.SettledPointTests)\n⚠️ `requires_membership` is a property of how a zone knows things, not of the caller. A ... ok\ntest_an_undecided_point_is_skipped_and_joins_the_observations_either_side (test_zone_echo.SettledPointTests)\n⚠️ Skipped, not excluded. The subject did not leave and come back — we simply were not ... ok\ntest_membership_and_undecided_cannot_both_be_true_of_one_point (test_zone_echo.SettledPointTests) ... ok\ntest_a_deployment_that_never_echoes_reports_absent_rather_than_zero_dwell (test_zone_echo.UndecidedMembershipTests)\nThe negative control. No echo anywhere must read as `absent`, never as \"nobody lingered\". ... ok\ntest_a_real_departure_is_reported_once_the_frame_that_shows_it_is_decided (test_zone_echo.UndecidedMembershipTests) ... ok\ntest_an_empty_echo_is_a_decision_and_not_an_absence (test_zone_echo.UndecidedMembershipTests)\n⛔ `subjects: []` says the frame was resolved and nobody was inside a zone. Suppressing it ... ok\ntest_the_attribute_path_is_ignored_once_a_stream_speaks_through_the_echo (test_zone_echo.UndecidedMembershipTests)\n⛔ The defect a test found and reasoning had missed. ... ok\ntest_the_newest_frame_being_undecided_does_not_produce_a_departure (test_zone_echo.UndecidedMembershipTests)\n⛔ The defect this design exists to prevent, and the most plausible one in the slice. ... ok\n\n----------------------------------------------------------------------\nRan 1312 tests in 13.485s\n\nOK (skipped=50)"
+    },
+    "contracts": {
+      "status": "PASS",
+      "detail": "PASS  Contract and perception-boundary checks\ncommand: pnpm verify:contracts\nduration: 2s\n\n$ node tools/contracts/verify-schemas.mjs && node tools/contracts/perception-boundary.mjs\ncontracts: OK — 70 schema(s) present, valid JSON, draft 2020-12.\n\nperception boundary · 852 TypeScript source(s) outside ai/\n\n  ✓ §A the runtime is called from exactly one place — services/media/src/adapters/http-frame-sink.ts\n  ✓ §B only media knows where the runtime lives — services/media/src/config/env.ts, services/media/test/one-pipeline.test.ts, services/media/test/tracking.test.ts\n  ✓ §C no service, app or package names a model implementation concept in code — clean\n  ✓ §D the detection-result parse was found and has fields — 6 field(s)\n  ✓ §D every field read off a detection result exists in the frozen contract — detections, inferenceMs, frameLatencyMs, executionProvider, runtimeVersion, model\n  ✓ §E Track schema version agrees across TypeScript and Python — 1.1\n  ✓ §E TrackingStats schema version agrees across TypeScript and Python — 1.0\n  ✓ §F the zone attribute key agrees across media, events and the runtime — 'zoneIds' in 3 places\n  ✓ §G 'zoneMembership' is named on both sides of the zone membership echo — contracts · media · runtime\n  ✓ §G 'frameSeq' is named on both sides of the zone membership echo — contracts · media · runtime\n  ✓ §G the runtime stores the caller's frame sequence, not its own counter — runtime_tracking.py records frame_index=ctx.frame_number\n\nperception boundary: OK — the runtime is the only thing that knows how a model works."
+    }
+  }
+}

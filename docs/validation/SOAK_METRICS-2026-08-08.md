@@ -114,7 +114,7 @@ Start **297 GB** free → end **296.3 GB** free (min 296.3 GB). Δ **-0.7 GB**.
 ## Container restarts — measured directly after the run
 
 ⛔ The generated section above is worthless: `restartCounts()` returned `{}` in all 392 samples (S-10).
-These come from `docker inspect` after the soak and are compared against [SOAK_BASELINE](SOAK_BASELINE.md).
+These come from `docker inspect` after the soak and are compared against [SOAK_BASELINE](SOAK_BASELINE-2026-08-08.md).
 
 | Container | Restarts at baseline | Restarts after 6.51 h | Health |
 | --- | ---: | ---: | --- |

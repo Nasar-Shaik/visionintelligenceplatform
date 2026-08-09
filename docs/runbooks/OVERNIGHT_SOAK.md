@@ -102,7 +102,7 @@ restart the soak.** A run is not certified until an uninterrupted one passes end
 failed run rather than deleting it — the P-9 evidence rule is that a discarded run is a fact nobody
 can re-examine.
 
-Write the result up in `docs/validation/` following the existing set: `SOAK_REPORT`,
+Write the result up in `docs/validation/` following the existing set, dated by run (`SOAK_REPORT-YYYY-MM-DD`),
 `SOAK_BASELINE`, `SOAK_METRICS`, `SOAK_FINDINGS`, `SOAK_TIMELINE`, `SOAK_REGRESSION_TESTS`.
 
 ---

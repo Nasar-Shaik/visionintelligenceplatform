@@ -3,7 +3,7 @@
 **2026-08-07 20:03:02 UTC → 2026-08-08 02:33:41 UTC · 6.51 hours, uninterrupted.**
 
 > ⭐ The soak was never restarted. No failure required it, and nothing was changed in the product
-> while it ran — a mid-run change would mean [SOAK_BASELINE](SOAK_BASELINE.md) no longer described
+> while it ran — a mid-run change would mean [SOAK_BASELINE](SOAK_BASELINE-2026-08-08.md) no longer described
 > what was deployed.
 
 | Time (UTC) | Elapsed | Kind | Event |
@@ -53,5 +53,5 @@ metric samples.
 
 ## Related
 
-- [SOAK_REPORT](SOAK_REPORT.md) · [SOAK_METRICS](SOAK_METRICS.md) · [SOAK_FINDINGS](SOAK_FINDINGS.md)
-- [SOAK_BASELINE](SOAK_BASELINE.md) · [SOAK_REGRESSION_TESTS](SOAK_REGRESSION_TESTS.md)
+- [SOAK_REPORT](SOAK_REPORT-2026-08-08.md) · [SOAK_METRICS](SOAK_METRICS-2026-08-08.md) · [SOAK_FINDINGS](SOAK_FINDINGS-2026-08-08.md)
+- [SOAK_BASELINE](SOAK_BASELINE-2026-08-08.md) · [SOAK_REGRESSION_TESTS](SOAK_REGRESSION_TESTS-2026-08-08.md)
