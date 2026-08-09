@@ -639,7 +639,7 @@ def make_handler(
                 self._ok(detail)
             elif len(segs) == 2 and segs[1] == "behaviour":
                 self._behaviour(tenant, q)
-            elif len(segs) == 3 and segs[1] == "behaviour" and segs[2] in ("primitives", "timeline"):
+            elif len(segs) == 3 and segs[1] == "behaviour" and segs[2] in ("primitives", "timeline", "graph"):
                 self._behaviour_read(tracker, tenant, q, view=segs[2])
             elif len(segs) == 2 and segs[1] == "history":
                 self._track_history(tracker, tenant, q)
@@ -706,6 +706,13 @@ def make_handler(
             }
             if view == "primitives":
                 out["primitives"] = bt.primitives_for(records)
+            elif view == "graph":
+                # ⭐ A reshaping of the same timeline, never a second computation — see
+                # `behaviour_graph`. A graph with its own idea of a zone visit would eventually
+                # disagree with the timeline about one, and nothing could say which was right.
+                import behaviour_graph as bg  # noqa: WPS433 - keeps the server import light
+
+                out["graph"] = bg.graph_for(records).to_dict()
             else:
                 result = bt.timeline_for(records)
                 out["entries"] = [e.to_dict() for e in result.entries]

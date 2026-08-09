@@ -8,6 +8,7 @@
  *   GET /perception/behaviour                   the behaviour stage's state (?cameraId= &streamId=)
  *   GET /perception/behaviour/primitives        every primitive of an analysis, recomputed
  *   GET /perception/behaviour/timeline          the same facts as an ordered account
+ *   GET /perception/behaviour/graph             the same facts again, as nodes and edges
  *   GET /perception/track-history               stored movement paths (?cameraId= &identityId=)
  *
  * ### ⚠️ Why this lives in media, like the runtime view above it
@@ -163,14 +164,16 @@ export function registerTrackingRoutes(app: FastifyInstance, deps: TrackingRoute
    * ⭐ **Behaviour for a whole analysis, independent of the console and of any rule** (slice 2.3).
    *
    * `primitives` is what the primitives say — no threshold applied, no verdict attached. `timeline`
-   * is the same facts as an ordered account, each entry carrying the frame it came from.
+   * is the same facts as an ordered account, each entry carrying the frame it came from. `graph` is
+   * the same account again as nodes and edges — ⭐ a *reshaping* of the timeline rather than a third
+   * computation, so the three views cannot disagree about one investigation.
    *
    * ⚠️ Same `track:read` permission, for the same reason: a recomputed dwell is more revealing than
    * the track it came from, never less. ⚠️ Both are **recomputed on read** from stored movement
    * paths — nothing new is persisted, so a corrected formula fixes history rather than being unable
    * to reach it (ADR-0054).
    */
-  for (const view of ['primitives', 'timeline'] as const) {
+  for (const view of ['primitives', 'timeline', 'graph'] as const) {
     app.get<{ Querystring: { cameraId?: string; streamId?: string; identityId?: string } }>(
       `/perception/behaviour/${view}`,
       { preHandler: deps.auth.authorize('track:read') },

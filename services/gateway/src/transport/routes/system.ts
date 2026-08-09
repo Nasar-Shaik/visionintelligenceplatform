@@ -226,6 +226,7 @@ export function registerSystemRoutes(app: FastifyInstance, deps: SystemRoutesDep
    *   GET /api/behaviour             the behaviour stage's state and recent scene-level statements
    *   GET /api/behaviour/primitives  every primitive of an analysis, recomputed (slice 2.3)
    *   GET /api/behaviour/timeline    the same facts as an ordered account (slice 2.3)
+   *   GET /api/behaviour/graph       the same facts again, as nodes and edges (slice 2.6)
    *   GET /api/track-history         stored movement paths for the caller's tenant (ADR-0051)
    *
    * ⚠️ Same proxy, same absent permission check, same reason: media authorises `track:read` against
@@ -241,6 +242,10 @@ export function registerSystemRoutes(app: FastifyInstance, deps: SystemRoutesDep
   );
   app.get('/api/behaviour/timeline', async (request, reply) =>
     perceptionProxy(request, reply, '/perception/behaviour/timeline'),
+  );
+  /* ⭐ A third projection of one computation, not a third computation — see `behaviour_graph.py`. */
+  app.get('/api/behaviour/graph', async (request, reply) =>
+    perceptionProxy(request, reply, '/perception/behaviour/graph'),
   );
   app.get('/api/track-history', async (request, reply) =>
     perceptionProxy(request, reply, '/perception/track-history'),

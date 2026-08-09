@@ -86,6 +86,10 @@ TIMELINE_KINDS: Tuple[str, ...] = (
     "groupMerge",
     "groupSplit",
     "queue",
+    "picked",
+    "dropped",
+    "objectMissing",
+    "objectReturned",
 )
 
 
@@ -769,6 +773,26 @@ def timeline_for(
                 },
                 evidence=_evidence(_point_at(points, span.interval.start_seconds)),
             )
+        for event in bp.object_events(
+            points, subjects, expected_interval=context.expected_interval_seconds
+        ):
+            with_whom = f" with identity {event.subject_identity}" if event.subject_identity else ""
+            emit(
+                _OBJECT_KINDS[event.kind],
+                identity,
+                event.at_seconds,
+                summary=(
+                    f"object {identity} {_OBJECT_PHRASES[event.kind]}{with_whom} "
+                    f"at {since(event.at_seconds):g} s"
+                    + (f" after {event.seconds:g} s" if event.seconds is not None else "")
+                ),
+                attributes={
+                    "subjectIdentityId": event.subject_identity,
+                    "seconds": event.seconds,
+                    "reading": dict(bp.PRIMITIVE_READINGS[_OBJECT_READINGS[event.kind]]),
+                },
+                evidence=_evidence(_point_at(points, event.at_seconds)),
+            )
         for at_seconds, giver, taker in bp.handovers(spans):
             emit(
                 "handover",
@@ -789,6 +813,24 @@ def timeline_for(
         relational_truncated=scene.truncated,
         identities_considered=scene.considered,
     )
+
+
+#: ⛔ The four object words, mapped once. `missing` is deliberately not `concealed`: a bag put on a
+#: shelf and a bag pushed into a coat are the same observation, and separating them needs the
+#: subject's behaviour around the moment — which is a rule's job, with evidence this layer lacks.
+_OBJECT_KINDS = {"picked": "picked", "dropped": "dropped", "missing": "objectMissing", "returned": "objectReturned"}
+_OBJECT_PHRASES = {
+    "picked": "began travelling",
+    "dropped": "stopped travelling",
+    "missing": "stopped being observed",
+    "returned": "was observed again",
+}
+_OBJECT_READINGS = {
+    "picked": "pick_object",
+    "dropped": "drop_object",
+    "missing": "object_missing",
+    "returned": "object_returned",
+}
 
 
 # --- helpers -------------------------------------------------------------------------------------

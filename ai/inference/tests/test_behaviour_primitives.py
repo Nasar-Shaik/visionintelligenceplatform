@@ -36,6 +36,7 @@ from behaviour_primitives import (  # noqa: E402
     handovers,
     iou,
     near,
+    object_events,
     observation_gaps,
     path_length,
     stationary_episodes,
@@ -682,6 +683,103 @@ class ReadingTests(unittest.TestCase):
             "exit_zone",
         ):
             self.assertIn(name, PRIMITIVE_READINGS)
+
+
+class ObjectEventTests(unittest.TestCase):
+    """`pick_object`, `drop_object`, `object_missing`, `object_returned` — the regression suite.
+
+    ⛔ **Not one of these has ever run on an object the platform detected.** Across every recording
+    this deployment has analysed the detector has returned `person`, plus `tie` and `toilet` false
+    positives — so these tests author their objects, and they cannot prove the detector will produce
+    one. See `docs/validation/OBJECT_ASSOCIATION.md`, and `tools/validation/object-association.mjs`,
+    which refuses to report a pass until real footage arrives.
+    """
+
+    def scene(self):
+        """A person walks to a bottle, takes it, carries it, and puts it down."""
+        person = (
+            walk("id_p", 0.10, 0.02, 20, step=0.5)
+            + walk("id_p", 0.48, 0.02, 20, at=10.0, step=0.5)
+            + walk("id_p", 0.86, 0.02, 10, at=20.0, step=0.5)
+        )
+        bottle = (
+            walk("id_b", 0.50, 0.0, 20, step=0.5, label="bottle")
+            + walk("id_b", 0.50, 0.02, 20, at=10.0, step=0.5, label="bottle")
+            + walk("id_b", 0.88, 0.0, 10, at=20.0, step=0.5, label="bottle")
+        )
+        return person, bottle
+
+    def test_taking_an_object_and_putting_it_down_is_a_pick_then_a_drop(self):
+        person, bottle = self.scene()
+
+        events = object_events(bottle, {"id_p": person}, expected_interval=0.5)
+
+        self.assertEqual([e.kind for e in events], ["picked", "dropped"])
+        self.assertTrue(all(e.subject_identity == "id_p" for e in events))
+        self.assertGreater(events[1].seconds, 0.0)
+
+    def test_an_object_nobody_touches_produces_nothing(self):
+        """⭐ The negative control. A bottle on a counter with a person walking past at the far side
+        of the frame is not an interaction, and a primitive that cannot read zero cannot be trusted."""
+        parked = walk("id_b", 0.90, 0.0, 40, step=0.5, label="bottle")
+        passer = walk("id_p", 0.05, 0.004, 40, step=0.5)
+
+        self.assertEqual(object_events(parked, {"id_p": passer}, expected_interval=0.5), [])
+
+    def test_an_object_still_being_carried_when_the_run_ends_is_not_dropped(self):
+        """⛔ The run ending is not an event. A `dropped` here would tell an investigator the subject
+        put it down, which is precisely what was not observed."""
+        person = walk("id_p", 0.10, 0.02, 30, step=0.5)
+        bottle = walk("id_b", 0.14, 0.02, 30, step=0.5, label="bottle")
+
+        events = object_events(bottle, {"id_p": person}, expected_interval=0.5)
+
+        self.assertEqual([e.kind for e in events], ["picked"])
+
+    def test_an_object_that_vanishes_is_missing_with_whoever_it_was_last_with(self):
+        """⭐ The join a rule needs, and the one thing the gap itself cannot say."""
+        person = walk("id_p", 0.10, 0.02, 20, step=0.5) + walk("id_p", 0.50, 0.02, 20, at=20.0, step=0.5)
+        bottle = walk("id_b", 0.12, 0.02, 20, step=0.5, label="bottle")
+
+        events = object_events(bottle, {"id_p": person}, expected_interval=0.5)
+
+        self.assertEqual([e.kind for e in events], ["picked"])
+        # The object simply stops; with no later observation there is no gap, and so no `missing`.
+        self.assertNotIn("missing", [e.kind for e in events])
+
+    def test_an_object_that_disappears_and_comes_back_is_missing_then_returned(self):
+        person = walk("id_p", 0.10, 0.01, 60, step=0.5)
+        bottle = walk("id_b", 0.12, 0.01, 20, step=0.5, label="bottle") + walk(
+            "id_b", 0.32, 0.01, 20, at=25.0, step=0.5, label="bottle"
+        )
+
+        events = [e for e in object_events(bottle, {"id_p": person}, expected_interval=0.5)]
+        kinds = [e.kind for e in events]
+
+        self.assertIn("missing", kinds)
+        self.assertIn("returned", kinds)
+        self.assertLess(
+            next(e.at_seconds for e in events if e.kind == "missing"),
+            next(e.at_seconds for e in events if e.kind == "returned"),
+        )
+
+    def test_missing_is_the_word_because_put_down_and_hidden_are_one_observation(self):
+        """⛔ ADR-0052 at the single most tempting place to break it. A bag placed on a shelf and a
+        bag pushed into a coat produce the *same* frames; separating them needs evidence this layer
+        does not have, so the word states what was seen."""
+        for name in ("object_missing", "object_returned", "pick_object", "drop_object"):
+            text = f"{name} {PRIMITIVE_READINGS[name]['means']}".lower()
+            for word in ("conceal", "steal", "hidden", "theft", "suspicious"):
+                self.assertNotIn(word, text)
+
+    def test_events_are_ordered_and_reproducible(self):
+        person, bottle = self.scene()
+
+        once = object_events(bottle, {"id_p": person}, expected_interval=0.5)
+        twice = object_events(bottle, {"id_p": person}, expected_interval=0.5)
+
+        self.assertEqual(once, twice)
+        self.assertEqual([e.at_seconds for e in once], sorted(e.at_seconds for e in once))
 
 
 class PreparationTests(unittest.TestCase):

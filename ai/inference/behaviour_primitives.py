@@ -509,6 +509,112 @@ def associations(
     return spans
 
 
+@dataclass(frozen=True)
+class ObjectEvent:
+    """One moment in an object's relationship with the subjects around it.
+
+    ⛔ **`kind` states what was observed, never why.** `picked` means *an object that was travelling
+    with nobody began travelling with someone*; it does not mean taken, and certainly not stolen. The
+    distance between those sentences is the distance between Layer 2 and an accusation, and it is the
+    reason a rule has to add evidence this layer does not have.
+    """
+
+    kind: str
+    object_identity: str
+    at_seconds: float
+    subject_identity: Optional[str] = None
+    #: How long the object had been in the preceding state — the carry that ended, the gap that
+    #: closed. ⚠️ `None` where the run began or ended mid-state, so the duration is unknown rather
+    #: than zero.
+    seconds: Optional[float] = None
+
+
+def object_events(
+    object_points: Sequence[TrackPoint],
+    subjects: Mapping[str, Sequence[TrackPoint]],
+    *,
+    expected_interval: float,
+    threshold: float = NEAR_THRESHOLD,
+    gap_factor: float = 2.5,
+) -> List[ObjectEvent]:
+    """`picked`, `dropped`, `missing` and `returned`, for one object.
+
+    ⭐ **Four business words, two mechanisms already in this file.** `picked` and `dropped` are the
+    edges of an `associations` span; `missing` and `returned` are the edges of an
+    `observation_gaps` interval. Nothing new is computed — which is the point, because a second way
+    of deciding "is this object with that person" would be a second answer to the same question.
+
+    ⚠️ **An object put down and an object hidden are the same observation.** A bag placed on a shelf
+    and a bag pushed into a coat both stop being detected, and this reports `missing` for each. That
+    ambiguity is the whole reason the word is `missing` rather than `concealed` — separating them
+    needs the subject's behaviour around the moment, which is a rule's job.
+
+    ⛔ An open span produces **no** `dropped`, and a gap still open at the end produces no
+    `returned`. The run ending is not an event.
+    """
+    if not object_points:
+        return []
+    out: List[ObjectEvent] = []
+    spans = associations(object_points, {i: list(p) for i, p in subjects.items()}, threshold=threshold)
+    for span in spans:
+        out.append(
+            ObjectEvent(
+                kind="picked",
+                object_identity=span.object_identity,
+                at_seconds=span.interval.start_seconds,
+                subject_identity=span.subject_identity,
+            )
+        )
+        if not span.open_ended:
+            out.append(
+                ObjectEvent(
+                    kind="dropped",
+                    object_identity=span.object_identity,
+                    at_seconds=span.interval.end_seconds,
+                    subject_identity=span.subject_identity,
+                    seconds=span.interval.seconds,
+                )
+            )
+
+    if expected_interval > 0:
+        identity = object_points[0].identity_id
+        holder_at = _holder_at(spans)
+        for gap in observation_gaps(object_points, expected_interval=expected_interval, factor=gap_factor):
+            out.append(
+                ObjectEvent(
+                    kind="missing",
+                    object_identity=identity,
+                    at_seconds=gap.start_seconds,
+                    # ⚠️ Who it was last with, which is the join a rule needs and the one thing the
+                    # gap itself cannot say. `None` when it was with nobody — an object that simply
+                    # stopped being detected where it lay.
+                    subject_identity=holder_at(gap.start_seconds),
+                )
+            )
+            out.append(
+                ObjectEvent(
+                    kind="returned",
+                    object_identity=identity,
+                    at_seconds=gap.end_seconds,
+                    subject_identity=holder_at(gap.end_seconds),
+                    seconds=gap.seconds,
+                )
+            )
+
+    out.sort(key=lambda e: (e.at_seconds, e.kind))
+    return out
+
+
+def _holder_at(spans: Sequence[Association]):
+    def holder(at_seconds: float) -> Optional[str]:
+        for span in spans:
+            if span.interval.start_seconds <= at_seconds <= span.interval.end_seconds:
+                return span.subject_identity
+        return None
+
+    return holder
+
+
 def handovers(spans: Sequence[Association], *, max_gap_seconds: float = 2.0) -> List[Tuple[float, str, str]]:
     """`(at_seconds, from_identity, to_identity)` where one object passed between two subjects.
 
@@ -690,10 +796,40 @@ PRIMITIVE_READINGS: Dict[str, Dict[str, object]] = {
         "mechanism": "zone_transitions",
         "means": "a subject's membership of a zone ended",
     },
-    "carry": {
+    "carry_object": {
         "mechanism": "associations",
         "thresholdNormalized": NEAR_THRESHOLD,
         "means": "an object stayed with a subject as they moved",
+    },
+    "pick_object": {
+        "mechanism": "object_events",
+        "thresholdNormalized": NEAR_THRESHOLD,
+        "means": "an object that was travelling with nobody began travelling with a subject",
+    },
+    "drop_object": {
+        "mechanism": "object_events",
+        "thresholdNormalized": NEAR_THRESHOLD,
+        "means": "an object stopped travelling with the subject it had been with",
+    },
+    "object_missing": {
+        "mechanism": "object_events",
+        "means": "a tracked object stopped being observed, with whoever it was last with named",
+    },
+    "object_returned": {
+        "mechanism": "object_events",
+        "means": "a tracked object was observed again after not being observed",
+    },
+    "approach_object": {
+        "mechanism": "distance_changes",
+        "minChangeNormalized": 0.05,
+        "minSeconds": 1.0,
+        "means": "the gap between a subject and an object closed",
+    },
+    "leave_object": {
+        "mechanism": "distance_changes",
+        "minChangeNormalized": 0.05,
+        "minSeconds": 1.0,
+        "means": "the gap between a subject and an object opened",
     },
     "handover": {
         "mechanism": "handovers",

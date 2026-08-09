@@ -352,7 +352,7 @@ class AssociationModule(_BehaviourModule):
             spans = bp.associations(points, subjects)
             if not spans:
                 continue
-            payload = {
+            payload: Dict[str, object] = {
                 "heldBy": [
                     {
                         "identityId": span.subject_identity,
@@ -364,6 +364,30 @@ class AssociationModule(_BehaviourModule):
                     for span in spans
                 ]
             }
+            # ⭐ `picked`, `dropped`, `missing`, `returned` — four business words over two mechanisms
+            # this module already runs. ⚠️ They ride on the object's own instance rather than on the
+            # subject's, because the object is what the statement is about; a rule joins to the
+            # subject through `subjectIdentityId`.
+            events = bp.object_events(
+                points,
+                subjects,
+                expected_interval=prepared.expected_interval_seconds,
+                threshold=bp.NEAR_THRESHOLD,
+            )
+            if events:
+                payload["events"] = [
+                    {
+                        "kind": event.kind,
+                        "atSeconds": event.at_seconds,
+                        "subjectIdentityId": event.subject_identity,
+                        "seconds": event.seconds,
+                    }
+                    for event in events
+                ]
+                payload["readings"] = {
+                    name: dict(bp.PRIMITIVE_READINGS[name])
+                    for name in ("pick_object", "drop_object", "object_missing", "object_returned")
+                }
             instances.append(_subject_instance(identity, points, {"association": payload}))
             for at_seconds, giver, taker in bp.handovers(spans):
                 labels.append(
