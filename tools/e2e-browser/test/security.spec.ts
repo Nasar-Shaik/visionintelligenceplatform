@@ -23,9 +23,28 @@ test.describe('the edge', () => {
     expect(h['x-frame-options']).toBe('DENY');
     expect(h['x-content-type-options']).toBe('nosniff');
     expect(h['content-security-policy']).toContain("default-src 'self'");
-    /* ⚠️ A surveillance console asking for the operator's own camera would be indistinguishable,
-     * to a browser, from one that had been compromised into doing so. */
-    expect(h['permissions-policy']).toContain('camera=()');
+    /*
+     * ⚠️ **`camera=(self)`, and the `(self)` is doing the work.**
+     *
+     * This asserted `camera=()` until P-11, written in P-8.5 when the console could not capture
+     * anything: *"a surveillance console asking for the operator's own camera would be
+     * indistinguishable, to a browser, from one that had been compromised into doing so."* P-9 then
+     * shipped browser-side live capture, which the browser refuses unless the origin is permitted,
+     * and changed the header without revisiting this line. The P-11 soak's post-run certification
+     * was the first thing to notice — a full day later, because the browser suite is not in
+     * `turbo lint typecheck test`.
+     *
+     * ⛔ The reasoning above is still right, so the assertion is **narrowed rather than dropped**.
+     * `(self)` permits exactly the console's own origin; `*` or a named third party would mean any
+     * embedded frame could open the operator's camera, and both must still fail here. Every other
+     * capability stays fully denied — a surveillance console has no business asking for a
+     * microphone, a location or a payment method.
+     */
+    expect(h['permissions-policy']).toContain('camera=(self)');
+    expect(h['permissions-policy']).not.toMatch(/camera=\(\s*\*|camera=\([^)]*https?:/);
+    for (const denied of ['microphone', 'geolocation', 'payment', 'usb', 'interest-cohort']) {
+      expect(h['permissions-policy']).toContain(`${denied}=()`);
+    }
     /* ⚠️ A version banner is free reconnaissance. */
     expect(h['server']).toBeUndefined();
   });

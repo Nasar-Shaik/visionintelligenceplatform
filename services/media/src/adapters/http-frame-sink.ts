@@ -35,6 +35,8 @@ export interface FrameSinkStats {
   delivered: number;
   /** Frames dropped because this camera's queue was full — deliberate policy, not loss. */
   droppedQueueFull: number;
+  /** Frames abandoned because the camera's assignment was released while they were queued. */
+  droppedReleased: number;
   /** Frames the runtime refused or could not be reached for. */
   failed: number;
   /** ⚠️ Frames that arrived with no pixels. Always zero in a working decoder — a finding if not. */
@@ -117,6 +119,7 @@ export interface CameraFrameStats {
   skippedUnassigned: number;
   skippedHeld: number;
   droppedQueueFull: number;
+  droppedReleased: number;
   queueDepth: number;
   /** Mean round trip to the runtime, ms. `null` until one completes — never 0. */
   deliverMsAvg: number | null;
@@ -135,6 +138,7 @@ interface MutableCameraStats {
   skippedUnassigned: number;
   skippedHeld: number;
   droppedQueueFull: number;
+  droppedReleased: number;
   deliverMs: Rolling;
   /** Delivery timestamps, for a rolling fps. Trimmed on read. */
   recent: number[];
@@ -246,6 +250,7 @@ export class HttpFrameSink implements FrameSink {
   #delivered = 0;
   #droppedNoImage = 0;
   #droppedQueueFull = 0;
+  #droppedReleased = 0;
   #failed = 0;
   #skippedUnassigned = 0;
   #skippedHeld = 0;
@@ -423,6 +428,26 @@ export class HttpFrameSink implements FrameSink {
    */
   release(tenantId: string, cameraId: string): void {
     const key = `${tenantId}\0${cameraId}`;
+    /*
+     * ⛔ **Whatever was still queued is discarded, and it is counted.**
+     *
+     * This used to `delete` the queue and say nothing. The frames had been counted as *offered* and
+     * were then never delivered, never dropped, never failed — a fourth outcome with no name, which
+     * meant `offered − delivered` drifted by an amount no dashboard could explain. The P-11 soak
+     * measured exactly 58 such frames over 6.49 h: harmless in itself, and indistinguishable from
+     * real loss, which is the actual defect. Releasing a camera mid-stream is a legitimate reason to
+     * abandon queued work; being unable to tell it apart from a leak is not.
+     *
+     * ⚠️ Counted as `droppedReleased` rather than folded into `droppedQueueFull`: one means the
+     * pipeline could not keep up and is a capacity signal, the other means an assignment ended and
+     * is routine. A single counter would make a busy camera and a reassigned one read alike.
+     */
+    const abandoned = this.#queues.get(key)?.length ?? 0;
+    if (abandoned > 0) {
+      this.#droppedReleased += abandoned;
+      const perCamera = this.#perCameraStats.get(key);
+      if (perCamera !== undefined) perCamera.droppedReleased += abandoned;
+    }
     this.#queues.delete(key);
     /* ⚠️ The pending echo goes with the queue. A membership held across a released assignment would
      * be delivered into whatever stream that camera starts next — describing a frame from a run that
@@ -449,6 +474,7 @@ export class HttpFrameSink implements FrameSink {
       skippedUnassigned: per.skippedUnassigned,
       skippedHeld: per.skippedHeld,
       droppedQueueFull: per.droppedQueueFull,
+      droppedReleased: per.droppedReleased,
       queueDepth: this.#queues.get(key)?.length ?? 0,
       /* ⚠️ `null`, not 0 — "nothing has completed" and "instant" are different answers. */
       deliverMsAvg: per.delivered === 0 ? null : per.deliverMs.avg,
@@ -490,6 +516,7 @@ export class HttpFrameSink implements FrameSink {
         skippedUnassigned: 0,
         skippedHeld: 0,
         droppedQueueFull: 0,
+        droppedReleased: 0,
         deliverMs: new Rolling(100),
         recent: [],
         lastFrameAt: null,
@@ -542,6 +569,7 @@ export class HttpFrameSink implements FrameSink {
       delivered: this.#delivered,
       droppedNoImage: this.#droppedNoImage,
       droppedQueueFull: this.#droppedQueueFull,
+      droppedReleased: this.#droppedReleased,
       failed: this.#failed,
       inflight: this.#inflight,
       queueDepth: depth,

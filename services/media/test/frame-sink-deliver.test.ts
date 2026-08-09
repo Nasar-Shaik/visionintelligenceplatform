@@ -343,3 +343,64 @@ describe('the assignment gate governs offline analysis too', () => {
     expect(sink.stats().skippedHeld).toBe(1);
   });
 });
+
+describe('frame accounting — every offered frame has exactly one outcome', () => {
+  /**
+   * ⛔ The P-11 soak finding. `release()` deleted a camera's queue outright, so frames already
+   * counted as *offered* were never delivered, dropped, failed, or left in flight — a fourth
+   * outcome with no name. Over 6.49 hours it drifted `offered − delivered` by 58 with every drop
+   * counter reading zero, which is indistinguishable from real loss on any dashboard.
+   *
+   * ⭐ Asserted as an **identity** rather than as a counter, because the counter is not the point:
+   * the property worth keeping is that the outcomes partition the offered frames. A future code
+   * path that abandons a frame some new way fails this without anyone having to remember it exists.
+   */
+  const accountedFor = (s: ReturnType<HttpFrameSink['stats']>): number =>
+    s.delivered + s.droppedQueueFull + s.droppedReleased + s.droppedNoImage + s.failed + s.inflight;
+
+  it('counts frames abandoned when a camera assignment is released', async () => {
+    /* A runtime that never answers, so frames stay queued behind the in-flight one. */
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Promise(() => {})),
+    );
+    const sink = new HttpFrameSink({ url: 'http://rt:8085', internalKey: KEY, capabilityId: 'cap' });
+    for (let seq = 1; seq <= 6; seq += 1) sink.push('tnt_a', 'cam_1', frame(seq), never);
+    await Promise.resolve();
+
+    const before = sink.stats();
+    expect(before.offered).toBe(6);
+    expect(before.queueDepth).toBeGreaterThan(0);
+
+    sink.release('tnt_a', 'cam_1');
+    const after = sink.stats();
+
+    expect(after.droppedReleased).toBe(before.queueDepth);
+    expect(after.queueDepth).toBe(0);
+    expect(accountedFor(after)).toBe(after.offered);
+  });
+
+  it('leaves the released counter at zero when nothing was queued', async () => {
+    stubRuntime();
+    const sink = new HttpFrameSink({ url: 'http://rt:8085', internalKey: KEY, capabilityId: 'cap' });
+    sink.push('tnt_a', 'cam_1', frame(1), never);
+    await vi.waitFor(() => expect(sink.stats().delivered).toBe(1));
+
+    sink.release('tnt_a', 'cam_1');
+    const s = sink.stats();
+    expect(s.droppedReleased).toBe(0);
+    expect(accountedFor(s)).toBe(s.offered);
+  });
+
+  it('keeps the identity across delivery, queue-full drops and a release', async () => {
+    stubRuntime(() => ({ status: 500, body: { error: 'nope' } }));
+    const sink = new HttpFrameSink({ url: 'http://rt:8085', internalKey: KEY, capabilityId: 'cap' });
+    for (let seq = 1; seq <= 40; seq += 1) sink.push('tnt_a', 'cam_1', frame(seq), never);
+    await vi.waitFor(() => expect(sink.stats().failed).toBeGreaterThan(0));
+    sink.release('tnt_a', 'cam_1');
+
+    const s = sink.stats();
+    expect(s.offered).toBe(40);
+    expect(accountedFor(s)).toBe(s.offered);
+  });
+});
