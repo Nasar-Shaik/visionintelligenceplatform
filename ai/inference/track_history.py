@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import threading
 import time
@@ -275,8 +276,17 @@ class TrackHistoryStore(Protocol):
     def write(self, record: TrackHistoryRecord) -> None: ...
 
     def records(
-        self, tenant_id: str, *, camera_id: Optional[str] = None, identity_id: Optional[str] = None
-    ) -> List[TrackHistoryRecord]: ...
+        self,
+        tenant_id: str,
+        *,
+        camera_id: Optional[str] = None,
+        identity_id: Optional[str] = None,
+        stream_id: Optional[str] = None,
+    ) -> List[TrackHistoryRecord]:
+        """⚠️ `stream_id` is the most selective filter a caller has — one analysis — so every
+        implementation must accept it. A store that ignores it makes an analysis-scoped read cost
+        the whole tenant's history, which is the defect the P-11 soak found."""
+        ...
 
     def erase_tenant(self, tenant_id: str) -> int:
         """Remove everything held for one tenant. Returns how many records went."""
@@ -302,7 +312,12 @@ class NullTrackHistoryStore:
         return None
 
     def records(
-        self, tenant_id: str, *, camera_id: Optional[str] = None, identity_id: Optional[str] = None
+        self,
+        tenant_id: str,
+        *,
+        camera_id: Optional[str] = None,
+        identity_id: Optional[str] = None,
+        stream_id: Optional[str] = None,
     ) -> List[TrackHistoryRecord]:
         return []
 
@@ -336,7 +351,12 @@ class InMemoryTrackHistoryStore:
                 bucket.pop(0)
 
     def records(
-        self, tenant_id: str, *, camera_id: Optional[str] = None, identity_id: Optional[str] = None
+        self,
+        tenant_id: str,
+        *,
+        camera_id: Optional[str] = None,
+        identity_id: Optional[str] = None,
+        stream_id: Optional[str] = None,
     ) -> List[TrackHistoryRecord]:
         with self._lock:
             return [
@@ -344,6 +364,7 @@ class InMemoryTrackHistoryStore:
                 for r in self._by_tenant.get(tenant_id, [])
                 if (camera_id is None or r.camera_id == camera_id)
                 and (identity_id is None or r.identity_id == identity_id)
+                and (stream_id is None or r.stream_id == stream_id)
             ]
 
     def erase_tenant(self, tenant_id: str) -> int:
@@ -371,6 +392,22 @@ class InMemoryTrackHistoryStore:
                 "records": sum(len(b) for b in self._by_tenant.values()),
                 "tenants": len(self._by_tenant),
             }
+
+
+#: Ids safe to look for as a raw substring of a serialised record.
+#:
+#: ⚠️ The pre-filter below is only ever allowed to *narrow*, never to decide. It skips lines that
+#: cannot possibly match, and every surviving line is still checked against the parsed dict. So a
+#: false positive costs one wasted parse and a false negative would lose data — which is why the
+#: needle is the exact serialised pair (`"streamId":"ana_x"`, from `json.dumps(sort_keys=True,
+#: separators=(",", ":"))`) and is refused for any id that JSON might escape.
+_UNESCAPED_ID = re.compile(r"[A-Za-z0-9_.:@-]+")
+
+
+def _needle(field: str, value: Optional[str]) -> Optional[str]:
+    if value is None or _UNESCAPED_ID.fullmatch(value) is None:
+        return None
+    return f'"{field}":"{value}"'
 
 
 class JsonlTrackHistoryStore:
@@ -439,15 +476,36 @@ class JsonlTrackHistoryStore:
     # --- reads -------------------------------------------------------------------
 
     def records(
-        self, tenant_id: str, *, camera_id: Optional[str] = None, identity_id: Optional[str] = None
+        self,
+        tenant_id: str,
+        *,
+        camera_id: Optional[str] = None,
+        identity_id: Optional[str] = None,
+        stream_id: Optional[str] = None,
     ) -> List[TrackHistoryRecord]:
+        """Stored records for one tenant, narrowed **while scanning** by camera, identity and stream.
+
+        ⛔ **The filter used to run after `_read` had built everything.** A query for one camera still
+        materialised every record in the tenant's file, with every `HistoryPoint` inside it, and threw
+        almost all of them away. Found by the P-11 soak: the two Behaviour API endpoints were the only
+        operations whose latency grew, and they grew in step with the store —
+
+            behaviour-primitives   330 → 417 → 521 → 608 ms   (store 10 → 39.7 MB)
+            behaviour-timeline     323 → 414 → 506 → 589 ms
+            everything else        flat to within 2 ms
+
+        — at roughly 273k short-lived objects per call, a hundred calls an hour. That churn was a
+        third of the runtime's residual memory climb, and the latency is a customer-facing defect in
+        its own right: the Behaviour API is what an investigation polls.
+
+        ⭐ Same class as the `stats()` defect above, which is why both are fixed the same way: **ask
+        the file only for what was asked of it.** A record is one line, so the filter is decided on
+        the parsed dict — cheap, and no `HistoryPoint` is constructed for a record nobody wants.
+        """
         with self._lock:
-            return [
-                r
-                for r in self._read(tenant_id)
-                if (camera_id is None or r.camera_id == camera_id)
-                and (identity_id is None or r.identity_id == identity_id)
-            ]
+            return self._read(
+                tenant_id, camera_id=camera_id, identity_id=identity_id, stream_id=stream_id
+            )
 
     def _count(self, tenant_id: str) -> int:
         """How many complete records one tenant's file holds, **without deserialising any of them**.
@@ -487,18 +545,49 @@ class JsonlTrackHistoryStore:
                 total += chunk.count(b"\n")
         return total
 
-    def _read(self, tenant_id: str) -> List[TrackHistoryRecord]:
+    def _read(
+        self,
+        tenant_id: str,
+        *,
+        camera_id: Optional[str] = None,
+        identity_id: Optional[str] = None,
+        stream_id: Optional[str] = None,
+    ) -> List[TrackHistoryRecord]:
+        """Parse one tenant's file, constructing **only** the records the caller asked for.
+
+        ⚠️ The filter is applied to the parsed dict, before `from_dict`. That ordering is the whole
+        point: `from_dict` builds a `HistoryPoint` for every observation in the record — up to 512 of
+        them — so deciding afterwards costs the full price of an answer that is then discarded.
+        """
         path = self._path(tenant_id)
         if not os.path.exists(path):
             return []
         out: List[TrackHistoryRecord] = []
+        needles = [
+            needle
+            for needle in (
+                _needle("streamId", stream_id),
+                _needle("identityId", identity_id),
+                _needle("cameraId", camera_id),
+            )
+            if needle is not None
+        ]
         with open(path, "r", encoding="utf-8") as handle:
             for line in handle:
                 text = line.strip()
                 if not text:
                     continue
+                if needles and not all(needle in text for needle in needles):
+                    continue
                 try:
-                    out.append(TrackHistoryRecord.from_dict(json.loads(text)))
+                    raw = json.loads(text)
+                    if camera_id is not None and raw.get("cameraId") != camera_id:
+                        continue
+                    if identity_id is not None and raw.get("identityId") != identity_id:
+                        continue
+                    if stream_id is not None and raw.get("streamId") != stream_id:
+                        continue
+                    out.append(TrackHistoryRecord.from_dict(raw))
                 except (ValueError, KeyError, TypeError):
                     # ⚠️ A truncated final line is the normal cost of an append-only file whose writer
                     # was killed. Skipping it keeps every complete record readable; failing the whole

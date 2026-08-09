@@ -32,11 +32,14 @@ from track_history import (  # noqa: E402
 HOUR = 3600.0
 
 
-def record(identity="idn_1", tenant="tnt_a", camera="cam_1", *, points=3, start=0.0, written_at=None):
+def record(
+    identity="idn_1", tenant="tnt_a", camera="cam_1", *, stream=None, points=3, start=0.0, written_at=None
+):
     return TrackHistoryRecord(
         identity_id=identity,
         tenant_id=tenant,
         camera_id=camera,
+        stream_id=stream,
         label="person",
         points=[
             HistoryPoint(frame_index=i, at=f"{start + i:g}s", bbox=(0.1, 0.1, 0.1, 0.1), track_id="trk_1")
@@ -190,6 +193,104 @@ class JsonlStoreTests(unittest.TestCase):
         stats = self.store.stats()
         self.assertEqual(stats["records"], 3)
         self.assertEqual(stats["tenants"], 2)
+
+    def test_a_filtered_query_does_not_build_the_records_it_will_discard(self):
+        """⛔ The second P-11 soak defect in this class, encoded the same way as the first.
+
+        `records()` used to filter *after* `_read` had materialised every record in the tenant's
+        file, each with up to 512 `HistoryPoint`s. A query for one camera paid the full price of the
+        whole store. The soak saw it as the only two operations whose latency grew — 330 → 608 ms for
+        `behaviour-primitives` as the store went 10 → 39.7 MB — while every other operation stayed
+        flat to within 2 ms.
+
+        ⭐ Counting `from_dict` calls asserts the mechanism, not the duration: a timing test would be
+        flaky on a loaded host and would not say which line was wrong.
+        """
+        for i in range(20):
+            self.store.write(record(identity=f"idn_{i}", camera=f"cam_{i % 4}", points=50))
+
+        built = []
+        original = TrackHistoryRecord.from_dict
+
+        def counting(raw):
+            built.append(raw.get("identityId"))
+            return original(raw)
+
+        TrackHistoryRecord.from_dict = staticmethod(counting)
+        try:
+            found = self.store.records("tnt_a", camera_id="cam_2")
+        finally:
+            TrackHistoryRecord.from_dict = staticmethod(original)
+
+        self.assertEqual(len(found), 5)
+        self.assertTrue(all(r.camera_id == "cam_2" for r in found))
+        self.assertEqual(len(built), 5, f"built {len(built)} records to return 5")
+
+    def test_the_narrowing_prefilter_returns_exactly_what_a_full_scan_returns(self):
+        """⛔ The safety net for the substring pre-filter, and the reason it is allowed to exist.
+
+        The pre-filter skips lines that cannot match, which makes a false negative a *silent data
+        loss* — an investigation missing a record and no error anywhere. So this asserts the fast
+        path against the slow one for every filter combination, over ids chosen to include the
+        awkward shapes: a stream id that is a prefix of another, and one containing `:` and `-`.
+        """
+        made = []
+        for cam in ("cam_1", "cam_2"):
+            for stream in ("ana_7", "ana_77", "run:a-b"):
+                for i in range(2):
+                    ident = f"idn_{cam}_{stream}_{i}"
+                    self.store.write(record(identity=ident, camera=cam, stream=stream))
+                    made.append((ident, cam, stream))
+
+        everything = self.store.records("tnt_a")
+        self.assertEqual(len(everything), len(made))
+
+        for cam in (None, "cam_1", "cam_2", "cam_absent"):
+            for stream in (None, "ana_7", "ana_77", "run:a-b", "nope"):
+                fast = self.store.records("tnt_a", camera_id=cam, stream_id=stream)
+                slow = [
+                    r
+                    for r in everything
+                    if (cam is None or r.camera_id == cam) and (stream is None or r.stream_id == stream)
+                ]
+                self.assertEqual(
+                    sorted(r.identity_id for r in fast),
+                    sorted(r.identity_id for r in slow),
+                    f"pre-filter disagreed with a full scan for camera={cam} stream={stream}",
+                )
+
+    def test_a_stream_query_builds_only_that_streams_records(self):
+        """⭐ `stream_id` is the filter an analysis-scoped read actually uses, and the one the store
+        could not apply — `collect()` filtered on it in Python after asking for every record on the
+        camera. On the soak's own store that was 2745 lines parsed to return 2."""
+        for stream in range(10):
+            for i in range(3):
+                self.store.write(record(identity=f"idn_{stream}_{i}", stream=f"ana_{stream}", points=40))
+
+        built = []
+        original = TrackHistoryRecord.from_dict
+        TrackHistoryRecord.from_dict = staticmethod(lambda raw: (built.append(1), original(raw))[1])
+        try:
+            found = self.store.records("tnt_a", stream_id="ana_4")
+        finally:
+            TrackHistoryRecord.from_dict = staticmethod(original)
+
+        self.assertEqual(len(found), 3)
+        self.assertTrue(all(r.stream_id == "ana_4" for r in found))
+        self.assertEqual(len(built), 3, f"built {len(built)} records to return 3")
+
+    def test_an_identity_query_builds_only_that_identity(self):
+        for i in range(12):
+            self.store.write(record(identity=f"idn_{i}", points=40))
+        built = []
+        original = TrackHistoryRecord.from_dict
+        TrackHistoryRecord.from_dict = staticmethod(lambda raw: (built.append(1), original(raw))[1])
+        try:
+            found = self.store.records("tnt_a", identity_id="idn_7")
+        finally:
+            TrackHistoryRecord.from_dict = staticmethod(original)
+        self.assertEqual([r.identity_id for r in found], ["idn_7"])
+        self.assertEqual(len(built), 1)
 
     def test_records_are_filtered_by_camera_and_identity(self):
         self.store.write(record(identity="idn_1", camera="cam_1"))

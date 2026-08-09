@@ -152,11 +152,12 @@ def collect(
     ⚠️ Live records are **open**: their last interval has not ended. Every duration derived from one
     is a lower bound, which is why `zoneVisit` carries `open` and why this says how many there were.
     """
-    durable = [
-        record
-        for record in recorder.store.records(tenant_id, camera_id=camera_id, identity_id=identity_id)
-        if stream_id is None or record.stream_id == stream_id
-    ]
+    # ⭐ `stream_id` goes to the store, not to a list comprehension after it. Filtering here instead
+    # made an analysis-scoped read cost the whole tenant's history — the P-11 soak watched these two
+    # endpoints climb 330 → 608 ms while every other operation stayed flat.
+    durable = recorder.store.records(
+        tenant_id, camera_id=camera_id, identity_id=identity_id, stream_id=stream_id
+    )
     live: List[TrackHistoryRecord] = []
     if include_live:
         live = recorder.find_live(
