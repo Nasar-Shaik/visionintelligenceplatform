@@ -707,9 +707,17 @@ def make_handler(
             if view == "primitives":
                 out["primitives"] = bt.primitives_for(records)
             else:
-                entries, truncated = bt.timeline_for(records)
-                out["entries"] = [e.to_dict() for e in entries]
-                out["truncated"] = truncated
+                result = bt.timeline_for(records)
+                out["entries"] = [e.to_dict() for e in result.entries]
+                out["truncated"] = result.truncated
+                # ⛔ The *other* way this answer can be incomplete, and the one a reader cannot see:
+                # past the cap the pairwise families never considered the remaining subjects, so the
+                # timeline looks whole and is missing every merge, follow and approach among them.
+                out["relational"] = {
+                    "identitiesConsidered": result.identities_considered,
+                    "truncated": result.relational_truncated,
+                    "maxIdentities": bt.bp.MAX_RELATIONAL_IDENTITIES,
+                }
                 # The closed vocabulary, published so a viewer can render every kind it may meet
                 # rather than discovering one in production (ADR-0052 — none of them names an intent).
                 out["kinds"] = list(bt.TIMELINE_KINDS)

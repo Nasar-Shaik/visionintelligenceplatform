@@ -345,6 +345,10 @@ class BehaviourStage:
             subjects=subjects,
             objects=objects,
             zones=zones,
+            # ⭐ Prepared once per frame and shared by every module that compares subjects pairwise.
+            # This runs under the caller's lock on the live path, so the work it removes is work the
+            # frame path was paying three times.
+            scene=bp.Scene(subjects),
             expected_interval_seconds=self._interval.get(key, 0.0),
             zone_membership_present=key in self._zone_streams,
         )

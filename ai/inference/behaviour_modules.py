@@ -61,7 +61,11 @@ ZONE_ATTRIBUTE = "zoneIds"
 #: Identities compared pairwise per frame. The relational scan is O(n²) under the caller's lock, so
 #: it is capped rather than left to grow — a frame with more simultaneous identities than this has a
 #: perception problem, not a proximity-metric problem. Mirrors `MAX_CROSSING_TRACKS` in the tracker.
-MAX_RELATIONAL_IDENTITIES = 32
+#:
+#: ⚠️ Re-exported under the name it has had since slice 2.2; the value now lives beside `Scene`, which
+#: is what applies it. Two modules each holding their own 32 is how the read path came to be capped in
+#: one place and uncapped in the other.
+MAX_RELATIONAL_IDENTITIES = bp.MAX_RELATIONAL_IDENTITIES
 
 
 @dataclass(frozen=True)
@@ -81,6 +85,23 @@ class BehaviourContext:
     subjects: Mapping[str, Sequence[bp.TrackPoint]] = field(default_factory=dict)
     objects: Mapping[str, Sequence[bp.TrackPoint]] = field(default_factory=dict)
     zones: Sequence[bp.ZoneRegion] = ()
+    #: Operator-drawn `kind: "line"` zones, for `CrossingModule` (P-11 slice 2.5).
+    #:
+    #: ⚠️ **Separate from `zones`, because a line is not a region.** A `ZoneRegion` answers *was this
+    #: observation inside me*, and a polyline has no inside — which is exactly why
+    #: `ZONE_EVALUATION` marks the shape storable and not evaluable. Crossing is a question about two
+    #: consecutive observations, so it needs the geometry rather than a membership fact, and it can
+    #: only be answered by a caller that holds the line.
+    lines: Sequence[bp.Line] = ()
+    #: The subjects prepared for pairwise work — time index, headings, position bounds, memoised
+    #: distance series — built **once** by whoever assembles this context.
+    #:
+    #: ⭐ **This is what "prepared for the primitive modules" already claimed to mean.** Three modules
+    #: here do pairwise work, and each building its own preparation meant every identity's headings
+    #: and every pair's distance series were computed three times per read. ⚠️ Optional, and every
+    #: module falls back to building its own: a test that authors a context by hand must not have to
+    #: know this exists, and a module must never be *wrong* without it — only slower.
+    scene: Optional[bp.Scene] = None
     #: Frame interval in footage seconds, used to tell an occlusion from a normal sampling gap.
     #: ⚠️ Derived from observed timestamps by the caller, never from a configured fps: the two
     #: disagree the moment a camera drops frames, and this is the one that was actually true.
@@ -93,6 +114,10 @@ class BehaviourContext:
         merged: Dict[str, Sequence[bp.TrackPoint]] = dict(self.subjects)
         merged.update(self.objects)
         return merged
+
+    def prepared_scene(self) -> bp.Scene:
+        """The shared preparation, or a fresh one for a caller that did not supply it."""
+        return self.scene if self.scene is not None else bp.Scene(self.subjects)
 
 
 class _BehaviourModule:
@@ -355,6 +380,258 @@ class AssociationModule(_BehaviourModule):
         return PerceptionOutput(task=TASK_BEHAVIOUR, instances=instances, frame_labels=labels)
 
 
+class PresenceModule(_BehaviourModule):
+    """How long each subject stayed put, and how tightly — `idle` and `linger`.
+
+    ⭐ **Two words, one mechanism.** Both are readings of `stationary_episodes` at thresholds declared
+    in `bp.PRIMITIVE_READINGS`, and the thresholds travel in the payload beside the episodes. An
+    operator reading "lingered for 42 s" can see that lingering meant *0.08 frame widths for at least
+    15 s here*, rather than having to trust a word — and a deployment that disagrees changes the
+    number instead of the meaning.
+
+    ⚠️ Idle episodes nest inside linger episodes rather than sitting beside them. Summing across the
+    two names would double-count one person standing still.
+    """
+
+    name = "presence"
+
+    def analyse(self, prepared: BehaviourContext) -> PerceptionOutput:
+        instances: List[RawInstance] = []
+        for identity, points in prepared.subjects.items():
+            if len(points) < 2:
+                continue
+            readings = bp.stationary_readings(points)
+            payload: Dict[str, object] = {}
+            for reading, episodes in readings.items():
+                if not episodes:
+                    continue
+                payload[reading] = {
+                    "episodes": [_episode(e) for e in episodes],
+                    "totalSeconds": round(sum(e.interval.seconds for e in episodes), 4),
+                    # ⚠️ The thresholds that produced the number, not just the number. A duration
+                    # whose definition a reader has to guess is a duration they cannot check.
+                    "reading": dict(bp.PRIMITIVE_READINGS[reading]),
+                }
+            if payload:
+                instances.append(_subject_instance(identity, points, {"presence": payload}))
+        return PerceptionOutput(task=TASK_BEHAVIOUR, instances=instances)
+
+
+class CrossingModule(_BehaviourModule):
+    """Which configured lines each subject crossed, and in which direction.
+
+    ⭐ **This is `ZONE_EVALUATION`'s reserved `line` shape becoming evaluable**, in the layer that has
+    what the contract said it needed. `packages/contracts/src/zones/zone.ts` records the requirement
+    verbatim — *"a side-of-line test carried between frames per subject … crossing is a transition, so
+    it needs the previous frame — state the resolver does not keep"* — and a trajectory is that state.
+
+    ⛔ **Emits nothing when no line geometry reached this context**, for the same reason `ZoneModule`
+    does: "nobody crossed the line" and "no line was configured" are different facts, and a module
+    that publishes an empty crossing list for both makes them identical to every reader downstream.
+    """
+
+    name = "crossing"
+
+    def analyse(self, prepared: BehaviourContext) -> PerceptionOutput:
+        if not prepared.lines:
+            return PerceptionOutput(task=TASK_BEHAVIOUR)
+        instances: List[RawInstance] = []
+        for identity, points in prepared.subjects.items():
+            if len(points) < 2:
+                continue
+            crossed: List[dict] = []
+            for line in prepared.lines:
+                crossed.extend(
+                    {
+                        "lineId": c.line_id,
+                        "atSeconds": c.at_seconds,
+                        "fromSide": c.from_side,
+                        "toSide": c.to_side,
+                        "segmentIndex": c.segment_index,
+                    }
+                    for c in bp.crossings(points, line)
+                )
+            if not crossed:
+                continue
+            crossed.sort(key=lambda c: (c["atSeconds"], str(c["lineId"])))
+            instances.append(_subject_instance(identity, points, {"crossing": {"crossings": crossed}}))
+        return PerceptionOutput(task=TASK_BEHAVIOUR, instances=instances)
+
+
+class InteractionModule(_BehaviourModule):
+    """What happened *between* pairs of subjects — following, and the gap opening or closing.
+
+    ⚠️ **Ordered pairs, because both are asymmetric.** A following B is not B following A, and the
+    module computes both directions rather than picking one; `distance_changes` is symmetric in value
+    but is reported on each subject so that reading one identity's payload is enough to see it.
+
+    ⚠️ Capped at `MAX_RELATIONAL_IDENTITIES` like `RelationalModule`, and the cap is reported rather
+    than swallowed — a truncated pairwise scan that said nothing about being truncated would show a
+    crowded scene as a quiet one.
+    """
+
+    name = "interaction"
+
+    def analyse(self, prepared: BehaviourContext) -> PerceptionOutput:
+        scene = prepared.prepared_scene()
+        identities = list(scene.identities)
+        if len(identities) < 2:
+            return PerceptionOutput(
+                task=TASK_BEHAVIOUR,
+                attributes={"truncated": scene.truncated, "identitiesConsidered": scene.considered},
+            )
+
+        follow = bp.PRIMITIVE_READINGS["follow"]
+        approach = bp.PRIMITIVE_READINGS["approach"]
+        # ⛔ The scene-wide entry points, not a pair loop calling the per-pair ones. Preparing each
+        # identity once instead of once per partner is the difference between a 58 ms read and a
+        # 43-second one — see the note above `_Series` and `tools/validation/behaviour-bench.mjs`.
+        follows_by = bp.follow_episodes(
+            scene,
+            max_distance=float(follow["maxDistanceNormalized"]),
+            heading_tolerance_degrees=float(follow["headingToleranceDegrees"]),
+            min_speed=float(follow["minSpeedNormalizedPerSecond"]),
+            min_seconds=float(follow["minSeconds"]),
+        )
+        changes_by = bp.distance_change_episodes(
+            scene,
+            min_change=float(approach["minChangeNormalized"]),
+            min_seconds=float(approach["minSeconds"]),
+        )
+
+        instances: List[RawInstance] = []
+        for identity in identities:
+            points = prepared.subjects[identity]
+            if len(points) < 2:
+                continue
+            follows = [
+                {
+                    "leaderIdentityId": episode.leader_identity_id,
+                    "fromSeconds": episode.interval.start_seconds,
+                    "toSeconds": episode.interval.end_seconds,
+                    "seconds": episode.interval.seconds,
+                    "meanDistanceNormalized": episode.mean_distance_normalized,
+                }
+                for episode in follows_by.get(identity, ())
+            ]
+            # ⚠️ Reported on the alphabetically first of the pair — `distance_changes` is symmetric,
+            # so putting it on both would be the same measurement twice.
+            changes = [
+                {
+                    "withIdentityId": change.other_identity_id,
+                    "kind": change.kind,
+                    "fromSeconds": change.interval.start_seconds,
+                    "toSeconds": change.interval.end_seconds,
+                    "seconds": change.interval.seconds,
+                    "fromNormalized": change.from_normalized,
+                    "toNormalized": change.to_normalized,
+                    "deltaNormalized": change.delta_normalized,
+                }
+                for (left, _right), found in sorted(changes_by.items())
+                if left == identity
+                for change in found
+            ]
+            if not follows and not changes:
+                continue
+            changes.sort(key=lambda c: (c["fromSeconds"], str(c["withIdentityId"])))
+            payload: Dict[str, object] = {}
+            if follows:
+                payload["follows"] = follows
+                payload["reading"] = dict(follow)
+            if changes:
+                payload["distanceChanges"] = changes
+            instances.append(_subject_instance(identity, points, {"interaction": payload}))
+        return PerceptionOutput(
+            task=TASK_BEHAVIOUR,
+            instances=instances,
+            attributes={"truncated": scene.truncated, "identitiesConsidered": scene.considered},
+        )
+
+
+class GroupModule(_BehaviourModule):
+    """How the subjects were grouped, when the grouping changed, and who stood waiting together.
+
+    ⭐ **Scene-level, so it leaves on the frame** (ADR-0054). A merge is a statement about a *scene* —
+    it names two groups and belongs to neither — and a `RawInstance` describes one rectangle. Emitting
+    it as a `FrameLabel` is what keeps it out of the frozen `Detection` contract and off any one
+    subject's record.
+
+    ⚠️ `queue` is `stationary_groups` under `bp.PRIMITIVE_READINGS`. The mechanism is neutral — people
+    stationary together for a while — and the word is the reading; a ward, a bus stop and an assembly
+    line are the same geometry. `linearity` travels with it, unthresholded, so a Layer 3 rule can
+    weigh how line-shaped the group actually was.
+    """
+
+    name = "group"
+
+    def analyse(self, prepared: BehaviourContext) -> PerceptionOutput:
+        scene = prepared.prepared_scene()
+        if len(scene.identities) < 2:
+            return PerceptionOutput(
+                task=TASK_BEHAVIOUR,
+                attributes={"truncated": scene.truncated, "identitiesConsidered": scene.considered},
+            )
+
+        merge = bp.PRIMITIVE_READINGS["group_merge"]
+        queue = bp.PRIMITIVE_READINGS["queue"]
+        labels: List[FrameLabel] = [
+            FrameLabel(
+                "groupChange",
+                attributes={
+                    "change": change.kind,
+                    "atSeconds": change.at_seconds,
+                    "identityIds": list(change.identities),
+                    "before": [list(g) for g in change.before],
+                    "after": [list(g) for g in change.after],
+                    "thresholdNormalized": float(merge["thresholdNormalized"]),
+                },
+            )
+            for change in bp.group_changes(
+                scene,
+                threshold=float(merge["thresholdNormalized"]),
+                min_seconds=float(merge["minSeconds"]),
+            )
+        ]
+        labels.extend(
+            FrameLabel(
+                "stationaryGroup",
+                attributes={
+                    "identityIds": list(group.identities),
+                    "fromSeconds": group.interval.start_seconds,
+                    "toSeconds": group.interval.end_seconds,
+                    "seconds": group.interval.seconds,
+                    "linearity": group.linearity,
+                    "reading": "queue",
+                },
+            )
+            for group in bp.stationary_groups(
+                scene,
+                radius=float(queue["radiusNormalized"]),
+                min_seconds=float(queue["minSeconds"]),
+                threshold=float(queue["thresholdNormalized"]),
+                min_size=int(queue["minSize"]),
+            )
+        )
+        return PerceptionOutput(
+            task=TASK_BEHAVIOUR,
+            frame_labels=labels,
+            attributes={"truncated": scene.truncated, "identitiesConsidered": scene.considered},
+        )
+
+
+def _episode(episode: bp.Episode) -> dict:
+    return {
+        "fromSeconds": episode.interval.start_seconds,
+        "toSeconds": episode.interval.end_seconds,
+        "seconds": episode.interval.seconds,
+        "radiusNormalized": episode.radius_normalized,
+        "samples": episode.samples,
+        # ⚠️ An episode still open when the track ended is a lower bound on its duration. Said, rather
+        # than left for a reader to infer from a timestamp that happens to be the last one.
+        "open": episode.open_ended,
+    }
+
+
 #: The modules a deployment gets unless it configures otherwise, in execution order.
 #:
 #: ⚠️ Order is deterministic and matters only for reproducibility — no module reads another's output,
@@ -364,6 +641,10 @@ DEFAULT_MODULES: Tuple[Tuple[str, type], ...] = (
     ("zone", ZoneModule),
     ("relational", RelationalModule),
     ("association", AssociationModule),
+    ("presence", PresenceModule),
+    ("crossing", CrossingModule),
+    ("interaction", InteractionModule),
+    ("group", GroupModule),
 )
 
 

@@ -13,21 +13,35 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from behaviour_primitives import (  # noqa: E402
+    PRIMITIVE_READINGS,
     Association,
+    Scene,
     Interval,
+    Line,
     TrackPoint,
     Zone,
     associations,
     co_presence_seconds,
+    crossings,
     direction_degrees,
     distance_between,
+    distance_changes,
+    distance_series,
     dwell_seconds,
+    follow_episodes,
+    following,
     group_by_identity,
+    group_changes,
+    groups_at,
     handovers,
     iou,
     near,
     observation_gaps,
     path_length,
+    stationary_episodes,
+    stationary_groups,
+    stationary_readings,
+    togetherness,
     trajectory,
     velocity_frames_per_second,
     zone_transitions,
@@ -298,6 +312,482 @@ class ObjectAssociationTests(unittest.TestCase):
         ]
 
         self.assertEqual(handovers(spans, max_gap_seconds=2.0), [])
+
+
+# =================================================================================================
+# Slice 2.5 — the primitives that need only tracked identities.
+# =================================================================================================
+
+
+def still(identity, x, count, *, at=0.0, step=0.5, y=0.40, jitter=0.0):
+    """A subject standing on one spot, optionally with a jittering box."""
+    return [
+        TrackPoint(
+            identity_id=identity,
+            at_seconds=round(at + i * step, 4),
+            bbox=(round(x + (jitter if i % 2 else -jitter), 6), y, 0.10, 0.20),
+            track_id=f"{identity}_t0",
+            frame_index=i,
+        )
+        for i in range(count)
+    ]
+
+
+class StationaryTests(unittest.TestCase):
+    def test_a_subject_who_never_moves_is_one_episode(self):
+        episodes = stationary_episodes(still("p1", 0.5, 30), radius=0.02, min_seconds=3.0)
+
+        self.assertEqual(len(episodes), 1)
+        self.assertAlmostEqual(episodes[0].interval.seconds, 14.5, places=4)
+        self.assertEqual(episodes[0].radius_normalized, 0.0)
+
+    def test_a_slow_walk_across_the_frame_is_not_standing_still(self):
+        """⛔ The defect the anchor exists to prevent.
+
+        A centre that follows the subject drifts with them, so a steady stroll never breaks any
+        threshold and reads as one long stationary episode. 0.004 frame widths per step is far under
+        the 0.02 idle radius — and over 40 steps it crosses a sixth of the frame in 39 seconds.
+        """
+        strolling = walk("p1", 0.10, 0.004, 40, step=1.0)
+
+        episodes = stationary_episodes(strolling, radius=0.02, min_seconds=3.0)
+
+        # ⛔ The whole walk must not come back as one stay. Each anchor lasts until the subject has
+        # drifted a full radius from where it was set, so the stroll fragments rather than merging.
+        self.assertTrue(episodes)
+        for episode in episodes:
+            self.assertLessEqual(episode.radius_normalized, 0.02)
+        self.assertLess(max(e.interval.seconds for e in episodes), 10.0)
+
+    def test_a_stroll_sampled_faster_than_the_minimum_produces_no_episode_at_all(self):
+        """⚠️ The same walk at 4 fps: every anchor breaks in 1.25 s, under the 3 s floor, so nothing
+        is reported. Silence is the right answer — the subject never stood still."""
+        self.assertEqual(stationary_episodes(walk("p1", 0.10, 0.004, 40), radius=0.02, min_seconds=3.0), [])
+
+    def test_the_same_stand_is_the_same_seconds_at_1_fps_and_4_fps(self):
+        """⚠️ Frame-rate invariance, the trap the module docstring names as #2."""
+        slow = stationary_episodes(still("p1", 0.5, 21, step=1.0), radius=0.02, min_seconds=3.0)
+        fast = stationary_episodes(still("p1", 0.5, 81, step=0.25), radius=0.02, min_seconds=3.0)
+
+        self.assertAlmostEqual(slow[0].interval.seconds, fast[0].interval.seconds, places=3)
+
+    def test_an_episode_still_open_when_the_track_ends_says_so(self):
+        episodes = stationary_episodes(still("p1", 0.5, 30), radius=0.02, min_seconds=3.0)
+
+        self.assertTrue(episodes[-1].open_ended)
+
+    def test_idle_nests_inside_linger_rather_than_sitting_beside_it(self):
+        """⚠️ Both names describe one stand. A caller summing them adds an event to itself."""
+        readings = stationary_readings(still("p1", 0.5, 60))
+
+        self.assertEqual(len(readings["idle"]), 1)
+        self.assertEqual(len(readings["linger"]), 1)
+        self.assertGreaterEqual(
+            readings["linger"][0].interval.seconds, readings["idle"][0].interval.seconds
+        )
+
+    def test_a_stand_shorter_than_the_reading_is_not_reported(self):
+        """⛔ A four-second pause is not lingering, and `linger` must not report it as such."""
+        readings = stationary_readings(still("p1", 0.5, 9))
+
+        self.assertTrue(readings["idle"])
+        self.assertEqual(readings["linger"], [])
+
+    def test_too_few_points_is_no_episodes_rather_than_an_error(self):
+        self.assertEqual(stationary_episodes(still("p1", 0.5, 1), radius=0.02, min_seconds=0.0), [])
+
+    def test_a_nonsense_radius_is_refused_rather_than_silently_accepted(self):
+        with self.assertRaises(ValueError):
+            stationary_episodes(still("p1", 0.5, 5), radius=0.0, min_seconds=1.0)
+
+
+class LineCrossingTests(unittest.TestCase):
+    LINE = Line("ln_mid", [(0.5, 0.0), (0.5, 1.0)])
+
+    def test_walking_across_reports_one_crossing_with_both_sides_named(self):
+        found = crossings(walk("p1", 0.30, 0.03, 20), self.LINE)
+
+        self.assertEqual(len(found), 1)
+        self.assertEqual((found[0].from_side, found[0].to_side), ("right", "left"))
+
+    def test_walking_back_reports_the_opposite_direction(self):
+        found = crossings(walk("p1", 0.70, -0.03, 20), self.LINE)
+
+        self.assertEqual(len(found), 1)
+        self.assertEqual((found[0].from_side, found[0].to_side), ("left", "right"))
+
+    def test_a_point_landing_exactly_on_the_line_does_not_hide_the_crossing(self):
+        """⛔ Found by this function's first smoke test.
+
+        An operator draws a line down the middle of a doorway; a subject sampled while standing in it
+        reads `on`. Comparing only adjacent observations made that reading break the comparison on
+        *both* sides of itself, and a clean walk across produced no crossing at all.
+        """
+        onto_the_line = walk("p1", 0.39, 0.03, 6)  # foot point steps 0.44 → 0.47 → 0.50 → 0.53
+
+        self.assertTrue(any(p.foot_point[0] == 0.5 for p in onto_the_line))
+        self.assertEqual(len(crossings(onto_the_line, self.LINE)), 1)
+
+    def test_there_and_back_is_two_crossings_in_opposite_directions(self):
+        there_and_back = walk("p1", 0.30, 0.03, 10) + walk("p1", 0.57, -0.03, 10, at=5.0)
+
+        found = crossings(there_and_back, self.LINE)
+
+        self.assertEqual([(c.from_side, c.to_side) for c in found], [("right", "left"), ("left", "right")])
+
+    def test_walking_round_the_end_of_a_line_is_not_a_crossing(self):
+        """⛔ The infinite line divides the frame; the drawn segment does not. Counting a side change
+        that never passed through the segment makes a tripwire fire for everyone in the room."""
+        short = Line("ln_short", [(0.5, 0.0), (0.5, 0.20)])
+
+        self.assertEqual(crossings(walk("p1", 0.30, 0.03, 20, y=0.60), short), [])
+
+    def test_a_subject_who_never_reaches_the_line_crosses_nothing(self):
+        self.assertEqual(crossings(walk("p1", 0.10, 0.01, 10), self.LINE), [])
+
+    def test_a_crossing_hidden_by_an_occlusion_still_counts(self):
+        """⛔ A detector that missed the moment does not undo the passage."""
+        before = walk("p1", 0.30, 0.01, 5)
+        after = walk("p1", 0.62, 0.01, 5, at=20.0)
+
+        found = crossings(before + after, self.LINE)
+
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].at_seconds, 20.0)
+
+    def test_the_side_names_follow_the_order_the_operator_drew_the_line(self):
+        """⚠️ Reversing a line swaps left and right — which is why an incident carries a zone version."""
+        reversed_line = Line("ln_mid", [(0.5, 1.0), (0.5, 0.0)])
+
+        forward = crossings(walk("p1", 0.30, 0.03, 20), self.LINE)[0]
+        backward = crossings(walk("p1", 0.30, 0.03, 20), reversed_line)[0]
+
+        self.assertEqual((forward.from_side, forward.to_side), ("right", "left"))
+        self.assertEqual((backward.from_side, backward.to_side), ("left", "right"))
+
+
+class DistanceChangeTests(unittest.TestCase):
+    def test_two_subjects_closing_report_an_approach(self):
+        changes = distance_changes(walk("p1", 0.10, 0.02, 15), walk("p2", 0.80, -0.02, 15))
+
+        self.assertEqual(changes[0].kind, "approach")
+        self.assertLess(changes[0].to_normalized, changes[0].from_normalized)
+        self.assertEqual(changes[0].other_identity_id, "p2")
+
+    def test_two_subjects_parting_report_a_recession(self):
+        changes = distance_changes(walk("p1", 0.45, -0.02, 15), walk("p2", 0.55, 0.02, 15))
+
+        self.assertEqual([c.kind for c in changes], ["recede"])
+        self.assertGreater(changes[0].delta_normalized, 0)
+
+    def test_a_jittering_box_between_two_stationary_subjects_reports_nothing(self):
+        """⛔ Without the deadband this is a hundred alternating episodes describing two people
+        standing still. A timeline that noisy is a timeline nobody reads."""
+        changes = distance_changes(
+            still("p1", 0.40, 40, jitter=0.002), still("p2", 0.60, 40, jitter=0.002)
+        )
+
+        self.assertEqual(changes, [])
+
+    def test_a_gap_that_barely_moves_is_not_a_change(self):
+        changes = distance_changes(walk("p1", 0.10, 0.0005, 20), still("p2", 0.80, 20))
+
+        self.assertEqual(changes, [])
+
+    def test_subjects_never_seen_on_the_same_frame_produce_nothing(self):
+        """⛔ No interpolation. A gap measured against a stale position is a claim nobody made."""
+        first = walk("p1", 0.10, 0.02, 10, at=0.0)
+        second = walk("p2", 0.80, -0.02, 10, at=100.0)
+
+        self.assertEqual(distance_series(first, second), [])
+        self.assertEqual(distance_changes(first, second), [])
+
+
+class GroupTests(unittest.TestCase):
+    def test_subjects_standing_apart_are_separate_groups(self):
+        groups = groups_at({"p1": still("p1", 0.10, 5), "p2": still("p2", 0.80, 5)}, at_seconds=0.0)
+
+        self.assertEqual(groups, [("p1",), ("p2",)])
+
+    def test_grouping_is_transitive_and_that_is_stated_rather_than_hidden(self):
+        """⚠️ A, B, C in a line each `threshold` apart is one group of three, even though A and C are
+        twice `threshold` apart. Right for a queue, wrong for a huddle — and no threshold fixes it."""
+        chain = {
+            "p1": still("p1", 0.30, 5),
+            "p2": still("p2", 0.42, 5),
+            "p3": still("p3", 0.54, 5),
+        }
+
+        self.assertEqual(groups_at(chain, at_seconds=0.0), [("p1", "p2", "p3")])
+
+    def test_two_subjects_walking_together_then_apart_merge_then_split(self):
+        subjects = {
+            "p1": walk("p1", 0.20, 0.02, 30, step=0.5),
+            "p2": walk("p2", 0.80, -0.02, 30, step=0.5),
+        }
+
+        changes = group_changes(subjects)
+
+        self.assertEqual([c.kind for c in changes], ["merge", "split"])
+        self.assertEqual(changes[0].identities, ("p1", "p2"))
+        self.assertLess(changes[0].at_seconds, changes[1].at_seconds)
+
+    def test_a_subject_walking_out_of_frame_is_not_a_split(self):
+        """⛔ The case a naive implementation gets wrong. Someone leaving shrinks their group without
+        anyone having separated from anyone — and in a busy scene every exit would be a social event.
+        """
+        together = {
+            "p1": still("p1", 0.40, 40),
+            "p2": still("p2", 0.48, 20),  # leaves halfway through
+        }
+
+        self.assertEqual(group_changes(together), [])
+
+    def test_a_pair_hovering_at_the_threshold_does_not_flicker(self):
+        """⛔ Undebounced, this emits a merge and a split per frame for the rest of the clip."""
+        at_the_line = {
+            "p1": still("p1", 0.40, 60),
+            "p2": still("p2", 0.55, 60, jitter=0.004),
+        }
+
+        changes = group_changes(at_the_line)
+
+        self.assertLessEqual(len(changes), 2, [(c.kind, c.at_seconds) for c in changes])
+
+    def test_togetherness_bridges_a_single_missed_frame(self):
+        walked = walk("p1", 0.40, 0.0, 30)
+        alongside = walk("p2", 0.45, 0.0, 30)
+        gapped = [p for p in alongside if p.frame_index != 15]
+
+        spans = togetherness(walked, gapped)
+
+        self.assertEqual(len(spans), 1)
+
+
+class StationaryGroupTests(unittest.TestCase):
+    def test_three_subjects_standing_together_are_one_stationary_group(self):
+        groups = stationary_groups(
+            {"p1": still("p1", 0.40, 40), "p2": still("p2", 0.50, 40), "p3": still("p3", 0.60, 40)}
+        )
+
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0].identities, ("p1", "p2", "p3"))
+        self.assertGreaterEqual(groups[0].interval.seconds, 8.0)
+
+    def test_subjects_walking_together_are_not_a_stationary_group(self):
+        """⛔ The negative control that separates waiting from a group strolling past."""
+        moving = {"p1": walk("p1", 0.10, 0.02, 40), "p2": walk("p2", 0.20, 0.02, 40)}
+
+        self.assertEqual(stationary_groups(moving), [])
+
+    def test_one_subject_standing_alone_is_not_a_group(self):
+        self.assertEqual(stationary_groups({"p1": still("p1", 0.40, 40)}), [])
+
+    def test_linearity_is_reported_and_never_used_as_a_gate(self):
+        """⚠️ People queue round corners, so a linearity threshold drops real queues. The number is
+        for a Layer 3 rule to weigh — which is why an L-shaped group is still returned."""
+        bent = {
+            "p1": still("p1", 0.40, 40, y=0.40),
+            "p2": still("p2", 0.50, 40, y=0.40),
+            "p3": still("p3", 0.50, 40, y=0.55),
+        }
+
+        groups = stationary_groups(bent)
+
+        self.assertEqual(len(groups), 1)
+        self.assertLess(groups[0].linearity, 1.0)
+
+
+class FollowingTests(unittest.TestCase):
+    def test_one_subject_walking_behind_another_on_their_heading_is_following(self):
+        leader = walk("p1", 0.30, 0.02, 30)
+        follower = walk("p2", 0.20, 0.02, 30)
+
+        episodes = following(follower, leader)
+
+        self.assertEqual(len(episodes), 1)
+        self.assertEqual(episodes[0].leader_identity_id, "p1")
+        self.assertAlmostEqual(episodes[0].mean_distance_normalized, 0.10, places=4)
+
+    def test_following_is_asymmetric(self):
+        """⛔ A behind B is not B behind A, and a symmetric answer would accuse the wrong person."""
+        leader = walk("p1", 0.30, 0.02, 30)
+        follower = walk("p2", 0.20, 0.02, 30)
+
+        self.assertTrue(following(follower, leader))
+        self.assertEqual(following(leader, follower), [])
+
+    def test_walking_side_by_side_is_not_following(self):
+        leader = walk("p1", 0.30, 0.02, 30, y=0.40)
+        beside = walk("p2", 0.30, 0.02, 30, y=0.62)
+
+        self.assertEqual(following(beside, leader), [])
+
+    def test_standing_together_is_not_following(self):
+        """⛔ Condition 1. A pair waiting side by side is a group, not a pursuit."""
+        self.assertEqual(following(still("p2", 0.45, 30), still("p1", 0.40, 30)), [])
+
+    def test_walking_the_other_way_is_not_following(self):
+        leader = walk("p1", 0.30, 0.02, 30)
+        oncoming = walk("p2", 0.80, -0.02, 30)
+
+        self.assertEqual(following(oncoming, leader), [])
+
+    def test_a_subject_too_far_behind_is_not_following(self):
+        leader = walk("p1", 0.60, 0.01, 30)
+        distant = walk("p2", 0.05, 0.01, 30)
+
+        self.assertEqual(following(distant, leader), [])
+
+
+class ReadingTests(unittest.TestCase):
+    """⭐ `PRIMITIVE_READINGS` is the only place a business word is attached to a number."""
+
+    def test_every_reading_names_a_mechanism_that_exists(self):
+        import behaviour_primitives
+
+        for name, reading in PRIMITIVE_READINGS.items():
+            mechanism = reading["mechanism"]
+            self.assertTrue(
+                callable(getattr(behaviour_primitives, str(mechanism), None)),
+                f"reading '{name}' names mechanism '{mechanism}', which is not a function here",
+            )
+
+    def test_every_reading_says_what_it_means_in_a_sentence(self):
+        for name, reading in PRIMITIVE_READINGS.items():
+            self.assertTrue(str(reading.get("means", "")).strip(), f"reading '{name}' explains nothing")
+
+    def test_no_reading_names_an_intent(self):
+        """⛔ ADR-0052 at the one table that gives words to geometry. `linger` is a duration;
+        `loiter` is a motive, and the difference is the layer boundary."""
+        forbidden = ("loiter", "steal", "conceal", "suspicious", "intruder", "tailgate", "abandon")
+        for name, reading in PRIMITIVE_READINGS.items():
+            text = f"{name} {reading.get('means', '')}".lower()
+            for word in forbidden:
+                self.assertNotIn(word, text, f"reading '{name}' names an intent")
+
+    def test_the_readings_the_platform_promises_are_all_present(self):
+        """⛔ Spelled out, so a primitive quietly disappearing fails here rather than in a demo."""
+        for name in (
+            "idle",
+            "linger",
+            "queue",
+            "follow",
+            "approach",
+            "recede",
+            "group_merge",
+            "group_split",
+            "cross_line",
+            "enter_zone",
+            "exit_zone",
+        ):
+            self.assertIn(name, PRIMITIVE_READINGS)
+
+
+class PreparationTests(unittest.TestCase):
+    """⛔ The guard on the defect slice 2.5 shipped: a 43-second Behaviour API read.
+
+    Four pairwise families arrived, and each walked every pair while recomputing, inside that walk,
+    work that belongs to one identity. **Every unit test passed the whole time** — they each author
+    two or three identities, where n² is 4 and nothing is slow.
+
+    ⭐ These count operations rather than seconds. A wall-clock assertion on a shared runner is a
+    flake; the *shape* of the work is what regressed, and the shape is deterministic.
+    """
+
+    def scene_of(self, count, points=20):
+        return {f"p{i}": walk(f"p{i}", 0.10 + 0.02 * i, 0.01, points) for i in range(count)}
+
+    def counted(self, name):
+        """Replace a module function with one that records its calls, restoring it afterwards."""
+        import behaviour_primitives as module
+
+        calls = []
+        original = getattr(module, name)
+
+        def recording(*args, **kwargs):
+            calls.append(args)
+            return original(*args, **kwargs)
+
+        setattr(module, name, recording)
+        self.addCleanup(setattr, module, name, original)
+        return calls
+
+    def test_each_identity_is_prepared_once_however_many_partners_it_has(self):
+        """⛔ 8 identities × 20 points = 160 headings. The pair loop computed 8 × 7 × 20 × 2 = 2 240,
+        and at 98 identities that was 541 440 where 11 760 would do."""
+        calls = self.counted("_local_heading")
+
+        following_episodes = follow_episodes(self.scene_of(8))
+
+        self.assertEqual(len(calls), 8 * 20)
+        self.assertIsInstance(following_episodes, dict)
+
+    def test_a_pairs_distance_series_is_computed_once_however_many_families_ask_for_it(self):
+        """⭐ Following, distance change, togetherness and grouping all want the same series."""
+        calls = self.counted("_matched")
+        scene = Scene(self.scene_of(4))
+
+        for _ in range(3):
+            for a in scene.identities:
+                for b in scene.identities:
+                    if a != b:
+                        scene.matched(a, b)
+
+        # 4 identities ⇒ 6 unordered pairs, asked for 36 times.
+        self.assertEqual(len(calls), 6)
+
+    def test_the_order_a_pair_is_named_in_does_not_produce_a_second_series(self):
+        calls = self.counted("_matched")
+        scene = Scene(self.scene_of(2))
+
+        self.assertEqual(scene.matched("p0", "p1"), scene.matched("p1", "p0"))
+        self.assertEqual(len(calls), 1)
+
+    def test_identities_never_seen_at_the_same_moment_are_not_compared_at_all(self):
+        """⚠️ Free and always sound — and it is what makes a real hour of footage cheap, because
+        people arrive and leave rather than all standing there at once."""
+        early = walk("p1", 0.30, 0.01, 20, at=0.0)
+        late = walk("p2", 0.32, 0.01, 20, at=500.0)
+
+        scene = Scene({"p1": early, "p2": late})
+
+        self.assertEqual(scene.pairs(), [])
+
+    def test_a_crowd_past_the_cap_is_truncated_and_the_scene_says_so(self):
+        """⛔ A truncated scene returns a complete-looking answer in which a merge simply never
+        happened — worse than a short list, because nothing about it looks short."""
+        scene = Scene(self.scene_of(50), max_identities=32)
+
+        self.assertTrue(scene.truncated)
+        self.assertEqual(scene.considered, 32)
+        self.assertEqual(len(scene.identities), 32)
+
+    def test_a_scene_within_the_cap_does_not_claim_to_be_truncated(self):
+        scene = Scene(self.scene_of(4), max_identities=32)
+
+        self.assertFalse(scene.truncated)
+        self.assertEqual(scene.considered, 4)
+
+    def test_a_single_observation_is_not_a_series_and_is_left_out(self):
+        """⚠️ Every pairwise primitive needs two points to say anything; carrying one-point
+        identities into the scene would only make each pair test fail later and more expensively."""
+        scene = Scene({"p1": walk("p1", 0.3, 0.01, 20), "p2": walk("p2", 0.3, 0.01, 1)})
+
+        self.assertEqual(scene.identities, ["p1"])
+
+    def test_the_batch_and_pair_functions_give_the_same_answer(self):
+        """⛔ The rule that keeps this an optimisation rather than a fork. Two implementations of
+        'is this person behind that one' is exactly what this layer must not have."""
+        subjects = {
+            "p1": walk("p1", 0.30, 0.02, 30, step=0.5),
+            "p2": walk("p2", 0.20, 0.02, 30, step=0.5),
+        }
+
+        batch = follow_episodes(subjects)
+        pairwise = following(subjects["p2"], subjects["p1"])
+
+        self.assertEqual(batch.get("p2"), pairwise)
 
 
 class DomainNeutralityTests(unittest.TestCase):

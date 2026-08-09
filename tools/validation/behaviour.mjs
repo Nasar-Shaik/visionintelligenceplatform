@@ -286,8 +286,15 @@ async function runtimeState() {
   return {
     behaviour: behaviour.body?.data ?? { httpStatus: behaviour.status },
     history: {
-      enabled: history.body?.data?.enabled ?? false,
-      records: history.body?.data?.records?.length ?? 0,
+      /* ⛔ **The status is carried, because a failed read and a disabled feature are not the same
+       * fact.** This tool reported "the runtime is not persisting track history" against a runtime
+       * holding 5 014 durable records: the gateway had answered non-200 while the container was
+       * still warming, `?? false` turned that into `enabled: false`, and the finding named a
+       * configuration variable that was set correctly all along. An unreachable upstream must read
+       * as unknown, never as off. */
+      httpStatus: history.status,
+      enabled: history.body?.data?.enabled ?? null,
+      records: history.body?.data?.records?.length ?? null,
       stats: history.body?.data?.stats ?? null,
     },
     trackHistoryEngine: tracking.body?.data?.engine?.trackHistory ?? null,
@@ -351,6 +358,85 @@ async function slice23(sessionId) {
       /* ⛔ Every entry must point at a frame an investigator can seek to. */
       withoutEvidence: entries.filter((e) => e.evidence?.frameIndex === undefined).length,
     },
+  };
+}
+
+/**
+ * The primitives that need only tracked identities (slice 2.5).
+ *
+ * ⛔ **Every family here can legitimately be empty, and that is what makes this hard to verify.**
+ * Nobody lingered, nobody followed anybody, one person was in shot — all produce silence, and so
+ * does a module that never ran. So this reports each family's *coverage* separately: what the read
+ * carried, what the timeline emitted, and which of the promised kinds were **not** seen. A kind that
+ * never appeared is listed as `notSeen` rather than folded into a total.
+ *
+ * ⚠️ `notSeen` is a coverage finding, never a bug. Real footage of one person walking through a
+ * doorway cannot produce `groupMerge`, and a tool that called that a failure would be a tool nobody
+ * ran twice.
+ */
+const SLICE_25_KINDS = [
+  'idle',
+  'linger',
+  'follow',
+  'approach',
+  'recede',
+  'groupMerge',
+  'groupSplit',
+  'queue',
+  'lineCross',
+];
+
+async function slice25(sessionId) {
+  const [primitives, timeline] = await Promise.all([
+    api(`/api/behaviour/primitives?streamId=${encodeURIComponent(sessionId)}`),
+    api(`/api/behaviour/timeline?streamId=${encodeURIComponent(sessionId)}`),
+  ]);
+
+  const read = primitives.body?.data?.primitives ?? {};
+  const identities = Object.values(read.identities ?? {});
+  const entries = timeline.body?.data?.entries ?? [];
+  const kinds = new Map();
+  for (const entry of entries) kinds.set(entry.kind, (kinds.get(entry.kind) ?? 0) + 1);
+
+  const scene = read.scene ?? [];
+  const sceneKinds = new Map();
+  for (const label of scene) sceneKinds.set(label.kind, (sceneKinds.get(label.kind) ?? 0) + 1);
+
+  /* ⭐ The thresholds the words were computed at, read back off the deployed image. A build whose
+   * readings differ from the source is a build nobody can reason about from the repository. */
+  const readings = read.readings ?? {};
+
+  return {
+    /* Per-family coverage from the primitives read. */
+    identitiesWithPresence: identities.filter((p) => p.presence !== undefined).length,
+    identitiesWithInteraction: identities.filter((p) => p.interaction !== undefined).length,
+    identitiesWithCrossing: identities.filter((p) => p.crossing !== undefined).length,
+    sceneKinds: Object.fromEntries([...sceneKinds].sort((a, b) => b[1] - a[1])),
+    /* ⛔ Three-valued, like `zoneMembership`: no line geometry reached the read, so the crossing
+     * module was inert — a different answer from "nobody crossed a line". */
+    lineGeometry: read.lineGeometry ?? null,
+    /* ⛔ How much of the scene the pairwise families looked at. A capped scene returns a
+     * complete-looking timeline in which a merge simply never happened. */
+    relational: read.relational ?? null,
+    readingsPublished: Object.keys(readings).sort(),
+    readingSample: readings.linger ?? null,
+    /* Per-kind coverage from the timeline. */
+    kindsSeen: Object.fromEntries(
+      SLICE_25_KINDS.filter((k) => kinds.has(k)).map((k) => [k, kinds.get(k)]),
+    ),
+    notSeen: SLICE_25_KINDS.filter((k) => !kinds.has(k)),
+    /* ⚠️ Real sentences, quoted verbatim. A generated explanation nobody reads is how an intent
+     * word gets into one. */
+    sample: entries
+      .filter((e) => SLICE_25_KINDS.includes(e.kind))
+      .slice(0, 4)
+      .map((e) => e.summary),
+    /* ⭐ Every slice-2.5 entry must carry the definition that produced its word. */
+    withoutReading: entries.filter(
+      (e) =>
+        ['idle', 'linger', 'follow', 'queue', 'groupMerge', 'groupSplit'].includes(e.kind) &&
+        e.attributes?.reading === undefined,
+    ).length,
   };
 }
 
@@ -511,8 +597,16 @@ async function main() {
   await login();
   report.stages.before = await runtimeState();
 
-  const durable = report.stages.before.history?.stats?.store?.durable;
-  if (durable !== true) {
+  const historyRead = report.stages.before.history ?? {};
+  const durable = historyRead.stats?.store?.durable;
+  if (historyRead.httpStatus !== 200) {
+    /* ⚠️ Unknown, not off. See `runtimeState` — this exact conflation produced a false finding
+     * against a correctly configured deployment. */
+    finding(
+      'error',
+      `could not read track-history state: HTTP ${String(historyRead.httpStatus)} — durability is unknown, not disabled`,
+    );
+  } else if (durable !== true) {
     finding('config', 'the runtime is not persisting track history — INFERENCE_TRACK_HISTORY_DIR is unset');
   }
 
@@ -580,6 +674,37 @@ async function main() {
    * means `DetectionResult.scene` never left the runtime. */
   if (d.events > 0 && (s.sceneObservations ?? 0) === 0) {
     finding('functional-bug', 'no scene observation was put on any frame — the ADR-0054 carrier is inert');
+  }
+
+  report.stages.slice25 = await slice25(sessionId);
+  const p25 = report.stages.slice25;
+  /* ⛔ The eight modules must all have run. A module that failed is already caught above; one that
+   * was never registered in the built image would show as a missing reading table. */
+  if (p25.readingsPublished.length === 0) {
+    finding('functional-bug', 'the deployed build publishes no primitive readings — slice 2.5 is not in this image');
+  }
+  if (p25.withoutReading > 0) {
+    finding(
+      'functional-bug',
+      `${String(p25.withoutReading)} slice-2.5 entr(ies) carry no threshold — the word cannot be checked against its definition`,
+    );
+  }
+  if (p25.relational?.truncated === true) {
+    /* ⚠️ Not a bug: the cap doing its job. Recorded so the reader knows the pairwise families saw
+     * only part of the scene, which is the difference between a quiet room and a truncated one. */
+    finding(
+      'coverage',
+      `the scene held more than ${String(p25.relational.maxIdentities)} subjects — pairwise primitives considered ${String(p25.relational.identitiesConsidered)} of them`,
+    );
+  }
+  if (p25.lineGeometry !== 'present') {
+    finding(
+      'coverage',
+      'no line geometry reached the runtime, so cross_line could not fire — see docs/validation/BEHAVIOUR_PRIMITIVES.md',
+    );
+  }
+  if (p25.notSeen.length > 0) {
+    finding('coverage', `slice-2.5 kinds this footage never produced: ${p25.notSeen.join(', ')}`);
   }
 
   if (LIVE) {

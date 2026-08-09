@@ -336,5 +336,159 @@ class TimelineTests(unittest.TestCase):
         self.assertTrue(truncated)
 
 
+def stander(identity, x, count, *, at=0.0, step=0.5, y=0.4):
+    return record(identity, [point(i, at + i * step, x, y) for i in range(count)])
+
+
+def strider(identity, x0, dx, count, *, at=0.0, step=0.5, y=0.4):
+    return record(identity, [point(i, at + i * step, round(x0 + i * dx, 6), y) for i in range(count)])
+
+
+class Slice25TimelineTests(unittest.TestCase):
+    """The primitives that need only tracked identities, as an investigator reads them."""
+
+    def entries(self, records, **kwargs):
+        found, _ = bt.timeline_for(records, **kwargs)
+        return [e.to_dict() for e in found]
+
+    def kinds(self, records, **kwargs):
+        return {e["kind"] for e in self.entries(records, **kwargs)}
+
+    def test_standing_still_appears_as_both_idle_and_linger(self):
+        found = self.kinds([stander("idn_1", 0.5, 60)])
+
+        self.assertIn("idle", found)
+        self.assertIn("linger", found)
+
+    def test_every_stay_carries_the_definition_that_produced_the_word(self):
+        """⭐ An investigator reading 'lingered for 29 s' can see what lingering meant here, without
+        reading the source. The same numbers a rule author picks a threshold against."""
+        entry = next(e for e in self.entries([stander("idn_1", 0.5, 60)]) if e["kind"] == "linger")
+
+        self.assertEqual(entry["attributes"]["reading"]["mechanism"], "stationary_episodes")
+        self.assertIn("radiusNormalized", entry["attributes"]["reading"])
+
+    def test_a_subject_who_walks_straight_through_never_lingers(self):
+        """The negative control for the whole presence family."""
+        found = self.kinds([strider("idn_1", 0.05, 0.03, 30)])
+
+        self.assertNotIn("idle", found)
+        self.assertNotIn("linger", found)
+
+    def test_two_subjects_meeting_and_parting_produce_a_merge_and_a_split(self):
+        found = self.kinds([strider("idn_1", 0.20, 0.02, 30), strider("idn_2", 0.80, -0.02, 30)])
+
+        self.assertIn("groupMerge", found)
+        self.assertIn("groupSplit", found)
+        self.assertIn("approach", found)
+        self.assertIn("recede", found)
+
+    def test_a_group_entry_names_every_member_because_it_belongs_to_none_of_them(self):
+        """⛔ A reader filtering by one identity must still find the merge they were part of, and one
+        merge must not render as three events."""
+        entry = next(
+            e
+            for e in self.entries([strider("idn_1", 0.20, 0.02, 30), strider("idn_2", 0.80, -0.02, 30)])
+            if e["kind"] == "groupMerge"
+        )
+
+        self.assertEqual(entry["attributes"]["identityIds"], ["idn_1", "idn_2"])
+        self.assertEqual(entry["identityId"], "idn_1")
+
+    def test_subjects_waiting_together_appear_as_a_queue_with_its_linearity(self):
+        found = self.entries(
+            [stander("idn_1", 0.40, 40), stander("idn_2", 0.50, 40), stander("idn_3", 0.60, 40)]
+        )
+        queue = next(e for e in found if e["kind"] == "queue")
+
+        self.assertEqual(queue["attributes"]["identityIds"], ["idn_1", "idn_2", "idn_3"])
+        self.assertIn("linearity", queue["attributes"])
+        self.assertGreaterEqual(queue["seconds"], 8.0)
+
+    def test_one_subject_walking_behind_another_appears_as_following(self):
+        found = self.entries([strider("idn_lead", 0.30, 0.02, 30), strider("idn_back", 0.20, 0.02, 30)])
+        follows = [e for e in found if e["kind"] == "follow"]
+
+        self.assertEqual(len(follows), 1)
+        self.assertEqual(follows[0]["identityId"], "idn_back")
+        self.assertEqual(follows[0]["attributes"]["leaderIdentityId"], "idn_lead")
+
+    def test_a_line_crossing_appears_only_when_the_line_geometry_was_supplied(self):
+        """⛔ No line reached the read, so the answer is silence rather than 'nobody crossed'.
+
+        Track history stores membership, and a polyline has none — so the geometry cannot be
+        recovered from it. `lineGeometry` on the primitives read is what says which of the two
+        empties a caller is looking at.
+        """
+        crossing_walk = [strider("idn_1", 0.30, 0.03, 20)]
+        line = bt.bp.Line("ln_door", [(0.5, 0.0), (0.5, 1.0)])
+
+        self.assertNotIn("lineCross", self.kinds(crossing_walk))
+        self.assertIn("lineCross", self.kinds(crossing_walk, lines=(line,)))
+
+    def test_the_primitives_read_says_whether_any_line_geometry_reached_it(self):
+        read = bt.primitives_for([strider("idn_1", 0.30, 0.03, 20)])
+
+        self.assertEqual(read["lineGeometry"], "absent")
+        self.assertEqual(
+            bt.primitives_for(
+                [strider("idn_1", 0.30, 0.03, 20)],
+                lines=(bt.bp.Line("ln_door", [(0.5, 0.0), (0.5, 1.0)]),),
+            )["lineGeometry"],
+            "present",
+        )
+
+    def test_the_primitives_read_publishes_the_thresholds_every_word_was_computed_at(self):
+        read = bt.primitives_for([stander("idn_1", 0.5, 60)])
+
+        for name in ("idle", "linger", "queue", "follow", "cross_line", "enter_zone"):
+            self.assertIn(name, read["readings"])
+
+    def test_every_new_kind_is_in_the_closed_vocabulary(self):
+        """⛔ A kind reaching a viewer that the viewer has never heard of is a rendering bug in
+        production. The vocabulary is published on the read for exactly this reason."""
+        busy = [
+            stander("idn_1", 0.40, 40),
+            stander("idn_2", 0.50, 40),
+            strider("idn_3", 0.20, 0.02, 30),
+            strider("idn_4", 0.10, 0.02, 30),
+        ]
+        line = bt.bp.Line("ln_door", [(0.35, 0.0), (0.35, 1.0)])
+
+        found = self.kinds(busy, lines=(line,))
+
+        self.assertTrue(found)
+        self.assertTrue(found <= set(bt.TIMELINE_KINDS), found - set(bt.TIMELINE_KINDS))
+
+    def test_no_new_sentence_names_an_intent(self):
+        """⛔ ADR-0052 over the slice-2.5 vocabulary. `follow` states a geometry and a distance;
+        the word this must never reach is `tailing`, and `linger` must never become `loiter`."""
+        busy = [
+            stander("idn_1", 0.40, 40),
+            stander("idn_2", 0.50, 40),
+            strider("idn_3", 0.20, 0.02, 30),
+            strider("idn_4", 0.10, 0.02, 30),
+        ]
+
+        for entry in self.entries(busy, lines=(bt.bp.Line("ln_1", [(0.35, 0.0), (0.35, 1.0)]),)):
+            text = f"{entry['kind']} {entry['summary']}".lower()
+            for word in INTENT_WORDS + ("tailing", "tailgate", "following behind suspiciously"):
+                self.assertNotIn(word, text, f"{word!r} names an intent: {entry['summary']}")
+
+    def test_an_empty_scene_still_produces_nothing(self):
+        """The negative control, restated for the new primitives: eight modules over no history must
+        agree that nothing happened."""
+        self.assertEqual(self.entries([]), [])
+
+    def test_the_same_busy_history_twice_produces_the_same_document(self):
+        busy = [
+            stander("idn_1", 0.40, 40),
+            stander("idn_2", 0.50, 40),
+            strider("idn_3", 0.20, 0.02, 30),
+        ]
+
+        self.assertEqual(self.entries(busy), self.entries(busy))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

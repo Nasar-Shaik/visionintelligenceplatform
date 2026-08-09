@@ -28,7 +28,11 @@ from behaviour_modules import (  # noqa: E402
     ZONE_ATTRIBUTE,
     AssociationModule,
     BehaviourContext,
+    CrossingModule,
+    GroupModule,
+    InteractionModule,
     MotionModule,
+    PresenceModule,
     RelationalModule,
     ZoneModule,
     default_behaviour_registry,
@@ -78,7 +82,22 @@ class RegistryTests(unittest.TestCase):
 
     def test_every_default_module_registers_and_creates(self):
         registry = default_behaviour_registry()
-        self.assertEqual(registry.available(TASK_BEHAVIOUR), ["association", "motion", "relational", "zone"])
+        self.assertEqual(
+            registry.available(TASK_BEHAVIOUR),
+            # ⛔ Spelled out rather than compared against `DEFAULT_MODULES`, which would make this
+            # test agree with any list the module happened to hold. A primitive arriving in the
+            # deployed pipeline is a decision; this is the line that makes it one.
+            [
+                "association",
+                "crossing",
+                "group",
+                "interaction",
+                "motion",
+                "presence",
+                "relational",
+                "zone",
+            ],
+        )
         for name in registry.available(TASK_BEHAVIOUR):
             module = registry.create(TASK_BEHAVIOUR, name)
             self.assertEqual(module.task, TASK_BEHAVIOUR)
@@ -715,6 +734,176 @@ class StageBoundednessTests(unittest.TestCase):
         self.assertEqual(harness.stage.stats()["streamsTracked"], 3)
         harness.stage.forget_tenant("tnt_a")
         self.assertEqual(harness.stage.stats()["streamsTracked"], 0)
+
+
+# ---------------------------------------------------------------------------------------------------
+# Slice 2.5 — the modules that need only tracked identities
+# ---------------------------------------------------------------------------------------------------
+
+
+def stand(identity, x, count, *, at=0.0, step=0.5, y=0.40):
+    return [point(identity, round(at + i * step, 4), x, y) for i in range(count)]
+
+
+def stride(identity, x0, dx, count, *, at=0.0, step=0.5, y=0.40):
+    return [point(identity, round(at + i * step, 4), round(x0 + i * dx, 6), y) for i in range(count)]
+
+
+class PresenceModuleTests(unittest.TestCase):
+    def test_a_subject_standing_still_is_reported_under_both_readings(self):
+        output = PresenceModule().analyse(ctx(subjects={"idn_1": stand("idn_1", 0.5, 60)}))
+
+        payload = output.instances[0].attributes["presence"]
+        self.assertEqual(sorted(payload), ["idle", "linger"])
+        self.assertGreater(payload["linger"]["totalSeconds"], 0.0)
+
+    def test_the_threshold_that_produced_the_word_travels_with_the_word(self):
+        """⭐ An operator told a subject 'lingered' can see what lingering meant here."""
+        output = PresenceModule().analyse(ctx(subjects={"idn_1": stand("idn_1", 0.5, 60)}))
+
+        reading = output.instances[0].attributes["presence"]["linger"]["reading"]
+        self.assertEqual(reading["mechanism"], "stationary_episodes")
+        self.assertIn("radiusNormalized", reading)
+        self.assertIn("minSeconds", reading)
+
+    def test_a_subject_who_keeps_walking_produces_nothing(self):
+        output = PresenceModule().analyse(ctx(subjects={"idn_1": stride("idn_1", 0.1, 0.03, 30)}))
+
+        self.assertEqual(list(output.instances), [])
+
+    def test_objects_are_not_asked_whether_they_stood_still(self):
+        """⚠️ A bottle on a counter is stationary by definition; reporting it as lingering would fill
+        a timeline with furniture."""
+        parked = {"idn_obj": [point("idn_obj", i * 0.5, 0.5, 0.4, label="bottle") for i in range(60)]}
+
+        self.assertEqual(list(PresenceModule().analyse(ctx(objects=parked)).instances), [])
+
+
+class CrossingModuleTests(unittest.TestCase):
+    LINE = bp.Line("ln_door", [(0.5, 0.0), (0.5, 1.0)])
+
+    def test_a_subject_walking_through_a_line_is_reported_with_both_sides(self):
+        output = CrossingModule().analyse(
+            ctx(subjects={"idn_1": stride("idn_1", 0.30, 0.03, 20)}, lines=(self.LINE,))
+        )
+
+        crossed = output.instances[0].attributes["crossing"]["crossings"]
+        self.assertEqual(len(crossed), 1)
+        self.assertEqual((crossed[0]["fromSide"], crossed[0]["toSide"]), ("right", "left"))
+        self.assertEqual(crossed[0]["lineId"], "ln_door")
+
+    def test_no_line_configured_emits_nothing_rather_than_an_empty_crossing_list(self):
+        """⛔ 'Nobody crossed the line' and 'no line was configured' are different facts. The same
+        discipline `ZoneModule` follows for membership, and the reason `lineGeometry` is published."""
+        output = CrossingModule().analyse(ctx(subjects={"idn_1": stride("idn_1", 0.30, 0.03, 20)}))
+
+        self.assertEqual(list(output.instances), [])
+        self.assertEqual(list(output.frame_labels), [])
+
+    def test_a_subject_who_never_reaches_the_line_is_not_reported(self):
+        output = CrossingModule().analyse(
+            ctx(subjects={"idn_1": stride("idn_1", 0.05, 0.01, 20)}, lines=(self.LINE,))
+        )
+
+        self.assertEqual(list(output.instances), [])
+
+
+class InteractionModuleTests(unittest.TestCase):
+    def test_one_subject_walking_behind_another_is_reported_as_following(self):
+        output = InteractionModule().analyse(
+            ctx(
+                subjects={
+                    "idn_lead": stride("idn_lead", 0.30, 0.02, 30),
+                    "idn_back": stride("idn_back", 0.20, 0.02, 30),
+                }
+            )
+        )
+
+        by_identity = {i.attributes["identityId"]: i.attributes["interaction"] for i in output.instances}
+        self.assertEqual(by_identity["idn_back"]["follows"][0]["leaderIdentityId"], "idn_lead")
+        # ⛔ Asymmetric: the leader is not following the follower.
+        self.assertEqual(by_identity.get("idn_lead", {}).get("follows", []), [])
+
+    def test_a_closing_gap_is_reported_once_rather_than_from_both_sides(self):
+        """⚠️ `distance_changes` is symmetric — emitting it twice would double every approach."""
+        output = InteractionModule().analyse(
+            ctx(
+                subjects={
+                    "idn_1": stride("idn_1", 0.10, 0.02, 20),
+                    "idn_2": stride("idn_2", 0.80, -0.02, 20),
+                }
+            )
+        )
+
+        total = sum(len(i.attributes["interaction"].get("distanceChanges", [])) for i in output.instances)
+        kinds = [
+            change["kind"]
+            for i in output.instances
+            for change in i.attributes["interaction"].get("distanceChanges", [])
+        ]
+        self.assertEqual(total, len(kinds))
+        self.assertIn("approach", kinds)
+        self.assertEqual(len([k for k in kinds if k == "approach"]), 1)
+
+    def test_one_subject_alone_produces_nothing_and_says_how_many_it_considered(self):
+        output = InteractionModule().analyse(ctx(subjects={"idn_1": stride("idn_1", 0.1, 0.02, 10)}))
+
+        self.assertEqual(list(output.instances), [])
+        self.assertEqual(output.attributes["identitiesConsidered"], 1)
+
+    def test_a_crowd_past_the_cap_is_truncated_and_says_so(self):
+        crowd = {f"idn_{i:03d}": stride(f"idn_{i:03d}", 0.01 * i, 0.01, 10) for i in range(40)}
+
+        output = InteractionModule().analyse(ctx(subjects=crowd))
+
+        self.assertTrue(output.attributes["truncated"])
+        self.assertEqual(output.attributes["identitiesConsidered"], 32)
+
+
+class GroupModuleTests(unittest.TestCase):
+    def test_two_subjects_coming_together_produce_a_scene_level_merge(self):
+        """⭐ ADR-0054: a merge names two groups and belongs to neither, so it leaves on the frame."""
+        output = GroupModule().analyse(
+            ctx(
+                subjects={
+                    "idn_1": stride("idn_1", 0.20, 0.02, 30),
+                    "idn_2": stride("idn_2", 0.80, -0.02, 30),
+                }
+            )
+        )
+
+        self.assertEqual(list(output.instances), [])
+        changes = [
+            label for label in output.frame_labels if label.to_scene_observation()["kind"] == "groupChange"
+        ]
+        self.assertTrue(changes)
+        self.assertEqual(changes[0].to_scene_observation()["attributes"]["change"], "merge")
+
+    def test_subjects_standing_together_are_a_stationary_group_read_as_a_queue(self):
+        output = GroupModule().analyse(
+            ctx(
+                subjects={
+                    "idn_1": stand("idn_1", 0.40, 40),
+                    "idn_2": stand("idn_2", 0.50, 40),
+                    "idn_3": stand("idn_3", 0.60, 40),
+                }
+            )
+        )
+
+        groups = [
+            label.to_scene_observation()
+            for label in output.frame_labels
+            if label.to_scene_observation()["kind"] == "stationaryGroup"
+        ]
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["attributes"]["identityIds"], ["idn_1", "idn_2", "idn_3"])
+        self.assertEqual(groups[0]["attributes"]["reading"], "queue")
+        self.assertIn("linearity", groups[0]["attributes"])
+
+    def test_one_subject_is_never_a_group(self):
+        output = GroupModule().analyse(ctx(subjects={"idn_1": stand("idn_1", 0.4, 40)}))
+
+        self.assertEqual(list(output.frame_labels), [])
 
 
 class DomainNeutralityTests(unittest.TestCase):

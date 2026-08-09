@@ -34,6 +34,7 @@ Stdlib-only, pure, deterministic. No I/O, no model, no clock.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
 
@@ -276,8 +277,6 @@ def direction_degrees(points: Sequence[TrackPoint]) -> Optional[float]:
     """
     if len(points) < 2:
         return None
-    import math
-
     (x1, y1), (x2, y2) = points[0].centroid, points[-1].centroid
     dx, dy = x2 - x1, y2 - y1
     if dx == 0 and dy == 0:
@@ -523,6 +522,1191 @@ def handovers(spans: Sequence[Association], *, max_gap_seconds: float = 2.0) -> 
         if 0 <= gap <= max_gap_seconds and previous.subject_identity != current.subject_identity:
             events.append((current.interval.start_seconds, previous.subject_identity, current.subject_identity))
     return events
+
+
+# --- staying put ------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Episode:
+    """A span during which one identity stayed within a bounded patch of the frame."""
+
+    identity_id: str
+    interval: Interval
+    #: Largest distance from the point that opened the episode, in frame widths. ⭐ Reported so a
+    #: caller can tell "stood on one tile" from "shuffled around a two-foot circle" — both are
+    #: stationary under the same threshold, and a rule may reasonably care which.
+    radius_normalized: float = 0.0
+    #: True when the track ended while the episode was still open, so its duration is a lower bound.
+    open_ended: bool = False
+    samples: int = 0
+
+
+def stationary_episodes(
+    points: Sequence[TrackPoint],
+    *,
+    radius: float,
+    min_seconds: float,
+    use_foot_point: bool = True,
+) -> List[Episode]:
+    """Spans where a subject stayed within `radius` frame widths of where the span began.
+
+    ⭐ **One mechanism, four business words.** Idling, waiting, loitering and queueing are this
+    function at different thresholds — see `PRIMITIVE_READINGS`, which is the only place those words
+    are attached to numbers. Writing `idle()` and `linger()` as separate functions would have been two
+    implementations of one geometry, and the first divergence between them would be a defect nobody
+    could see: both would keep returning plausible seconds.
+
+    ⛔ **Anchored to the point that opened the episode, not to a running mean.** A centre that follows
+    the subject drifts with them, so a person strolling steadily across the frame never breaks any
+    threshold and is reported as having stood still for the whole clip. Anchoring bounds an episode's
+    total displacement to `radius` by construction. ⚠️ The cost is that a subject who genuinely
+    shuffles a little further than `radius` and comes back is split into two episodes rather than one
+    — the conservative direction, since it under-reports rather than inventing a long stay.
+
+    ⚠️ Foot point by default, for the reason `TrackPoint.foot_point` gives: a person standing still
+    while a camera sees them from a changing angle has a centroid that moves more than their feet do.
+    """
+    if radius <= 0:
+        raise ValueError("radius must be positive")
+    if min_seconds < 0:
+        raise ValueError("min_seconds must not be negative")
+    if len(points) < 2:
+        return []
+
+    anchor_of = (lambda p: p.foot_point) if use_foot_point else (lambda p: p.centroid)
+    episodes: List[Episode] = []
+    start = 0
+
+    def close(first: int, last: int, *, open_ended: bool) -> None:
+        span = Interval(points[first].at_seconds, points[last].at_seconds)
+        if span.seconds < min_seconds:
+            return
+        origin = anchor_of(points[first])
+        spread = max(_distance(origin, anchor_of(points[i])) for i in range(first, last + 1))
+        episodes.append(
+            Episode(
+                identity_id=points[first].identity_id,
+                interval=span,
+                radius_normalized=round(spread, 6),
+                open_ended=open_ended,
+                samples=last - first + 1,
+            )
+        )
+
+    for index in range(1, len(points)):
+        if _distance(anchor_of(points[start]), anchor_of(points[index])) <= radius:
+            continue
+        # ⚠️ The episode ended at the PREVIOUS point — the one still inside the patch. Ending it at
+        # `index` would credit the subject with standing still through the step that moved them.
+        close(start, index - 1, open_ended=False)
+        start = index
+
+    close(start, len(points) - 1, open_ended=True)
+    return episodes
+
+
+#: ⭐ **The one place a business word is attached to a number.**
+#:
+#: Every entry names a mechanism above and the thresholds that make it mean what the word means. This
+#: is the answer to *"where is `linger` implemented?"* — it is not implemented, it is `read`: a
+#: reading of `stationary_episodes` at 0.08 frame widths over 15 seconds. Two consequences that are
+#: the whole reason the table exists:
+#:
+#: 1. ⛔ **A word cannot drift from its mechanism**, because there is nothing else for it to be. An
+#:    `idle()` function and a `linger()` function would be two copies of one geometry, and the day
+#:    they diverged both would still return plausible seconds and nothing would fail.
+#: 2. ⚠️ **The numbers are conventions, not measurements**, and saying so here is the point. Nobody
+#:    has established that 15 seconds is when standing becomes lingering — that is a deployment's
+#:    judgement about its own floor, and it is tunable precisely because it is not a fact. They are
+#:    published through the Behaviour API so a reader of an incident can see the threshold that
+#:    produced it rather than guess at it.
+#:
+#: ⛔ Every word here passes the hospital test ([ADR-0052]): a ward, a warehouse, a school and a
+#: factory all use them unchanged. None of them names an intent — `linger` is a duration, not a
+#: motive, and the difference between it and `loiter` is exactly the line this layer does not cross.
+PRIMITIVE_READINGS: Dict[str, Dict[str, object]] = {
+    "idle": {
+        "mechanism": "stationary_episodes",
+        "radiusNormalized": 0.02,
+        "minSeconds": 3.0,
+        "means": "barely moved at all, for at least a few seconds",
+    },
+    "linger": {
+        "mechanism": "stationary_episodes",
+        "radiusNormalized": 0.08,
+        "minSeconds": 15.0,
+        "means": "stayed around one spot for a sustained period",
+    },
+    "queue": {
+        "mechanism": "stationary_groups",
+        "radiusNormalized": 0.08,
+        "minSeconds": 8.0,
+        "thresholdNormalized": 0.15,
+        "minSize": 2,
+        "means": "two or more subjects stationary together, for a sustained period",
+    },
+    "follow": {
+        "mechanism": "following",
+        "maxDistanceNormalized": 0.30,
+        "headingToleranceDegrees": 45.0,
+        "minSpeedNormalizedPerSecond": 0.01,
+        "minSeconds": 3.0,
+        "means": "moved behind another subject, on their heading, keeping station",
+    },
+    "approach": {
+        "mechanism": "distance_changes",
+        "minChangeNormalized": 0.05,
+        "minSeconds": 1.0,
+        "means": "the gap between two subjects closed",
+    },
+    "recede": {
+        "mechanism": "distance_changes",
+        "minChangeNormalized": 0.05,
+        "minSeconds": 1.0,
+        "means": "the gap between two subjects opened",
+    },
+    "group_merge": {
+        "mechanism": "group_changes",
+        "thresholdNormalized": 0.15,
+        "minSeconds": 2.0,
+        "means": "two groups of subjects became one",
+    },
+    "group_split": {
+        "mechanism": "group_changes",
+        "thresholdNormalized": 0.15,
+        "minSeconds": 2.0,
+        "means": "one group of subjects became two",
+    },
+    "cross_line": {
+        "mechanism": "crossings",
+        "means": "a subject's path crossed a configured line, from one named side to the other",
+    },
+    "enter_zone": {
+        "mechanism": "zone_transitions",
+        "means": "a subject's membership of a zone began",
+    },
+    "exit_zone": {
+        "mechanism": "zone_transitions",
+        "means": "a subject's membership of a zone ended",
+    },
+    "carry": {
+        "mechanism": "associations",
+        "thresholdNormalized": NEAR_THRESHOLD,
+        "means": "an object stayed with a subject as they moved",
+    },
+    "handover": {
+        "mechanism": "handovers",
+        "maxGapSeconds": 2.0,
+        "means": "an object's nearest subject changed from one to another",
+    },
+}
+
+
+def _reading(name: str, key: str, fallback: float) -> float:
+    value = PRIMITIVE_READINGS.get(name, {}).get(key, fallback)
+    return float(value) if isinstance(value, (int, float)) else fallback
+
+
+def stationary_readings(points: Sequence[TrackPoint]) -> Dict[str, List[Episode]]:
+    """`idle` and `linger`, computed from `PRIMITIVE_READINGS` rather than from inline numbers.
+
+    ⚠️ An `idle` episode is usually *inside* a `linger` episode rather than beside it — the thresholds
+    are nested, so the same standing still is reported under both names. That is the correct reading
+    of overlapping definitions and not double counting; a caller summing across names would be adding
+    two descriptions of one event.
+    """
+    out: Dict[str, List[Episode]] = {}
+    for name in ("idle", "linger"):
+        out[name] = stationary_episodes(
+            points,
+            radius=_reading(name, "radiusNormalized", 0.05),
+            min_seconds=_reading(name, "minSeconds", 5.0),
+        )
+    return out
+
+
+# --- crossing a line --------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Line:
+    """An operator-drawn polyline, in normalized coordinates — the platform's `kind: "line"` zone.
+
+    ⭐ **`ZONE_EVALUATION` in `packages/contracts/src/zones/zone.ts` predicted this exactly.** It marks
+    `line` storable but not evaluable, and names what evaluating one would need: *"a side-of-line test
+    carried between frames per subject. Membership is instantaneous; crossing is a transition, so it
+    needs the previous frame — state the resolver does not keep."* The resolver does not keep it; a
+    trajectory **is** it. That is why crossing belongs in this layer and membership belongs in media.
+    """
+
+    line_id: str
+    points: Sequence[Tuple[float, float]]
+    #: ⚠️ Which side is which is decided by the order the operator drew the points, and by nothing
+    #: else. Reversing a line swaps `left` and `right` — so a rule naming a direction is bound to a
+    #: zone *version*, which is why every incident already carries one.
+    name: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class Crossing:
+    """One passage of a subject's path through a line, with the direction it went."""
+
+    identity_id: str
+    line_id: str
+    at_seconds: float
+    #: `left` / `right` relative to the polyline's own direction of travel, first point toward last.
+    from_side: str
+    to_side: str
+    #: Which segment of the polyline was crossed — an operator's line may bend.
+    segment_index: int
+
+
+def side_of_line(a: Tuple[float, float], b: Tuple[float, float], point: Tuple[float, float]) -> str:
+    """`left`, `right` or `on`, for `point` against the directed segment a→b.
+
+    ⚠️ Screen y grows downward, so the cross product's sign is flipped to make `left` mean what a
+    person walking a→b would call their left. The same trap `direction_degrees` documents, and the
+    reason both conventions look correct in isolation.
+    """
+    cross = (b[0] - a[0]) * -(point[1] - a[1]) - -(b[1] - a[1]) * (point[0] - a[0])
+    if cross > 1e-12:
+        return "left"
+    if cross < -1e-12:
+        return "right"
+    return "on"
+
+
+def crossings(
+    points: Sequence[TrackPoint],
+    line: Line,
+    *,
+    use_foot_point: bool = True,
+) -> List[Crossing]:
+    """Every time a subject's path passed through `line`, in time order.
+
+    ⚠️ `segments_intersect` is imported from the runtime's `zones` module rather than reimplemented,
+    for the same reason `PolygonZone` borrows `point_in_polygon`: two geometry engines that must agree
+    is a defect waiting for a boundary case.
+
+    ⛔ **A subject observed either side of a gap counts as having crossed.** If someone is seen left of
+    the line, is occluded for four seconds, and reappears on the right, they crossed it — a detector
+    that missed the moment does not undo the passage. The crossing is timed at the *later* point,
+    because that is the first observation that establishes it, and `observation_gaps` is where a
+    caller learns the interval was uncertain.
+
+    ⛔ **The side is carried from the last observation that had one, not from the previous frame.**
+    Landing exactly *on* the line is not rare — an operator draws a line down the middle of a doorway
+    and a subject walking through it is sampled there. Comparing only adjacent points made that
+    subject's `on` reading break the comparison on both sides of itself, so a clean walk across
+    produced **no crossing at all**. Found by the first smoke test of this function, on a path that
+    stepped exactly onto x = 0.5.
+    """
+    if len(points) < 2 or len(line.points) < 2:
+        return []
+    from zones import segments_intersect  # noqa: WPS433 - local, keeps this module import-light
+
+    at = (lambda p: p.foot_point) if use_foot_point else (lambda p: p.centroid)
+    out: List[Crossing] = []
+    #: Per polyline segment: the last observation that lay on a named side, and which side it was.
+    #: ⚠️ Per segment, because "left of" is a statement about one straight edge — an operator's line
+    #: may bend, and a single global side would be meaningless the moment it did.
+    anchored: Dict[int, Tuple[int, str]] = {}
+
+    for index, point in enumerate(points):
+        here = at(point)
+        for segment in range(len(line.points) - 1):
+            a, b = line.points[segment], line.points[segment + 1]
+            side = side_of_line(a, b, here)
+            if side == "on":
+                continue
+            previous = anchored.get(segment)
+            anchored[segment] = (index, side)
+            if previous is None or previous[1] == side:
+                continue
+            # ⚠️ The side flipped, which is necessary and not sufficient: the *infinite* line divides
+            # the frame, the drawn segment does not. Somebody walking round the end of a line changes
+            # side without passing through it, and counting that would make a tripwire fire for
+            # everyone in the room.
+            start = at(points[previous[0]])
+            if not segments_intersect(start, here, a, b):
+                continue
+            out.append(
+                Crossing(
+                    identity_id=point.identity_id,
+                    line_id=line.line_id,
+                    at_seconds=point.at_seconds,
+                    from_side=previous[1],
+                    to_side=side,
+                    segment_index=segment,
+                )
+            )
+    out.sort(key=lambda c: (c.at_seconds, c.segment_index))
+    return out
+
+
+# --- the gap between two subjects ---------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class DistanceChange:
+    """A span over which the gap between two identities moved consistently one way."""
+
+    identity_id: str
+    other_identity_id: str
+    #: `approach` when the gap closed, `recede` when it opened. Both are facts; neither is a motive.
+    kind: str
+    interval: Interval
+    from_normalized: float
+    to_normalized: float
+
+    @property
+    def delta_normalized(self) -> float:
+        return round(self.to_normalized - self.from_normalized, 6)
+
+
+def distance_series(
+    a: Sequence[TrackPoint], b: Sequence[TrackPoint], *, tolerance: float = 0.001
+) -> List[Tuple[float, float]]:
+    """`(at_seconds, distance)` for every instant **both** identities were observed.
+
+    ⛔ Only shared instants, and no interpolation across the rest. Two subjects one frame apart can be
+    anywhere relative to each other; a gap computed against a stale position is a proximity claim
+    nobody made — the same rule `_distance_at` follows in `behaviour_modules`.
+    """
+    return _matched(_prepare(a), _prepare(b), tolerance=tolerance)
+
+
+def distance_changes(
+    a: Sequence[TrackPoint],
+    b: Sequence[TrackPoint],
+    *,
+    min_change: float = 0.05,
+    min_seconds: float = 1.0,
+    deadband: float = 0.004,
+) -> List[DistanceChange]:
+    """Sustained approaches and recessions between two identities.
+
+    ⚠️ **`deadband` is what stops a jittering bounding box producing a hundred alternating episodes.**
+    A step smaller than it neither extends nor breaks a run: the box moved, the people did not. Set to
+    roughly a pixel's worth of a normalized frame, and named rather than inlined because the number is
+    the difference between a readable timeline and a wall of noise.
+
+    ⛔ Both `min_change` and `min_seconds` must be met. A gap that closes 0.4 frame widths in one
+    frame is a tracking artefact, not an approach; one that drifts 0.001 over a minute is nothing.
+    """
+    if not a or not b:
+        return []
+    return _changes_between(
+        _prepare(a),
+        _prepare(b),
+        min_change=min_change,
+        min_seconds=min_seconds,
+        deadband=deadband,
+    )
+
+
+def _changes_between(
+    a: "_Series",
+    b: "_Series",
+    *,
+    min_change: float,
+    min_seconds: float,
+    deadband: float,
+) -> List[DistanceChange]:
+    return _changes_from(
+        _matched(a, b),
+        a.identity_id,
+        b.identity_id,
+        min_change=min_change,
+        min_seconds=min_seconds,
+        deadband=deadband,
+    )
+
+
+def _changes_from(
+    series: Sequence[Tuple[float, float]],
+    identity: str,
+    other: str,
+    *,
+    min_change: float,
+    min_seconds: float,
+    deadband: float,
+) -> List[DistanceChange]:
+    if len(series) < 2:
+        return []
+
+    out: List[DistanceChange] = []
+    start = 0
+    direction = 0  # -1 closing, +1 opening, 0 undecided
+
+    def close(first: int, last: int) -> None:
+        if last <= first:
+            return
+        (t0, d0), (t1, d1) = series[first], series[last]
+        if t1 - t0 < min_seconds or abs(d1 - d0) < min_change:
+            return
+        out.append(
+            DistanceChange(
+                identity_id=identity,
+                other_identity_id=other,
+                kind="approach" if d1 < d0 else "recede",
+                interval=Interval(t0, t1),
+                from_normalized=round(d0, 6),
+                to_normalized=round(d1, 6),
+            )
+        )
+
+    for index in range(1, len(series)):
+        step = series[index][1] - series[index - 1][1]
+        if abs(step) <= deadband:
+            continue
+        sign = 1 if step > 0 else -1
+        if direction == 0:
+            direction = sign
+        elif sign != direction:
+            close(start, index - 1)
+            start, direction = index - 1, sign
+    close(start, len(series) - 1)
+    return out
+
+
+# --- groups ------------------------------------------------------------------------------------------
+
+#: "Together" for grouping, in frame widths between centroids. ⚠️ Deliberately looser than
+#: `NEAR_THRESHOLD`, which asks whether a *hand* is on an object; this asks whether two people are
+#: walking as a pair, and at 0.05 two friends side by side would be counted as strangers. A
+#: convention, like everything in `PRIMITIVE_READINGS`, not a measurement.
+GROUP_THRESHOLD = 0.15
+
+
+def togetherness(
+    a: Sequence[TrackPoint],
+    b: Sequence[TrackPoint],
+    *,
+    threshold: float = GROUP_THRESHOLD,
+    min_seconds: float = 2.0,
+) -> List[Interval]:
+    """Spans during which two identities stayed within `threshold` of each other, debounced.
+
+    ⛔ **The debounce is the whole function.** Two people standing exactly `threshold` apart cross it
+    on every frame, and an undebounced group detector would then emit a merge and a split per frame
+    for the rest of the clip — thousands of entries describing one conversation. A run of separation
+    shorter than `min_seconds` is bridged rather than believed, and a run of togetherness shorter than
+    `min_seconds` is discarded.
+    """
+    return _together_from(distance_series(a, b), threshold=threshold, min_seconds=min_seconds)
+
+
+def _together_from(
+    series: Sequence[Tuple[float, float]], *, threshold: float, min_seconds: float
+) -> List[Interval]:
+    if len(series) < 2:
+        return []
+
+    runs: List[Tuple[float, float]] = []
+    start: Optional[float] = None
+    previous: Optional[float] = None
+    for at_seconds, gap in series:
+        if gap <= threshold:
+            if start is None:
+                start = at_seconds
+        elif start is not None:
+            runs.append((start, previous if previous is not None else at_seconds))
+            start = None
+        previous = at_seconds
+    if start is not None and previous is not None:
+        runs.append((start, previous))
+
+    # ⚠️ Bridge first, then filter. Filtering first would delete the two halves of a span that a
+    # single missed frame split, and the bridge would then have nothing left to join.
+    bridged: List[Tuple[float, float]] = []
+    for run in runs:
+        if bridged and run[0] - bridged[-1][1] < min_seconds:
+            bridged[-1] = (bridged[-1][0], run[1])
+        else:
+            bridged.append(run)
+    return [Interval(s, e) for s, e in bridged if e - s >= min_seconds]
+
+
+def groups_at(
+    subjects: Dict[str, Sequence[TrackPoint]],
+    *,
+    at_seconds: float,
+    threshold: float = GROUP_THRESHOLD,
+    tolerance: float = 0.001,
+) -> List[Tuple[str, ...]]:
+    """The identities present at one instant, partitioned into groups by proximity.
+
+    ⚠️ **Groups are transitive and that is a choice with a consequence.** A, B and C in a line, each
+    `threshold` from the next, form one group of three even though A and C are twice `threshold`
+    apart. That is the right reading for a queue and the wrong one for a huddle, and no threshold
+    fixes it — a caller who needs the tighter meaning should read the pairwise distances instead.
+
+    Every group is returned sorted, and the list is sorted, so two runs over one clip produce the same
+    document.
+    """
+    present: Dict[str, TrackPoint] = {}
+    for identity, points in subjects.items():
+        match = next((p for p in points if abs(p.at_seconds - at_seconds) <= tolerance), None)
+        if match is not None:
+            present[identity] = match
+    if not present:
+        return []
+
+    parent: Dict[str, str] = {identity: identity for identity in present}
+
+    def find(identity: str) -> str:
+        while parent[identity] != identity:
+            parent[identity] = parent[parent[identity]]
+            identity = parent[identity]
+        return identity
+
+    names = sorted(present)
+    for index, identity in enumerate(names):
+        for other in names[index + 1 :]:
+            if distance_between(present[identity], present[other]) <= threshold:
+                root_a, root_b = find(identity), find(other)
+                if root_a != root_b:
+                    parent[root_b] = root_a
+
+    grouped: Dict[str, List[str]] = {}
+    for identity in names:
+        grouped.setdefault(find(identity), []).append(identity)
+    return sorted(tuple(sorted(members)) for members in grouped.values())
+
+
+@dataclass(frozen=True)
+class GroupChange:
+    """One moment at which the partition of subjects into groups changed."""
+
+    #: `merge` or `split`. ⚠️ Both, never a single "regrouped" — an investigator asking who joined
+    #: whom is asking a different question from who walked away, and one word answers neither.
+    kind: str
+    at_seconds: float
+    #: The group the change is *about*: the one that formed on a merge, the one that broke on a split.
+    identities: Tuple[str, ...]
+    before: Tuple[Tuple[str, ...], ...]
+    after: Tuple[Tuple[str, ...], ...]
+
+
+def group_changes(
+    subjects: Mapping[str, Sequence[TrackPoint]],
+    *,
+    threshold: float = GROUP_THRESHOLD,
+    min_seconds: float = 2.0,
+) -> List[GroupChange]:
+    """Every merge and split, from the debounced pairwise relation.
+
+    ⛔ **Only identities observed on both sides of a moment are compared.** Someone walking out of
+    frame shrinks their group without anyone having split from anyone, and someone walking in grows it
+    without a merge; counting either would make every entrance and exit in a busy scene produce a
+    social event. The restriction means a two-person group whose second member simply leaves produces
+    *nothing*, which is correct and is the case a naive implementation gets wrong.
+    """
+    scene = scene_of(subjects)
+    if len(scene.identities) < 2:
+        return []
+
+    #: pair → the spans it was together for, debounced once and reused at every instant below.
+    spans = togetherness_spans(scene, threshold=threshold, min_seconds=min_seconds)
+    if not spans:
+        return []
+
+    instants = sorted(
+        {round(p.at_seconds, 3) for i in scene.identities for p in scene.series(i).points}
+    )
+    observed_at: Dict[float, set] = {}
+    for identity in scene.identities:
+        for point in scene.series(identity).points:
+            observed_at.setdefault(round(point.at_seconds, 3), set()).add(identity)
+
+    # ⚠️ The edges active at an instant, found from a sorted event list rather than by re-scanning
+    # every span at every instant. The partition only *can* change when an edge opens or closes or
+    # when the set of identities present changes, and both are cheap to detect.
+    edges = sorted(spans)
+
+    def active(at_seconds: float) -> frozenset:
+        return frozenset(
+            pair
+            for pair in edges
+            if any(i.start_seconds <= at_seconds <= i.end_seconds for i in spans[pair])
+        )
+
+    def partition(at_seconds: float, live: frozenset) -> List[Tuple[str, ...]]:
+        here = sorted(observed_at.get(at_seconds, set()))
+        parent = {identity: identity for identity in here}
+
+        def find(identity: str) -> str:
+            while parent[identity] != identity:
+                parent[identity] = parent[parent[identity]]
+                identity = parent[identity]
+            return identity
+
+        for left, right in live:
+            if left not in parent or right not in parent:
+                continue
+            root_a, root_b = find(left), find(right)
+            if root_a != root_b:
+                parent[root_b] = root_a
+
+        grouped: Dict[str, List[str]] = {}
+        for identity in here:
+            grouped.setdefault(find(identity), []).append(identity)
+        return sorted(tuple(sorted(members)) for members in grouped.values())
+
+    out: List[GroupChange] = []
+    previous_at = instants[0]
+    previous_live = active(previous_at)
+    previous = partition(previous_at, previous_live)
+    for at_seconds in instants[1:]:
+        live = active(at_seconds)
+        current = (
+            previous
+            if live == previous_live and observed_at.get(at_seconds) == observed_at.get(previous_at)
+            else partition(at_seconds, live)
+        )
+        previous_live = live
+        shared = observed_at.get(previous_at, set()) & observed_at.get(at_seconds, set())
+        before = _restrict(previous, shared)
+        after = _restrict(current, shared)
+        if before != after:
+            for group in after:
+                sources = [g for g in before if set(g) & set(group)]
+                if len(sources) > 1:
+                    out.append(GroupChange("merge", at_seconds, group, tuple(sources), (group,)))
+            for group in before:
+                targets = [g for g in after if set(g) & set(group)]
+                if len(targets) > 1:
+                    out.append(GroupChange("split", at_seconds, group, (group,), tuple(targets)))
+        previous, previous_at = current, at_seconds
+    return out
+
+
+@dataclass(frozen=True)
+class StationaryGroup:
+    """Several identities, stationary, together, for a sustained period — the `queue` mechanism."""
+
+    identities: Tuple[str, ...]
+    interval: Interval
+    #: 0.0–1.0, how close the members' positions lay to a straight line at the group's midpoint.
+    #:
+    #: ⚠️ **Reported, never used as a gate.** People queue round corners and along counters, so a
+    #: linearity threshold would drop real queues; and a linear cluster is not always a queue. The
+    #: number is here so a Layer 3 rule can weigh it, which is where a judgement of that kind belongs.
+    linearity: float = 0.0
+
+
+def stationary_groups(
+    subjects: Mapping[str, Sequence[TrackPoint]],
+    *,
+    radius: float = 0.08,
+    min_seconds: float = 8.0,
+    threshold: float = GROUP_THRESHOLD,
+    min_size: int = 2,
+) -> List[StationaryGroup]:
+    """Groups of subjects who were all standing still, near each other, for a while.
+
+    ⭐ **A composition, not a new geometry** — `stationary_episodes` for "standing still", the same
+    pairwise relation `group_changes` uses for "together". Waiting rooms, tills, bus stops and
+    assembly lines are one shape; `PRIMITIVE_READINGS["queue"]` is the word for it and the thresholds
+    that make it mean that.
+    """
+    scene = scene_of(subjects)
+    still: Dict[str, List[Interval]] = {}
+    for identity in scene.identities:
+        episodes = stationary_episodes(
+            scene.series(identity).points, radius=radius, min_seconds=min_seconds
+        )
+        if episodes:
+            still[identity] = [e.interval for e in episodes]
+    if len(still) < min_size:
+        return []
+
+    points_of = {identity: scene.series(identity).points for identity in still}
+    instants = sorted({round(p.at_seconds, 3) for pts in points_of.values() for p in pts})
+    runs: Dict[Tuple[str, ...], List[Tuple[float, float]]] = {}
+    for at_seconds in instants:
+        standing = {
+            identity: points_of[identity]
+            for identity, intervals in still.items()
+            if any(i.start_seconds <= at_seconds <= i.end_seconds for i in intervals)
+        }
+        if len(standing) < min_size:
+            continue
+        for group in groups_at(standing, at_seconds=at_seconds, threshold=threshold):
+            if len(group) < min_size:
+                continue
+            spans = runs.setdefault(group, [])
+            if spans and at_seconds - spans[-1][1] <= min_seconds:
+                spans[-1] = (spans[-1][0], at_seconds)
+            else:
+                spans.append((at_seconds, at_seconds))
+
+    out: List[StationaryGroup] = []
+    for group, spans in runs.items():
+        for start, end in spans:
+            if end - start < min_seconds:
+                continue
+            out.append(
+                StationaryGroup(
+                    identities=group,
+                    interval=Interval(start, end),
+                    linearity=_linearity(points_of, group, (start + end) / 2.0),
+                )
+            )
+    out.sort(key=lambda g: (g.interval.start_seconds, g.identities))
+    return out
+
+
+# --- following ---------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FollowEpisode:
+    """A span during which one identity moved behind another, on their heading."""
+
+    identity_id: str
+    leader_identity_id: str
+    interval: Interval
+    mean_distance_normalized: float = 0.0
+
+
+def following(
+    follower: Sequence[TrackPoint],
+    leader: Sequence[TrackPoint],
+    *,
+    max_distance: float = 0.30,
+    heading_tolerance_degrees: float = 45.0,
+    min_speed: float = 0.01,
+    min_seconds: float = 3.0,
+    window_seconds: float = 1.0,
+) -> List[FollowEpisode]:
+    """Spans where `follower` was behind `leader`, moving their way and keeping station.
+
+    Four conditions, all required at each instant, then sustained for `min_seconds`:
+
+    1. both are **moving** — a pair standing still together is a group, not a pursuit;
+    2. they are within `max_distance` frame widths;
+    3. their **headings agree** within `heading_tolerance_degrees`;
+    4. the follower is **behind**: the vector from follower to leader points along the leader's own
+       heading.
+
+    ⚠️ **A heuristic, and named as one.** Condition 4 is what separates following from walking side by
+    side, and it is also what this cannot do reliably in a corridor where everyone walks the same way
+    — an aisle produces "following" for every pair in it. ⛔ That ambiguity is why this returns a
+    geometric span with a distance and never a word like *tailing*: a rule that needs to accuse
+    somebody must add evidence this layer does not have.
+
+    ⚠️ Headings are local, over `window_seconds`, not net over the whole track. A net heading calls a
+    subject who walked out and back "stationary", and two people doing that at different times would
+    read as following each other.
+    """
+    if not follower or not leader:
+        return []
+    return _follow_between(
+        _prepare(follower, window_seconds=window_seconds),
+        _prepare(leader, window_seconds=window_seconds),
+        max_distance=max_distance,
+        heading_tolerance_degrees=heading_tolerance_degrees,
+        min_speed=min_speed,
+        min_seconds=min_seconds,
+    )
+
+
+def _follow_between(
+    follower: "_Series",
+    leader: "_Series",
+    *,
+    max_distance: float,
+    heading_tolerance_degrees: float,
+    min_speed: float,
+    min_seconds: float,
+) -> List[FollowEpisode]:
+    cosine_limit = math.cos(math.radians(heading_tolerance_degrees))
+    matches: List[Tuple[float, float, bool]] = []
+    lookup = leader.index_at.get
+    for index, key in enumerate(follower.keys):
+        other = lookup(key)
+        if other is None:
+            continue
+        here, there = follower.centroids[index], leader.centroids[other]
+        gap = round(_distance(here, there), 6)
+        ours = follower.headings[index]
+        theirs = leader.headings[other]
+        holds = False
+        if ours is not None and theirs is not None and gap <= max_distance:
+            (ux, uy, our_speed), (vx, vy, their_speed) = ours, theirs
+            if our_speed >= min_speed and their_speed >= min_speed:
+                aligned = ux * vx + uy * vy >= cosine_limit
+                ahead = _unit((there[0] - here[0], there[1] - here[1]))
+                behind = ahead is not None and (ahead[0] * vx + ahead[1] * vy) > 0
+                holds = aligned and behind
+        matches.append((follower.points[index].at_seconds, gap, holds))
+
+    out: List[FollowEpisode] = []
+    start: Optional[int] = None
+    for index, (_, _, holds) in enumerate(matches):
+        if holds and start is None:
+            start = index
+        elif not holds and start is not None:
+            _emit_follow(out, follower, leader, matches, start, index - 1, min_seconds)
+            start = None
+    if start is not None:
+        _emit_follow(out, follower, leader, matches, start, len(matches) - 1, min_seconds)
+    return out
+
+
+def _emit_follow(
+    out: List[FollowEpisode],
+    follower: "_Series",
+    leader: "_Series",
+    matches: Sequence[Tuple[float, float, bool]],
+    first: int,
+    last: int,
+    min_seconds: float,
+) -> None:
+    if last <= first:
+        return
+    span = Interval(matches[first][0], matches[last][0])
+    if span.seconds < min_seconds:
+        return
+    gaps = [matches[i][1] for i in range(first, last + 1)]
+    out.append(
+        FollowEpisode(
+            identity_id=follower.identity_id,
+            leader_identity_id=leader.identity_id,
+            interval=span,
+            mean_distance_normalized=round(sum(gaps) / len(gaps), 6),
+        )
+    )
+
+
+# --- the same primitives over a whole scene ------------------------------------------------------------
+#
+# ⛔ **These exist because the per-pair functions above were O(n²) in the wrong place.** Each of them
+# recomputes, for every pair, work that belongs to one identity: the time index, the local headings,
+# the position bounds. At 98 identities over 120 frames `_local_heading` was called 541 440 times where
+# 11 760 would do, and one Behaviour API read took **43 seconds** — measured, not estimated, on the
+# benchmark that now guards it.
+#
+# ⭐ The pair logic is not duplicated. `following` and `follow_episodes` call the same
+# `_follow_between`; the difference is only who prepares the series and how many pairs are attempted.
+# Two implementations of "is this person behind that one" is exactly what this layer must not have.
+
+
+class _Series:
+    """One identity's points with everything a pairwise primitive would otherwise recompute per pair."""
+
+    __slots__ = (
+        "identity_id",
+        "points",
+        "index_at",
+        "headings",
+        "first",
+        "last",
+        "bounds",
+        "centroids",
+        "keys",
+    )
+
+    def __init__(self, points: Sequence[TrackPoint], window_seconds: float) -> None:
+        self.identity_id = points[0].identity_id
+        self.points = points
+        # ⚠️ `centroid` is a property that allocates a tuple on every read, and `round` is not free
+        # either — between them they were a fifth of a whole Behaviour API read, because a pairwise
+        # walk touches each point once per partner. Both are facts about one point, so both are
+        # computed once here.
+        self.centroids = [p.centroid for p in points]
+        self.keys = [round(p.at_seconds, 3) for p in points]
+        self.index_at = {key: i for i, key in enumerate(self.keys)}
+        self.headings = [_local_heading(points, i, window_seconds) for i in range(len(points))]
+        self.first = points[0].at_seconds
+        self.last = points[-1].at_seconds
+        xs = [c[0] for c in self.centroids]
+        ys = [c[1] for c in self.centroids]
+        self.bounds = (min(xs), min(ys), max(xs), max(ys))
+
+
+def _prepare(points: Sequence[TrackPoint], *, window_seconds: float = 1.0) -> _Series:
+    return _Series(list(points), window_seconds)
+
+
+def _matched(a: _Series, b: _Series, *, tolerance: float = 0.001) -> List[Tuple[float, float]]:
+    """`(at_seconds, distance)` at every instant both were observed."""
+    out: List[Tuple[float, float]] = []
+    lookup = b.index_at.get
+    for index, key in enumerate(a.keys):
+        other = lookup(key)
+        if other is None:
+            continue
+        at_seconds = a.points[index].at_seconds
+        if abs(b.points[other].at_seconds - at_seconds) > tolerance:
+            continue
+        out.append((at_seconds, round(_distance(a.centroids[index], b.centroids[other]), 6)))
+    out.sort()
+    return out
+
+
+def _overlaps_in_time(a: _Series, b: _Series) -> bool:
+    """⚠️ Free, and always sound: two identities never observed at the same moment share no instants,
+    so every pairwise primitive is empty for them without looking at a single point."""
+    return not (a.last < b.first or b.last < a.first)
+
+
+def _within(a: _Series, b: _Series, distance: float) -> bool:
+    """Could these two ever have been within `distance`? ⚠️ Sound only for predicates with a maximum
+    separation — following and togetherness have one, `distance_changes` does not, because a gap that
+    closes is a fact at any range."""
+    ax0, ay0, ax1, ay1 = a.bounds
+    bx0, by0, bx1, by1 = b.bounds
+    gap_x = max(0.0, max(ax0, bx0) - min(ax1, bx1))
+    gap_y = max(0.0, max(ay0, by0) - min(ay1, by1))
+    return math.hypot(gap_x, gap_y) <= distance
+
+
+#: Identities a scene compares pairwise. ⚠️ The pairwise families are O(n² × frames) and no amount of
+#: pruning changes that for a genuinely crowded frame, so the honest answer is a cap that says it
+#: applied one. Mirrors `MAX_CROSSING_TRACKS` in the tracker; `behaviour_modules` re-exports it under
+#: the name it has used since slice 2.2.
+MAX_RELATIONAL_IDENTITIES = 32
+
+
+class Scene:
+    """Every subject in one analysis, prepared once — the substrate the pairwise primitives read.
+
+    ⛔ **This class is a performance fix with a measurement behind it, not a tidying.** Each pairwise
+    family — following, distance change, togetherness — independently walked every pair and, inside
+    that walk, recomputed per-*identity* work: the time index, the local headings, the matched
+    distance series. A 98-identity, 512-frame analysis took **43 seconds** to answer one Behaviour
+    API read. Preparing each identity once and memoising each pair's distance series once brings the
+    same answer back in a fraction of that; `tools/validation/behaviour-bench.mjs` is the guard.
+
+    ⚠️ **Capped, and it says so.** `truncated` is public and every caller publishes it, for the same
+    reason `RelationalModule` has always reported its cap: a truncated pairwise scan that said nothing
+    about being truncated would render a crowded scene as a quiet one.
+    """
+
+    __slots__ = ("identities", "truncated", "considered", "_series", "_matched", "_window")
+
+    def __init__(
+        self,
+        subjects: Mapping[str, Sequence[TrackPoint]],
+        *,
+        window_seconds: float = 1.0,
+        max_identities: int = MAX_RELATIONAL_IDENTITIES,
+    ) -> None:
+        usable = sorted(identity for identity, points in subjects.items() if len(points) >= 2)
+        self.truncated = len(usable) > max_identities
+        self.identities = usable[:max_identities]
+        self.considered = len(self.identities)
+        self._window = window_seconds
+        self._series: Dict[str, _Series] = {
+            identity: _prepare(subjects[identity], window_seconds=window_seconds)
+            for identity in self.identities
+        }
+        self._matched: Dict[Tuple[str, str], List[Tuple[float, float]]] = {}
+
+    def series(self, identity: str) -> "_Series":
+        return self._series[identity]
+
+    def matched(self, a: str, b: str) -> List[Tuple[float, float]]:
+        """The distance series for a pair, computed at most once however many families ask for it."""
+        key = (a, b) if a <= b else (b, a)
+        found = self._matched.get(key)
+        if found is None:
+            found = _matched(self._series[key[0]], self._series[key[1]])
+            self._matched[key] = found
+        return found
+
+    def pairs(self, *, within: Optional[float] = None) -> List[Tuple[str, str]]:
+        """Unordered pairs that could possibly interact, cheapest test first.
+
+        ⚠️ `within` prunes on the identities' position bounds and is sound only for a predicate with a
+        maximum separation. The temporal test is always applied and always sound: two identities never
+        observed at the same moment share no instants, so every pairwise primitive is empty for them.
+        """
+        out: List[Tuple[str, str]] = []
+        for index, identity in enumerate(self.identities):
+            a = self._series[identity]
+            for other in self.identities[index + 1 :]:
+                b = self._series[other]
+                if not _overlaps_in_time(a, b):
+                    continue
+                if within is not None and not _within(a, b, within):
+                    continue
+                out.append((identity, other))
+        return out
+
+
+def scene_of(subjects: Mapping[str, Sequence[TrackPoint]], **kwargs) -> Scene:
+    return subjects if isinstance(subjects, Scene) else Scene(subjects, **kwargs)
+
+
+def follow_episodes(
+    subjects: Mapping[str, Sequence[TrackPoint]],
+    *,
+    max_distance: float = 0.30,
+    heading_tolerance_degrees: float = 45.0,
+    min_speed: float = 0.01,
+    min_seconds: float = 3.0,
+    window_seconds: float = 1.0,
+) -> Dict[str, List[FollowEpisode]]:
+    """Every follow in a scene, keyed by the identity doing the following."""
+    scene = scene_of(subjects, window_seconds=window_seconds)
+    out: Dict[str, List[FollowEpisode]] = {}
+    for identity, other in scene.pairs(within=max_distance):
+        # ⚠️ Both directions, because following is asymmetric — but the pair is only *reached* once,
+        # so the pruning above is paid for once rather than twice.
+        for follower, leader in ((identity, other), (other, identity)):
+            found = _follow_between(
+                scene.series(follower),
+                scene.series(leader),
+                max_distance=max_distance,
+                heading_tolerance_degrees=heading_tolerance_degrees,
+                min_speed=min_speed,
+                min_seconds=min_seconds,
+            )
+            if found:
+                out.setdefault(follower, []).extend(found)
+    for episodes in out.values():
+        episodes.sort(key=lambda e: (e.interval.start_seconds, e.leader_identity_id))
+    return out
+
+
+def distance_change_episodes(
+    subjects: Mapping[str, Sequence[TrackPoint]],
+    *,
+    min_change: float = 0.05,
+    min_seconds: float = 1.0,
+    deadband: float = 0.004,
+    max_relevant_distance: float = 0.5,
+) -> Dict[Tuple[str, str], List[DistanceChange]]:
+    """Every sustained approach and recession in a scene, keyed by the **unordered** pair.
+
+    ⚠️ Unordered, because the measurement is symmetric. Reporting it from both sides would put one
+    closing gap on a timeline twice under two subjects.
+
+    ⚠️ **`max_relevant_distance` is a stated limitation, not an optimisation that happens to be
+    convenient.** A pair who are never within half a frame width of each other are not interacting,
+    and their gap wobbling by 0.05 is a fact about two independent walks. Bounding it is what keeps a
+    busy scene's timeline about the people who met — and it is declared in `PRIMITIVE_READINGS` so a
+    reader can see that the question asked was *"who came near whom"* and not *"every pair"*.
+    """
+    scene = scene_of(subjects)
+    out: Dict[Tuple[str, str], List[DistanceChange]] = {}
+    for identity, other in scene.pairs(within=max_relevant_distance):
+        found = _changes_from(
+            scene.matched(identity, other),
+            identity,
+            other,
+            min_change=min_change,
+            min_seconds=min_seconds,
+            deadband=deadband,
+        )
+        if found:
+            out[(identity, other)] = found
+    return out
+
+
+def togetherness_spans(
+    subjects: Mapping[str, Sequence[TrackPoint]],
+    *,
+    threshold: float = 0.15,
+    min_seconds: float = 2.0,
+) -> Dict[Tuple[str, str], List[Interval]]:
+    """Every debounced "these two were together" span in a scene, keyed by the unordered pair."""
+    scene = scene_of(subjects)
+    out: Dict[Tuple[str, str], List[Interval]] = {}
+    for identity, other in scene.pairs(within=threshold):
+        found = _together_from(
+            scene.matched(identity, other), threshold=threshold, min_seconds=min_seconds
+        )
+        if found:
+            out[(identity, other)] = found
+    return out
+
+
+# --- helpers -------------------------------------------------------------------------------------------
+
+
+def _restrict(
+    partition: Sequence[Tuple[str, ...]], keep: set
+) -> Tuple[Tuple[str, ...], ...]:
+    """A partition with only the named identities left in it, empty groups dropped."""
+    out = [tuple(i for i in group if i in keep) for group in partition]
+    return tuple(sorted(group for group in out if group))
+
+
+def _unit(vector: Tuple[float, float]) -> Optional[Tuple[float, float]]:
+    length = math.hypot(vector[0], vector[1])
+    return None if length <= 1e-9 else (vector[0] / length, vector[1] / length)
+
+
+def _local_heading(
+    points: Sequence[TrackPoint], index: int, window_seconds: float
+) -> Optional[Tuple[float, float, float]]:
+    """`(unit_x, unit_y, speed)` around one observation, or `None` when nothing moved.
+
+    ⚠️ Centred on `index` where both neighbours exist, one-sided at the ends. A one-sided window at
+    the start of a track is a shorter measurement, not a wrong one, and refusing to answer there would
+    blind every primitive to a subject's first second.
+
+    ⛔ **At least one neighbour is always taken, whatever the window says.** A stream sampled at 2 fps
+    has its neighbours exactly `window_seconds / 2` away, so a window that admits only what is
+    strictly nearer than its own half-width admits *nothing* — and `following` then returned an empty
+    list for a textbook follow. The window widens the measurement; it must not be able to abolish it.
+    """
+    at = points[index].at_seconds
+    first, last = index, index
+    while first > 0 and at - points[first - 1].at_seconds < window_seconds / 2.0:
+        first -= 1
+    while last < len(points) - 1 and points[last + 1].at_seconds - at < window_seconds / 2.0:
+        last += 1
+    if first == index and index > 0:
+        first = index - 1
+    if last == index and index < len(points) - 1:
+        last = index + 1
+    if last == first:
+        return None
+    elapsed = points[last].at_seconds - points[first].at_seconds
+    if elapsed <= 0:
+        return None
+    (x1, y1), (x2, y2) = points[first].centroid, points[last].centroid
+    unit = _unit((x2 - x1, y2 - y1))
+    if unit is None:
+        return None
+    return (unit[0], unit[1], _distance((x1, y1), (x2, y2)) / elapsed)
+
+
+def _linearity(
+    subjects: Dict[str, Sequence[TrackPoint]], group: Sequence[str], at_seconds: float
+) -> float:
+    """How close a group's members lay to one straight line, 0.0–1.0, at one instant.
+
+    The ratio of the two principal spreads of their positions: 1.0 for two members or a perfect line,
+    towards 0.0 for a circle. ⚠️ Two points are always collinear, so a pair reads 1.0 — true, and
+    worth nothing, which is why this is reported rather than thresholded.
+    """
+    positions: List[Tuple[float, float]] = []
+    for identity in group:
+        points = subjects.get(identity, ())
+        match = min(points, key=lambda p: abs(p.at_seconds - at_seconds), default=None)
+        if match is not None:
+            positions.append(match.foot_point)
+    if len(positions) < 2:
+        return 0.0
+    mean_x = sum(p[0] for p in positions) / len(positions)
+    mean_y = sum(p[1] for p in positions) / len(positions)
+    sxx = sum((p[0] - mean_x) ** 2 for p in positions) / len(positions)
+    syy = sum((p[1] - mean_y) ** 2 for p in positions) / len(positions)
+    sxy = sum((p[0] - mean_x) * (p[1] - mean_y) for p in positions) / len(positions)
+    trace, det = sxx + syy, sxx * syy - sxy * sxy
+    root = math.sqrt(max(0.0, trace * trace / 4.0 - det))
+    major, minor = trace / 2.0 + root, trace / 2.0 - root
+    if major <= 1e-12:
+        return 0.0
+    return round(1.0 - math.sqrt(max(0.0, minor) / major), 6)
 
 
 def _distance(a: Tuple[float, float], b: Tuple[float, float]) -> float:

@@ -61,6 +61,13 @@ FALLBACK_INTERVAL_SECONDS = 0.5
 #: must pass the hospital test (a hospital, a warehouse, a school and a factory can all use it under
 #: their own name) and must state a fact rather than a motive. A test asserts this tuple is exactly
 #: the set the projection emits, so a new kind cannot arrive unreviewed.
+#:
+#: ⚠️ The slice-2.5 additions all name **facts with thresholds attached**, and the thresholds travel
+#: with them in `attributes.reading`. `linger` is a duration, not a motive; `queue` is *stationary
+#: together*, which a ward, a bus stop and an assembly line all are; `follow` is a geometry, which is
+#: why it carries a mean distance and never the word *tailing*. The line between these and the words
+#: this vocabulary refuses — loiter, conceal, tailgate — is that each of those adds a *reason*, and a
+#: reason is Layer 3's to assert with evidence this layer does not have.
 TIMELINE_KINDS: Tuple[str, ...] = (
     "observed",
     "gap",
@@ -70,7 +77,17 @@ TIMELINE_KINDS: Tuple[str, ...] = (
     "proximity",
     "carried",
     "handover",
+    "idle",
+    "linger",
+    "lineCross",
+    "follow",
+    "approach",
+    "recede",
+    "groupMerge",
+    "groupSplit",
+    "queue",
 )
+
 
 #: How many entries one timeline answer may carry. ⚠️ An analysis with 98 identities over an hour
 #: produces thousands; a read API that could return all of them is a read API that can be used to
@@ -128,6 +145,33 @@ class TimelineEntry:
         if self.stream_id is not None:
             out["streamId"] = self.stream_id
         return out
+
+
+@dataclass(frozen=True)
+class TimelineResult:
+    """A timeline answer, and everything that was left out of it.
+
+    ⛔ **Unpacks as the `(entries, truncated)` pair it replaced**, so every existing caller keeps
+    working — but the two *other* things a reader must know are now on it. There are two independent
+    ways this answer can be incomplete and they mean different things:
+
+    - `truncated` — more than `max_entries` facts existed, so the tail was cut.
+    - `relational_truncated` — more than `bp.MAX_RELATIONAL_IDENTITIES` subjects were in the scene, so
+      the pairwise families (proximity, follow, approach, grouping) only ever considered the first
+      `identities_considered` of them.
+
+    ⚠️ The second was invisible until the slice-2.5 benchmark asked for it, and it is the more
+    dangerous of the two: a truncated *entry list* is obviously short, while a truncated *scene*
+    returns a complete-looking timeline in which a merge simply never happened.
+    """
+
+    entries: List[TimelineEntry]
+    truncated: bool
+    relational_truncated: bool = False
+    identities_considered: int = 0
+
+    def __iter__(self):
+        return iter((self.entries, self.truncated))
 
 
 # --- gathering ---------------------------------------------------------------------------------
@@ -230,6 +274,7 @@ def context_for(
     records: Sequence[TrackHistoryRecord],
     *,
     subject_labels: Sequence[str] = DEFAULT_SUBJECT_LABELS,
+    lines: Sequence[bp.Line] = (),
 ) -> BehaviourContext:
     """A `BehaviourContext` covering a whole analysis rather than one frame.
 
@@ -264,6 +309,14 @@ def context_for(
         subjects=subjects,
         objects=objects,
         zones=tuple(bp.MembershipZone(zone_id) for zone_id in sorted(zone_ids)),
+        # ⭐ Built once here and shared by every module that does pairwise work. See
+        # `BehaviourContext.scene`: three modules each preparing their own tripled the cost of a read.
+        scene=bp.Scene(subjects),
+        # ⛔ Empty unless a caller supplied geometry, and today nothing does. Track history stores
+        # membership, not polygons — so a line, which has no membership, cannot be recovered from it.
+        # See `CrossingModule`: emitting nothing is the correct answer to "no line was configured",
+        # and it is a different answer from "nobody crossed one".
+        lines=tuple(lines),
         expected_interval_seconds=interval if interval is not None else FALLBACK_INTERVAL_SECONDS,
         zone_membership_present=bool(zone_ids),
     )
@@ -278,6 +331,7 @@ def primitives_for(
     registry: Optional[PerceptionRegistry] = None,
     modules: Optional[Sequence[str]] = None,
     subject_labels: Sequence[str] = DEFAULT_SUBJECT_LABELS,
+    lines: Sequence[bp.Line] = (),
 ) -> dict:
     """Every primitive, for every identity in an analysis — the Behaviour API's answer.
 
@@ -287,7 +341,7 @@ def primitives_for(
     """
     registry = registry if registry is not None else default_behaviour_registry()
     names = list(modules) if modules is not None else [name for name, _ in DEFAULT_MODULES]
-    context = context_for(records, subject_labels=subject_labels)
+    context = context_for(records, subject_labels=subject_labels, lines=lines)
 
     identities: Dict[str, Dict[str, object]] = {}
     scene: List[dict] = []
@@ -325,6 +379,22 @@ def primitives_for(
         # nothing ever supplied membership, which is a different answer from "nobody entered a zone".
         "zoneMembership": "present" if context.zone_membership_present else "absent",
         "observedIntervalSeconds": observed_interval_seconds(records),
+        # ⭐ The thresholds every word above was computed at, published with the answer. An operator
+        # told a subject "lingered" and a rule author choosing a dwell limit are looking at the same
+        # numbers, and neither has to read the source to find them.
+        "readings": {name: dict(reading) for name, reading in bp.PRIMITIVE_READINGS.items()},
+        # ⛔ Three-valued like `zoneMembership`, and for the same reason: no line geometry reached
+        # this read, so `CrossingModule` was inert. "Nobody crossed a line" would be a different
+        # answer, and the platform cannot yet give it — see `CrossingModule`.
+        "lineGeometry": "present" if context.lines else "absent",
+        # ⛔ How much of the scene the pairwise families actually looked at. A truncated scene returns
+        # a complete-looking answer in which a merge simply never happened, which is worse than a
+        # short list — see `TimelineResult`.
+        "relational": {
+            "identitiesConsidered": context.prepared_scene().considered,
+            "truncated": context.prepared_scene().truncated,
+            "maxIdentities": bp.MAX_RELATIONAL_IDENTITIES,
+        },
         "moduleFailures": failures,
     }
 
@@ -336,15 +406,18 @@ def timeline_for(
     records: Sequence[TrackHistoryRecord],
     *,
     subject_labels: Sequence[str] = DEFAULT_SUBJECT_LABELS,
+    lines: Sequence[bp.Line] = (),
     max_entries: int = DEFAULT_MAX_ENTRIES,
-) -> Tuple[List[TimelineEntry], bool]:
-    """An ordered, per-identity account of what was observed. Returns the entries and whether the
-    cap truncated them.
+) -> TimelineResult:
+    """An ordered, per-identity account of what was observed.
+
+    Returns a `TimelineResult`, which unpacks as the `(entries, truncated)` pair this used to be and
+    additionally says whether the *scene* was capped — see that class for why the second matters more.
 
     ⚠️ Ordered by footage time, then kind, then identity — fully deterministic, because a projection
     used for investigation must produce the same document twice.
     """
-    context = context_for(records, subject_labels=subject_labels)
+    context = context_for(records, subject_labels=subject_labels, lines=lines)
     label_of = {record.identity_id: record.label for record in records}
     camera_of: Dict[str, str] = {}
     stream_of: Dict[str, Optional[str]] = {}
@@ -456,36 +529,225 @@ def timeline_for(
                     evidence=_evidence(_point_at(points, at_seconds)),
                 )
 
-    identities = sorted(context.subjects)
-    for index, identity in enumerate(identities):
+    # ⛔ **One prepared scene for every pairwise family below**, capped at
+    # `bp.MAX_RELATIONAL_IDENTITIES` and reported. Before this the projection walked every pair
+    # uncapped and rebuilt each identity's series inside that walk: a 98-identity analysis took 43
+    # seconds to project, against the 58 ms the P-11 soak measured for this endpoint. The modules had
+    # capped since slice 2.2; the timeline never did, and that asymmetry was the defect.
+    scene = bp.Scene(context.subjects)
+    identities = list(scene.identities)
+    for identity, other in scene.pairs(within=bp.NEAR_THRESHOLD):
         points = context.subjects[identity]
-        for other in identities[index + 1 :]:
-            seconds = bp.co_presence_seconds(points, context.subjects[other])
-            if seconds <= 0.0:
-                continue
-            overlap = _overlap(points, context.subjects[other])
-            if overlap is None:
-                continue
+        seconds = bp.co_presence_seconds(points, context.subjects[other])
+        if seconds <= 0.0:
+            continue
+        overlap = _overlap(points, context.subjects[other])
+        if overlap is None:
+            continue
+        emit(
+            "proximity",
+            identity,
+            overlap[0],
+            end_seconds=overlap[1],
+            summary=(
+                f"identity {identity} was within {bp.NEAR_THRESHOLD:g} frame widths "
+                f"of identity {other} for {seconds:g} s"
+            ),
+            attributes={
+                "withIdentityId": other,
+                "seconds": seconds,
+                # The number the sentence quotes, machine-readable. A proximity fact whose
+                # threshold a reader has to guess is a fact they cannot check.
+                "thresholdNormalized": bp.NEAR_THRESHOLD,
+            },
+            evidence=_evidence(_point_at(points, overlap[0])),
+        )
+
+    # --- slice 2.5: what a subject did on their own, and what they did to each other ---------------
+
+    for identity, points in sorted(context.subjects.items()):
+        for reading, episodes in bp.stationary_readings(points).items():
+            threshold = bp.PRIMITIVE_READINGS[reading]
+            for episode in episodes:
+                emit(
+                    reading,
+                    identity,
+                    episode.interval.start_seconds,
+                    end_seconds=episode.interval.end_seconds,
+                    summary=(
+                        f"identity {identity} stayed within "
+                        f"{episode.radius_normalized:g} frame widths of one spot from "
+                        f"{since(episode.interval.start_seconds):g} s to "
+                        f"{since(episode.interval.end_seconds):g} s "
+                        f"({episode.interval.seconds:g} s)"
+                        + (" and had not moved on" if episode.open_ended else "")
+                    ),
+                    attributes={
+                        "seconds": episode.interval.seconds,
+                        "radiusNormalized": episode.radius_normalized,
+                        "samples": episode.samples,
+                        "open": episode.open_ended,
+                        # ⚠️ The definition that produced the word, beside the word. An `idle` entry
+                        # nests inside a `linger` entry describing the same standing still — a reader
+                        # summing the two would be adding one event to itself.
+                        "reading": dict(threshold),
+                    },
+                    evidence=_evidence(_point_at(points, episode.interval.start_seconds)),
+                )
+
+        for line in context.lines:
+            for crossing in bp.crossings(points, line):
+                emit(
+                    "lineCross",
+                    identity,
+                    crossing.at_seconds,
+                    summary=(
+                        f"identity {identity} crossed line {crossing.line_id} from the "
+                        f"{crossing.from_side} side to the {crossing.to_side} side at "
+                        f"{since(crossing.at_seconds):g} s"
+                    ),
+                    attributes={
+                        "lineId": crossing.line_id,
+                        "fromSide": crossing.from_side,
+                        "toSide": crossing.to_side,
+                        "segmentIndex": crossing.segment_index,
+                    },
+                    evidence=_evidence(_point_at(points, crossing.at_seconds)),
+                )
+
+    follow = bp.PRIMITIVE_READINGS["follow"]
+    approach = bp.PRIMITIVE_READINGS["approach"]
+    # ⛔ Scene-wide, so each identity is prepared once rather than once per partner. Reached for by a
+    # pair loop first, which took 43 seconds on a 98-identity analysis — see `_Series`.
+    subjects = {identity: list(points) for identity, points in context.subjects.items()}
+    for identity, episodes in sorted(
+        bp.follow_episodes(
+            scene,
+            max_distance=float(follow["maxDistanceNormalized"]),
+            heading_tolerance_degrees=float(follow["headingToleranceDegrees"]),
+            min_speed=float(follow["minSpeedNormalizedPerSecond"]),
+            min_seconds=float(follow["minSeconds"]),
+        ).items()
+    ):
+        points = subjects[identity]
+        for episode in episodes:
             emit(
-                "proximity",
+                "follow",
                 identity,
-                overlap[0],
-                end_seconds=overlap[1],
+                episode.interval.start_seconds,
+                end_seconds=episode.interval.end_seconds,
                 summary=(
-                    f"identity {identity} was within {bp.NEAR_THRESHOLD:g} frame widths "
-                    f"of identity {other} for {seconds:g} s"
+                    f"identity {identity} moved behind identity {episode.leader_identity_id} "
+                    f"on their heading for {episode.interval.seconds:g} s, "
+                    f"{episode.mean_distance_normalized:g} frame widths back"
+                ),
+                attributes={
+                    "leaderIdentityId": episode.leader_identity_id,
+                    "seconds": episode.interval.seconds,
+                    "meanDistanceNormalized": episode.mean_distance_normalized,
+                    "reading": dict(follow),
+                },
+                evidence=_evidence(_point_at(points, episode.interval.start_seconds)),
+            )
+
+    # ⚠️ Unordered pairs — `distance_changes` is symmetric, and emitting it from both sides would put
+    # the same closing gap on the timeline twice under two subjects.
+    for (identity, other), changes in sorted(
+        bp.distance_change_episodes(
+            scene,
+            min_change=float(approach["minChangeNormalized"]),
+            min_seconds=float(approach["minSeconds"]),
+        ).items()
+    ):
+        points = subjects[identity]
+        for change in changes:
+            closed = change.kind == "approach"
+            emit(
+                change.kind,
+                identity,
+                change.interval.start_seconds,
+                end_seconds=change.interval.end_seconds,
+                summary=(
+                    f"the gap between identity {identity} and identity {other} "
+                    f"{'closed' if closed else 'opened'} from "
+                    f"{change.from_normalized:g} to {change.to_normalized:g} frame widths "
+                    f"over {change.interval.seconds:g} s"
                 ),
                 attributes={
                     "withIdentityId": other,
-                    "seconds": seconds,
-                    # The number the sentence quotes, machine-readable. A proximity fact whose
-                    # threshold a reader has to guess is a fact they cannot check.
-                    "thresholdNormalized": bp.NEAR_THRESHOLD,
+                    "seconds": change.interval.seconds,
+                    "fromNormalized": change.from_normalized,
+                    "toNormalized": change.to_normalized,
+                    "deltaNormalized": change.delta_normalized,
                 },
-                evidence=_evidence(_point_at(points, overlap[0])),
+                evidence=_evidence(_point_at(points, change.interval.start_seconds)),
             )
 
-    subjects = {identity: list(points) for identity, points in context.subjects.items()}
+    #: ⛔ Group facts name **several** identities, so the entry's own `identityId` is the alphabetically
+    #: first member and the whole set rides in `attributes`. A reader filtering the timeline by one
+    #: identity would otherwise never see the merge they were part of — and a scene-level fact
+    #: duplicated onto every member would make one event look like three.
+    merge = bp.PRIMITIVE_READINGS["group_merge"]
+    for change in bp.group_changes(
+        scene,
+        threshold=float(merge["thresholdNormalized"]),
+        min_seconds=float(merge["minSeconds"]),
+    ):
+        members = ", ".join(change.identities)
+        emit(
+            "groupMerge" if change.kind == "merge" else "groupSplit",
+            change.identities[0],
+            change.at_seconds,
+            summary=(
+                f"identities {members} "
+                + (
+                    f"came together at {since(change.at_seconds):g} s"
+                    if change.kind == "merge"
+                    else f"separated at {since(change.at_seconds):g} s"
+                )
+            ),
+            attributes={
+                "identityIds": list(change.identities),
+                "before": [list(g) for g in change.before],
+                "after": [list(g) for g in change.after],
+                "thresholdNormalized": float(merge["thresholdNormalized"]),
+                "reading": dict(merge),
+            },
+            evidence=_evidence(
+                _point_at(context.subjects.get(change.identities[0], ()), change.at_seconds)
+            ),
+        )
+
+    queue = bp.PRIMITIVE_READINGS["queue"]
+    for group in bp.stationary_groups(
+        scene,
+        radius=float(queue["radiusNormalized"]),
+        min_seconds=float(queue["minSeconds"]),
+        threshold=float(queue["thresholdNormalized"]),
+        min_size=int(queue["minSize"]),
+    ):
+        emit(
+            "queue",
+            group.identities[0],
+            group.interval.start_seconds,
+            end_seconds=group.interval.end_seconds,
+            summary=(
+                f"identities {', '.join(group.identities)} were stationary together from "
+                f"{since(group.interval.start_seconds):g} s to "
+                f"{since(group.interval.end_seconds):g} s ({group.interval.seconds:g} s)"
+            ),
+            attributes={
+                "identityIds": list(group.identities),
+                "seconds": group.interval.seconds,
+                # ⚠️ Reported, never thresholded — people queue round corners. See `StationaryGroup`.
+                "linearity": group.linearity,
+                "reading": dict(queue),
+            },
+            evidence=_evidence(
+                _point_at(context.subjects.get(group.identities[0], ()), group.interval.start_seconds)
+            ),
+        )
+
     for identity, points in sorted(context.objects.items()):
         spans = bp.associations(points, subjects)
         for span in spans:
@@ -521,8 +783,12 @@ def timeline_for(
             )
 
     entries.sort(key=lambda e: (e.at_seconds, e.kind, e.identity_id, str(e.attributes)))
-    truncated = len(entries) > max_entries
-    return entries[:max_entries], truncated
+    return TimelineResult(
+        entries=entries[:max_entries],
+        truncated=len(entries) > max_entries,
+        relational_truncated=scene.truncated,
+        identities_considered=scene.considered,
+    )
 
 
 # --- helpers -------------------------------------------------------------------------------------
