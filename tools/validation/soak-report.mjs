@@ -75,14 +75,54 @@ for (const o of ops) {
   b.ms.push(o.ms);
 }
 
+/*
+ * ⭐ **The drift column is the one that finds the defect a percentile hides.**
+ *
+ * A p95 taken over a whole soak is an average of a beginning and an end, so an endpoint that doubles
+ * in cost across the night shows up as a merely unremarkable number. Comparing the first quarter's
+ * median against the last quarter's is what named DEFECT-5 in P-11: of every operation the soak ran,
+ * exactly two grew — `behaviour-primitives` 330 → 608 ms and `behaviour-timeline` 323 → 589 ms —
+ * while all six others stayed flat to within 2 ms. That contrast is the finding; neither number is
+ * alarming alone, and the p95 column showed nothing.
+ *
+ * ⚠️ +50 % and at least 20 ms, and it **fails C7b** rather than merely printing. An operation that
+ * costs more at the end of the night than the beginning is either a defect or a fact somebody should
+ * have to write down; both deserve a human, and a criterion is how a report insists on one.
+ *
+ * ⛔ Quarter medians, not first-and-last samples — the same discipline the memory verdict uses, for
+ * the same reason: a single slow call at either end must not become a trend.
+ */
+const quarterMedian = (ms, q) => {
+  const s = [...ms].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).map((o) => o.v);
+  const part = s.slice(Math.floor((s.length * q) / 4), Math.floor((s.length * (q + 1)) / 4)).sort((a, b) => a - b);
+  return part.length === 0 ? null : part[part.length >> 1];
+};
+const opSamples = new Map();
+for (const o of ops) {
+  if (o.ms === undefined) continue;
+  if (!opSamples.has(o.kind)) opSamples.set(o.kind, []);
+  opSamples.get(o.kind).push({ at: o.at, v: o.ms });
+}
+const drifting = [];
+
 console.log('## Operations\n');
-console.log('| Operation | OK | Failed | p50 ms | p95 ms | max ms |');
-console.log('| --- | ---: | ---: | ---: | ---: | ---: |');
+console.log('| Operation | OK | Failed | p50 ms | p95 ms | max ms | first ¼ med | last ¼ med | drift |');
+console.log('| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
 for (const [kind, b] of [...byKind].sort((a, b) => b[1].ok + b[1].fail - (a[1].ok + a[1].fail))) {
+  const samples = opSamples.get(kind) ?? [];
+  const q0 = samples.length >= 8 ? quarterMedian(samples, 0) : null;
+  const q3 = samples.length >= 8 ? quarterMedian(samples, 3) : null;
+  const growth = q0 !== null && q0 > 0 && q3 !== null ? ((q3 - q0) / q0) * 100 : null;
+  if (growth !== null && growth >= 50 && q3 - q0 >= 20) drifting.push(`\`${kind}\` ${q0} → ${q3} ms (+${n(growth, 0)} %)`);
   console.log(
-    `| \`${kind}\` | ${b.ok} | ${b.fail} | ${pct(b.ms, 50)} | ${pct(b.ms, 95)} | ${Math.max(...b.ms)} |`,
+    `| \`${kind}\` | ${b.ok} | ${b.fail} | ${pct(b.ms, 50)} | ${pct(b.ms, 95)} | ${Math.max(...b.ms)} | ${q0 ?? '—'} | ${q3 ?? '—'} | ${growth === null ? '—' : `${growth >= 0 ? '+' : ''}${n(growth, 0)} %`} |`,
   );
 }
+console.log(
+  drifting.length === 0
+    ? '\n⭐ **No operation grew materially over the run** — every median in the last quarter is within 50 % of the first.'
+    : `\n⛔ **Operations whose cost grew over the run:** ${drifting.join(', ')}. An operation that degrades as data accumulates is a defect a percentile hides.`,
+);
 const totalOps = ops.filter((o) => o.ms !== undefined).length;
 const totalFail = ops.filter((o) => o.ms !== undefined && !o.ok).length;
 console.log(
@@ -540,6 +580,7 @@ const criteria = [
   { id: 'C4', name: 'No queue growth or backpressure', met: (stat('runtime.queueDepth')?.max ?? 0) === 0 && (stat('media.queueDepth')?.max ?? 0) === 0, detail: `runtime queue max ${stat('runtime.queueDepth')?.max}, media queue max ${stat('media.queueDepth')?.max}` },
   { id: 'C5', name: 'No frame or evidence loss', met: (c['runtime.droppedFrames']?.last ?? 0) === 0 && (c['media.framesDropped']?.last ?? 0) === 0 && (c['media.framesFailed']?.last ?? 0) === 0 && (c['behaviour.historyWriteFailures']?.last ?? 0) === 0 && dropped === 0 && (c['media.framesOffered']?.delta ?? 0) === (c['media.framesDelivered']?.delta ?? -1), detail: `runtime dropped ${c['runtime.droppedFrames']?.last}, media dropped ${c['media.framesDropped']?.last} / failed ${c['media.framesFailed']?.last}, offered−delivered ${(c['media.framesOffered']?.delta ?? 0) - (c['media.framesDelivered']?.delta ?? 0)}, analysis frames dropped ${dropped}, history write failures ${c['behaviour.historyWriteFailures']?.last}` },
   { id: 'C6', name: 'No invariant violation or orphaned work', met: evidence.problems === 0 && orphanSamples === 0 && (c['behaviour.outOfOrder']?.last ?? 0) === 0, detail: `${evidence.problems} invariant problems across ${evidence.analyses} analyses, ${orphanSamples} samples with orphan sessions, ${c['behaviour.outOfOrder']?.last} out-of-order frames` },
+  { id: 'C7b', name: 'No operation degrades as data accumulates', met: drifting.length === 0, detail: drifting.length === 0 ? 'every operation\'s last-quarter median is within 50 % of its first' : drifting.join(', ').replace(/`/g, '') },
   { id: 'C7', name: 'Every operation succeeded, no findings', met: failedOps === 0 && findings.length === 0, detail: `${totalOps} timed operations, ${failedOps} failed; ${findings.length} finding(s)` },
   { id: 'C8', name: 'Behaviour / history / scene exercised and clean', met: applied > 0 && (c['behaviour.sceneObservations']?.delta ?? 0) > 0 && (c['behaviour.historyPoints']?.delta ?? 0) > 0 && (c['behaviour.moduleFailures']?.last ?? 1) === 0 && (c['behaviour.sceneDropped']?.last ?? 1) === 0 && (c['behaviour.historyUndatedDropped']?.last ?? 1) === 0, detail: `zone annotations +${applied}, scene observations +${c['behaviour.sceneObservations']?.delta}, history points +${c['behaviour.historyPoints']?.delta}, module failures ${c['behaviour.moduleFailures']?.last}, scene dropped ${c['behaviour.sceneDropped']?.last}, undated history dropped ${c['behaviour.historyUndatedDropped']?.last}` },
   { id: 'C9', name: 'Deployment verification', met: postSoak.deployment.status === 'PASS', detail: postSoak.deployment.status },
