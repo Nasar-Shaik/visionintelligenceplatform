@@ -42,6 +42,16 @@ export interface ServiceConfig extends AppConfig {
    * and therefore un-enablable.** Recorded as [L-56]. Wiring this is what fixes it.
    */
   camera: { url: string; internalKey: string; catalogIntervalMs: number };
+  /**
+   * Media, for reading the behaviour graph (slice 2.7).
+   *
+   * ⚠️ `url: ''` is a valid deployment and means **unconfigured**, not broken: the reasoning route
+   * then answers 503 with that reason. It is deliberately *not* an empty graph — "no graph could be
+   * read" and "the graph held nothing" are opposite facts that render identically as `candidates: []`.
+   *
+   * ⚠️ No internal key. The graph is read with the caller's own token; see `http-behaviour-graph.ts`.
+   */
+  media: { url: string };
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig {
@@ -59,6 +69,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
         .max(3_600_000)
         .default(60_000),
       CAMERA_SERVICE_URL: z.string().default(''),
+      /* ⚠️ Media, not the runtime. Media is the only service that talks to the AI runtime (ADR-A), so
+       * the behaviour graph is read through it — the same boundary the frame path already holds. */
+      MEDIA_SERVICE_URL: z.string().default(''),
       INTERNAL_API_KEY: z.string().default(''),
       RULES_ZONE_CATALOG_INTERVAL_MS: z.coerce
         .number()
@@ -80,6 +93,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServiceConfig 
     rules: {
       maxRulesPerEvent: tuning.RULES_MAX_PER_EVENT,
       candidateDedupWindowMs: tuning.RULES_CANDIDATE_DEDUP_WINDOW_MS,
+    },
+    media: {
+      /* ⚠️ No internal key here on purpose: the graph is read with the *caller's* token. See
+       * `http-behaviour-graph.ts` on why a service credential would be a privilege escalation. */
+      url: tuning.MEDIA_SERVICE_URL,
     },
     camera: {
       /* ⚠️ Both must be present. A URL with no key would 401 on every call and report unavailable —

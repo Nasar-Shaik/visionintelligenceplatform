@@ -21,6 +21,8 @@ import { registerRootRoute } from './routes/root.js';
 import { registerRuleAuthoringRoutes } from './routes/rule-authoring.js';
 import { registerRuleOperationsRoutes } from './routes/rule-operations.js';
 import { registerRuleLiveRoutes } from './routes/rule-live.js';
+import { registerBehaviourReasoningRoutes } from './routes/behaviour-reasoning.js';
+import { createHttpBehaviourGraph } from '../adapters/http-behaviour-graph.js';
 
 export interface BuildServerOptions {
   config: ServiceConfig;
@@ -84,6 +86,18 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
   registerRuleOperationsRoutes(app, { service: opts.ruleService, auth });
   /* P-8 Phase 7 — live status, dry-run results and templates. See `rule-live.ts`. */
   registerRuleLiveRoutes(app, { auth, engine: opts.engine ?? {} });
+  /*
+   * ⭐ Phase 2.4 slice 2.7 — composable temporal rules over the behaviour graph. A fourth plane,
+   * separate because it reads neither the store nor live process state but a projection of
+   * perception fetched from media. See `routes/behaviour-reasoning.ts`.
+   */
+  registerBehaviourReasoningRoutes(app, {
+    auth,
+    fetchGraph: createHttpBehaviourGraph({
+      baseUrl: config.media.url,
+      onLog: (level, msg, fields) => app.log[level]({ ...fields }, msg),
+    }),
+  });
 
   return { app, readiness, registry };
 }

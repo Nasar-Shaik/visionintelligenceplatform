@@ -81,6 +81,9 @@ export * from './events/query.js';
 
 // rules + incident candidates (P1-7)
 export * from './rules/rules.js';
+/* ⭐ Composable temporal rules over the behaviour graph (slice 2.7) — an addition to the per-event
+ * engine above, never a replacement for it. See `behaviour-rule.ts` on why one could not express the other. */
+export * from './rules/behaviour-rule.js';
 // rule templates — the reference workflow as configuration (P-8 Phase 7)
 export * from './rules/templates.js';
 

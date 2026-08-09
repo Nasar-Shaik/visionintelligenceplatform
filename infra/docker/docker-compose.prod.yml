@@ -270,6 +270,13 @@ services:
       # defect: nothing had ever wired a camera directory, so EVERY camera-scoped rule in every
       # deployment was unverifiable and therefore un-enablable. Recorded as L-56.
       CAMERA_SERVICE_URL: ${CAMERA_SERVICE_URL:-http://camera:8082}
+      # ══ The behaviour graph, for composable temporal rules (Phase 2.4 slice 2.7) ═════════════
+      # ⚠️ Media, not the runtime: media is the only service that talks to the AI runtime (ADR-A),
+      # and the graph is read through it on the same boundary the frame path already holds.
+      # ⚠️ Unset is a SUPPORTED deployment — the reasoning route then answers 503 saying so, rather
+      # than an empty candidate list. "No graph could be read" and "the graph held nothing" are
+      # opposite facts that render identically as `candidates: []`. Same shape as L-56.
+      MEDIA_SERVICE_URL: ${MEDIA_SERVICE_URL:-http://media:8083}
       RULES_ZONE_CATALOG_INTERVAL_MS: ${RULES_ZONE_CATALOG_INTERVAL_MS:-15000}
     depends_on: *infra-deps
 

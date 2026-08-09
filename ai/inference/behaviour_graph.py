@@ -128,6 +128,15 @@ class BehaviourGraph:
     edges_truncated: bool = False
     relational_truncated: bool = False
     identities_considered: int = 0
+    #: Footage second of the run's first observation.
+    #:
+    #: ⛔ **Every `atSeconds` on an edge is ABSOLUTE, and unreadable without this.** A recording
+    #: stamped with wall-clock capture times gives footage seconds around 1.79e9, so a consumer that
+    #: renders them directly says a subject "was inside the zone at 1786221387.294 s" — true, useless,
+    #: and exactly the defect `TimelineEntry` was fixed for. The absolute value stays on the edge
+    #: because that is what joins to a history point or an event; the origin travels beside it so a
+    #: reader can subtract. `TimelineEntry` carries both for the same reason.
+    origin_seconds: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -139,6 +148,7 @@ class BehaviourGraph:
                 "byNodeKind": _tally(n.kind for n in self.nodes),
                 "byEdgeKind": _tally(e.kind for e in self.edges),
             },
+            "originSeconds": round(self.origin_seconds, 4),
             "truncated": {
                 "nodes": self.nodes_truncated,
                 "edges": self.edges_truncated,
@@ -350,7 +360,16 @@ def graph_for(
 
     ordered_nodes = sorted(nodes.values(), key=lambda n: (_NODE_ORDER.get(n.kind, 9), n.id))
     edges.sort(key=lambda e: (e.at_seconds, e.kind, e.source, e.target))
+    # ⚠️ The earliest thing the graph knows about: an identity's first observation, or an edge's
+    # instant when nothing carried one. `0.0` for an empty graph, where there is nothing to offset.
+    starts = [
+        float(n.attributes["firstSeconds"])
+        for n in ordered_nodes
+        if isinstance(n.attributes.get("firstSeconds"), (int, float))
+    ] + [e.at_seconds for e in edges]
+    origin = min(starts) if starts else 0.0
     return BehaviourGraph(
+        origin_seconds=origin,
         nodes=ordered_nodes[:max_nodes],
         edges=edges[:max_edges],
         nodes_truncated=len(ordered_nodes) > max_nodes,
