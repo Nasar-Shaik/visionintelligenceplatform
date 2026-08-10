@@ -210,10 +210,20 @@ Acceptance was raised mid-milestone from "no evidence lost" to **byte-identical*
 | After a **runtime** restart | 3 | ⭐ byte-identical |
 | After a **deployment** restart (`--force-recreate`) | 3 | ⭐ byte-identical |
 | After an **ungraceful SIGKILL** | 3 | ⭐ byte-identical |
-| After **one hour** | — | see § 9 |
+| After **one hour** | 6 | ⭐ byte-identical |
 | After a **host reboot** | — | not performed; see § 9 |
 
-⭐ The three are `evidence.retentionHorizonAt` on the timeline, graph and primitives views — `now −
+⭐ At one hour the count is 6 rather than 3: the same three `retentionHorizonAt` fields, plus three
+recorder counters — `identitiesRetired 0 → 278`, `pointsObserved 0 → 14 972`, `store.records
+5616 → 5894`. ⚠️ Those moved because **other analyses ran on the same runtime during the hour**,
+which is precisely why they are provenance: they describe the process, not this run.
+
+⭐ **That makes the +1 h result stronger than an idle hour would have been.** This stream's evidence
+was byte-identical across sixty-one minutes in which 278 other identities were retired and 278
+records appended to the same store, through a media restart, a runtime restart, a deployment
+`--force-recreate` and a `SIGKILL`. A quiet hour would have proven far less.
+
+The three constant ones are `evidence.retentionHorizonAt` on the timeline, graph and primitives views — `now −
 72 h`, which moves by exactly the time between reads. **Documented and justified in the tool, not
 ignored**, and scoped to that one field: `state`, `records`, `durable`, `live`, `damagedRecords` and
 `lostIdentities` all still fail the diff, because a read silently changing from `present` to `absent`

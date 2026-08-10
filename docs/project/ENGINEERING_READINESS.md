@@ -11,7 +11,7 @@ qualified rather than ticked, and the qualification is the point of asking.
 | 2 | Behaviour graph stable | ✓ Yes |
 | 3 | Investigation console stable | ✓ Yes |
 | 4 | Reasoning engine stable | ✓ Yes |
-| 5 | Replay verification passes | ⭐ **Yes** — byte-identical ×5 conditions; +1 h pending, § B |
+| 5 | Replay verification passes | ⭐ **Yes** — byte-identical across **six** conditions, § B |
 | 6 | Long-term storage verified | ⚠️ **Qualified** — see § C |
 | 7 | Regression suite green | ✓ **1 540** Python · 636 console · 384 media |
 | 8 | Deployment verification green | ✓ 17/17 containers, built images, never `pnpm dev` |
@@ -39,13 +39,13 @@ customer deployment on hardware without a UPS.
 
 ## § B — Replay
 
-Byte-identical across five conditions: immediately, after a service restart, after a runtime restart,
-after a deployment `--force-recreate`, and after an ungraceful `SIGKILL`. Every difference is one
-documented provenance field (`retentionHorizonAt`, which is `now − 72 h`).
+Byte-identical across six conditions: immediately, after a service restart, after a runtime restart,
+after a deployment `--force-recreate`, after an ungraceful `SIGKILL`, and **after one hour**.
 
-⚠️ **The +1 hour replay was launched and has not yet reported.** The concern it tests — live records
-expiring between reads — is now structurally impossible, because a run holds nothing live once it
-ends. ⛔ That is an argument, not a measurement, and it stays marked pending until the check returns.
+⭐ **The +1 h check reported byte-identical**, and under harder conditions than intended: during that
+hour 278 other identities were retired and 278 records were appended to the same store by other
+analyses, across four restarts. The six provenance differences are the three `retentionHorizonAt`
+fields plus three recorder counters describing the process. A quiet hour would have proven less.
 
 ⚠️ **Host reboot: not performed.** It requires restarting the developer machine. What it would add
 over the deployment restart already proven is the loss of the page cache, which matters *only*

@@ -263,4 +263,4 @@ live budget is an open question, not an assumption.
 | `fsync` / power-loss durability | `write()` returns at the kernel, not the platter |
 | Production retention observation | the 72 h horizon has never elapsed under observation |
 | Cancelled-run real-footage validation | every cancelled run so far detected nothing before stopping |
-| Host-reboot validation | needs the developer machine restarted |
+| Host-reboot validation | needs the developer machine restarted; only adds page-cache loss, which matters solely because of the `fsync` gap |

@@ -22,7 +22,8 @@ footage. It reasons about **objects** only as far as a 3.7 MB detector allows. I
 behaviour layers are frozen and production-grade; perception is the ceiling.
 
 ⭐ **Evidence durability is solved.** A completed run's evidence does not change after the run
-completes — proven byte-identical across service, runtime, deployment and ungraceful restarts. And
+completes — proven byte-identical across six conditions, including a full hour and an ungraceful
+`SIGKILL`. And
 when evidence *is* lost, the read says so: six states, never collapsed. See § 5 and § 6.
 
 ---
@@ -109,7 +110,7 @@ notify. Runtime is Python (stdlib + onnxruntime) on :8085, reachable only from m
 | **Browser** | ⭐ **212 passed, 0 failed** — chromium 58 · edge 58 · firefox 48 · webkit 48 |
 | **Deployment** | ⭐ verified via `./infra/docker/prod.sh`, never `pnpm dev` |
 | **Soak** | ⭐ 6.49 h · 6 271 timed operations · 0 failed · no operation drifted materially |
-| **Replay** | ⭐ byte-identical across service · runtime · deployment · SIGKILL |
+| **Replay** | ⭐ byte-identical ×6 — immediate · +1 h · service · runtime · deployment · SIGKILL |
 | **Evidence stress** | ⭐ 24 runs × concurrency 6, control clean; loss under kills always reported |
 | **Production readiness** | ⭐ unblocked — the remaining ceiling is the detector, not correctness |
 
@@ -271,7 +272,7 @@ governance decision and an ADR before any code.
 | Current detector | `yolox-nano` 1.0.0 · 416×416 · CPU · **41.2 ms/frame**, 21.7 fps |
 | Current tracker | `predictive-iou` |
 | Current reasoning | composable temporal rules over the behaviour graph · 15 step kinds · WHY chains |
-| Evidence replay | ⭐ byte-identical · service · runtime · deployment · SIGKILL |
+| Evidence replay | ⭐ byte-identical ×6 · incl. **+1 h** and SIGKILL |
 
 ---
 
