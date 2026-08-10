@@ -198,6 +198,21 @@ const PROVENANCE = [
   /(^|\.)stats\.store\./,
   /* A record moves from `live` to `records` when it is flushed. Same evidence, different half. */
   /^history\.(records|live)\b/,
+  /*
+   * ⭐ **The retention horizon is `now − retentionHours`**, so it moves on every read by exactly the
+   * time between reads. It describes *when you asked*, not what was found — it is the instant before
+   * which nothing can have survived, published so a caller holding a run's `finishedAt` can resolve
+   * `absent` into `expired` (EI-4).
+   *
+   * ⛔ **Only this one field.** Everything else under `evidence` — `state`, `records`, `durable`,
+   * `live`, `damagedRecords`, `lostIdentities` — is the answer itself and must still fail the diff.
+   * Excusing the whole block would hide a read silently changing from `present` to `absent`, which is
+   * the single thing this milestone exists to catch.
+   *
+   * ⚠️ Added because the replay caught it: three `retentionHorizonAt` differences after a media
+   * restart, on a run whose evidence had not moved at all. The tool was right and the field was new.
+   */
+  /(^|\.)evidence\.retentionHorizonAt$/,
 ];
 
 const diff = differences(before.reads, capture.reads);

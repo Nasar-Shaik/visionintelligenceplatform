@@ -1,7 +1,7 @@
 # WORKTRACK
 
 **Read this first.** Engineering handoff for the Vision Intelligence Platform — current state, not
-history. Last revised **2026-08-10** at `751b1c3`.
+history. Last revised **2026-08-10** at `9b5cc68`.
 
 > Maintain this file. When a milestone closes, update it and delete what stopped being true.
 > Milestone narrative belongs in `docs/project/`; this file is the 5-minute picture.
@@ -21,8 +21,9 @@ staffing insight — without ever shipping an unexplainable verdict.
 footage. It reasons about **objects** only as far as a 3.7 MB detector allows. Infrastructure and
 behaviour layers are frozen and production-grade; perception is the ceiling.
 
-⛔ **One blocker stands between here and "production-ready": evidence written during a run is not
-reliably durable.** See § 6 and § 7.
+⭐ **Evidence durability is solved.** A completed run's evidence does not change after the run
+completes — proven byte-identical across service, runtime, deployment and ungraceful restarts. And
+when evidence *is* lost, the read says so: six states, never collapsed. See § 5 and § 6.
 
 ---
 
@@ -31,8 +32,8 @@ reliably durable.** See § 6 and § 7.
 ```
 Foundation                ✔ Complete      6 foundations frozen, additive-only
 Behaviour Intelligence    ✔ Complete      primitives · graph · reasoning · console
-Evidence Integrity        ⬅ NEXT          durability, retention, provenance
-Professional Perception     Not started   YOLO11 / RT-DETR / pose / re-ID
+Evidence Integrity        ✔ Complete      durability · six-state reads · byte-identical replay
+Professional Perception   ⬅ NEXT          YOLO11 / RT-DETR / pose / re-ID
 Retail Intelligence         Not started   shelf, checkout, loss prevention
 Production CCTV             Not started   RTSP estates, NVR, scale
 Customer Deployments        Not started   install, support, SLA
@@ -57,6 +58,8 @@ Customer Deployments        Not started   install, support, SLA
 | **Reasoning engine** | composable temporal rules over the graph; 15 step kinds |
 | **WHY chains** | every incident decomposes into clickable, traceable steps |
 | **Investigation console** | timeline · graph · identity · primitives · reasoning · video, synchronised |
+| **Evidence durability** | a run closes itself; nothing finished is held in memory |
+| **Evidence states** | present · notYetAvailable · absent · lost · corrupted · expired |
 | **Browser verification** | 8 spec files × 4 engines against the deployed stack |
 | **Soak validation** | 6.5 h, 6 271 operations, 0 failures |
 
@@ -106,7 +109,9 @@ notify. Runtime is Python (stdlib + onnxruntime) on :8085, reachable only from m
 | **Browser** | ⭐ green — chromium · firefox · webkit · edge, against built images |
 | **Deployment** | ⭐ verified via `./infra/docker/prod.sh`, never `pnpm dev` |
 | **Soak** | ⭐ 6.49 h · 6 271 timed operations · 0 failed · no operation drifted materially |
-| **Production readiness** | ⚠️ **Blocked on evidence durability** (§ 6) — everything else is green |
+| **Replay** | ⭐ byte-identical across service · runtime · deployment · SIGKILL |
+| **Evidence stress** | ⭐ 24 runs × concurrency 6, control clean; loss under kills always reported |
+| **Production readiness** | ⭐ unblocked — the remaining ceiling is the detector, not correctness |
 
 ⚠️ Verification runs against **built images**. A change to console or runtime source is not verified
 until `prod.sh build <svc>` has run — this has caused false failures twice.
@@ -129,10 +134,11 @@ until `prod.sh build <svc>` has run — this has caused false failures twice.
 
 ### 6.2 Actually missing
 
-- ⛔ **Evidence durability.** A subject still in shot when a run ends is never written to durable
-  track history. Measured across three runs, with **zero write failures** — nothing failed, nothing
-  was attempted. The same run answers `carried: 3` at one minute and `observed: 2` at ten, and
-  nothing on screen says anything was lost.
+- ⚠️ **Power-loss durability.** `write()` returns once the data is with the kernel, not once it is on
+  the platter — there is no `fsync`. The platform survives process death, not power death. Stated
+  rather than fixed: the cost was not measured, and it lands on the shutdown flush.
+- **A cancelled run keeping what it saw** is unproven on real footage — every cancelled run in the
+  stress suite detected nothing before stopping. Unit-tested, not evidenced. **PENDING FOOTAGE.**
 - **Re-identification** — no appearance embedding, so nothing spans cameras or re-entry.
 - **Pose / segmentation** — no keypoints, so "reached toward" and "hand on object" are not expressible.
 - **Open-vocabulary detection** — hard 80-class ceiling.
@@ -148,7 +154,23 @@ until `prod.sh build <svc>` has run — this has caused false failures twice.
 
 ---
 
-## 7. Immediate next work — Evidence Integrity
+## 7. Immediate next work — Professional Perception
+
+⭐ Evidence Integrity closed 2026-08-10. Full account: `docs/project/EVIDENCE_INTEGRITY_REPORT.md`.
+Four root causes, each measured before it was fixed: shutdown discarded open evidence; one fact was
+held at two precisions; **nothing closed a run when it ended** (28 identities across 12 finished runs
+lost to one `SIGKILL`); and a torn write destroyed the record appended after it.
+
+⚠️ **Two decisions are outstanding before any Phase 3 code.** YOLO11 is **AGPL-3.0** where every
+catalogue model today is Apache-2.0. Re-identification is **biometric processing** and needs a
+governance decision and an ADR. Design: `docs/project/PROFESSIONAL_PERCEPTION_ARCHITECTURE.md`.
+
+The approved implementation order: detector benchmark lab → YOLO11 / RT-DETR → pose → segmentation →
+re-ID → open-vocabulary → object permanence → hand-object → shelf → retail behaviour → theft
+reasoning.
+
+<details>
+<summary>Why Evidence Integrity came first (kept — the reasoning still applies to the next phase)</summary>
 
 ### Why this before Professional Perception
 
@@ -177,16 +199,16 @@ entire proposition is *explainable evidence*, that is the defect that matters mo
 5. **Regression suite + browser spec** that would fail today, plus retention and provenance checks
    across the evidence boundary.
 
-⭐ Acceptance is a single sentence: *a completed run's evidence does not change after the run
-completes.*
+⭐ Acceptance was a single sentence: *a completed run's evidence does not change after the run
+completes.* It holds.
+
+</details>
 
 ---
 
 ## 8. After that
 
 ```
-Evidence Integrity
-      ↓
 Professional Perception     detector abstraction · benchmark lab · YOLO11 / RT-DETR · pose · re-ID
       ↓
 Retail Intelligence         shelf interaction · checkout correlation · loss prevention
@@ -208,16 +230,17 @@ governance decision and an ADR before any code.
 
 | | |
 | --- | --- |
-| Python tests | **1 491** |
-| TypeScript tests | 630 console · 529 contracts · 366 media · 315 rules · 278 camera · 82 events · 45 e2e |
+| Python tests | **1 540** |
+| TypeScript tests | 636 console · 529 contracts · 384 media · 315 rules · 278 camera · 82 events · 45 e2e |
 | Browser tests | 8 spec files × 4 engines |
-| Contracts | 70 schemas + perception boundary §A–§K |
+| Contracts | 70 schemas + perception boundary §A–§L |
 | Repository gate | **70/70 green** |
 | Deployment | ⭐ verified — built images, `prod.sh` |
 | Soak | 6.49 h · 6 271 ops · **0 failed** (2026-08-09) |
 | Current detector | `yolox-nano` 1.0.0 · 416×416 · CPU · **41.2 ms/frame**, 21.7 fps |
 | Current tracker | `predictive-iou` |
 | Current reasoning | composable temporal rules over the behaviour graph · 15 step kinds · WHY chains |
+| Evidence replay | ⭐ byte-identical · service · runtime · deployment · SIGKILL |
 
 ---
 
@@ -235,10 +258,10 @@ failures; and — the part that matters — behaviour verified on **real footage
 controls, on the deployed stack rather than a dev server. Where footage did not exist, the reports
 say `PENDING FOOTAGE` rather than claiming a pass.
 
-**What remains.** One blocker: evidence written during a run is not reliably durable, so an
-investigation degrades with time. Then perception — the behaviour vocabulary is now larger than what
-a 3.7 MB detector can see, and four object primitives have never had real input. Then retail
-semantics, estate scale, and deployment tooling.
+**What remains.** Perception. The behaviour vocabulary is now larger than what a 3.7 MB detector can
+see, and four object primitives have never had real input. Then retail semantics, estate scale, and
+deployment tooling. ⚠️ One durability gap is stated rather than closed: writes are not `fsync`ed, so
+the platform survives process death and not power death.
 
 **How close is production-ready?** ⭐ **The hard part is done and it is the part most platforms get
 wrong**: this one can explain itself, and it says so honestly when it cannot see something. The
@@ -246,7 +269,8 @@ architecture is frozen, the pipeline is single, and the verification discipline 
 fourteen defects were found in the last three milestones, every one a *correct-looking silence*, and
 none by a unit test.
 
-⛔ **It is not shippable to a customer today**, for one reason that is fixable in a single milestone:
-evidence must survive the run that produced it. After Evidence Integrity, VIP is a production-ready
-behaviour intelligence platform whose *accuracy ceiling* — not correctness, not explainability — is
-set by the detector. Professional Perception raises that ceiling.
+⭐ **VIP is now a production-ready behaviour intelligence platform whose *accuracy ceiling* — not its
+correctness, not its explainability — is set by the detector.** Evidence survives the run that
+produced it, byte for byte, across every lifecycle event short of pulling the plug; and when
+something is lost, the platform names which of six things happened rather than returning the same
+empty list it returns for a quiet afternoon. Professional Perception raises the ceiling.
