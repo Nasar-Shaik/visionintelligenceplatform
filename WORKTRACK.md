@@ -33,7 +33,7 @@ when evidence *is* lost, the read says so: six states, never collapsed. See § 5
 Foundation                ✔ Complete      6 foundations frozen, additive-only
 Behaviour Intelligence    ✔ Complete      primitives · graph · reasoning · console
 Evidence Integrity        ✔ Complete      durability · six-state reads · byte-identical replay
-Professional Perception   ⬅ NEXT          YOLO11 / RT-DETR / pose / re-ID
+Professional Perception   ⬅ ACTIVE        P3.1 detector benchmark lab — approved, not started
 Retail Intelligence         Not started   shelf, checkout, loss prevention
 Production CCTV             Not started   RTSP estates, NVR, scale
 Customer Deployments        Not started   install, support, SLA
@@ -154,7 +154,36 @@ until `prod.sh build <svc>` has run — this has caused false failures twice.
 
 ---
 
-## 7. Immediate next work — Professional Perception
+## 7. Immediate next work — P3.1 Detector Benchmark Lab
+
+⭐ **Approved 2026-08-10. The ONLY approved implementation.** Gate document:
+`docs/project/PROFESSIONAL_PERCEPTION_START.md`.
+
+⛔ **Three audit findings that shape it.** (1) The lab is **not greenfield** — `detector_benchmark.py`
+already holds the model × case matrix; P3.1 is wiring, not building. (2) RT-DETR is **already
+benchmarked** through the production code path (`DETECTOR_COMPARISON.md`: 944 ms vs 41 ms, 22.9×
+slower, +27 % people). (3) ⛔ **31 of 38 corpus clips are authored. There is no real video of real
+people at all — 0 of 25 required scenarios have real footage.**
+
+⚠️ So P3.1 builds the instrument and its first honest output is *a measurement of what the corpus
+cannot tell us*. **Footage acquisition is the phase's critical path**, and it is not a code task.
+
+### Evidence Integrity carry-forward — open, non-blocking
+
+| Item | Why still open |
+| --- | --- |
+| `fsync` / power-loss durability | `write()` returns at the kernel, not the platter |
+| Production retention observation | the 72 h horizon has never elapsed under observation |
+| Cancelled-run real-footage validation | every cancelled run so far detected nothing before stopping |
+| Host-reboot validation | needs the developer machine restarted |
+
+⛔ **Re-ID is gated on `ADR-0055-reidentification-governance.md` (Proposed).** Approving Phase 3 did
+not approve Re-ID.
+
+<details>
+<summary>Phase 3 order and outstanding product decisions</summary>
+
+## 7b. Professional Perception
 
 ⭐ Evidence Integrity closed 2026-08-10. Full account: `docs/project/EVIDENCE_INTEGRITY_REPORT.md`.
 Four root causes, each measured before it was fixed: shutdown discarded open evidence; one fact was
@@ -168,6 +197,8 @@ governance decision and an ADR. Design: `docs/project/PROFESSIONAL_PERCEPTION_AR
 The approved implementation order: detector benchmark lab → YOLO11 / RT-DETR → pose → segmentation →
 re-ID → open-vocabulary → object permanence → hand-object → shelf → retail behaviour → theft
 reasoning.
+
+</details>
 
 <details>
 <summary>Why Evidence Integrity came first (kept — the reasoning still applies to the next phase)</summary>
