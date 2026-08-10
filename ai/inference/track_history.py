@@ -275,6 +275,38 @@ class RetentionPolicy:
         return (now - stamped) > self.max_age_hours * 3600.0
 
 
+#: Identities named in `stats()` after a durable write failed. ⚠️ Bounded for the same reason
+#: `drain_pending` refuses to build a retry queue: an unbounded list on a permanently unwritable
+#: volume is a memory leak arriving through a different door.
+LOST_IDENTITIES_MAX = 64
+
+
+@dataclass(frozen=True)
+class IntegrityReport:
+    """What a read found that it could not parse.
+
+    ⭐ **Returned by the read, because that is where the parse already happens.** Counting damage on
+    the `/metrics` path was measured and rejected — at the 4096-record cap, a line count is 13.8 ms
+    and `json.loads` on every line is 251.7 ms, on an endpoint scraped every 15 seconds. See
+    `_count`, which exists because exactly that cost shipped once.
+
+    ⚠️ `damaged_lines` is **not** an error to raise. A damaged line is a record that was written and
+    can no longer be read, and the whole point of reporting it is that the surviving records stay
+    readable — failing the query would lose an investigation to one unlucky shutdown. What it must
+    never do is pass silently, because `CORRUPTED` presenting as `ABSENT` turns "we had this and
+    destroyed it" into "this never happened".
+    """
+
+    damaged_lines: int = 0
+    #: 1-indexed line number of the first damage. ⚠️ A line number rather than a byte offset because
+    #: it is free — a byte offset costs an encode per line on the read path.
+    first_damaged_line: Optional[int] = None
+
+    @property
+    def clean(self) -> bool:
+        return self.damaged_lines == 0
+
+
 class TrackHistoryUnavailable(RuntimeError):
     """The configured history location cannot be written to.
 
@@ -302,6 +334,21 @@ class TrackHistoryStore(Protocol):
         """⚠️ `stream_id` is the most selective filter a caller has — one analysis — so every
         implementation must accept it. A store that ignores it makes an analysis-scoped read cost
         the whole tenant's history, which is the defect the P-11 soak found."""
+        ...
+
+    def records_with_integrity(
+        self,
+        tenant_id: str,
+        *,
+        camera_id: Optional[str] = None,
+        identity_id: Optional[str] = None,
+        stream_id: Optional[str] = None,
+    ) -> Tuple[List[TrackHistoryRecord], IntegrityReport]:
+        """The same read, plus what it could not parse.
+
+        ⭐ **One scan, two answers.** `records()` is the same work with the report discarded, so a
+        caller that needs to distinguish `CORRUPTED` from `ABSENT` pays nothing extra for it.
+        """
         ...
 
     def erase_tenant(self, tenant_id: str) -> int:
@@ -336,6 +383,18 @@ class NullTrackHistoryStore:
         stream_id: Optional[str] = None,
     ) -> List[TrackHistoryRecord]:
         return []
+
+    def records_with_integrity(
+        self,
+        tenant_id: str,
+        *,
+        camera_id: Optional[str] = None,
+        identity_id: Optional[str] = None,
+        stream_id: Optional[str] = None,
+    ) -> Tuple[List[TrackHistoryRecord], IntegrityReport]:
+        """⚠️ Clean, and that is not the same as *present*. Nothing was parsed because nothing was
+        ever stored — which is `ABSENT`, and the caller distinguishes the two by `durable: False`."""
+        return [], IntegrityReport()
 
     def erase_tenant(self, tenant_id: str) -> int:
         return 0
@@ -382,6 +441,21 @@ class InMemoryTrackHistoryStore:
                 and (identity_id is None or r.identity_id == identity_id)
                 and (stream_id is None or r.stream_id == stream_id)
             ]
+
+    def records_with_integrity(
+        self,
+        tenant_id: str,
+        *,
+        camera_id: Optional[str] = None,
+        identity_id: Optional[str] = None,
+        stream_id: Optional[str] = None,
+    ) -> Tuple[List[TrackHistoryRecord], IntegrityReport]:
+        """⚠️ Always clean: these records were never serialised, so there is nothing to fail to
+        parse. A process-lifetime store loses everything at once or nothing at all."""
+        found = self.records(
+            tenant_id, camera_id=camera_id, identity_id=identity_id, stream_id=stream_id
+        )
+        return found, IntegrityReport()
 
     def erase_tenant(self, tenant_id: str) -> int:
         with self._lock:
@@ -448,6 +522,9 @@ class JsonlTrackHistoryStore:
         self._policy = policy or RetentionPolicy()
         self._clock = clock
         self._lock = threading.RLock()
+        #: Damaged lines this process's reads have met. See `records_with_integrity` on why this is
+        #: a counter and not a gauge.
+        self._damaged_seen = 0
         try:
             os.makedirs(self._dir, exist_ok=True)
         except OSError as exc:
@@ -481,13 +558,58 @@ class JsonlTrackHistoryStore:
     # --- writes ------------------------------------------------------------------
 
     def write(self, record: TrackHistoryRecord) -> None:
+        """Append one record as one line.
+
+        ### ⛔ Why this is not `open(path, "a").write(line)` any more
+
+        A buffered text writer flushes every `io.DEFAULT_BUFFER_SIZE` — 8192 bytes — and a real
+        record is bigger than that. Measured, on the real serialiser:
+
+              1 point  →     421 bytes    one buffer
+             10 points →   2 383 bytes    one buffer
+            100 points →  22 093 bytes    ⛔ three flushes
+            512 points → 112 733 bytes    ⛔ fourteen flushes  (`DEFAULT_MAX_POINTS`)
+
+        So a process killed between flushes leaves a **partial line with no terminating newline** —
+        ordinary rather than exotic, since 100 points is a subject tracked for under a minute at
+        2 fps. ⚠️ And the danger got *larger* with the EI-3 shutdown flush, which writes every open
+        identity in one burst at precisely the moment the process is being torn down, inside a
+        20-second `stop_grace_period`.
+
+        ⛔ **The damage used to spread.** The next append landed on the same unterminated line, so
+        the pair parsed as neither and one interruption destroyed **two** records — the second
+        written afterwards, in full, by a healthy process:
+
+            wrote id_a, id_b, id_c   ⏻ killed mid-id_c   then wrote id_after
+            records() → ['id_a', 'id_b']        stats()['records'] → 3
+
+        Two changes, and they answer different halves. **One `write` syscall per record** makes
+        tearing rare rather than routine — the kernel is not asked to split the record into
+        fourteen pieces. **A boundary repair** makes it survivable when it happens anyway: a file
+        that does not end in a newline gets one before the next record, so the damage stays the one
+        record it started as. ⚠️ Neither pretends to be power-loss durability, which needs `fsync`
+        and is a separate decision with its own cost — see `EVIDENCE_INTEGRITY_REPORT.md`.
+        """
         if record.written_at is None:
             record.written_at = _iso(self._clock())
         _trim_points(record, self._policy.max_points)
         line = json.dumps(record.to_dict(), separators=(",", ":"), sort_keys=True)
+        payload = (line + "\n").encode("utf-8")
         with self._lock:
-            with open(self._path(record.tenant_id), "a", encoding="utf-8") as handle:
-                handle.write(line + "\n")
+            # ⚠️ `O_APPEND`, so every write lands at the end regardless of the offset — two writers
+            # cannot interleave a record into the middle of another's.
+            # ⚠️ `O_RDWR`, not `O_WRONLY`: the boundary check `pread`s the last byte, and a
+            # write-only descriptor refuses that with `EBADF` — which `drain_pending` would have
+            # contained as a storage failure, losing every record while reporting a disk fault.
+            handle = os.open(self._path(record.tenant_id), os.O_RDWR | os.O_CREAT | os.O_APPEND, 0o644)
+            try:
+                if _unterminated(handle):
+                    # ⭐ Close the wound rather than write into it. The partial record stays damaged
+                    # and is reported by the next read; this one is intact.
+                    payload = b"\n" + payload
+                _write_all(handle, payload)
+            finally:
+                os.close(handle)
 
     # --- reads -------------------------------------------------------------------
 
@@ -521,7 +643,31 @@ class JsonlTrackHistoryStore:
         with self._lock:
             return self._read(
                 tenant_id, camera_id=camera_id, identity_id=identity_id, stream_id=stream_id
+            )[0]
+
+    def records_with_integrity(
+        self,
+        tenant_id: str,
+        *,
+        camera_id: Optional[str] = None,
+        identity_id: Optional[str] = None,
+        stream_id: Optional[str] = None,
+    ) -> Tuple[List[TrackHistoryRecord], IntegrityReport]:
+        """The same scan as `records`, keeping what it could not parse instead of discarding it.
+
+        ⭐ **Free.** The parse happens either way; only the report is retained. That is the whole
+        reason damage is counted here and not on the `/metrics` path, where it would cost 251.7 ms
+        per scrape at the retention cap against a 13.8 ms line count.
+        """
+        with self._lock:
+            found, integrity = self._read(
+                tenant_id, camera_id=camera_id, identity_id=identity_id, stream_id=stream_id
             )
+            # ⚠️ Cumulative and monotonic, so a deployment can alarm on corruption without anyone
+            # having to run a query first. A *gauge* here would be a lie — this store never scans
+            # the file except when asked, so it cannot know the current damage, only what it has met.
+            self._damaged_seen += integrity.damaged_lines
+            return found, integrity
 
     def _count(self, tenant_id: str) -> int:
         """How many complete records one tenant's file holds, **without deserialising any of them**.
@@ -568,17 +714,24 @@ class JsonlTrackHistoryStore:
         camera_id: Optional[str] = None,
         identity_id: Optional[str] = None,
         stream_id: Optional[str] = None,
-    ) -> List[TrackHistoryRecord]:
+    ) -> Tuple[List[TrackHistoryRecord], IntegrityReport]:
         """Parse one tenant's file, constructing **only** the records the caller asked for.
 
         ⚠️ The filter is applied to the parsed dict, before `from_dict`. That ordering is the whole
         point: `from_dict` builds a `HistoryPoint` for every observation in the record — up to 512 of
         them — so deciding afterwards costs the full price of an answer that is then discarded.
+
+        ⛔ **Damage is counted, not swallowed.** The line that cannot be parsed is still skipped —
+        failing the whole query would lose an investigation to one unlucky shutdown — but the count
+        comes back with the answer. A read that quietly returned four records where five were written
+        is the `CORRUPTED`-as-`ABSENT` collapse, and it is the one that reads as reassuring.
         """
         path = self._path(tenant_id)
         if not os.path.exists(path):
-            return []
+            return [], IntegrityReport()
         out: List[TrackHistoryRecord] = []
+        damaged = 0
+        first_damaged: Optional[int] = None
         needles = [
             needle
             for needle in (
@@ -589,9 +742,26 @@ class JsonlTrackHistoryStore:
             if needle is not None
         ]
         with open(path, "r", encoding="utf-8") as handle:
-            for line in handle:
+            for number, line in enumerate(handle, start=1):
                 text = line.strip()
                 if not text:
+                    continue
+                # ⭐ **Shape-checked before the needle filter, so damage is never filtered away.**
+                #
+                # ⛔ The pre-filter narrows by substring, and a truncated line usually contains none
+                # of the needles — so a stream-scoped read would have skipped it and reported clean
+                # while the file was damaged, which is the collapse this whole method exists to
+                # prevent. A complete record always ends in `}` (`json.dumps` of a dict), so this
+                # costs one character comparison and catches truncation, which is the damage an
+                # interrupted write actually produces.
+                #
+                # ⚠️ **A damaged line cannot be attributed to a stream**, because attributing it
+                # would need the parse that just failed. So a filtered read reports *that this
+                # tenant's history is damaged*, never *that this analysis lost a record* — and the
+                # honest way to say it is the count, with no claim about whose it was.
+                if not text.endswith("}"):
+                    damaged += 1
+                    first_damaged = number if first_damaged is None else first_damaged
                     continue
                 if needles and not all(needle in text for needle in needles):
                     continue
@@ -605,11 +775,13 @@ class JsonlTrackHistoryStore:
                         continue
                     out.append(TrackHistoryRecord.from_dict(raw))
                 except (ValueError, KeyError, TypeError):
-                    # ⚠️ A truncated final line is the normal cost of an append-only file whose writer
-                    # was killed. Skipping it keeps every complete record readable; failing the whole
-                    # query would lose an investigation to one unlucky shutdown.
+                    # ⚠️ Still skipped — failing the whole query would lose an investigation to one
+                    # unlucky shutdown — but no longer silent. The count travels back with the answer
+                    # so the caller can say `CORRUPTED` rather than nothing at all.
+                    damaged += 1
+                    first_damaged = number if first_damaged is None else first_damaged
                     continue
-        return out
+        return out, IntegrityReport(damaged_lines=damaged, first_damaged_line=first_damaged)
 
     # --- lifecycle ---------------------------------------------------------------
 
@@ -618,7 +790,7 @@ class JsonlTrackHistoryStore:
             path = self._path(tenant_id)
             if not os.path.exists(path):
                 return 0
-            count = len(self._read(tenant_id))
+            count = len(self._read(tenant_id)[0])
             os.remove(path)
             return count
 
@@ -627,7 +799,7 @@ class JsonlTrackHistoryStore:
         removed = 0
         with self._lock:
             for tenant in self._tenants():
-                records = self._read(tenant)
+                records = self._read(tenant)[0]
                 kept = [r for r in records if not self._policy.expired(r, now=moment)]
                 if len(kept) == len(records):
                     continue
@@ -662,7 +834,15 @@ class JsonlTrackHistoryStore:
                 "backend": "jsonl",
                 "directory": self._dir,
                 # ⛔ `_count`, never `_read`. See `_count` — this gauge is on the /metrics path.
+                #
+                # ⚠️ **This is a count of candidate lines, not of readable records**, and the two can
+                # differ when the file is damaged. Making it authoritative would mean parsing on
+                # every scrape: 251.7 ms against 13.8 ms at the retention cap, on an endpoint hit
+                # every 15 s. The parse-verified number is what a read returns, and the difference
+                # between them is `damagedRecordsSeen` — published rather than left as an
+                # unexplained discrepancy between a dashboard and an investigation.
                 "records": sum(self._count(t) for t in tenants),
+                "damagedRecordsSeen": self._damaged_seen,
                 "tenants": len(tenants),
                 "retentionHours": self._policy.max_age_hours,
             }
@@ -711,6 +891,8 @@ class TrackHistoryRecorder:
         self._dropped_undated = 0
         self._write_failures = 0
         self._last_write_error: Optional[str] = None
+        #: Identities whose durable write failed. ⛔ Named, not just counted — see `drain_pending`.
+        self._lost_identities: List[str] = []
 
     @property
     def store(self) -> TrackHistoryStore:
@@ -1007,6 +1189,14 @@ class TrackHistoryRecorder:
                 with self._lock:
                     self._write_failures += 1
                     self._last_write_error = f"{type(exc).__name__}: {exc}"[:200]
+                    # ⛔ **Which identity, not just how many.** A count says evidence was destroyed;
+                    # it does not say whose. A read for that identity returns `[]`, which is byte for
+                    # byte what a read for somebody who was never in the footage returns — `LOST`
+                    # presenting as `ABSENT`, the collapse that turns "we had this and destroyed it"
+                    # into "this never happened". Only one of those two is comfortable, and it is
+                    # the wrong one.
+                    if len(self._lost_identities) < LOST_IDENTITIES_MAX:
+                        self._lost_identities.append(record.identity_id)
         return written
 
     # --- reads -------------------------------------------------------------------
@@ -1083,6 +1273,9 @@ class TrackHistoryRecorder:
                 # once, and it read as a quiet camera.
                 "writeFailures": self._write_failures,
                 "lastWriteError": self._last_write_error,
+                # ⛔ Bounded at `LOST_IDENTITIES_MAX`, so `writeFailures` can exceed this length —
+                # which is itself the honest reading: "at least these, and this many in total".
+                "lostIdentities": list(self._lost_identities),
                 "store": self._store.stats(),
             }
 
@@ -1102,6 +1295,29 @@ def _trim_points(record: TrackHistoryRecord, limit: int) -> None:
     asks about, and dropping the tail would make a long dwell look like it had just started."""
     if len(record.points) > limit:
         del record.points[: len(record.points) - limit]
+
+
+def _unterminated(fd: int) -> bool:
+    """Whether the file's last byte is something other than a newline.
+
+    ⚠️ True only for a file left mid-record by a killed writer — `write` always ends with `\\n`, so a
+    healthy file never answers yes. An empty file answers no: there is no wound to close.
+    """
+    size = os.fstat(fd).st_size
+    if size == 0:
+        return False
+    return os.pread(fd, 1, size - 1) != b"\n"
+
+
+def _write_all(fd: int, payload: bytes) -> None:
+    """Write every byte, looping over short writes.
+
+    ⚠️ `os.write` may return having written fewer bytes than it was given, and a caller that ignored
+    the return value would silently truncate exactly the large records this exists to protect.
+    """
+    view = memoryview(payload)
+    while view:
+        view = view[os.write(fd, view) :]
 
 
 def _safe_name(tenant_id: str) -> str:

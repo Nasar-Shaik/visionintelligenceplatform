@@ -268,5 +268,217 @@ class RestartEquivalenceTests(unittest.TestCase):
         self.assertEqual(after, before)
 
 
+class TornWriteTests(unittest.TestCase):
+    """⛔ A write interrupted part-way through must cost **at most** the record being written.
+
+    ### The measurement these were written from
+
+    A record is one JSON line. `write` used a buffered text writer whose buffer is 8192 bytes, and a
+    real record is bigger than that — measured, on the real serialiser:
+
+          1 point  →     421 bytes    one buffer
+         10 points →   2 383 bytes    one buffer
+        100 points →  22 093 bytes    ⛔ three flushes
+        512 points → 112 733 bytes    ⛔ fourteen flushes  (`DEFAULT_MAX_POINTS`)
+
+    So a kill between flushes leaves a **partial line with no terminating newline** — which is
+    ordinary, not exotic: 100 points is a subject tracked for under a minute at 2 fps.
+
+    ⛔ **And the next append lands on the same line.** The file is opened `"a"`, so the following
+    record is concatenated onto the truncated one and the pair parses as neither:
+
+        wrote idn_0, idn_1, idn_2   ⏻ killed mid-idn_2   then wrote idn_next
+        records() → ['idn_0', 'idn_1']        stats()['records'] → 3
+
+    `idn_next` was written completely, after the interruption, by a healthy process — and it is gone.
+    ⚠️ One interruption costs **two** records, and the second one was never at risk. That is the
+    difference between damage and spreading damage.
+
+    ⚠️ This path got *more* likely with the EI-3 shutdown flush, not less: `retire_all` writes every
+    open identity in one burst at exactly the moment the process is being torn down, inside a
+    20-second `stop_grace_period`. The fix for one loss must not enlarge another.
+    """
+
+    def setUp(self) -> None:
+        self._dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._dir.cleanup)
+        self.store = JsonlTrackHistoryStore(self._dir.name)
+
+    def _path(self) -> str:
+        return os.path.join(self._dir.name, f"{TENANT}.jsonl")
+
+    def _tear(self, bytes_off: int = 60) -> None:
+        """Truncate the file, which is what a kill between buffer flushes leaves behind."""
+        with open(self._path(), "r+", encoding="utf-8") as handle:
+            handle.truncate(os.path.getsize(self._path()) - bytes_off)
+
+    def test_a_torn_record_does_not_destroy_the_record_written_after_it(self) -> None:
+        """⛔ The one that matters: damage must not spread forward to an intact record."""
+        recorder = TrackHistoryRecorder(store=self.store)
+        for name in ("id_a", "id_b", "id_c"):
+            _observe(recorder, name, stream="ases_1", n=6)
+        recorder.retire_all()
+        self._tear()
+
+        # A healthy process, after the interruption, writing a complete record.
+        later = TrackHistoryRecorder(store=JsonlTrackHistoryStore(self._dir.name))
+        _observe(later, "id_after", stream="ases_2", n=6)
+        later.retire_all()
+
+        survived = {r.identity_id for r in self.store.records(TENANT)}
+        self.assertIn("id_after", survived, "a record written after the tear was destroyed by it")
+
+    def test_a_torn_line_is_reported_rather_than_silently_skipped(self) -> None:
+        """⛔ `CORRUPTED` must never present as `ABSENT` — the read has to say it lost something."""
+        recorder = TrackHistoryRecorder(store=self.store)
+        for name in ("id_a", "id_b", "id_c"):
+            _observe(recorder, name, stream="ases_1", n=6)
+        recorder.retire_all()
+        self._tear()
+
+        records, integrity = self.store.records_with_integrity(TENANT)
+        self.assertEqual(len(records), 2)
+        self.assertEqual(integrity.damaged_lines, 1)
+        self.assertFalse(integrity.clean)
+
+    def test_an_intact_file_reports_clean(self) -> None:
+        """⚠️ The negative control. A damage count that is never zero says nothing at all."""
+        recorder = TrackHistoryRecorder(store=self.store)
+        _observe(recorder, "id_a", stream="ases_1", n=6)
+        recorder.retire_all()
+
+        records, integrity = self.store.records_with_integrity(TENANT)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(integrity.damaged_lines, 0)
+        self.assertTrue(integrity.clean)
+
+    def test_a_corrupt_line_in_the_middle_is_counted_not_skipped(self) -> None:
+        """Damage is not only ever at the end — a torn write that was later appended to puts it
+        anywhere in the file."""
+        recorder = TrackHistoryRecorder(store=self.store)
+        for i in range(5):
+            _observe(recorder, f"id_{i}", stream="ases_1", n=4)
+        recorder.retire_all()
+
+        with open(self._path(), encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+        lines[2] = lines[2][: len(lines[2]) // 2]
+        with open(self._path(), "w", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
+
+        records, integrity = self.store.records_with_integrity(TENANT)
+        self.assertEqual(len(records), 4)
+        self.assertEqual(integrity.damaged_lines, 1)
+
+    def test_the_gap_between_the_line_count_and_the_read_is_explained(self) -> None:
+        """⛔ `stats()['records']` counts newlines; `records()` parses. They *may* disagree — and the
+        difference must be a number somebody can look at, not an unexplained discrepancy.
+
+        ⚠️ **Making `stats()` parse was measured and rejected.** At the 4096-record retention cap
+        (30.9 MB) on this machine:
+
+            newline count       13.8 ms
+            json.loads only    251.7 ms      ⛔ 18× — and `/metrics` is scraped every 15 s
+            full from_dict     932.4 ms
+
+        `_count` exists *because* parsing on the scrape path was a shipped defect. So damage is
+        counted where the parse already happens — the read — and the scrape stays a line count that
+        says what it is. ⭐ The invariant is not "the two numbers are equal"; it is **"their
+        difference is accounted for"**.
+        """
+        recorder = TrackHistoryRecorder(store=self.store)
+        for i in range(5):
+            _observe(recorder, f"id_{i}", stream="ases_1", n=4)
+        recorder.retire_all()
+
+        with open(self._path(), encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+        lines[2] = lines[2][: len(lines[2]) // 2]
+        with open(self._path(), "w", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
+
+        candidates = self.store.stats()["records"]
+        records, integrity = self.store.records_with_integrity(TENANT)
+        self.assertEqual(candidates, 5)
+        self.assertEqual(len(records), 4)
+        self.assertEqual(candidates - len(records), integrity.damaged_lines)
+
+    def test_reads_publish_a_cumulative_damage_count(self) -> None:
+        """⚠️ So a deployment can alarm on corruption without a read having to be asked for it."""
+        recorder = TrackHistoryRecorder(store=self.store)
+        for i in range(3):
+            _observe(recorder, f"id_{i}", stream="ases_1", n=4)
+        recorder.retire_all()
+        self.assertEqual(self.store.stats()["damagedRecordsSeen"], 0)
+
+        self._tear()
+        self.store.records_with_integrity(TENANT)
+        self.assertEqual(self.store.stats()["damagedRecordsSeen"], 1)
+
+
+class LostIdentityTests(unittest.TestCase):
+    """⛔ A write that failed must name **which** identity it dropped.
+
+    `drain_pending` already contains a storage failure so it cannot take down perception, and already
+    counts it. But the count is all there is: a read for that identity returns `[]`, which is exactly
+    what a read for someone who was never in the footage returns. ⚠️ `LOST` presenting as `ABSENT` is
+    the worst of the six collapses — it turns "we had this and destroyed it" into "this never
+    happened", and only the second one is comfortable.
+    """
+
+    class _Refuses:
+        def write(self, record) -> None:
+            raise OSError(28, "No space left on device")
+
+        def records(self, tenant_id, **_kw):
+            return []
+
+        def records_with_integrity(self, tenant_id, **_kw):
+            from track_history import IntegrityReport
+
+            return [], IntegrityReport()
+
+        def erase_tenant(self, tenant_id) -> int:
+            return 0
+
+        def purge(self, **_kw) -> int:
+            return 0
+
+        def stats(self) -> dict:
+            return {"durable": True, "backend": "refuses", "records": 0, "tenants": 0}
+
+    def test_a_failed_write_names_the_identity_it_dropped(self) -> None:
+        recorder = TrackHistoryRecorder(store=self._Refuses())
+        _observe(recorder, "id_lost", stream="ases_1", n=4)
+        recorder.retire_all()
+
+        stats = recorder.stats()
+        self.assertEqual(stats["writeFailures"], 1)
+        self.assertIn("id_lost", stats["lostIdentities"])
+
+    def test_nothing_is_named_lost_when_every_write_succeeded(self) -> None:
+        """⚠️ The negative control, for the same reason as above."""
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        recorder = TrackHistoryRecorder(store=JsonlTrackHistoryStore(directory.name))
+        _observe(recorder, "id_fine", stream="ases_1", n=4)
+        recorder.retire_all()
+
+        self.assertEqual(recorder.stats()["writeFailures"], 0)
+        self.assertEqual(recorder.stats()["lostIdentities"], [])
+
+    def test_the_lost_list_is_bounded(self) -> None:
+        """⚠️ An unbounded list of failures on a permanently unwritable volume is the memory leak
+        `drain_pending` refuses to build with a retry queue, arriving by another door."""
+        recorder = TrackHistoryRecorder(store=self._Refuses())
+        for i in range(300):
+            _observe(recorder, f"id_{i}", stream="ases_1", n=1)
+        recorder.retire_all()
+
+        stats = recorder.stats()
+        self.assertEqual(stats["writeFailures"], 300)
+        self.assertLessEqual(len(stats["lostIdentities"]), 64)
+
+
 if __name__ == "__main__":
     unittest.main()
