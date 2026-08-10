@@ -9,6 +9,7 @@ import { hostname } from 'node:os';
 import type { FastifyBaseLogger } from 'fastify';
 import { loadDotEnv } from '@vip/config';
 import { S3ObjectStore, TenantObjectStore } from '@vip/storage';
+import { TenantScope } from '@vip/tenancy';
 import { loadConfig } from './config/env.js';
 import { connectMongo } from './adapters/mongo.js';
 import { ReadinessRegistry } from './application/readiness.js';
@@ -302,6 +303,19 @@ async function main(): Promise<void> {
     supervisor,
     catalog,
     analyses,
+    /*
+     * ⭐ A run's finish time, so an evidence read can say `expired` rather than `absent` (EI-4).
+     * ⚠️ Narrow on purpose — the tracking route gets one fact, not the whole store.
+     */
+    sessions: {
+      async finishedAt(tenantId: string, sessionId: string): Promise<string | undefined> {
+        const session = await mongo.analyses.getSession(
+          TenantScope.fromTenantId(tenantId),
+          sessionId,
+        );
+        return session?.finishedAt;
+      },
+    },
     readiness,
     liveIngest,
     ...(frameSink instanceof HttpFrameSink ? { perception: frameSink } : {}),

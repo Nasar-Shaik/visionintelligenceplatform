@@ -439,6 +439,35 @@ def _live_records(recorder, tenant: str, q) -> list:
     return recorder.live_records(tenant, camera_id, _first(q.get("streamId")))
 
 
+def _evidence_state(recorder, tenant: str, camera_id, stream_id, sources: dict):
+    """The six-valued state of one evidence read (EI-4).
+
+    ⚠️ **The runtime decides five of the six.** `expired` needs the run's `finishedAt`, which lives
+    with the session and not with the records — see `evidence_state`, and the caller that resolves it
+    from the `retentionHorizonAt` published here.
+    """
+    import evidence_state as ev  # noqa: WPS433 - keeps the server import light
+
+    store_stats = recorder.store.stats()
+    horizon = (
+        ev.horizon(time.time(), float(store_stats["retentionHours"]))
+        if store_stats.get("durable") and store_stats.get("retentionHours") is not None
+        else None
+    )
+    return ev.assess(
+        durable=int(sources.get("durable", 0)),
+        live=int(sources.get("live", 0)),
+        damaged_records=int(sources.get("damagedRecords", 0)),
+        lost_identities=ev.lost_in_scope(
+            recorder.lost_scope(),
+            tenant_id=tenant,
+            camera_id=camera_id or None,
+            stream_id=stream_id or None,
+        ),
+        retention_horizon_at=horizon,
+    )
+
+
 def _tracking_summary(registry) -> dict:
     """What the runtime can say about tracking without naming a tenant.
 
@@ -771,6 +800,11 @@ def make_handler(
                 # ⭐ `durable` vs `live` — a finished analysis and one that is 3 % through render
                 # identically as a record count, and they mean opposite things about the durations.
                 "sources": sources,
+                # ⛔ **Six-valued, and every value is a different fact** (EI-4). Each of these used
+                # to be the same empty list: a stream that never existed, a run three seconds in, a
+                # run whose durable write failed, a file with a truncated record, and a run past its
+                # retention. One answer for five facts, and the answer is the reassuring one.
+                "evidence": _evidence_state(recorder, tenant, camera_id, stream_id, sources).to_dict(),
                 # ⛔ Four-valued, and every value is a different fact:
                 #   present  — geometry arrived and crossings were evaluated against it
                 #   none     — the camera has no line zones; "nobody crossed" is a real answer here

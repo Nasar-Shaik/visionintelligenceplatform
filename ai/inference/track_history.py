@@ -891,8 +891,12 @@ class TrackHistoryRecorder:
         self._dropped_undated = 0
         self._write_failures = 0
         self._last_write_error: Optional[str] = None
-        #: Identities whose durable write failed. ⛔ Named, not just counted — see `drain_pending`.
-        self._lost_identities: List[str] = []
+        #: Identities whose durable write failed, as `(tenant, camera, stream, identity)`.
+        #:
+        #: ⛔ Named, not just counted — see `drain_pending`. ⚠️ **Scoped**, so a failure on an
+        #: unrelated camera cannot make this analysis read `lost`: a state word that is wrong in the
+        #: alarming direction gets ignored exactly as fast as one wrong the reassuring way.
+        self._lost_identities: List[Tuple[str, str, Optional[str], str]] = []
 
     @property
     def store(self) -> TrackHistoryStore:
@@ -1196,7 +1200,9 @@ class TrackHistoryRecorder:
                     # into "this never happened". Only one of those two is comfortable, and it is
                     # the wrong one.
                     if len(self._lost_identities) < LOST_IDENTITIES_MAX:
-                        self._lost_identities.append(record.identity_id)
+                        self._lost_identities.append(
+                            (record.tenant_id, record.camera_id, record.stream_id, record.identity_id)
+                        )
         return written
 
     # --- reads -------------------------------------------------------------------
@@ -1254,6 +1260,15 @@ class TrackHistoryRecorder:
             dropped += before - len(self._pending)
         return dropped + self._store.erase_tenant(tenant_id)
 
+    def lost_scope(self) -> List[Tuple[str, str, Optional[str], str]]:
+        """Every failed durable write, with the scope it belonged to.
+
+        ⚠️ Returned as scoped tuples rather than bare ids so a read can narrow them to its own query.
+        See `evidence_state.lost_in_scope`.
+        """
+        with self._lock:
+            return list(self._lost_identities)
+
     def stats(self) -> dict:
         with self._lock:
             live = sum(len(b) for b in self._live.values())
@@ -1275,7 +1290,7 @@ class TrackHistoryRecorder:
                 "lastWriteError": self._last_write_error,
                 # ⛔ Bounded at `LOST_IDENTITIES_MAX`, so `writeFailures` can exceed this length —
                 # which is itself the honest reading: "at least these, and this many in total".
-                "lostIdentities": list(self._lost_identities),
+                "lostIdentities": [identity for (_t, _c, _s, identity) in self._lost_identities],
                 "store": self._store.stats(),
             }
 

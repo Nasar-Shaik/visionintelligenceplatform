@@ -674,3 +674,115 @@ describe('a run that is not finished', () => {
     expect(screen.getByText(/Run the analysis to the end/)).toBeInTheDocument();
   });
 });
+
+/**
+ * ⛔ **The six evidence states, on screen** (Evidence Integrity, EI-4).
+ *
+ * Five of them used to render identically: an empty timeline, which an operator reads as *nothing
+ * happened*. That is right in exactly one of the five. These assert the three that mean something
+ * went wrong are impossible to miss, and — just as importantly — that the two ordinary ones stay
+ * quiet, because a banner on every read is furniture nobody sees.
+ */
+describe('the evidence state', () => {
+  const withEvidence = (evidence: Record<string, unknown>) => {
+    server.use(
+      http.get('/api/behaviour/timeline', () =>
+        HttpResponse.json({ success: true, data: { ...timelinePayload(), evidence } }),
+      ),
+    );
+  };
+
+  it('says so, loudly, when evidence was lost', async () => {
+    withEvidence({
+      state: 'lost',
+      detail: '2 identity(ies) were retired but could not be written to durable storage: idn_a, idn_b.',
+      durable: 0,
+      live: 0,
+      records: 0,
+      damagedRecords: 0,
+      lostIdentities: ['idn_a', 'idn_b'],
+    });
+    mountPanel();
+    const note = await screen.findByTestId('evidence-state');
+    expect(note).toHaveAttribute('data-state', 'lost');
+    /* ⛔ `alert`, not `status`: a destroyed movement path is not an aside. */
+    expect(note).toHaveAttribute('role', 'alert');
+    expect(note).toHaveTextContent('idn_a');
+  });
+
+  it('says so when stored records could not be read', async () => {
+    withEvidence({
+      state: 'corrupted',
+      detail: '1 stored record(s) for this query could not be read. 4 were readable and are shown.',
+      durable: 4,
+      live: 0,
+      records: 4,
+      damagedRecords: 1,
+    });
+    mountPanel();
+    const note = await screen.findByTestId('evidence-state');
+    expect(note).toHaveAttribute('data-state', 'corrupted');
+    expect(note).toHaveAttribute('role', 'alert');
+  });
+
+  it('distinguishes a run still in progress from a finished one', async () => {
+    /* ⚠️ Not a fault — a lower bound. Amber and `status`, never `alert`. */
+    withEvidence({
+      state: 'notYetAvailable',
+      detail: '3 identity(ies) are still being observed, so this answer is incomplete.',
+      durable: 1,
+      live: 3,
+      records: 4,
+      damagedRecords: 0,
+    });
+    mountPanel();
+    const note = await screen.findByTestId('evidence-state');
+    expect(note).toHaveAttribute('data-state', 'notYetAvailable');
+    expect(note).toHaveAttribute('role', 'status');
+  });
+
+  it('explains an empty answer that retention caused', async () => {
+    /* ⭐ A kept promise. The operator must not read it as a defect, nor as "nothing happened". */
+    withEvidence({
+      state: 'expired',
+      detail: 'this run finished at 2026-08-01T09:00:00Z, before the retention horizon.',
+      durable: 0,
+      live: 0,
+      records: 0,
+      damagedRecords: 0,
+    });
+    mountPanel();
+    const note = await screen.findByTestId('evidence-state');
+    expect(note).toHaveAttribute('data-state', 'expired');
+    expect(note).toHaveTextContent('retention horizon');
+  });
+
+  it('stays silent on a complete read', async () => {
+    /* ⚠️ The negative control, and it is the one that keeps the other four legible. */
+    withEvidence({
+      state: 'present',
+      detail: '4 stored movement path(s) answered this query, complete and closed.',
+      durable: 4,
+      live: 0,
+      records: 4,
+      damagedRecords: 0,
+    });
+    mountPanel();
+    await screen.findAllByTestId('behaviour-row');
+    expect(screen.queryByTestId('evidence-state')).not.toBeInTheDocument();
+  });
+
+  it('stays silent when there is genuinely nothing to report', async () => {
+    withEvidence({
+      state: 'absent',
+      detail: 'no stored movement path matches this query.',
+      durable: 0,
+      live: 0,
+      records: 0,
+      damagedRecords: 0,
+    });
+    mountPanel();
+    await screen.findAllByTestId('behaviour-row');
+    expect(screen.queryByTestId('evidence-state')).not.toBeInTheDocument();
+  });
+});

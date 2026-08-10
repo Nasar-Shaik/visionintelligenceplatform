@@ -215,7 +215,10 @@ def collect(
     # ⭐ `stream_id` goes to the store, not to a list comprehension after it. Filtering here instead
     # made an analysis-scoped read cost the whole tenant's history — the P-11 soak watched these two
     # endpoints climb 330 → 608 ms while every other operation stayed flat.
-    durable = recorder.store.records(
+    # ⭐ `records_with_integrity`, so a record that is on disk and unreadable is a *fact this read
+    # carries* rather than a silent shortfall (EI-4). The parse happens either way; only the report
+    # is retained, so this costs nothing over `records()`.
+    durable, integrity = recorder.store.records_with_integrity(
         tenant_id, camera_id=camera_id, identity_id=identity_id, stream_id=stream_id
     )
     live: List[TrackHistoryRecord] = []
@@ -228,7 +231,14 @@ def collect(
     seen = {(r.identity_id, r.camera_id, r.stream_id) for r in durable}
     merged = list(durable) + [r for r in live if (r.identity_id, r.camera_id, r.stream_id) not in seen]
     merged.sort(key=lambda r: (r.first_seconds if r.first_seconds is not None else 0.0, r.identity_id))
-    return merged, {"durable": len(durable), "live": len(merged) - len(durable), "records": len(merged)}
+    return merged, {
+        "durable": len(durable),
+        "live": len(merged) - len(durable),
+        "records": len(merged),
+        # ⛔ Carried out of the read, never dropped here. A shortfall discovered at the parse and not
+        # reported upward is the `CORRUPTED`-as-`ABSENT` collapse arriving one layer later (EI-4).
+        "damagedRecords": integrity.damaged_lines,
+    }
 
 
 def points_by_identity(

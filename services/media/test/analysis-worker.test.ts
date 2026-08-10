@@ -9,6 +9,7 @@ import { TenantScope } from '@vip/tenancy';
 import { ANALYSIS_LIMITS, sessionStateToJobState } from '@vip/contracts';
 import { InMemoryAnalysisStore } from '../src/adapters/in-memory-analysis-store.js';
 import { AnalysisWorker, isTransient } from '../src/application/analysis-worker.js';
+import { resolveEvidenceExpiry } from '../src/transport/routes/tracking.js';
 import {
   computeProgress,
   estimateRemaining,
@@ -851,5 +852,103 @@ describe('AnalysisWorker — closing the run so its evidence survives', () => {
     await worker.claim(scope, session);
 
     expect((await worker.runSession(scope, 'ases_1')).state).toBe('succeeded');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * ⭐ **`absent` and `expired` are different answers** (Evidence Integrity, EI-4).
+ *
+ * The runtime holds records, not runs. Asked about a stream it has none for, it cannot tell "this
+ * analysis never existed" from "this analysis is older than retention" — both are silence. This
+ * layer holds `finishedAt`, and a run that finished before the runtime's published retention horizon
+ * **cannot** have surviving records. ⭐ A proof rather than an inference, made once, here.
+ */
+describe('evidence expiry — a kept promise, not a defect', () => {
+  const horizon = '2026-08-10T00:00:00.000Z';
+  const answer = (state: string): unknown => ({
+    enabled: true,
+    evidence: { state, detail: 'x', durable: 0, live: 0, records: 0, damagedRecords: 0, retentionHorizonAt: horizon },
+  });
+  const sessions = (finishedAt?: string) => ({
+    async finishedAt(): Promise<string | undefined> {
+      return finishedAt;
+    },
+  });
+  const stateOf = (out: unknown): unknown => (out as { evidence: { state: unknown } }).evidence.state;
+
+  it('upgrades absent to expired when the run finished before the horizon', async () => {
+    const out = await resolveEvidenceExpiry(answer('absent'), {
+      sessions: sessions('2026-08-01T09:00:00.000Z'),
+      tenantId: 'tnt_a',
+      streamId: 'ases_1',
+    });
+    expect(stateOf(out)).toBe('expired');
+  });
+
+  it('leaves absent alone when the run is inside the horizon', async () => {
+    /* ⚠️ The negative control. An expiry that always fires explains every empty answer away. */
+    const out = await resolveEvidenceExpiry(answer('absent'), {
+      sessions: sessions('2026-08-10T09:00:00.000Z'),
+      tenantId: 'tnt_a',
+      streamId: 'ases_1',
+    });
+    expect(stateOf(out)).toBe('absent');
+  });
+
+  it('never dresses a lost read as expired', async () => {
+    /* ⛔ EI-4's rule in the direction that flatters us: calling a defect a policy. */
+    const out = await resolveEvidenceExpiry(answer('lost'), {
+      sessions: sessions('2026-08-01T09:00:00.000Z'),
+      tenantId: 'tnt_a',
+      streamId: 'ases_1',
+    });
+    expect(stateOf(out)).toBe('lost');
+  });
+
+  it('never dresses a corrupted read as expired', async () => {
+    const out = await resolveEvidenceExpiry(answer('corrupted'), {
+      sessions: sessions('2026-08-01T09:00:00.000Z'),
+      tenantId: 'tnt_a',
+      streamId: 'ases_1',
+    });
+    expect(stateOf(out)).toBe('corrupted');
+  });
+
+  it('stays absent when this deployment cannot look a run up', async () => {
+    const out = await resolveEvidenceExpiry(answer('absent'), {
+      tenantId: 'tnt_a',
+      streamId: 'ases_1',
+    });
+    expect(stateOf(out)).toBe('absent');
+  });
+
+  it('stays absent when the run has no finish time', async () => {
+    const out = await resolveEvidenceExpiry(answer('absent'), {
+      sessions: sessions(undefined),
+      tenantId: 'tnt_a',
+      streamId: 'ases_1',
+    });
+    expect(stateOf(out)).toBe('absent');
+  });
+
+  it('stays absent when the lookup fails', async () => {
+    /* ⚠️ A store that is down must not manufacture an explanation for missing evidence. */
+    const out = await resolveEvidenceExpiry(answer('absent'), {
+      sessions: {
+        async finishedAt(): Promise<string | undefined> {
+          throw new Error('mongo is unreachable');
+        },
+      },
+      tenantId: 'tnt_a',
+      streamId: 'ases_1',
+    });
+    expect(stateOf(out)).toBe('absent');
+  });
+
+  it('passes a read with no evidence block through untouched', async () => {
+    const plain = { enabled: false, detail: 'track history is not enabled on this runtime' };
+    expect(await resolveEvidenceExpiry(plain, { tenantId: 'tnt_a' })).toBe(plain);
   });
 });

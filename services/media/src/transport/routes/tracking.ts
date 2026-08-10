@@ -76,6 +76,20 @@ export interface TrackingRoutesDeps {
    * than "nobody crossed a line" — different answers that render identically.
    */
   gate?: { entry(tenantId: string, cameraId: string): { zones?: readonly PlanZone[] } | undefined };
+  /**
+   * ⭐ **When a run finished** — the one fact that turns `absent` into `expired` (EI-4).
+   *
+   * ⛔ The runtime holds records, not runs. Asked about a stream it has none for, it cannot tell
+   * "this analysis never existed" from "this analysis is older than retention" — both are silence,
+   * and inventing the distinction from a tenant-wide purge counter would be a guess dressed as a
+   * fact. This layer holds `finishedAt`, and a run that finished before the runtime's published
+   * retention horizon **cannot** have surviving records. ⭐ A proof, not an inference — and the
+   * decision is made once, here, in the only place both facts exist.
+   *
+   * ⚠️ Absent on a deployment with no analysis store, and the read then stays `absent` rather than
+   * guessing.
+   */
+  sessions?: { finishedAt(tenantId: string, sessionId: string): Promise<string | undefined> };
 }
 
 /**
@@ -103,6 +117,49 @@ export function linesForCamera(
       points: zone.points.map((p) => [p[0], p[1]] as [number, number]),
       version: zone.version,
     }));
+}
+
+/**
+ * ⭐ Turn the runtime's `absent` into `expired` when the run provably finished before the horizon.
+ *
+ * ⛔ **Only `absent` is ever upgraded.** A `corrupted` or `lost` read past the horizon is still
+ * corrupted or lost — calling it `expired` would excuse a defect as a policy, which is the most
+ * comfortable lie available here and the exact collapse EI-4 forbids ("expired must never be
+ * reported as lost", in both directions).
+ *
+ * ⚠️ Exported so the property is testable without a Fastify instance, and pure but for the one
+ * lookup it is given.
+ */
+export async function resolveEvidenceExpiry(
+  answer: unknown,
+  ctx: {
+    sessions?: { finishedAt(tenantId: string, sessionId: string): Promise<string | undefined> };
+    tenantId: string;
+    streamId?: string;
+  },
+): Promise<unknown> {
+  if (answer === null || typeof answer !== 'object') return answer;
+  const evidence = (answer as { evidence?: unknown }).evidence;
+  if (evidence === null || typeof evidence !== 'object') return answer;
+  const state = evidence as { state?: unknown; retentionHorizonAt?: unknown };
+  if (state.state !== 'absent' || typeof state.retentionHorizonAt !== 'string') return answer;
+  if (ctx.sessions === undefined || ctx.streamId === undefined) return answer;
+
+  const finishedAt = await ctx.sessions.finishedAt(ctx.tenantId, ctx.streamId).catch(() => undefined);
+  if (finishedAt === undefined) return answer;
+  const finished = Date.parse(finishedAt);
+  const horizon = Date.parse(state.retentionHorizonAt);
+  /* ⚠️ An unparseable timestamp must not manufacture an explanation for missing evidence. */
+  if (Number.isNaN(finished) || Number.isNaN(horizon) || finished >= horizon) return answer;
+
+  return {
+    ...answer,
+    evidence: {
+      ...evidence,
+      state: 'expired',
+      detail: `this run finished at ${finishedAt}, before the retention horizon of ${state.retentionHorizonAt}. ⚠️ Its movement paths were removed as the retention policy promises — they were not lost, and this is not a claim that nothing happened.`,
+    },
+  };
 }
 
 export function registerTrackingRoutes(app: FastifyInstance, deps: TrackingRoutesDeps): void {
@@ -264,9 +321,16 @@ export function registerTrackingRoutes(app: FastifyInstance, deps: TrackingRoute
         if (lines !== undefined) params.set('lines', JSON.stringify(lines));
 
         const query = params.size > 0 ? `?${params.toString()}` : '';
+        const answer = await unreachableAsAnswer(() =>
+          proxy(request, `/tracking/behaviour/${view}`, query),
+        );
         return reply.send(
           success(
-            await unreachableAsAnswer(() => proxy(request, `/tracking/behaviour/${view}`, query)),
+            await resolveEvidenceExpiry(answer, {
+              ...(deps.sessions === undefined ? {} : { sessions: deps.sessions }),
+              tenantId: request.principal?.tenantId ?? '',
+              ...(request.query.streamId === undefined ? {} : { streamId: request.query.streamId }),
+            }),
           ),
         );
       },

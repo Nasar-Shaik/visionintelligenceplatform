@@ -111,7 +111,10 @@ class CollectTests(unittest.TestCase):
             confidence=0.9,
         )
         records, sources = bt.collect(self.recorder, TENANT, stream_id=STREAM)
-        self.assertEqual(sources, {"durable": 1, "live": 1, "records": 2})
+        # ⚠️ `damagedRecords` joined this in EI-4: a record on disk that cannot be parsed is a fact
+        # the read carries, not a silent shortfall. Asserted as part of the whole shape rather than
+        # ignored, so a future field cannot arrive here unnoticed either.
+        self.assertEqual(sources, {"durable": 1, "live": 1, "records": 2, "damagedRecords": 0})
         self.assertEqual({r.identity_id for r in records}, {"idn_durable", "idn_live"})
 
     def test_a_different_analysis_of_the_same_footage_is_not_returned(self):

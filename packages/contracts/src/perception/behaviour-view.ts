@@ -108,6 +108,62 @@ export const BehaviourRelationalCoverage = z.object({
 export type BehaviourRelationalCoverage = z.infer<typeof BehaviourRelationalCoverage>;
 
 /**
+ * ⛔ **The state of one evidence read — six values, and every one is a different fact** (EI-4).
+ *
+ * Measured before this existed: all five of these were the same empty list.
+ *
+ *     a stream that never existed        →  []
+ *     a run still three seconds in       →  []
+ *     a run whose durable write failed   →  []
+ *     a file with a truncated record     →  []
+ *     a run past its retention           →  []
+ *
+ * An investigator reading an empty timeline concludes *nothing happened*, which is right in exactly
+ * one of those five and catastrophically wrong in three.
+ *
+ * ⚠️ The three rules the platform holds itself to, structurally rather than by memory:
+ * **corrupted never appears as missing**, **lost is never reported as absent**, and **expired is
+ * never reported as lost** — an expiry is a promise kept, and dressing a defect as one is the most
+ * comfortable lie available here.
+ */
+export const EvidenceState = z.enum([
+  /** The evidence is here and closed. */
+  'present',
+  /** ⚠️ The run is still producing it — every duration below is a lower bound, not a result. */
+  'notYetAvailable',
+  /** There is none, and none was lost. Nothing happened. */
+  'absent',
+  /** ⛔ It existed and the platform failed to keep it. Never renders as `absent`. */
+  'lost',
+  /** ⛔ It is on disk and cannot be read. Never renders as `absent`. */
+  'corrupted',
+  /** Retention removed it, as promised. ⚠️ A kept promise, never a defect. */
+  'expired',
+]);
+export type EvidenceState = z.infer<typeof EvidenceState>;
+
+export const EvidenceRead = z.object({
+  state: EvidenceState,
+  /** ⚠️ Operator-facing. Says what it means for the answer, not what the code did. */
+  detail: z.string().min(1).max(600),
+  durable: z.number().int().min(0),
+  live: z.number().int().min(0),
+  records: z.number().int().min(0),
+  /** Records on disk this read could not parse. ⛔ Non-zero means the answer is incomplete. */
+  damagedRecords: z.number().int().min(0),
+  /** ⛔ *Which* identities were lost. A count is a status line; a name is something to act on. */
+  lostIdentities: z.array(z.string()).max(64).optional(),
+  /**
+   * The instant before which retention guarantees nothing survives.
+   *
+   * ⭐ Published so the caller holding a run's `finishedAt` can resolve `absent` into `expired` —
+   * a proof rather than an inference, and made in the one place both facts exist.
+   */
+  retentionHorizonAt: z.string().optional(),
+});
+export type EvidenceRead = z.infer<typeof EvidenceRead>;
+
+/**
  * ⚠️ Whether the runtime could answer at all, echoed back with what was asked.
  *
  * `enabled: false` means this deployment stores no track history — a different answer from "this
@@ -126,6 +182,8 @@ export const BehaviourReadEnvelope = z.object({
     .optional(),
   /** ⭐ `durable` vs `live`: a finished analysis and one 3 % through look the same as a record count. */
   sources: z.record(z.string(), z.unknown()).optional(),
+  /** ⛔ Six-valued, never collapsed — see `EvidenceState`. */
+  evidence: EvidenceRead.optional(),
   /** ⛔ See `BehaviourPrimitives.lineGeometry` — four states, and `invalid` is never `absent`. */
   lineGeometry: z.enum(['present', 'none', 'absent', 'invalid']).optional(),
   /**

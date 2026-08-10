@@ -67,6 +67,8 @@ export interface BuildServerOptions {
    * answering errors, because a route that exists and always fails is indistinguishable from a bug.
    */
   analyses?: AnalysisService;
+  /** When a run finished, for the evidence read's `expired` state (EI-4). See `TrackingRoutesDeps`. */
+  sessions?: { finishedAt(tenantId: string, sessionId: string): Promise<string | undefined> };
   /**
    * Camera Processing Assignment (P-8 Phase 6). Present only when the gate is enabled — absent is a
    * valid deployment that analyses every camera, and the routes say so rather than reporting zeroes.
@@ -156,6 +158,13 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
      * differ from the one being enforced.
      */
     ...(opts.assignment === undefined ? {} : { gate: opts.assignment.gate }),
+    /*
+     * ⭐ **The one fact that separates `expired` from `absent`** (EI-4). The runtime holds records,
+     * not runs, so it cannot tell a query about something that never happened from one about a run
+     * older than retention. A session that finished before the runtime's published horizon cannot
+     * have surviving records — a proof, made once, where both facts meet.
+     */
+    ...(opts.sessions === undefined ? {} : { sessions: opts.sessions }),
   });
   registerEventBridgeRoutes(app, {
     auth,

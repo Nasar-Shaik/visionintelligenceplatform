@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { AnalysisTimeline } from '@vip/contracts';
+import type { AnalysisTimeline, BehaviourTimelineView } from '@vip/contracts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui';
 import { epochSecondsOf, type RecordingClock } from './footage';
 import {
@@ -84,6 +84,45 @@ function LineGeometryNote({
       data-state={state}
     >
       {message}
+    </p>
+  );
+}
+
+
+/**
+ * ⛔ **The six evidence states, each said out loud** (Evidence Integrity, EI-4).
+ *
+ * Five of them used to render as the same thing: an empty timeline. A stream that never existed, a
+ * run three seconds in, a run whose durable write failed, a file with a truncated record, and a run
+ * past its retention — one screen, and the screen reads *nothing happened*. That is right in exactly
+ * one of the five.
+ *
+ * ⚠️ `present` and `absent` say nothing here: a working read should not carry a banner, or the
+ * banner becomes furniture and the three that matter stop being noticed.
+ */
+function EvidenceStateNote({
+  evidence,
+}: {
+  /* ⚠️ Taken from the contract rather than restated, so a seventh state is a compile error here. */
+  evidence: BehaviourTimelineView['evidence'];
+}) {
+  if (evidence === undefined || evidence.state === 'present' || evidence.state === 'absent') {
+    return null;
+  }
+  /* ⛔ Loss and corruption are defects; the other two are honest states of a working platform. */
+  const isFault = evidence.state === 'lost' || evidence.state === 'corrupted';
+  return (
+    <p
+      className={
+        isFault
+          ? 'rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs text-destructive'
+          : 'rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs text-amber-500'
+      }
+      role={isFault ? 'alert' : 'status'}
+      data-testid="evidence-state"
+      data-state={evidence.state}
+    >
+      {evidence.detail}
     </p>
   );
 }
@@ -185,6 +224,12 @@ export function BehaviourPanel({
         difference has to be on the screen rather than inferred from an empty list.
       */}
       <LineGeometryNote state={timeline.data?.lineGeometry} lines={timeline.data?.lines ?? []} />
+
+      {/*
+        ⛔ **Above the tabs, deliberately.** A read that lost evidence must say so before the
+        operator reads the timeline, not in a corner after they have already concluded from it.
+      */}
+      <EvidenceStateNote evidence={timeline.data?.evidence} />
 
       {timeline.isError ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive" role="alert">

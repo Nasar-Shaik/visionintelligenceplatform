@@ -489,6 +489,66 @@ console.log(`\nperception boundary · ${files.length} TypeScript source(s) outsi
   }
 }
 
+/**
+ * ### §L the six evidence states mean the same thing in both languages
+ *
+ * ⛔ **The whole point of the state model is that a reader can tell five silences apart.** Before
+ * EI-4 they were all the empty list: a stream that never existed, a run three seconds in, a run
+ * whose durable write failed, a file with a truncated record, and a run past its retention. If the
+ * runtime emits a state the contract does not accept, the read fails validation — or worse, the
+ * console falls back to rendering nothing, and the operator is back to reading silence.
+ *
+ * ⚠️ Checked in **both** directions here, unlike §K. An unaccepted state breaks the read; an
+ * *unproduced* state means the console has a branch nothing can ever reach, which is how a
+ * carefully-written `LOST` banner sits dead in the codebase for three milestones.
+ */
+{
+  const runtime = readFileSync(join(ROOT, 'ai/inference/evidence_state.py'), 'utf8');
+  const contract = readFileSync(
+    join(ROOT, 'packages/contracts/src/perception/behaviour-view.ts'),
+    'utf8',
+  );
+
+  const vocabStart = runtime.indexOf('EVIDENCE_STATES: Tuple[str, ...] = (');
+  const produced =
+    vocabStart < 0
+      ? null
+      : [
+          ...runtime
+            .slice(vocabStart, runtime.indexOf(')', vocabStart))
+            .matchAll(/"([a-zA-Z]+)"/g),
+        ].map((m) => m[1]);
+
+  const enumStart = contract.indexOf('export const EvidenceState = z.enum([');
+  const accepted =
+    enumStart < 0
+      ? null
+      : [...contract.slice(enumStart, contract.indexOf(']);', enumStart)).matchAll(/'([a-zA-Z]+)'/g)].map(
+          (m) => m[1],
+        );
+
+  if (produced === null || accepted === null) {
+    check(false, '§L the evidence states could be read from both sides', 'state vocabulary not found');
+  } else {
+    const missing = produced.filter((state) => !accepted.includes(state));
+    const unreachable = accepted.filter((state) => !produced.includes(state));
+    check(
+      missing.length === 0,
+      `§L all ${produced.length} evidence states the runtime produces are accepted by the contract`,
+      missing.length === 0
+        ? produced.join(', ')
+        : `the contract rejects: ${missing.join(', ')} — the read fails, or the console renders silence again`,
+    );
+    check(
+      unreachable.length === 0,
+      '§L every evidence state the contract accepts can actually be produced',
+      unreachable.length === 0
+        ? `${accepted.length} state(s), all reachable`
+        : `nothing produces: ${unreachable.join(', ')} — a console branch that can never render`,
+    );
+  }
+}
+
 console.log(
   failures === 0
     ? '\nperception boundary: OK — the runtime is the only thing that knows how a model works.\n'
