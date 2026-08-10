@@ -106,7 +106,7 @@ notify. Runtime is Python (stdlib + onnxruntime) on :8085, reachable only from m
 | --- | --- |
 | **Repository gate** | ⭐ 70/70 green — `pnpm turbo lint typecheck test` |
 | **Contracts** | ⭐ green — 70 generated schemas + perception boundary §A–§K |
-| **Browser** | ⭐ green — chromium · firefox · webkit · edge, against built images |
+| **Browser** | ⭐ **212 passed, 0 failed** — chromium 58 · edge 58 · firefox 48 · webkit 48 |
 | **Deployment** | ⭐ verified via `./infra/docker/prod.sh`, never `pnpm dev` |
 | **Soak** | ⭐ 6.49 h · 6 271 timed operations · 0 failed · no operation drifted materially |
 | **Replay** | ⭐ byte-identical across service · runtime · deployment · SIGKILL |
@@ -232,7 +232,7 @@ governance decision and an ADR before any code.
 | --- | --- |
 | Python tests | **1 540** |
 | TypeScript tests | 636 console · 529 contracts · 384 media · 315 rules · 278 camera · 82 events · 45 e2e |
-| Browser tests | 8 spec files × 4 engines |
+| Browser tests | 8 spec files × 4 engines · **212 passed, 0 failed** |
 | Contracts | 70 schemas + perception boundary §A–§L |
 | Repository gate | **70/70 green** |
 | Deployment | ⭐ verified — built images, `prod.sh` |

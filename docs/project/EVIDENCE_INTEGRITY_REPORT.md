@@ -321,7 +321,7 @@ live (28 identities across 12 runs, accumulated in 26 minutes of ordinary use).
 | Deployment | ⭐ 17/17 containers, verified via `prod.sh`, never `pnpm dev` |
 | Replay | ⭐ byte-identical across service, runtime, deployment and SIGKILL |
 | Stress | ⭐ control clean; loss under kills reported, never silent |
-| Browser | see § 11 |
+| Browser | ⭐ **212 passed · 0 failed** · chromium 58 · edge 58 · firefox 48 · webkit 48 |
 | Power-loss durability | ⚠️ **not provided** — no `fsync` (§ 9) |
 
 ⭐ **A completed run's evidence no longer changes after the run completes.** That was the milestone's
@@ -334,7 +334,35 @@ lost, the platform says which of six things happened — and `LOST` can no longe
 
 ---
 
-## 11. Verification log
+## 11. Browser certification
+
+Full matrix against the deployed stack, 19.8 minutes:
+
+| Engine | Passed | Skipped | Failed |
+| --- | ---: | ---: | ---: |
+| chromium | 58 | 0 | **0** |
+| edge | 58 | 0 | **0** |
+| firefox | 48 | 10 | **0** |
+| webkit | 48 | 10 | **0** |
+
+| Spec | Passed | Skipped |
+| --- | ---: | ---: |
+| `security.spec.ts` | 36 | 0 |
+| `behaviour.spec.ts` | 32 | 0 |
+| `performance.spec.ts` | 28 | 0 |
+| `association.spec.ts` | 20 | 0 |
+| `journey.spec.ts` | 16 | 0 |
+| `crossline.spec.ts` | 12 | 0 |
+| `surface.spec.ts` | 50 | 2 |
+| `livecam.spec.ts` | 18 | 18 |
+
+⚠️ The 18 `livecam` skips are firefox and webkit: a fake camera device is a Chromium-family
+capability, so live capture is certified on chromium and edge only. That is the standing pattern, not
+a regression — and the physical-camera crossing remains a manual UAT step whatever the engine.
+
+---
+
+## 12. Verification log
 
 Every number in this report came from the deployed stack on built images. Commits, in order:
 
