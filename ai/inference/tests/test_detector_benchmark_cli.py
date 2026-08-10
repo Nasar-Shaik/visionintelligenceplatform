@@ -163,7 +163,11 @@ class ReportTests(unittest.TestCase):
         self.assertIn("precision", report.lower())
 
     def test_the_report_states_how_many_scenarios_are_really_covered(self) -> None:
-        self.assertIn("0 of 31 required scenarios are covered by real footage", self._report())
+        """⚠️ Derived from `SCENARIOS`, not a literal: the count grew 31 → 41 when the required
+        capabilities were extended, and a hardcoded total fails for the wrong reason each time."""
+        self.assertIn(
+            f"0 of {len(bc.SCENARIOS)} required scenarios are covered by real footage", self._report()
+        )
 
     def test_the_report_carries_the_verified_checksum(self) -> None:
         """⚠️ Asserted against the digest of the bytes the stub actually holds — not a literal, which

@@ -58,21 +58,42 @@ COVERAGE_STATES: Tuple[str, ...] = ("AVAILABLE", "PARTIAL", "MISSING")
 #: ⭐ **Kinds that can establish a scenario on their own.** Exactly one, and that is the point.
 CONCLUSIVE_KINDS: Tuple[str, ...] = ("REAL_FOOTAGE",)
 
+#: ⛔ **Real footage of real people never enters this repository.** The manifest that describes it is
+#: committed; the pixels live here, git-ignored, and are bound to the manifest by checksum. This is
+#: the convention `object-corpus.mjs` established for photographs, applied to video.
+DEFAULT_REAL_ROOT = ".data/real"
+REAL_ROOT_ENV = "VIP_REAL_FOOTAGE_DIR"
+
+#: Kinds whose files are rendered or constructed and therefore **belong in the repository**.
+AUTHORED_KINDS: Tuple[str, ...] = ("AUTHORED", "SYNTHETIC", "PHOTOGRAPH")
+
 #: The scenarios a detector benchmark is required to report coverage for.
 #:
 #: ⚠️ Ordered by what a reader should worry about first, not alphabetically: the perception basics,
 #: then viewpoint, then capture conditions, then objects, then interactions. A scenario missing from
 #: the top of this list is a bigger hole than one missing from the bottom.
 SCENARIOS: Tuple[str, ...] = (
+    # --- the person, seen at all ---
     "normal-person",
     "multiple-people",
     "crowd",
     "distant-person",
     "close-person",
+    # --- orientation: which way the subject faces the lens ---
+    "front-facing-person",
     "side-facing-person",
     "rear-facing-person",
+    # --- posture. ⚠️ Recorded now, scored later: these are the footage a pose model would
+    # eventually be measured on, and the recording is worth doing before the model is approved.
+    # ⛔ They are *observations of body configuration*, never intent.
+    "person-standing",
+    "person-sitting",
+    "person-bending",
+    "hands-raised",
+    # --- occlusion ---
     "partially-occluded-person",
     "shelf-occlusion",
+    # --- viewpoint and capture ---
     "top-down-view",
     "low-angle-view",
     "portrait-video",
@@ -81,21 +102,36 @@ SCENARIOS: Tuple[str, ...] = (
     "backlighting",
     "poor-lighting",
     "motion-blur",
+    # --- objects ---
     "bottle",
     "backpack",
     "handbag",
     "suitcase",
     "cup",
     "small-merchandise",
+    # --- object handling ---
     "person-carrying-object",
     "object-pickup",
+    "object-putdown",
     "object-return",
+    # --- interaction ---
     "two-person-interaction",
     "handover",
     "two-people-one-object",
+    # --- movement through the frame, and the geometry rules read ---
+    "person-entering-frame",
     "person-leaving-frame",
     "re-entry",
+    "approach-recede",
+    "zone-crossing",
+    "line-crossing",
 )
+
+
+def _is_sha256(value: str) -> bool:
+    """⚠️ 64 hex characters. A path, a prefix or a placeholder cannot satisfy this — which is the
+    assertion that would have caught P3.1's checksum column publishing a file path."""
+    return len(value) == 64 and all(c in "0123456789abcdef" for c in value.lower())
 
 
 class CorpusError(ValueError):
@@ -122,6 +158,14 @@ class BenchmarkCase:
     #: today, and it is what forbids precision and recall — see `has_ground_truth`.
     ground_truth: Optional[str] = None
     note: str = ""
+    #: ⛔ Required for `REAL_FOOTAGE`, forbidden otherwise. The digest binds the manifest to the
+    #: bytes, so a clip swapped under a declaration fails loudly instead of silently re-measuring.
+    sha256: Optional[str] = None
+    #: How it was recorded — device, date, dimensions, duration. Required for `REAL_FOOTAGE`.
+    capture: Optional[Mapping[str, object]] = None
+    #: ⛔ Required for `REAL_FOOTAGE`: the lawful basis for holding video of identifiable people.
+    #: A reference an auditor can follow, never a boolean — "true" records no decision.
+    consent: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.footage_kind not in FOOTAGE_KINDS:
@@ -134,6 +178,53 @@ class BenchmarkCase:
             raise CorpusError(
                 f"case '{self.case_id}' claims unknown scenario(s) {unknown}. "
                 f"A scenario that is not in SCENARIOS is not reported, so the claim would be silent."
+            )
+        self._check_provenance()
+
+    def _check_provenance(self) -> None:
+        """⛔ **The classification guard, and it runs in both directions.**
+
+        P3.1 made it impossible to promote authored material to `AVAILABLE`. The opposite mistake is
+        now the live one: real footage misfiled as `AUTHORED` would be silently demoted — a genuine
+        measurement discarded as though it were a rendered rectangle, and a clip of identifiable
+        people held with no consent record attached.
+
+        ⭐ So the two kinds are not distinguished by a label anyone can retype. `REAL_FOOTAGE` must
+        carry a checksum, capture metadata and a lawful basis; the constructed kinds must carry
+        *none* of those, because a rendered rectangle has no subject who could consent. Relabelling
+        a case in either direction fails here, and `load()` additionally resolves the two kinds under
+        different roots, so a mislabel is a missing file rather than a quiet reclassification.
+        """
+        if self.footage_kind == "REAL_FOOTAGE":
+            missing = [
+                name
+                for name, value in (("sha256", self.sha256), ("capture", self.capture), ("consent", self.consent))
+                if not value
+            ]
+            if missing:
+                raise CorpusError(
+                    f"case '{self.case_id}' is REAL_FOOTAGE but declares no {', '.join(missing)}. "
+                    f"⛔ Real footage of identifiable people is admitted only with a checksum that "
+                    f"binds it to these bytes, capture metadata, and a lawful basis on record."
+                )
+            if not _is_sha256(self.sha256 or ""):
+                raise CorpusError(
+                    f"case '{self.case_id}' declares sha256 '{self.sha256}', which is not a "
+                    f"64-character hex digest"
+                )
+            return
+
+        present = [
+            name
+            for name, value in (("sha256", self.sha256), ("capture", self.capture), ("consent", self.consent))
+            if value
+        ]
+        if present:
+            raise CorpusError(
+                f"case '{self.case_id}' is {self.footage_kind} but declares {', '.join(present)}. "
+                f"⛔ Those fields describe a recording of real subjects; a constructed fixture has "
+                f"nobody to consent and no capture device. Did this case mean footageKind "
+                f"'REAL_FOOTAGE'?"
             )
 
     @property
@@ -155,6 +246,9 @@ class BenchmarkCase:
             "sceneTags": list(self.scene_tags),
             "groundTruth": self.ground_truth,
             "note": self.note,
+            "sha256": self.sha256,
+            "capture": dict(self.capture) if self.capture else None,
+            "consent": self.consent,
         }
 
 
@@ -245,6 +339,60 @@ def coverage(corpus: Corpus) -> List[ScenarioCoverage]:
     return out
 
 
+def root_for(case: BenchmarkCase, fixtures_root: str, real_root: str) -> str:
+    """Which tree a case's file lives in — ⛔ decided by provenance, never by the manifest author.
+
+    ⚠️ Annotations resolve under the same root as their clip. Ground truth for real footage is
+    derived data rather than imagery and could be committed, but it is worthless without the footage
+    it describes, so the two are kept together rather than split across a third location.
+    """
+    return real_root if case.footage_kind == "REAL_FOOTAGE" else fixtures_root
+
+
+def real_cases(corpus: Corpus) -> Tuple[BenchmarkCase, ...]:
+    return tuple(c for c in corpus.cases if c.footage_kind == "REAL_FOOTAGE")
+
+
+def verify_real_footage(corpus: Corpus, real_root: str, *, hasher=None) -> List[Tuple[str, str]]:
+    """Re-hash every declared real clip. Returns `(case_id, problem)` for each that does not match.
+
+    ⛔ **A mismatch is never repaired by re-declaring the digest.** Commons files get overwritten and
+    phones re-encode on export; a measurement quietly re-run against different pixels produces a
+    plausible number that describes nothing. `object-corpus.mjs` settled this for photographs and the
+    reasoning is unchanged for video.
+
+    ⚠️ Returns findings rather than raising, so a caller can report *every* bad clip in one pass
+    instead of stopping at the first.
+    """
+    hasher = hasher or _sha256_file
+    findings: List[Tuple[str, str]] = []
+    for case in real_cases(corpus):
+        resolved = os.path.join(real_root, case.path)
+        if not os.path.isfile(resolved):
+            findings.append((case.case_id, f"absent at '{resolved}'"))
+            continue
+        try:
+            digest = hasher(resolved)
+        except OSError as exc:
+            findings.append((case.case_id, f"unreadable: {exc}"))
+            continue
+        if digest != case.sha256:
+            findings.append(
+                (case.case_id, f"declared sha256:{(case.sha256 or '')[:12]}…, found sha256:{digest[:12]}…")
+            )
+    return findings
+
+
+def _sha256_file(path: str) -> str:
+    import hashlib  # noqa: WPS433 - only needed when real footage is actually declared
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def coverage_counts(rows: Sequence[ScenarioCoverage]) -> Dict[str, int]:
     counts = {state: 0 for state in COVERAGE_STATES}
     for row in rows:
@@ -252,14 +400,30 @@ def coverage_counts(rows: Sequence[ScenarioCoverage]) -> Dict[str, int]:
     return counts
 
 
-def load(path: str, *, root: Optional[str] = None, require_files: bool = True) -> Corpus:
+def load(
+    path: str,
+    *,
+    root: Optional[str] = None,
+    real_root: Optional[str] = None,
+    require_files: bool = True,
+) -> Corpus:
     """Read a corpus manifest, and refuse it if it does not describe something runnable.
 
     ⚠️ `require_files` is on by default and only turned off by unit tests. A corpus that silently
     dropped a missing clip would produce a matrix over fewer cases than it claims, and the aggregate
     would be over the *easy* subset — which is the failure `summarise()` guards one layer later.
+
+    ⭐ **Two roots, chosen by footage kind.** Constructed fixtures resolve under `root`, inside the
+    repository; `REAL_FOOTAGE` resolves under `real_root`, which is git-ignored and holds recordings
+    of real people. This is what makes the classification guard structural rather than clerical: a
+    real clip relabelled `AUTHORED` is looked for among the committed fixtures and is simply not
+    there, and a fixture relabelled `REAL_FOOTAGE` fails its checksum and consent requirements first.
+
+    ⚠️ A corpus that declares no real footage still loads. That is the state today, and a loader that
+    refused it would leave nothing able to report the gap.
     """
     base = root if root is not None else os.path.dirname(os.path.abspath(path))
+    real_base = real_root if real_root is not None else os.environ.get(REAL_ROOT_ENV, DEFAULT_REAL_ROOT)
     try:
         with open(path, "r", encoding="utf-8") as handle:
             raw = json.load(handle)
@@ -291,16 +455,19 @@ def load(path: str, *, root: Optional[str] = None, require_files: bool = True) -
             scene_tags=tuple(str(s) for s in entry.get("sceneTags", [])),
             ground_truth=entry.get("groundTruth"),
             note=str(entry.get("note") or ""),
+            sha256=entry.get("sha256"),
+            capture=entry.get("capture"),
+            consent=entry.get("consent"),
         )
         if require_files:
-            resolved = os.path.join(base, case.path)
+            resolved = os.path.join(root_for(case, base, real_base), case.path)
             if not os.path.isfile(resolved):
                 raise CorpusError(
                     f"case '{case_id}' points at '{case.path}', which does not exist "
                     f"(resolved to '{resolved}')"
                 )
             if case.ground_truth is not None:
-                gt = os.path.join(base, case.ground_truth)
+                gt = os.path.join(root_for(case, base, real_base), case.ground_truth)
                 if not os.path.isfile(gt):
                     # ⛔ A declared-but-absent annotation is worse than none: it would authorise
                     # precision and recall for a scenario nothing can score.

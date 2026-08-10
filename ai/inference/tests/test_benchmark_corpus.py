@@ -24,7 +24,21 @@ FIXTURES = os.path.join(REPO, "infra", "docker", "fixtures", "media")
 CORPUS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "benchmarks", "detector-corpus.json")
 
 
+REAL = {
+    "footage_kind": "REAL_FOOTAGE",
+    "sha256": "a" * 64,
+    "capture": {"device": "phone", "capturedAt": "2026-08-11"},
+    "consent": "docs/validation/consent/2026-08-11-colleagues.md",
+}
+
+
 def case(**kw) -> bc.BenchmarkCase:
+    """A valid case of whatever kind is asked for.
+
+    ⚠️ `REAL_FOOTAGE` carries the provenance its kind requires unless a test overrides it, so the
+    coverage tests stay about coverage. The tests that probe the provenance rules themselves pass
+    the fields explicitly — see `ClassificationGuardTests`.
+    """
     base = {
         "case_id": "c1",
         "path": "x.mp4",
@@ -33,6 +47,11 @@ def case(**kw) -> bc.BenchmarkCase:
         "scenarios": ("normal-person",),
     }
     base.update(kw)
+    # ⚠️ Fill provenance only when the caller mentioned *none* of it. A helper that topped up a
+    # missing field would silently satisfy the very rule the guard tests are asserting.
+    if base["footage_kind"] == "REAL_FOOTAGE" and not {"sha256", "capture", "consent"} & set(kw):
+        base.update(REAL)
+        base.update(kw)
     return bc.BenchmarkCase(**base)
 
 
@@ -85,6 +104,118 @@ class CoverageRuleTests(unittest.TestCase):
         """⚠️ A scenario that is simply absent from the report reads as covered."""
         corpus = bc.Corpus(version="v", cases=(case(),))
         self.assertEqual([r.scenario for r in bc.coverage(corpus)], list(bc.SCENARIOS))
+
+
+class ClassificationGuardTests(unittest.TestCase):
+    """⛔ **P3.1 stopped authored material being promoted. This stops the opposite mistake**, which is
+    now the live one: real footage misfiled as `AUTHORED` is a genuine measurement discarded as a
+    rendered rectangle, and a recording of identifiable people held with no consent record.
+    """
+
+    def test_real_footage_without_a_checksum_is_refused(self) -> None:
+        with self.assertRaises(bc.CorpusError):
+            case(footage_kind="REAL_FOOTAGE", capture=REAL["capture"], consent=REAL["consent"])
+
+    def test_real_footage_without_a_lawful_basis_is_refused(self) -> None:
+        """⛔ Video of identifiable people is not admitted on a label alone."""
+        with self.assertRaises(bc.CorpusError):
+            case(footage_kind="REAL_FOOTAGE", sha256=REAL["sha256"], capture=REAL["capture"])
+
+    def test_real_footage_without_capture_metadata_is_refused(self) -> None:
+        with self.assertRaises(bc.CorpusError):
+            case(footage_kind="REAL_FOOTAGE", sha256=REAL["sha256"], consent=REAL["consent"])
+
+    def test_a_placeholder_checksum_is_refused(self) -> None:
+        """⚠️ 64 hex characters — the assertion a path or a `TODO` cannot satisfy."""
+        with self.assertRaises(bc.CorpusError):
+            case(**{**REAL, "sha256": "sha256-of-the-clip"})
+
+    def test_a_complete_real_case_is_accepted(self) -> None:
+        """⚠️ The positive control. A guard that refused everything would be equally useless."""
+        self.assertTrue(case(**REAL).conclusive)
+
+    def test_authored_material_may_not_carry_a_consent_record(self) -> None:
+        """⛔ **The reverse direction.** A rendered rectangle has nobody who could consent, so these
+        fields appearing on an authored case means the kind is wrong — most likely real footage that
+        was relabelled, which would silently demote it to PARTIAL."""
+        with self.assertRaises(bc.CorpusError):
+            case(footage_kind="AUTHORED", consent=REAL["consent"])
+
+    def test_authored_material_may_not_carry_capture_metadata(self) -> None:
+        with self.assertRaises(bc.CorpusError):
+            case(footage_kind="AUTHORED", capture=REAL["capture"])
+
+    def test_the_error_names_the_likely_mistake(self) -> None:
+        """⭐ The message has to say *what to do*: whoever hits this is mid-relabel."""
+        with self.assertRaises(bc.CorpusError) as caught:
+            case(footage_kind="AUTHORED", sha256=REAL["sha256"])
+        self.assertIn("REAL_FOOTAGE", str(caught.exception))
+
+    def test_the_two_kinds_resolve_under_different_roots(self) -> None:
+        """⭐ Why the guard is structural: a real clip relabelled `AUTHORED` is looked for among the
+        committed fixtures, where recordings of real people are never kept."""
+        self.assertEqual(bc.root_for(case(**REAL), "/fixtures", "/real"), "/real")
+        self.assertEqual(bc.root_for(case(), "/fixtures", "/real"), "/fixtures")
+
+    def test_real_footage_is_never_sought_inside_the_repository(self) -> None:
+        self.assertNotIn(bc.DEFAULT_REAL_ROOT, ("infra/docker/fixtures/media", "ai/inference/benchmarks"))
+        self.assertTrue(bc.DEFAULT_REAL_ROOT.startswith("."))
+
+
+class ChecksumBindingTests(unittest.TestCase):
+    """⛔ The digest binds the manifest to the bytes; without it a swapped clip re-measures silently."""
+
+    def setUp(self) -> None:
+        self.corpus = bc.Corpus(version="v", cases=(case(path="c.mp4", **REAL),))
+
+    def test_a_missing_clip_is_reported_with_where_it_was_sought(self) -> None:
+        findings = bc.verify_real_footage(self.corpus, "/nonexistent")
+        self.assertEqual(len(findings), 1)
+        self.assertIn("absent", findings[0][1])
+
+    def test_a_clip_whose_bytes_changed_is_reported_not_re_declared(self) -> None:
+        directory = tempfile.mkdtemp()
+        with open(os.path.join(directory, "c.mp4"), "wb") as handle:
+            handle.write(b"different pixels")
+        findings = bc.verify_real_footage(self.corpus, directory)
+        self.assertEqual(len(findings), 1)
+        self.assertIn("found sha256:", findings[0][1])
+
+    def test_matching_bytes_produce_no_finding(self) -> None:
+        """⚠️ The positive control — proving the check can pass, not only fail."""
+        directory = tempfile.mkdtemp()
+        with open(os.path.join(directory, "c.mp4"), "wb") as handle:
+            handle.write(b"the declared pixels")
+        findings = bc.verify_real_footage(self.corpus, directory, hasher=lambda p: "a" * 64)
+        self.assertEqual(findings, [])
+
+    def test_every_bad_clip_is_reported_in_one_pass(self) -> None:
+        """⚠️ Stopping at the first would hide the rest behind one fix-and-rerun cycle each."""
+        corpus = bc.Corpus(
+            version="v",
+            cases=tuple(case(case_id=f"c{i}", path=f"c{i}.mp4", **REAL) for i in range(3)),
+        )
+        self.assertEqual(len(bc.verify_real_footage(corpus, "/nonexistent")), 3)
+
+
+class RequiredScenarioTests(unittest.TestCase):
+    def test_every_capability_the_architect_required_is_reportable(self) -> None:
+        """⛔ A scenario absent from `SCENARIOS` is not reported at all, so a gap in it reads as
+        covered. These are the 2026-08-11 required initial controlled footage capabilities."""
+        required = (
+            "front-facing-person", "side-facing-person", "rear-facing-person",
+            "normal-person", "person-standing", "person-sitting", "person-bending",
+            "hands-raised", "person-entering-frame", "person-leaving-frame",
+            "partially-occluded-person", "backpack", "bottle", "cup",
+            "object-pickup", "object-putdown", "person-carrying-object",
+            "two-person-interaction", "handover", "approach-recede",
+            "zone-crossing", "line-crossing",
+        )
+        missing = [s for s in required if s not in bc.SCENARIOS]
+        self.assertEqual(missing, [], f"unreportable required scenarios: {missing}")
+
+    def test_no_scenario_is_declared_twice(self) -> None:
+        self.assertEqual(len(bc.SCENARIOS), len(set(bc.SCENARIOS)))
 
 
 class AccuracyGateTests(unittest.TestCase):
