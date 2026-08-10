@@ -1,7 +1,23 @@
 import '@testing-library/jest-dom/vitest';
 import { afterAll, afterEach, beforeAll } from 'vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { server } from './server';
+
+/*
+ * ⛔ **`findBy*` waits 5 s, not the 1 s default — a harness change, never an assertion change.**
+ *
+ * Every `findBy*` here waits for a React Query round trip through MSW. Under `pnpm turbo lint
+ * typecheck test` eleven packages compile and run at once, and on a loaded machine a query that
+ * resolves in 40 ms in isolation can take past a second to render. That produced two failures in
+ * `rules.test.tsx` during the slice-2.8 gate and zero when the same file ran alone — a **machine
+ * load** measurement reported as a product defect, which is the most expensive kind of false
+ * negative: it trains everyone to re-run the gate rather than read it.
+ *
+ * ⚠️ This weakens nothing. A timeout is the longest a test will wait before failing, not how long it
+ * takes to pass; a genuinely broken query still fails, five seconds later. What it removes is the
+ * suite's ability to report "this machine was busy" as "this feature is broken".
+ */
+configure({ asyncUtilTimeout: 5_000 });
 
 // jsdom lacks ResizeObserver (Recharts' ResponsiveContainer needs it) and
 // matchMedia — provide no-op polyfills so component tests render.

@@ -264,7 +264,20 @@ describe('subtree moves preserve integrity at every level (rec 3)', () => {
     expect(lookup.get('lobby')!.depth).toBe(4);
   });
 
-  it('moves a 10,000-node subtree with every path still correct', () => {
+  /**
+   * ⚠️ **30 s, and the number is about the machine rather than the code.**
+   *
+   * This asserts 10,000 paths are correct after a move; it is a *correctness* test at scale and
+   * carries no performance budget — nothing here asserts a duration. It ran in ~2 s alone and
+   * **6.2 s during `pnpm turbo lint typecheck test`**, where eleven packages compile and test at
+   * once, so vitest's 5 s default failed the whole gate on a busy laptop. That reports machine load
+   * as a product defect, which trains everyone to re-run the gate instead of reading it.
+   *
+   * ⛔ A real slowdown still fails, five times later. What this removes is the suite's ability to
+   * say "this feature is broken" when what happened is "this machine was busy". Diagnosed in slice
+   * 2.8 after the same failure had twice been recorded as an unexplained flake.
+   */
+  it('moves a 10,000-node subtree with every path still correct', { timeout: 30_000 }, () => {
     const docs: OrgNodeDoc[] = [
       node('org', 'org', null, []),
       node('a', 'region', 'org', ['org']),

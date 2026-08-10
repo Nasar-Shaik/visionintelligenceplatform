@@ -58,6 +58,69 @@ export const handlers: RequestHandler[] = [
   http.get('/api/tenant/tenants/:tenantId/locations', () =>
     HttpResponse.json({ success: true, data: { locations: FLAT_LOCATIONS } }),
   ),
+
+  /**
+   * A run that established no behaviour (slice 2.8).
+   *
+   * A default rather than a per-test fixture because the investigation page reads this on every
+   * open, and the honest empty answer — "this run produced nothing" — is what a real deployment
+   * returns for a short clip in which nobody stood still. ⚠️ **`enabled: true` with no entries**,
+   * which is a different fact from `enabled: false`: the first says the runtime looked and found
+   * nothing, the second says it keeps no history to look at. Tests that care override it.
+   */
+  http.get('/api/behaviour/timeline', ({ request }) =>
+    HttpResponse.json({
+      success: true,
+      data: {
+        enabled: true,
+        query: { streamId: new URL(request.url).searchParams.get('streamId') },
+        entries: [],
+        truncated: false,
+        relational: { identitiesConsidered: 0, truncated: false, maxIdentities: 32 },
+        kinds: [],
+        countsByKind: {},
+        kindsRequested: [],
+        excludedByKind: 0,
+      },
+    }),
+  ),
+  http.get('/api/behaviour/graph', () =>
+    HttpResponse.json({
+      success: true,
+      data: {
+        enabled: true,
+        graph: {
+          nodes: [],
+          edges: [],
+          counts: { nodes: 0, edges: 0, byNodeKind: {}, byEdgeKind: {} },
+          originSeconds: 0,
+          truncated: { nodes: false, edges: false, relational: false, identitiesConsidered: 0, maxIdentities: 32 },
+        },
+      },
+    }),
+  ),
+  http.get('/api/behaviour/primitives', () =>
+    HttpResponse.json({
+      success: true,
+      data: {
+        enabled: true,
+        primitives: {
+          task: 'behaviour',
+          modules: [],
+          identities: {},
+          scene: [],
+          zoneMembership: 'absent',
+          lineGeometry: 'absent',
+          readings: {},
+          relational: { identitiesConsidered: 0, truncated: false, maxIdentities: 32 },
+          moduleFailures: {},
+        },
+      },
+    }),
+  ),
+  http.get('/api/track-history', () =>
+    HttpResponse.json({ success: true, data: { enabled: true, records: [], live: [] } }),
+  ),
 ];
 
 const AT = '2026-08-02T00:00:00.000Z';

@@ -313,6 +313,91 @@ console.log(`\nperception boundary · ${files.length} TypeScript source(s) outsi
   );
 }
 
+/*
+ * ### §H the behaviour vocabulary is one closed list, written down twice
+ *
+ * ⛔ **A viewer that meets an unknown kind renders a blank row, and a blank row reads as "nothing
+ * happened here."** The runtime owns `TIMELINE_KINDS`; the console types it as
+ * `BehaviourTimelineKind` so a browser can render every kind rather than discovering one in front of
+ * a customer. Two hand-maintained lists across two languages drift silently and in exactly the
+ * direction that hides evidence — the new kind is the interesting one.
+ *
+ * ⚠️ Set equality, both ways. A kind in the contract with no producer is a filter nobody can ever
+ * satisfy; a kind in the runtime with no type is a fact the console cannot draw.
+ */
+{
+  const py = readFileSync(join(ROOT, 'ai/inference/behaviour_timeline.py'), 'utf8');
+  const ts = readFileSync(join(ROOT, 'packages/contracts/src/perception/behaviour-view.ts'), 'utf8');
+
+  const block = (source, marker) => {
+    const start = source.indexOf(marker);
+    if (start < 0) return null;
+    const end = source.indexOf(')', start);
+    return end < 0 ? null : source.slice(start, end);
+  };
+  const names = (chunk) =>
+    chunk === null ? null : [...chunk.matchAll(/["']([a-zA-Z][a-zA-Z0-9]*)["']/g)].map((m) => m[1]);
+
+  const runtimeKinds = names(block(py, 'TIMELINE_KINDS: Tuple[str, ...] = ('));
+  const contractKinds = names(block(ts, 'export const BehaviourTimelineKind = z.enum(['));
+
+  if (runtimeKinds === null || contractKinds === null) {
+    check(false, '§H the behaviour timeline vocabulary could be read from both sides', 'list not found');
+  } else {
+    const onlyRuntime = runtimeKinds.filter((k) => !contractKinds.includes(k));
+    const onlyContract = contractKinds.filter((k) => !runtimeKinds.includes(k));
+    check(
+      onlyRuntime.length === 0 && onlyContract.length === 0,
+      `§H the ${runtimeKinds.length} behaviour timeline kinds agree across the runtime and the contract`,
+      onlyRuntime.length === 0 && onlyContract.length === 0
+        ? 'behaviour_timeline.py ≡ behaviour-view.ts'
+        : `runtime-only: [${onlyRuntime.join(', ')}] · contract-only: [${onlyContract.join(', ')}]`,
+    );
+  }
+}
+
+/*
+ * ### §I every published threshold the console shows is one the runtime actually publishes
+ *
+ * ⛔ **The Primitive Inspector prints a threshold beside the word it explains**, so a mapping that
+ * points at a reading the runtime does not have renders as *"not parameterised"* — a claim that no
+ * threshold decided the finding. That was true of `proximity` and `gap` for three slices and is the
+ * opposite of the truth for both; an operator defending a finding would have had nothing to quote.
+ *
+ * ⚠️ One direction only. A reading with no timeline kind is legitimate — `approach_object` and
+ * `leave_object` are published and cannot fire until there is object footage — but a *mapping* to a
+ * reading that does not exist is always a bug.
+ */
+{
+  const py = readFileSync(join(ROOT, 'ai/inference/behaviour_primitives.py'), 'utf8');
+  const ts = readFileSync(
+    join(ROOT, 'apps/console/src/features/behaviour/PrimitiveInspectorPanel.tsx'),
+    'utf8',
+  );
+
+  const start = ts.indexOf('const READING_OF_KIND: Record<string, string> = {');
+  const map = start < 0 ? null : ts.slice(start, ts.indexOf('};', start));
+  const mapped =
+    map === null ? null : [...map.matchAll(/(\w+):\s*'([a-z_]+)'/g)].map((m) => [m[1], m[2]]);
+
+  const published = new Set(
+    [...py.matchAll(/^ {4}"([a-z_]+)": \{$/gm)].map((m) => m[1]),
+  );
+
+  if (mapped === null || published.size === 0) {
+    check(false, '§I the reading tables could be read from both sides', 'table not found');
+  } else {
+    const missing = mapped.filter(([, reading]) => !published.has(reading));
+    check(
+      missing.length === 0,
+      `§I all ${mapped.length} console reading mappings point at a published reading`,
+      missing.length === 0
+        ? 'PrimitiveInspectorPanel.tsx ⊆ PRIMITIVE_READINGS'
+        : `no such reading: ${missing.map(([kind, r]) => `${kind}→${r}`).join(', ')}`,
+    );
+  }
+}
+
 console.log(
   failures === 0
     ? '\nperception boundary: OK — the runtime is the only thing that knows how a model works.\n'

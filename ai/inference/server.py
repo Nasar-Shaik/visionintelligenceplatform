@@ -714,9 +714,18 @@ def make_handler(
 
                 out["graph"] = bg.graph_for(records).to_dict()
             else:
-                result = bt.timeline_for(records)
+                # ⭐ `?kinds=idle,linger` narrows BEFORE the cap. A reader cannot filter its way back
+                # to a fact the cap already dropped — see `timeline_for`.
+                raw = _first(q.get("kinds"))
+                wanted = [k.strip() for k in raw.split(",") if k.strip()] if raw else None
+                result = bt.timeline_for(records, kinds=wanted)
                 out["entries"] = [e.to_dict() for e in result.entries]
                 out["truncated"] = result.truncated
+                # ⛔ What the whole run produced, counted before the filter and before the cap. The
+                # one number that lets a reader see what a short list displaced.
+                out["countsByKind"] = dict(result.counts_by_kind)
+                out["kindsRequested"] = list(result.kinds_requested)
+                out["excludedByKind"] = result.excluded_by_kind
                 # ⛔ The *other* way this answer can be incomplete, and the one a reader cannot see:
                 # past the cap the pairwise families never considered the remaining subjects, so the
                 # timeline looks whole and is missing every merge, follow and approach among them.
@@ -742,10 +751,18 @@ def make_handler(
             if recorder is None:
                 self._ok({"enabled": False, "detail": "track history is not enabled on this runtime"})
                 return
+            # ⛔ **`streamId` was accepted, forwarded by media, and silently dropped here** — so an
+            # analysis-scoped read returned the whole tenant's history: 5014 records for a run that
+            # produced two. Every consumer then saw movement paths from OTHER runs of the same
+            # recording, which is precisely the independence ADR-0047 promises and `bt.collect` has
+            # always honoured. Nothing failed; the answer was simply about the wrong run, and a
+            # movement path attributed to the wrong analysis is the most expensive kind of wrong.
+            # Found by reading the deployment during slice 2.8, not by any test.
             records = recorder.store.records(
                 tenant,
                 camera_id=_first(q.get("cameraId")),
                 identity_id=_first(q.get("identityId")),
+                stream_id=_first(q.get("streamId")),
             )
             self._ok(
                 {

@@ -772,6 +772,27 @@ PRIMITIVE_READINGS: Dict[str, Dict[str, object]] = {
         "minSeconds": 1.0,
         "means": "the gap between two subjects opened",
     },
+    # ⛔ **Proximity and gap are parameterised, and saying otherwise is a false statement about a
+    # business word.** "Was near" means *within 0.15 of the frame width for at least 2 s, debounced*;
+    # "was not observed" means *a sampling interval passed without an observation for more than 2.5×
+    # the expected one*. The console's Primitive Inspector rendered "not parameterised" beside both
+    # until these entries existed (found in a browser run against the deployment, slice 2.8), which
+    # reads as "no threshold decided this" — the opposite of the truth.
+    #
+    # ⚠️ `gap`'s threshold is **relative to the run's own sampling rate**, so it has no absolute
+    # number here: an analysis at 2 fps and one at 8 fps call very different silences a gap, and
+    # publishing one figure would be wrong for every run but one.
+    "gap": {
+        "mechanism": "observation_gaps",
+        "expectedIntervalFactor": 2.5,
+        "means": "no observation arrived for more than 2.5x the run's own sampling interval",
+    },
+    "proximity": {
+        "mechanism": "togetherness",
+        "thresholdNormalized": 0.15,
+        "minSeconds": 2.0,
+        "means": "two subjects stayed close to each other for a sustained period",
+    },
     "group_merge": {
         "mechanism": "group_changes",
         "thresholdNormalized": 0.15,
@@ -1114,6 +1135,22 @@ def _changes_from(
 #: walking as a pair, and at 0.05 two friends side by side would be counted as strangers. A
 #: convention, like everything in `PRIMITIVE_READINGS`, not a measurement.
 GROUP_THRESHOLD = 0.15
+
+# ⛔ **The published number and the number that decides must be the same number.**
+#
+# `PRIMITIVE_READINGS` is defined above this constant, so it cannot reference it and carries the
+# literal instead — and a published threshold that has drifted from the one the code applies is
+# worse than none: the console prints it beside the word it supposedly explains, and an operator
+# defending a finding quotes a figure nothing measured. This turns that drift into an import
+# failure, which is the only kind nobody can ignore.
+for _name in ("proximity", "group_merge", "group_split", "queue"):
+    _published = PRIMITIVE_READINGS[_name].get("thresholdNormalized")
+    if _published != GROUP_THRESHOLD:  # pragma: no cover - a guard, not a branch
+        raise AssertionError(
+            f"PRIMITIVE_READINGS[{_name!r}]['thresholdNormalized'] is {_published}, "
+            f"but GROUP_THRESHOLD is {GROUP_THRESHOLD}"
+        )
+del _name, _published
 
 
 def togetherness(

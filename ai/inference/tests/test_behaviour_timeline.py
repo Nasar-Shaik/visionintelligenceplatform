@@ -143,6 +143,74 @@ class IntervalTests(unittest.TestCase):
         self.assertIsNone(bt.observed_interval_seconds([record("idn_1", [point(0, 0.0, 0.5, 0.4)])]))
 
 
+class PublishedReadingTests(unittest.TestCase):
+    """⭐ **The thresholds every business word was computed at, published with the answer.**
+
+    ⛔ A kind with no reading renders in the console's Primitive Inspector as *"not parameterised"* —
+    which is a claim that no threshold decided it. That was true of `proximity` and `gap` for three
+    slices, and it is the opposite of the truth for both: "was near" means *within 0.15 of the frame
+    for at least 2 s*, and "was not observed" means *2.5× the run's own sampling interval*. Found in a
+    browser run against the deployment; this test is why it cannot come back quietly.
+    """
+
+    #: ⚠️ The two kinds that genuinely have no parameter of their own, named rather than defaulted.
+    #: `observed` is first-to-last observation; `zoneVisit` walks membership an upstream supplied.
+    #: A new kind landing here silently is exactly what this test exists to prevent.
+    UNPARAMETERISED = {"observed", "zoneVisit"}
+
+    #: The timeline's word → the readings table's word. Mirrors `READING_OF_KIND` in the console.
+    READING_OF_KIND = {
+        "gap": "gap",
+        "proximity": "proximity",
+        "idle": "idle",
+        "linger": "linger",
+        "queue": "queue",
+        "follow": "follow",
+        "approach": "approach",
+        "recede": "recede",
+        "groupMerge": "group_merge",
+        "groupSplit": "group_split",
+        "lineCross": "cross_line",
+        "zoneEntry": "enter_zone",
+        "zoneExit": "exit_zone",
+        "carried": "carry_object",
+        "picked": "pick_object",
+        "dropped": "drop_object",
+        "objectMissing": "object_missing",
+        "objectReturned": "object_returned",
+        "handover": "handover",
+    }
+
+    def test_every_timeline_kind_either_has_a_reading_or_is_declared_unparameterised(self):
+        for kind in bt.TIMELINE_KINDS:
+            if kind in self.UNPARAMETERISED:
+                self.assertNotIn(kind, self.READING_OF_KIND, f"{kind} is both mapped and declared unparameterised")
+                continue
+            name = self.READING_OF_KIND.get(kind)
+            self.assertIsNotNone(name, f"{kind} has no published reading and is not declared unparameterised")
+            self.assertIn(name, bt.bp.PRIMITIVE_READINGS, f"{kind} maps to {name!r}, which is not in PRIMITIVE_READINGS")
+
+    def test_every_reading_names_its_mechanism_and_what_it_means(self):
+        for name, reading in bt.bp.PRIMITIVE_READINGS.items():
+            self.assertTrue(reading.get("mechanism"), f"{name} publishes no mechanism")
+            self.assertTrue(reading.get("means"), f"{name} publishes no plain-English meaning")
+
+    def test_the_published_group_threshold_is_the_one_the_code_applies(self):
+        """⛔ A published threshold that has drifted from the applied one is worse than none: an
+        operator defending a finding quotes a figure nothing measured. Import fails on drift; this
+        asserts the guard's subject rather than its mechanism."""
+        for name in ("proximity", "group_merge", "group_split", "queue"):
+            self.assertEqual(bt.bp.PRIMITIVE_READINGS[name]["thresholdNormalized"], bt.bp.GROUP_THRESHOLD)
+
+    def test_the_gap_reading_publishes_a_factor_rather_than_an_absolute(self):
+        """⚠️ A gap is relative to the run's own sampling rate — an analysis at 2 fps and one at 8 fps
+        call very different silences a gap, so one absolute figure would be wrong for every run but
+        one."""
+        gap = bt.bp.PRIMITIVE_READINGS["gap"]
+        self.assertEqual(gap["expectedIntervalFactor"], 2.5)
+        self.assertNotIn("minSeconds", gap)
+
+
 class PrimitiveReadTests(unittest.TestCase):
     def test_the_read_path_runs_the_same_modules_as_the_live_path(self):
         """⭐ Not a second implementation of Layer 2. The names come from `DEFAULT_MODULES`, and a
@@ -488,6 +556,76 @@ class Slice25TimelineTests(unittest.TestCase):
         ]
 
         self.assertEqual(self.entries(busy), self.entries(busy))
+
+
+class Slice28KindFilterTests(unittest.TestCase):
+    """⛔ **Narrowing before the cap, because a reader cannot filter its way back to a dropped fact.**
+
+    Measured on a live camera: 1207 of the 2000 entries the cap allowed were `gap`, so every merge,
+    queue and crossing later in the run had been cut to make room for facts about nobody being there
+    — and the list looked complete. These tests hold the two properties that fix it: the count is
+    taken over everything, and the filter runs before the slice.
+    """
+
+    def busy(self):
+        return [stander("idn_1", 0.40, 40), stander("idn_2", 0.50, 40), strider("idn_3", 0.20, 0.02, 30)]
+
+    def test_counts_by_kind_covers_the_whole_run(self):
+        result = bt.timeline_for(self.busy())
+
+        self.assertGreater(len(result.counts_by_kind), 1)
+        self.assertEqual(sum(result.counts_by_kind.values()), len(result.entries))
+        self.assertIn("observed", result.counts_by_kind)
+
+    def test_the_filter_narrows_the_entries_and_leaves_the_counts_alone(self):
+        everything = bt.timeline_for(self.busy())
+        only_idle = bt.timeline_for(self.busy(), kinds=["idle"])
+
+        self.assertTrue(only_idle.entries)
+        self.assertEqual({e.kind for e in only_idle.entries}, {"idle"})
+        # ⭐ The counts still describe the run, not the filtered answer — that is what makes the
+        # excluded facts visible rather than merely absent.
+        self.assertEqual(only_idle.counts_by_kind, everything.counts_by_kind)
+        self.assertEqual(only_idle.kinds_requested, ("idle",))
+        self.assertEqual(
+            only_idle.excluded_by_kind, len(everything.entries) - len(only_idle.entries)
+        )
+
+    def test_the_filter_runs_before_the_cap(self):
+        """⛔ The whole point. With a cap of 2 and the noisy kind first in time, an unfiltered read
+        returns two `observed` entries and nothing else; a filtered read returns the two `idle`
+        facts that an unfiltered read would have displaced."""
+        records = self.busy()
+
+        unfiltered = bt.timeline_for(records, max_entries=2)
+        self.assertTrue(unfiltered.truncated)
+        self.assertNotIn("idle", {e.kind for e in unfiltered.entries})
+
+        filtered = bt.timeline_for(records, max_entries=2, kinds=["idle"])
+        self.assertEqual({e.kind for e in filtered.entries}, {"idle"})
+
+    def test_an_unknown_kind_returns_nothing_and_says_what_was_asked(self):
+        # ⚠️ Echoed rather than silently ignored: a caller who mistyped a kind sees an empty list
+        # either way, and only this tells them which of the two empties they are looking at.
+        result = bt.timeline_for(self.busy(), kinds=["loitering"])
+
+        self.assertEqual(result.entries, [])
+        self.assertEqual(result.kinds_requested, ("loitering",))
+        self.assertGreater(result.excluded_by_kind, 0)
+
+    def test_no_filter_is_not_an_empty_filter(self):
+        """⚠️ `kinds=[]` and `kinds=None` must both mean "everything". An empty list read as an
+        empty filter would return nothing for a caller who cleared their selection."""
+        for empty in (None, [], ()):
+            result = bt.timeline_for(self.busy(), kinds=empty)
+            self.assertTrue(result.entries, f"{empty!r} returned nothing")
+            self.assertEqual(result.kinds_requested, ())
+            self.assertEqual(result.excluded_by_kind, 0)
+
+    def test_the_old_tuple_unpacking_still_works(self):
+        entries, truncated = bt.timeline_for(self.busy())
+        self.assertTrue(entries)
+        self.assertFalse(truncated)
 
 
 if __name__ == "__main__":  # pragma: no cover

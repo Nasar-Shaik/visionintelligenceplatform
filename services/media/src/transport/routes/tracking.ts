@@ -174,12 +174,19 @@ export function registerTrackingRoutes(app: FastifyInstance, deps: TrackingRoute
    * to reach it (ADR-0054).
    */
   for (const view of ['primitives', 'timeline', 'graph'] as const) {
-    app.get<{ Querystring: { cameraId?: string; streamId?: string; identityId?: string } }>(
+    app.get<{
+      Querystring: { cameraId?: string; streamId?: string; identityId?: string; kinds?: string };
+    }>(
       `/perception/behaviour/${view}`,
       { preHandler: deps.auth.authorize('track:read') },
       async (request, reply) => {
         const params = new URLSearchParams();
-        for (const key of ['cameraId', 'streamId', 'identityId'] as const) {
+        /*
+         * ⭐ `kinds` narrows the timeline BEFORE the runtime's entry cap (slice 2.8). A reader that
+         * filters what it received cannot recover a fact the cap already dropped — measured on a
+         * live camera where 1207 of the 2000 permitted entries were `gap`.
+         */
+        for (const key of ['cameraId', 'streamId', 'identityId', 'kinds'] as const) {
           const value = request.query[key];
           if (value !== undefined) params.set(key, value);
         }

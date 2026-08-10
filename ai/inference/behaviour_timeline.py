@@ -173,6 +173,18 @@ class TimelineResult:
     truncated: bool
     relational_truncated: bool = False
     identities_considered: int = 0
+    #: ⭐ **Every kind this run produced, and how many of each — counted BEFORE the kind filter and
+    #: before the cap.**
+    #:
+    #: ⛔ The reason it exists: on a live camera **1207 of the 2000 entries the cap allowed were
+    #: `gap`**, so the tail — every merge, every queue, every crossing later in the run — was cut to
+    #: make room for facts about nobody being there. A reader saw a full-looking list and had no way
+    #: to know what it had displaced. This is the number that says so, and `kinds` is the way out.
+    counts_by_kind: Mapping[str, int] = field(default_factory=dict)
+    #: The kinds asked for; empty means "everything". Echoed so a caller who mistyped one sees it.
+    kinds_requested: Tuple[str, ...] = ()
+    #: How many facts the kind filter removed. ⚠️ Reported so a short list is never read as a quiet run.
+    excluded_by_kind: int = 0
 
     def __iter__(self):
         return iter((self.entries, self.truncated))
@@ -412,6 +424,7 @@ def timeline_for(
     subject_labels: Sequence[str] = DEFAULT_SUBJECT_LABELS,
     lines: Sequence[bp.Line] = (),
     max_entries: int = DEFAULT_MAX_ENTRIES,
+    kinds: Optional[Sequence[str]] = None,
 ) -> TimelineResult:
     """An ordered, per-identity account of what was observed.
 
@@ -420,6 +433,13 @@ def timeline_for(
 
     ⚠️ Ordered by footage time, then kind, then identity — fully deterministic, because a projection
     used for investigation must produce the same document twice.
+
+    ⭐ **`kinds` narrows the answer BEFORE the cap, which is the whole point of it.** Filtering in the
+    reader cannot recover a fact the cap already dropped: on a live camera 1207 of the 2000 permitted
+    entries were `gap`, and every `groupMerge` later in the run had been cut to make room for them. A
+    caller that asks for the kinds it wants gets 2000 of *those*. ⚠️ Everything is still computed —
+    the pairwise families run either way — so a filtered read costs the same and reports the same
+    `counts_by_kind` as an unfiltered one.
     """
     context = context_for(records, subject_labels=subject_labels, lines=lines)
     label_of = {record.identity_id: record.label for record in records}
@@ -807,11 +827,23 @@ def timeline_for(
             )
 
     entries.sort(key=lambda e: (e.at_seconds, e.kind, e.identity_id, str(e.attributes)))
+
+    # ⭐ Counted over EVERYTHING this run produced, before the filter and before the cap. It is the
+    # only number that can tell a reader what a short list left out — see `TimelineResult`.
+    tally: Dict[str, int] = {}
+    for entry in entries:
+        tally[entry.kind] = tally.get(entry.kind, 0) + 1
+
+    wanted = tuple(dict.fromkeys(kinds)) if kinds else ()
+    kept = [e for e in entries if e.kind in wanted] if wanted else entries
     return TimelineResult(
-        entries=entries[:max_entries],
-        truncated=len(entries) > max_entries,
+        entries=kept[:max_entries],
+        truncated=len(kept) > max_entries,
         relational_truncated=scene.truncated,
         identities_considered=scene.considered,
+        counts_by_kind=dict(sorted(tally.items())),
+        kinds_requested=wanted,
+        excluded_by_kind=len(entries) - len(kept),
     )
 
 

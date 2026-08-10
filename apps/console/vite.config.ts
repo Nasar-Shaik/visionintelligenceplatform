@@ -98,5 +98,20 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     css: true,
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    /*
+     * ⛔ **Strictly greater than `asyncUtilTimeout` (5 s, see `src/test/setup.ts`), and that ordering
+     * is the whole point.**
+     *
+     * With both at 5 s, a `findBy*` that cannot resolve consumes the entire test budget and vitest
+     * reports `Test timed out in 5000ms` — which names neither the element nor the query. The
+     * useful failure is testing-library's own "unable to find an element with the text …", and it
+     * can only be reached if the test outlives the query. Observed immediately after raising the
+     * async timeout: a genuine slow render turned from a readable assertion failure into an opaque
+     * one, in a *different* test from the one being fixed.
+     *
+     * ⚠️ Not a licence for slow tests. The console suite runs in ~15 s alone; this is headroom for
+     * the eleven-package gate, not a budget anyone should spend.
+     */
+    testTimeout: 20_000,
   },
 });

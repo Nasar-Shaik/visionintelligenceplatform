@@ -29,6 +29,7 @@ import { AnalysisDetailsPanel } from './AnalysisDetailsPanel';
 import { TimelineLanes } from './TimelineLanes';
 import { ExportReportButton } from './ExportReportButton';
 import { formatOffset } from './format';
+import { BehaviourPanel } from '../behaviour/BehaviourPanel';
 
 /** Terminal session states — a run in one of these will never change again. */
 const TERMINAL = ['succeeded', 'failed', 'cancelled', 'expired'];
@@ -391,6 +392,27 @@ export function InvestigationDetailPage() {
           ) : null}
         </QueryBoundary>
       ) : null}
+
+      {/*
+        --- behaviour ---------------------------------------------------------------------------
+        ⭐ **Slice 2.8.** Everything above describes what was *detected*; this describes what was
+        *done* — the primitives, the graph they assemble into, one subject's history, the thresholds
+        every business word was computed at, and rules over the whole of it with a WHY chain.
+
+        ⚠️ It reads the same run the lanes above do, and every seek lands on the same player. Two
+        surfaces of one recording that disagreed about where a moment is would be worse than one.
+
+        ⛔ **`selected.id`, not `id`.** Track history is keyed by the analysis SESSION (`ases_…`)
+        because ADR-0047 makes two runs of one recording two independent answers; passing the
+        analysis id would return nothing at all, which is indistinguishable from a quiet run.
+      */}
+      <BehaviourPanel
+        streamId={selected?.id}
+        analysisTimeline={timeline.data}
+        durationSeconds={analysis?.asset?.durationSeconds}
+        onSeek={seek}
+        enabled={ready}
+      />
     </div>
   );
 }

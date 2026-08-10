@@ -182,6 +182,40 @@ describe('tenant scoping', () => {
     });
     expect(seen[0]?.url).toContain('/tracking/tracks/trk%2Fa%20b');
   });
+
+  /**
+   * ⛔ **The kind filter has to reach the runtime, because that is the only place it helps.**
+   *
+   * The runtime applies it *before* its 2000-entry cap. A console that filtered what arrived would
+   * look identical and recover nothing — measured on a live camera where 1207 of the permitted
+   * entries were `gap`, having displaced every merge and crossing later in the run.
+   */
+  it('carries the behaviour kind filter through to the runtime', async () => {
+    await app.inject({
+      method: 'GET',
+      url: '/perception/behaviour/timeline?streamId=ases_1&kinds=idle,linger',
+      headers: auth(await token('tnt_a', ['operator'])),
+    });
+    expect(seen[0]?.url).toContain('/tracking/behaviour/timeline');
+    expect(seen[0]?.url).toContain('streamId=ases_1');
+    expect(seen[0]?.url).toContain('kinds=idle%2Clinger');
+  });
+
+  it('⚠️ the behaviour views are scoped by the token like every other tracking read', async () => {
+    for (const view of ['primitives', 'timeline', 'graph']) {
+      seen = [];
+      const res = await app.inject({
+        method: 'GET',
+        url: `/perception/behaviour/${view}?streamId=ases_1`,
+        headers: {
+          ...auth(await token('tnt_real', ['operator'])),
+          'x-tenant-id': 'tnt_victim',
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(seen[0]?.headers['x-tenant-id']).toBe('tnt_real');
+    }
+  });
 });
 
 describe('failure shapes', () => {

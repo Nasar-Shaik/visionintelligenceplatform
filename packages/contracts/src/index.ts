@@ -46,6 +46,9 @@ export * from './evidence/derived.js';
 
 // perception / inference (P1-6)
 export * from './perception/perception.js';
+/* ⭐ The three behaviour projections as a reader receives them (slice 2.8) — one computation, three
+ * shapes. Read contracts, not stored records: nothing here is persisted (ADR-0054). */
+export * from './perception/behaviour-view.js';
 
 // tracking + zones (AI-2)
 export * from './tracking/tracking.js';
