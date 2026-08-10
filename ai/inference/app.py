@@ -258,7 +258,9 @@ def main() -> None:
 
     # ⚠️ A periodic state line. Its ABSENCE is the signal: an idle runtime and a wedged one produce
     # identical metrics, and only a heartbeat that stopped arriving tells them apart (TD-60).
-    from server import runtime_snapshot  # noqa: WPS433 - after build_server, same module
+    # ⚠️ `_stage` too: the shutdown flush must reach the recorder the same way every reader does —
+    # by the distinctive attribute, never by position in the chain (P-11 slice 2.2).
+    from server import _stage, runtime_snapshot  # noqa: WPS433 - after build_server, same module
 
     heartbeat = obslog.Heartbeat(
         config.heartbeat_seconds,
@@ -271,8 +273,32 @@ def main() -> None:
         obslog.info("shutdown signal received, draining")
         heartbeat.stop()
         supervisor.shutdown()
+
+        # ⛔ **Then flush evidence, and this line is the Evidence Integrity milestone.**
+        #
+        # Measured on the deployed stack before it was written: `docker restart` destroyed three
+        # live identities and the durable record count did not move by one, with `write_failures`
+        # still at zero — nothing had been attempted. The behaviour read collapsed from
+        # `{carried: 3, picked: 3, observed: 5}` to `{observed: 2}` and said nothing about a loss.
+        #
+        # ⚠️ **Ordered after `supervisor.shutdown()` deliberately.** Sessions are stopped first so no
+        # frame arrives *during* the flush and re-opens an identity that has just been closed; the
+        # 20-second `stop_grace_period` this container has always had is more than enough for both.
+        #
+        # ⚠️ It never raises. A runtime that refused to stop because a disk was full would turn an
+        # evidence problem into an availability one — the failure is counted, logged, and the
+        # process still exits (`drain_pending` contains it, and `retire_all` reports the count).
+        flushed = 0
+        try:
+            tracker = _stage(registry, "history")
+            recorder = getattr(tracker, "history", None)
+            if recorder is not None:
+                flushed = recorder.retire_all()
+        except Exception as exc:  # noqa: BLE001 - shutdown must complete
+            obslog.error("evidence flush failed at shutdown", error=str(exc)[:200])
+
         httpd.shutdown()
-        obslog.info("shutdown complete")
+        obslog.info("shutdown complete", identitiesFlushed=flushed)
 
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, shutdown)

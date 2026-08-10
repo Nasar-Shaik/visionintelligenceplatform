@@ -912,6 +912,40 @@ class TrackHistoryRecorder:
             self._retired += len(bucket)
             return len(bucket)
 
+    def retire_all(self) -> int:
+        """Close every open identity on **every** stream and write them. Returns how many.
+
+        ⛔ **The Evidence Integrity fix, and the loss it repairs was measured before it was written.**
+        On the deployed stack, `docker restart` of the runtime destroyed three live identities and
+        the durable record count did not move by one:
+
+            BEFORE   live_identities=3  records=5214  write_failures=0
+            AFTER    live_identities=0  records=5214  write_failures=0
+
+        `write_failures` stayed at zero because **nothing was ever attempted**. The behaviour read
+        collapsed from `{carried: 3, picked: 3, observed: 5}` to `{observed: 2}`, and no field
+        anywhere said evidence had been lost.
+
+        ⚠️ The runtime already shuts down gracefully — `app.py` stops the heartbeat, drains sessions
+        and closes the HTTP server inside a 20-second grace period it never needed. It simply never
+        flushed history. `retire_stream` and `drain_pending` have both existed since track history
+        became durable; nothing called them when the process was asked to stop.
+
+        ⭐ **Retiring without draining would be the same loss with an extra step**, because
+        `retire_stream` only moves records to `_pending`. The drain is part of the operation, not a
+        courtesy the caller has to remember, and it happens **outside** the lock for the reason
+        `drain_pending` documents.
+        """
+        with self._lock:
+            keys = list(self._live)
+        retired = 0
+        for key in keys:
+            retired += self.retire_stream(tenant_id=key[0], camera_id=key[1], stream_id=key[2])
+        # ⚠️ Drained even when nothing was retired here: a record queued by an earlier `retire_stale`
+        # and not yet drained is exactly as lost as one still live, and shutdown is the last chance.
+        self.drain_pending()
+        return retired
+
     def drain_pending(self) -> int:
         """Flush queued records to the store. ⚠️ Call this **outside** the tracker's update lock.
 
