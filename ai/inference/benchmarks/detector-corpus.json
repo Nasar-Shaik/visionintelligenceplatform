@@ -1,0 +1,251 @@
+{
+  "version": "detector-corpus-2026-08-10",
+  "note": "THE DECLARED DETECTOR BENCHMARK CORPUS (P3.1). Every case names its footage kind, and the kind is provenance rather than a quality judgement. \u26d4 Sixteen of seventeen cases are AUTHORED \u2014 rendered shapes, not people \u2014 and the seventeenth is a pan over real photographs. No case is REAL_FOOTAGE, so no scenario can reach AVAILABLE and no detector winner may be declared from this corpus. That cap is enforced by benchmark_corpus._state_for, not by anyone remembering. \u26a0\ufe0f NOT ONE CASE CARRIES GROUND TRUTH, so precision, recall, IoU and mAP are absent from every report rather than estimated. Damaged-file fixtures (corrupt-*) are deliberately excluded: they test transport, not perception, and a decoder failure is not a detector result.",
+  "cases": [
+    {
+      "caseId": "single-person-walking",
+      "path": "validation/single-person-walking.mp4",
+      "category": "motion",
+      "footageKind": "AUTHORED",
+      "scenarios": [
+        "normal-person",
+        "person-leaving-frame"
+      ],
+      "sceneTags": [
+        "one-subject"
+      ],
+      "groundTruth": null,
+      "note": "One rendered subject crosses the frame, continuously visible."
+    },
+    {
+      "caseId": "multiple-people",
+      "path": "validation/multiple-people.mp4",
+      "category": "motion",
+      "footageKind": "AUTHORED",
+      "scenarios": [
+        "multiple-people"
+      ],
+      "sceneTags": [
+        "multi-subject"
+      ],
+      "groundTruth": null,
+      "note": "Several rendered subjects moving independently."
+    },
+    {
+      "caseId": "crowd",
+      "path": "validation/crowd.mp4",
+      "category": "rules",
+      "footageKind": "AUTHORED",
+      "scenarios": [
+        "crowd"
+      ],
+      "sceneTags": [
+        "dense"
+      ],
+      "groundTruth": null,
+      "note": "Many rendered subjects at once."
+    },
+    {
+      "caseId": "occlusion",
+      "path": "validation/occlusion.mp4",
+      "category": "motion",
+      "footageKind": "AUTHORED",
+      "scenarios": [
+        "partially-occluded-person",
+        "re-entry"
+      ],
+      "sceneTags": [
+        "occlusion"
+      ],
+      "groundTruth": null,
+      "note": "A rendered subject passes behind an obstruction and returns."
+    },
+    {
+      "caseId": "partial-visibility",
+      "path": "validation/partial-visibility.mp4",
+      "category": "motion",
+      "footageKind": "AUTHORED",
+      "scenarios": [
+        "partially-occluded-person"
+      ],
+      "sceneTags": [
+        "clipped"
+      ],
+      "groundTruth": null,
+      "note": "A rendered subject only partly inside the frame."
+    },
+    {
+      "caseId": "fast-movement",
+      "path": "validation/fast-movement.mp4",
+      "category": "motion",
+      "footageKind": "AUTHORED",
+      "scenarios": [
+        "motion-blur"
+      ],
+      "sceneTags": [
+        "fast"
+      ],
+      "groundTruth": null,
+      "note": "Rapid rendered motion; blur is a rendering artefact, not lens blur."
+    },
+    {
+      "caseId": "blur",
+      "path": "validation/blur.mp4",
+      "category": "degraded",
+      "footageKind": "AUTHORED",
+      "scenarios": [
+        "motion-blur"
+      ],
+      "sceneTags": [
+        "blur"
+      ],
+      "groundTruth": null,
+      "note": "Applied blur over authored content."
+    },
+    {
+      "caseId": "night-footage",
+      "path": "validation/night-footage.mp4",
+      "category": "degraded",
+      "footageKind": "AUTHORED",
+      "scenarios": [
+        "poor-lighting"
+      ],
+      "sceneTags": [
+        "low-light"
+      ],
+      "groundTruth": null,
+      "note": "Darkened authored content."
+    },
+    {
+      "caseId": "lighting-changes",
+      "path": "validation/lighting-changes.mp4",
+      "category": "degraded",
+      "footageKind": "AUTHORED",
+      "scenarios": [
+        "poor-lighting"
+      ],
+      "sceneTags": [
+        "exposure"
+      ],
+      "groundTruth": null,
+      "note": "Brightness varies across the clip."
+    },
+    {
+      "caseId": "angle-overhead",
+      "path": "validation/angle-overhead.mp4",
+      "category": "transport",
+      "footageKind": "AUTHORED",
+      "scenarios": [
+        "top-down-view"
+      ],
+      "sceneTags": [
+        "viewpoint"
+      ],
+      "groundTruth": null,
+      "note": "Authored overhead framing."
+    },
+    {
+      "caseId": "angle-wide",
+      "path": "validation/angle-wide.mp4",
+      "category": "transport",
+      "footageKind": "AUTHORED",
+      "scenarios": [
+        "low-angle-view"
+      ],
+      "sceneTags": [
+        "viewpoint"
+      ],
+      "groundTruth": null,
+      "note": "Authored wide/low framing."
+    },
+    {
+      "caseId": "res-180p",
+      "path": "validation/res-180p.mp4",
+      "category": "transport",
+      "footageKind": "AUTHORED",
+      "scenarios": [
+        "low-resolution-cctv"
+      ],
+      "sceneTags": [
+        "320x180"
+      ],
+      "groundTruth": null,
+      "note": "Authored content at a CCTV-plausible size."
+    },
+    {
+      "caseId": "res-1080p",
+      "path": "validation/res-1080p.mp4",
+      "category": "transport",
+      "footageKind": "AUTHORED",
+      "scenarios": [
+        "close-person"
+      ],
+      "sceneTags": [
+        "1920x1080"
+      ],
+      "groundTruth": null,
+      "note": "Largest authored resolution held; NOT 4K."
+    },
+    {
+      "caseId": "retail-loitering",
+      "path": "validation/retail-loitering.mp4",
+      "category": "rules",
+      "footageKind": "AUTHORED",
+      "scenarios": [
+        "normal-person"
+      ],
+      "sceneTags": [
+        "retail-like"
+      ],
+      "groundTruth": null,
+      "note": "Authored retail-shaped scene; no real shop, no real merchandise."
+    },
+    {
+      "caseId": "queue-formation",
+      "path": "validation/queue-formation.mp4",
+      "category": "rules",
+      "footageKind": "AUTHORED",
+      "scenarios": [
+        "multiple-people"
+      ],
+      "sceneTags": [
+        "retail-like"
+      ],
+      "groundTruth": null,
+      "note": "Authored queue."
+    },
+    {
+      "caseId": "empty-scene",
+      "path": "validation/empty-scene.mp4",
+      "category": "rules",
+      "footageKind": "AUTHORED",
+      "scenarios": [],
+      "sceneTags": [
+        "negative-control"
+      ],
+      "groundTruth": null,
+      "note": "\u2b50 Negative control: nothing is present, so any detection is a false positive."
+    },
+    {
+      "caseId": "carried-objects",
+      "path": "validation/carried-objects.mp4",
+      "category": "object-association",
+      "footageKind": "PHOTOGRAPH",
+      "scenarios": [
+        "bottle",
+        "backpack",
+        "handbag",
+        "suitcase",
+        "cup",
+        "person-carrying-object",
+        "small-merchandise"
+      ],
+      "sceneTags": [
+        "cc0",
+        "pan-over-stills"
+      ],
+      "groundTruth": null,
+      "note": "A pan across 42 CC0/public-domain photographs of people carrying objects. Real imagery, but stills \u2014 it cannot answer a question about motion, tracking or interaction over time."
+    }
+  ]
+}

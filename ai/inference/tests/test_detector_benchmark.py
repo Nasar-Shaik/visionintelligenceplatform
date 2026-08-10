@@ -178,7 +178,9 @@ class RenderTests(unittest.TestCase):
         text = render_summary(self._summary())
 
         self.assertIn("Precision and recall are absent", text)
-        self.assertIn("not a ground-truth ID switch", text)
+        # ⚠️ Corrected at P3.1: the column was described as counting trackingId changes within an
+        # identityId. The runtime publishes no such counter and cannot — see `render_summary`.
+        self.assertIn("structurally zero", text)
         self.assertIn("Incidents are absent by architecture", text)
 
     def test_failed_cases_get_their_own_section(self):

@@ -373,8 +373,12 @@ def render_summary(summary: dict) -> str:
     )
     lines.append("")
     lines.append(
-        "⚠️ **`Reassign` is not a ground-truth ID switch.** It counts how often a tracker-assigned "
-        "`trackingId` changed within one `identityId` — an observable proxy, not a MOTA metric."
+        "⛔ **`Reassign` is structurally zero and is not a measurement.** It was described as "
+        "counting how often a tracker-assigned `trackingId` changed within one `identityId`; the "
+        "runtime publishes no such counter, and cannot — a trackId is never reused, because "
+        "re-entry is modelled as a link rather than a reassignment, and track diagnostics carry no "
+        "`identityId` at this tier. Read the column as *not measured*, never as *no ID switches "
+        "occurred*: measuring ID switches needs the annotated footage the corpus does not have."
     )
     lines.append("")
     lines.append(

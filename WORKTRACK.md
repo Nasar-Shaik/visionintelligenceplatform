@@ -34,7 +34,7 @@ when evidence *is* lost, the read says so: six states, never collapsed. See § 5
 Foundation                ✔ Complete      6 foundations frozen, additive-only
 Behaviour Intelligence    ✔ Complete      primitives · graph · reasoning · console
 Evidence Integrity        ✔ Complete      durability · six-state reads · byte-identical replay
-Professional Perception   ⬅ ACTIVE        P3.1 detector benchmark lab — approved, not started
+Professional Perception   ⬅ ACTIVE        P3.1 benchmark lab BUILT · P3.2 blocked on real footage
 Retail Intelligence         Not started   shelf, checkout, loss prevention
 Production CCTV             Not started   RTSP estates, NVR, scale
 Customer Deployments        Not started   install, support, SLA
@@ -155,19 +155,45 @@ until `prod.sh build <svc>` has run — this has caused false failures twice.
 
 ---
 
-## 7. Immediate next work — P3.1 Detector Benchmark Lab
+## 7. Immediate next work — real footage, then P3.2
 
-⭐ **Approved 2026-08-10. The ONLY approved implementation.** Gate document:
-`docs/project/PROFESSIONAL_PERCEPTION_START.md`.
+⭐ **P3.1 is BUILT and has run on the built image.** The detector benchmark lab drives the existing
+`detector_benchmark.py` matrix over a declared, versioned corpus, captures environment and verified
+model provenance, and generates its reports. See `docs/validation/DETECTOR_BENCHMARK.md` and
+`docs/validation/CORPUS_COVERAGE.md`.
 
-⛔ **Three audit findings that shape it.** (1) The lab is **not greenfield** — `detector_benchmark.py`
-already holds the model × case matrix; P3.1 is wiring, not building. (2) RT-DETR is **already
-benchmarked** through the production code path (`DETECTOR_COMPARISON.md`: 944 ms vs 41 ms, 22.9×
-slower, +27 % people). (3) ⛔ **31 of 38 corpus clips are authored. There is no real video of real
-people at all — 0 of 25 required scenarios have real footage.**
+⛔ **Its first honest output is that it cannot yet answer the question it was built for.**
 
-⚠️ So P3.1 builds the instrument and its first honest output is *a measurement of what the corpus
-cannot tell us*. **Footage acquisition is the phase's critical path**, and it is not a code task.
+    0 AVAILABLE · 19 PARTIAL · 12 MISSING   of 31 required scenarios
+    16 AUTHORED cases · 1 PHOTOGRAPH · 0 REAL_FOOTAGE · 0 with ground truth
+
+⭐ The rule is enforced in code, not in a document: `benchmark_corpus._state_for` caps any scenario
+backed only by authored, synthetic or photographic material at `PARTIAL`. **There is no path by which
+a rendered rectangle becomes evidence about people.** And with no ground truth anywhere, precision,
+recall, IoU and mAP are absent from every report rather than estimated — every number the lab emits
+is labelled **observational**.
+
+⛔ **The lab's first run was itself defective, and the second run is the one to read.** Four columns
+of the first 34-cell matrix were wrong — every one of them a wrong attribute or key name that
+degraded to a plausible default instead of raising, under 64 passing unit tests:
+
+| Column | Read as | Actually |
+| --- | --- | --- |
+| `sha256` | `/opt/vip/mod…` | `ModelStore.verify()` returns the artifact **path** and raises on mismatch — the integrity check had passed, but the column named nothing verifiable |
+| `Inference avg ms`, `p95` | empty, beside a populated FPS column | `FrameAnalysis` has no `.timings`; the runtime retains no per-frame latency at all |
+| `Tracks` | `0` for all 34 cells | `tracking_stats` has no `created` key; the count is `len(result.tracks)` |
+| `Reassign` | `0`, *described as a measurement* | the runtime emits no such counter and cannot — a trackId is never reused, so re-entry is a link, not a reassignment |
+
+⭐ Per-frame latency is now measured at the `TimedAdapter` seam the benchmark already owns, so the
+distribution exists without a runtime change. `Reassign` is declared **not measured** in the report
+rather than published as zero. ⚠️ The tests passed because the doubles encoded my assumption of each
+API rather than its contract; the regression test is an assertion a wrong value cannot satisfy
+(`^[0-9a-f]{64}$`), which would have failed on run one.
+
+⚠️ **The next work is not a model. It is footage** — see `docs/validation/FOOTAGE_ACQUISITION.md`
+for the priority checklist and the annotation plan. The single highest-value recording is *a person
+carrying a bag*: it unblocks four behaviour primitives that have never had real input, plus seven
+object scenarios.
 
 ### Evidence Integrity carry-forward — open, non-blocking
 
