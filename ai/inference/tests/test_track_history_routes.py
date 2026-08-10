@@ -18,6 +18,7 @@ import os
 import sys
 import threading
 import unittest
+import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -195,6 +196,223 @@ class BehaviourReadRouteTests(TrackHistoryRouteTests):
             self.assertTrue(reading.get("means"), f"{name} publishes no meaning")
         self.assertIn("proximity", readings)
         self.assertIn("gap", readings)
+
+
+class LineGeometryParsingTests(unittest.TestCase):
+    """⛔ **Four states, and the fourth is the one that matters.**
+
+    `absent` · `none` · `present` · `invalid`. Three of them render identically downstream — no
+    crossings — and only one of them means the platform is working correctly. Folding `invalid` into
+    `absent` is how a line an operator drew wrong stays wrong for months, because every screen agrees
+    that nobody crossed it.
+    """
+
+    def parse(self, raw):
+        from server import _lines_from_query  # noqa: WPS433 - the function under test
+
+        return _lines_from_query(raw)
+
+    def test_a_missing_parameter_says_nothing_about_crossings(self):
+        for raw in (None, ""):
+            lines, state = self.parse(raw)
+            self.assertEqual(lines, ())
+            self.assertEqual(state, "absent")
+
+    def test_an_empty_list_is_a_real_answer_rather_than_silence(self):
+        """⭐ "This camera has no line zones" — so "nobody crossed a line" IS the complete answer,
+        which is a different claim from "nothing was evaluated"."""
+        lines, state = self.parse("[]")
+        self.assertEqual(lines, ())
+        self.assertEqual(state, "none")
+
+    def test_geometry_parses_into_lines(self):
+        lines, state = self.parse('[{"lineId":"z_door","name":"Door","points":[[0.5,0.0],[0.5,1.0]]}]')
+        self.assertEqual(state, "present")
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0].line_id, "z_door")
+        self.assertEqual(lines[0].name, "Door")
+        self.assertEqual(lines[0].points, [(0.5, 0.0), (0.5, 1.0)])
+
+    def test_malformed_geometry_is_invalid_and_never_absent(self):
+        for raw in (
+            "not json",
+            '{"lineId":"a"}',                                  # an object, not a list
+            '[{"points":[[0,0],[1,1]]}]',                      # no lineId
+            '[{"lineId":"a","points":[[0,0]]}]',               # one point is not a line
+            '[{"lineId":"a","points":[[0,0],[1]]}]',           # a point that is not a pair
+            '[{"lineId":"a","points":[[0,0],["x","y"]]}]',     # a point that is not numeric
+            '[{"lineId":"","points":[[0,0],[1,1]]}]',          # an empty id
+            '["not an object"]',
+        ):
+            lines, state = self.parse(raw)
+            self.assertEqual(state, "invalid", f"{raw!r} should be invalid")
+            self.assertEqual(lines, ())
+
+    def test_a_line_with_too_many_points_is_refused_rather_than_shortened(self):
+        """⛔ Truncating would evaluate crossings against geometry nobody drew."""
+        points = [[i / 40, 0.5] for i in range(40)]
+        _, state = self.parse(json.dumps([{"lineId": "a", "points": points}]))
+        self.assertEqual(state, "invalid")
+
+    def test_more_lines_than_the_cap_are_bounded_at_the_trust_boundary(self):
+        """⚠️ Media bounds this too, but media is a caller rather than an authority."""
+        from server import MAX_READ_LINES  # noqa: WPS433
+
+        payload = [
+            {"lineId": f"z_{i}", "points": [[0.1 * i, 0.0], [0.1 * i, 1.0]]} for i in range(MAX_READ_LINES + 4)
+        ]
+        lines, state = self.parse(json.dumps(payload))
+        self.assertEqual(state, "present")
+        self.assertEqual(len(lines), MAX_READ_LINES)
+
+
+class LineCrossingRouteTests(unittest.TestCase):
+    """A real walk across a real line, through the real read routes.
+
+    ⛔ **Not simulated.** The path below is a subject moving left to right across x = 0.5 at 0.5 s
+    intervals; the crossing is derived from the stored trajectory by the same `crossings()` the unit
+    tests cover. Nothing stamps a crossing onto the fixture.
+    """
+
+    LINE = json.dumps([{"lineId": "z_door", "name": "Doorway", "points": [[0.5, 0.0], [0.5, 1.0]]}])
+
+    @classmethod
+    def setUpClass(cls):
+        store = InMemoryTrackHistoryStore()
+        # ⚠️ Steps of 0.1 from x=0.2 to x=0.8 — the subject passes through x=0.5 exactly, which is
+        # the case that produced zero crossings before `crossings()` anchored on the last NAMED side.
+        walk = [
+            HistoryPoint(frame_index=i, at=f"{i * 0.5}s", bbox=(0.2 + i * 0.1, 0.4, 0.02, 0.1), track_id="trk_1")
+            for i in range(7)
+        ]
+        store.write(
+            TrackHistoryRecord(
+                identity_id="idn_walker",
+                tenant_id=TENANT,
+                camera_id="cam_1",
+                stream_id="ases_walk",
+                label="person",
+                points=walk,
+                track_ids=["idn_walker"],
+                closed=True,
+            )
+        )
+        cls.recorder = TrackHistoryRecorder(store=store)
+        cls.httpd = build_server("127.0.0.1", 0, _Registry(_Tracks(cls.recorder)), KEY, "inference", "0.1.0")
+        cls.port = cls.httpd.server_address[1]
+        cls.thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.httpd.shutdown()
+
+    def get(self, path):
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}{path}",
+            headers={"x-internal-key": KEY, "x-tenant-id": TENANT},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310 - localhost test
+            return json.loads(resp.read())
+
+    def timeline(self, lines=None):
+        query = "/tracking/behaviour/timeline?streamId=ases_walk&cameraId=cam_1"
+        if lines is not None:
+            query += "&lines=" + urllib.parse.quote(lines)
+        return self.get(query)["data"]
+
+    def test_without_geometry_there_is_no_crossing_and_the_read_says_why(self):
+        """⛔ The negative control, and the reason `absent` exists. The subject walked across the
+        line either way; with no geometry the platform cannot say so, and it must not imply it did."""
+        data = self.timeline()
+        self.assertEqual(data["lineGeometry"], "absent")
+        self.assertEqual([e for e in data["entries"] if e["kind"] == "lineCross"], [])
+
+    def test_with_geometry_the_crossing_appears_with_its_direction(self):
+        data = self.timeline(self.LINE)
+        self.assertEqual(data["lineGeometry"], "present")
+        crossings = [e for e in data["entries"] if e["kind"] == "lineCross"]
+        self.assertEqual(len(crossings), 1, "one walk across one line is one crossing")
+        crossing = crossings[0]
+        self.assertEqual(crossing["identityId"], "idn_walker")
+        self.assertEqual(crossing["attributes"]["lineId"], "z_door")
+        # ⚠️ Screen y grows downward, so a subject walking left-to-right along the top of the frame
+        # goes from the line's `right` side to its `left`. The convention is the operator's drawing
+        # order and nothing else — see `side_of_line`.
+        self.assertIn(crossing["attributes"]["fromSide"], ("left", "right"))
+        self.assertNotEqual(crossing["attributes"]["fromSide"], crossing["attributes"]["toSide"])
+        # ⛔ Seekable. A crossing an investigator cannot look at is an assertion.
+        self.assertIn("frameIndex", crossing["evidence"])
+
+    def test_a_camera_with_no_line_zones_is_a_different_answer_from_no_geometry(self):
+        data = self.timeline("[]")
+        self.assertEqual(data["lineGeometry"], "none")
+        self.assertEqual([e for e in data["entries"] if e["kind"] == "lineCross"], [])
+
+    def test_malformed_geometry_is_reported_rather_than_swallowed(self):
+        data = self.timeline("[{\"lineId\":\"a\"}]")
+        self.assertEqual(data["lineGeometry"], "invalid")
+
+    def test_the_crossing_reaches_the_graph_as_a_line_node_and_an_edge(self):
+        graph = self.get(
+            "/tracking/behaviour/graph?streamId=ases_walk&cameraId=cam_1&lines=" + urllib.parse.quote(self.LINE)
+        )["data"]["graph"]
+        self.assertIn("line", graph["counts"]["byNodeKind"])
+        self.assertEqual(graph["counts"]["byEdgeKind"].get("crossed"), 1)
+        crossed = [e for e in graph["edges"] if e["kind"] == "crossed"][0]
+        self.assertEqual(crossed["source"], "idn_walker")
+        self.assertEqual(crossed["target"], "line:z_door")
+        self.assertIn(crossed["attributes"]["toSide"], ("left", "right"))
+
+    def test_the_same_crossing_appears_once_in_each_projection(self):
+        """⛔ **One event, never duplicated.** The graph is a reshaping of the timeline, so a
+        crossing counted twice anywhere means two computations exist where there must be one."""
+        entries = [e for e in self.timeline(self.LINE)["entries"] if e["kind"] == "lineCross"]
+        graph = self.get(
+            "/tracking/behaviour/graph?streamId=ases_walk&cameraId=cam_1&lines=" + urllib.parse.quote(self.LINE)
+        )["data"]["graph"]
+        crossed = [e for e in graph["edges"] if e["kind"] == "crossed"]
+        self.assertEqual(len(entries), len(crossed))
+        self.assertEqual(entries[0]["evidence"]["frameIndex"], crossed[0]["evidence"]["frameIndex"])
+
+    def test_the_primitives_report_the_same_geometry_state_as_the_route(self):
+        """⚠️ Two fields named `lineGeometry` at two levels of one payload must not disagree."""
+        for lines, expected in ((None, "absent"), ("[]", "none"), (self.LINE, "present")):
+            query = "/tracking/behaviour/primitives?streamId=ases_walk&cameraId=cam_1"
+            if lines is not None:
+                query += "&lines=" + urllib.parse.quote(lines)
+            data = self.get(query)["data"]
+            self.assertEqual(data["lineGeometry"], expected)
+            self.assertEqual(data["primitives"]["lineGeometry"], expected)
+
+    def test_walking_back_produces_a_second_crossing_in_the_other_direction(self):
+        """⭐ Repeated crossing and wrong direction are the SAME primitive, twice — not two
+        primitives. A rule names the direction it cares about; the platform reports both passages."""
+        there_and_back = [
+            HistoryPoint(frame_index=i, at=f"{i * 0.5}s", bbox=(x, 0.4, 0.02, 0.1), track_id="trk_2")
+            for i, x in enumerate([0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2])
+        ]
+        self.recorder.store.write(
+            TrackHistoryRecord(
+                identity_id="idn_return",
+                tenant_id=TENANT,
+                camera_id="cam_1",
+                stream_id="ases_return",
+                label="person",
+                points=there_and_back,
+                track_ids=["idn_return"],
+                closed=True,
+            )
+        )
+        data = self.get(
+            "/tracking/behaviour/timeline?streamId=ases_return&cameraId=cam_1&lines="
+            + urllib.parse.quote(self.LINE)
+        )["data"]
+        crossings = [e for e in data["entries"] if e["kind"] == "lineCross"]
+        self.assertEqual(len(crossings), 2)
+        first, second = crossings[0]["attributes"], crossings[1]["attributes"]
+        self.assertEqual(first["fromSide"], second["toSide"])
+        self.assertEqual(first["toSide"], second["fromSide"])
 
 
 if __name__ == "__main__":  # pragma: no cover

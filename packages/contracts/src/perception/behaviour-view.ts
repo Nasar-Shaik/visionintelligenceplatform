@@ -126,6 +126,16 @@ export const BehaviourReadEnvelope = z.object({
     .optional(),
   /** ⭐ `durable` vs `live`: a finished analysis and one 3 % through look the same as a record count. */
   sources: z.record(z.string(), z.unknown()).optional(),
+  /** ⛔ See `BehaviourPrimitives.lineGeometry` — four states, and `invalid` is never `absent`. */
+  lineGeometry: z.enum(['present', 'none', 'absent', 'invalid']).optional(),
+  /**
+   * ⭐ The line zones this read was evaluated against, echoed back (slice 2.9).
+   *
+   * ⚠️ Echoed for the same reason `query` is: a crossing that did not appear because the wrong line
+   * was in force, and one that did not appear because nobody crossed, are indistinguishable without
+   * knowing which lines were examined.
+   */
+  lines: z.array(z.object({ lineId: z.string(), name: z.string().optional() })).default([]),
 });
 
 export const BehaviourTimelineView = BehaviourReadEnvelope.extend({
@@ -260,9 +270,42 @@ export const BehaviourPrimitives = z.object({
    * on screen unless one of them is spelled out.
    */
   zoneMembership: z.enum(['present', 'absent']).optional(),
-  /** ⛔ Same discipline: `absent` ⇒ no line geometry reached the read, so `CrossingModule` was inert. */
-  lineGeometry: z.enum(['present', 'absent']).optional(),
+  /**
+   * ⛔ **Four-valued, and every value is a different fact** (slice 2.9).
+   *
+   * - `present` — geometry arrived and crossings were evaluated against it.
+   * - `none`    — the camera has no line zones, so "nobody crossed a line" is a *complete* answer.
+   * - `absent`  — no geometry reached this read; nothing here says anything about crossings.
+   * - `invalid` — geometry arrived and could not be read. ⛔ **Never folded into `absent`**: a
+   *   malformed line is a configuration fault a person must fix, and all four states render
+   *   identically downstream as "no crossings". Three of them are fine; one means the platform is
+   *   quietly broken, and it stays broken for as long as nobody is told.
+   */
+  lineGeometry: z.enum(['present', 'none', 'absent', 'invalid']).optional(),
   observedIntervalSeconds: z.number().optional(),
+  /**
+   * ⭐ **Why a line reported what it reported** (slice 2.9).
+   *
+   * ⛔ A correctly-drawn tripwire and a badly-drawn one both report nothing. Measured on the
+   * deployment: a vertical line from y = 0.05 to y = 0.95 — visually spanning the frame — caught a
+   * person walking straight across it **zero** times, because membership is anchored at the foot
+   * point and a standing person's feet sit at y ≈ 0.95. The walk passed *around the bottom end* of
+   * the drawn segment, and the geometry correctly refused it.
+   *
+   * `sideChanges > 0` with `crossings === 0` is that situation, named: people are walking *past*
+   * this line rather than *through* it. ⚠️ A diagnostic, never an event — a missed side change is
+   * not reported as a crossing, and the fix is to draw the line correctly.
+   */
+  lineDiagnostics: z
+    .array(
+      z.object({
+        lineId: z.string(),
+        sideChanges: z.number().int().min(0),
+        crossings: z.number().int().min(0),
+        missedTheSegment: z.number().int().min(0),
+      }),
+    )
+    .default([]),
   readings: z.record(z.string(), BehaviourReading).default({}),
   relational: BehaviourRelationalCoverage.optional(),
   /** ⚠️ A module that threw is named here rather than silently contributing nothing. */

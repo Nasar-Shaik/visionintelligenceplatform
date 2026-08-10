@@ -398,6 +398,49 @@ console.log(`\nperception boundary · ${files.length} TypeScript source(s) outsi
   }
 }
 
+/*
+ * ### §J every attribute a rule FILTERS on is one the graph WRITES
+ *
+ * ⛔ **The defect this exists for was silent in the worst possible way.** `matchesFilters` compares
+ * `step.lineId` against `edge.attributes.lineId`; `behaviour_graph.py` wrote `lineId` onto the line
+ * *node* and not onto the `crossed` *edge*. So a rule naming a line matched nothing, while the
+ * `absent` form of the identical step correctly reported *"1 fact of that kind was examined"* — the
+ * fact was present and the filter could not see it. A rule that silently matches nothing is
+ * indistinguishable from a scene where nothing happened.
+ *
+ * ⚠️ It survived a full evaluator test suite because those fixtures are hand-built graphs, which
+ * carried the attribute the producer was not writing. Only a check across the two languages can see
+ * it: one side is TypeScript in `services/rules`, the other is Python in `ai/inference`.
+ */
+{
+  const evaluator = readFileSync(
+    join(ROOT, 'services/rules/src/domain/behaviour-reasoning.ts'),
+    'utf8',
+  );
+  const graph = readFileSync(join(ROOT, 'ai/inference/behaviour_graph.py'), 'utf8');
+
+  const start = evaluator.indexOf('function matchesFilters(');
+  const body = start < 0 ? null : evaluator.slice(start, evaluator.indexOf('\n}', start));
+  /* Only the filters that read an EDGE ATTRIBUTE; `objectLabel`/`otherLabel` read a node's label. */
+  const filtered =
+    body === null ? null : [...new Set([...body.matchAll(/edge\.attributes\.(\w+)/g)].map((m) => m[1]))];
+
+  if (filtered === null || filtered.length === 0) {
+    check(false, '§J the evaluator’s edge-attribute filters could be read', 'matchesFilters not found');
+  } else {
+    /* Every keyword argument the graph passes to `edge(...)`. */
+    const written = new Set([...graph.matchAll(/^\s{16}(\w+)=/gm)].map((m) => m[1]));
+    const missing = filtered.filter((name) => !written.has(name));
+    check(
+      missing.length === 0,
+      `§J all ${filtered.length} edge attributes a rule filters on are written by the graph`,
+      missing.length === 0
+        ? filtered.join(', ')
+        : `the graph never writes: ${missing.join(', ')} — a rule naming one matches nothing, silently`,
+    );
+  }
+}
+
 console.log(
   failures === 0
     ? '\nperception boundary: OK — the runtime is the only thing that knows how a model works.\n'

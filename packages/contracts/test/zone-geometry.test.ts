@@ -170,9 +170,20 @@ describe('the geometry abstraction (Architect rec 2)', () => {
     }
   });
 
-  it('evaluates polygons and rectangles, and nothing else yet', () => {
+  /**
+   * ⭐ `line` joined in slice 2.9 — and it joined by an evaluator being written, not by the flag
+   * being flipped. `path` and `direction` are still reserved, and the next line of this test is what
+   * stops one of them being quietly promoted without one.
+   */
+  it('evaluates polygons, rectangles and lines, and nothing else yet', () => {
     const evaluable = ZoneShape.options.filter(isEvaluableShape);
-    expect(evaluable.sort()).toEqual(['polygon', 'rectangle']);
+    expect(evaluable.sort()).toEqual(['line', 'polygon', 'rectangle']);
+  });
+
+  /** ⚠️ A `line` zone is `kind: 'line'`, so it is never fed to a point-in-polygon test. */
+  it('keeps a line out of the membership path', () => {
+    expect(ZONE_EVALUATION.line.kind).toBe('line');
+    expect(ZONE_EVALUATION.line.needs).toBeUndefined();
   });
 
   /** ⚠️ Every unimplemented shape must say what it needs — otherwise it is a stub with no plan. */

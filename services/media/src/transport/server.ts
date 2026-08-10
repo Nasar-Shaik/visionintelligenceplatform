@@ -148,6 +148,14 @@ export async function buildServer(opts: BuildServerOptions): Promise<BuiltServer
     runtimeUrl: config.perception.url,
     internalKey: config.internal.apiKey,
     ...(opts.trackingFetch === undefined ? {} : { fetch: opts.trackingFetch }),
+    /*
+     * ⭐ **Slice 2.9: the gate is where a camera's line geometry lives.** A crossing is decided in
+     * the behaviour layer, from the trajectory it already holds, so the geometry has to travel with
+     * the *question* — and the gate is already holding exactly the zones this process enforces.
+     * Reading it from anywhere else would let the configuration a crossing was computed against
+     * differ from the one being enforced.
+     */
+    ...(opts.assignment === undefined ? {} : { gate: opts.assignment.gate }),
   });
   registerEventBridgeRoutes(app, {
     auth,

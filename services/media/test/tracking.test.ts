@@ -95,6 +95,69 @@ afterEach(async () => {
   await app.close();
 });
 
+
+/**
+ * A second server whose assignment gate holds the given zones (slice 2.9).
+ *
+ * ⚠️ **The gate is faked, the route is not.** What is under test is whether the behaviour read finds
+ * a camera's line geometry and forwards it — so the gate is reduced to the one method that route
+ * calls, and everything downstream of it is the real code path.
+ */
+async function buildWithGate(
+  zonesByCamera: Record<string, unknown[]>,
+): Promise<{ app: FastifyInstance; seen: Array<{ url: string; headers: Record<string, string> }> }> {
+  const captured: Array<{ url: string; headers: Record<string, string> }> = [];
+  const config = loadConfig({
+    NODE_ENV: 'test',
+    SERVICE_NAME: 'media',
+    LOG_LEVEL: 'silent',
+    JWT_SECRET: SECRET,
+    MONGO_URI: 'mongodb://localhost:47017/vip_media',
+    S3_ENDPOINT: 'http://localhost:49000',
+    AWS_ACCESS_KEY_ID: 'k',
+    AWS_SECRET_ACCESS_KEY: 's',
+    INTERNAL_API_KEY: 'internal-key-at-least-16-chars',
+    CAMERA_URL: 'http://localhost:8082',
+    INFERENCE_URL: 'http://inference:8085',
+  });
+  const built = await buildServer({
+    config,
+    supervisor: new StreamSupervisor({
+      cameraSource: new FakeCameraSource(),
+      decoder: new FakeDecoder(),
+      objectStore: memoryObjectStore(),
+      frameSink: { push: () => {} },
+      clock: { now: () => new Date() },
+      options: { frameRate: 2, segmentSeconds: 6 },
+    }),
+    catalog: new MediaCatalogService({
+      store: new InMemoryMediaCatalog(),
+      objectStore: memoryObjectStore(),
+      clock: { now: () => new Date() },
+      ids: { clipId: () => 'clip_1' },
+      playbackTtlSeconds: 900,
+    }),
+    startedAt: new Date(),
+    trackingFetch: async (input, init) => {
+      captured.push({ url: String(input), headers: (init?.headers ?? {}) as Record<string, string> });
+      return new Response(JSON.stringify({ success: true, data: { enabled: true } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    },
+    assignment: {
+      gate: {
+        entry: (_tenantId: string, cameraId: string) =>
+          zonesByCamera[cameraId] === undefined ? undefined : { zones: zonesByCamera[cameraId] },
+      },
+      client: {},
+      perception: { cameraStats: () => undefined, cameras: () => [] },
+    } as never,
+  });
+  await built.app.ready();
+  return { app: built.app, seen: captured };
+}
+
 describe('tracking authorization', () => {
   it('refuses an anonymous request', async () => {
     const res = await app.inject({ method: 'GET', url: '/perception/tracking' });
@@ -199,6 +262,73 @@ describe('tenant scoping', () => {
     expect(seen[0]?.url).toContain('/tracking/behaviour/timeline');
     expect(seen[0]?.url).toContain('streamId=ases_1');
     expect(seen[0]?.url).toContain('kinds=idle%2Clinger');
+  });
+
+  /**
+   * ⭐ **Slice 2.9: the camera's line geometry travels with the question.**
+   *
+   * ⛔ A crossing needs a trajectory, which only the behaviour layer has; the geometry is the one
+   * thing it lacks. Sending it per read keeps the runtime free of configuration *state* — nothing to
+   * invalidate, nothing to go stale — and is what makes a crossing recomputable for an analysis that
+   * finished before the line was drawn.
+   */
+  it('sends the camera’s line zones to the runtime on a behaviour read', async () => {
+    const withGate = await buildWithGate({
+      cam_1: [
+        { zoneId: 'z_door', name: 'Doorway', kind: 'line', points: [[0.5, 0], [0.5, 1]], version: 3 },
+        { zoneId: 'z_till', name: 'Till', kind: 'area', points: [[0, 0], [1, 0], [1, 1]], version: 1 },
+      ],
+    });
+    await withGate.app.inject({
+      method: 'GET',
+      url: '/perception/behaviour/timeline?streamId=ases_1&cameraId=cam_1',
+      headers: auth(await token('tnt_a', ['operator'])),
+    });
+    const url = new URL(`http://x${withGate.seen[0]?.url.split('8085')[1] ?? ''}`);
+    const lines = JSON.parse(url.searchParams.get('lines') ?? 'null');
+    /* ⚠️ Only the line zone. An area has no side, and feeding one to a crossing test would produce
+     * a confident answer that means nothing. */
+    expect(lines).toEqual([
+      { lineId: 'z_door', name: 'Doorway', points: [[0.5, 0], [0.5, 1]], version: 3 },
+    ]);
+    await withGate.app.close();
+  });
+
+  /**
+   * ⛔ **An empty list is sent, not silence.** "This camera has no line zones" is a complete answer —
+   * nobody could have crossed anything — and it is a different fact from "no geometry reached this
+   * read". They render identically as "no crossings" unless the empty case actually arrives.
+   */
+  it('sends an empty list for a camera with no line zones', async () => {
+    const withGate = await buildWithGate({ cam_1: [] });
+    await withGate.app.inject({
+      method: 'GET',
+      url: '/perception/behaviour/timeline?streamId=ases_1&cameraId=cam_1',
+      headers: auth(await token('tnt_a', ['operator'])),
+    });
+    expect(withGate.seen[0]?.url).toContain('lines=%5B%5D');
+    await withGate.app.close();
+  });
+
+  it('sends no geometry at all when the camera was not named', async () => {
+    const withGate = await buildWithGate({ cam_1: [] });
+    await withGate.app.inject({
+      method: 'GET',
+      url: '/perception/behaviour/timeline?streamId=ases_1',
+      headers: auth(await token('tnt_a', ['operator'])),
+    });
+    expect(withGate.seen[0]?.url).not.toContain('lines=');
+    await withGate.app.close();
+  });
+
+  /** ⚠️ A deployment with no assignment gate has no geometry to send, and says so by silence. */
+  it('sends no geometry on a deployment without an assignment gate', async () => {
+    await app.inject({
+      method: 'GET',
+      url: '/perception/behaviour/timeline?streamId=ases_1&cameraId=cam_1',
+      headers: auth(await token('tnt_a', ['operator'])),
+    });
+    expect(seen[0]?.url).not.toContain('lines=');
   });
 
   it('⚠️ the behaviour views are scoped by the token like every other tracking read', async () => {

@@ -23,6 +23,7 @@ from behaviour_primitives import (  # noqa: E402
     associations,
     co_presence_seconds,
     crossings,
+    line_diagnostics,
     direction_degrees,
     distance_between,
     distance_changes,
@@ -445,6 +446,51 @@ class LineCrossingTests(unittest.TestCase):
 
     def test_a_subject_who_never_reaches_the_line_crosses_nothing(self):
         self.assertEqual(crossings(walk("p1", 0.10, 0.01, 10), self.LINE), [])
+
+    def test_a_line_that_stops_short_reports_the_side_change_as_a_diagnostic(self):
+        """⭐ **The finding this diagnostic exists for, reproduced.**
+
+        ⛔ On the deployment an operator drew a tripwire from y = 0.05 to y = 0.95 — visually across
+        the whole frame — and a person walking straight through it produced **zero** crossings. The
+        code was right: a crossing is anchored at the FOOT point, a standing person's feet sit at
+        y ≈ 0.95, and the walk passed around the bottom end of the drawn segment. Correct, and
+        completely invisible.
+
+        `side_changes > 0` with `crossings == 0` is that situation named, so an operator can be told
+        *"people are walking past this line rather than through it"* instead of being shown silence.
+        """
+        short = Line("ln_short", [(0.5, 0.0), (0.5, 0.20)])
+        past_the_end = walk("p1", 0.30, 0.03, 20, y=0.60)
+
+        self.assertEqual(crossings(past_the_end, short), [])
+        diagnostic = line_diagnostics({"p1": past_the_end}, [short])[0]
+        self.assertEqual(diagnostic.crossings, 0)
+        self.assertEqual(diagnostic.side_changes, 1)
+        self.assertEqual(diagnostic.missed_the_segment, 1)
+
+    def test_a_line_drawn_correctly_reports_no_misses(self):
+        """⚠️ The paired control: the same walk against a line that reaches the edges. Without this
+        the diagnostic could report a miss for everything and still look meaningful."""
+        walked = walk("p1", 0.30, 0.03, 20, y=0.60)
+
+        diagnostic = line_diagnostics({"p1": walked}, [self.LINE])[0]
+        self.assertEqual(diagnostic.crossings, 1)
+        self.assertEqual(diagnostic.missed_the_segment, 0)
+        self.assertEqual(diagnostic.side_changes, 1)
+
+    def test_a_subject_who_never_changes_side_produces_no_diagnostic_noise(self):
+        """⛔ `missedTheSegment` must not count people who simply stayed put — it would then be
+        non-zero on every busy scene and mean nothing."""
+        diagnostic = line_diagnostics({"p1": walk("p1", 0.10, 0.01, 10)}, [self.LINE])[0]
+        self.assertEqual((diagnostic.side_changes, diagnostic.crossings, diagnostic.missed_the_segment), (0, 0, 0))
+
+    def test_the_diagnostic_never_turns_a_miss_into_a_crossing(self):
+        """⚠️ A diagnostic, never an event. The fix for a short line is to draw it properly."""
+        short = Line("ln_short", [(0.5, 0.0), (0.5, 0.20)])
+        subjects = {"p1": walk("p1", 0.30, 0.03, 20, y=0.60)}
+
+        self.assertEqual(line_diagnostics(subjects, [short])[0].crossings, 0)
+        self.assertEqual(crossings(subjects["p1"], short), [])
 
     def test_a_crossing_hidden_by_an_occlusion_still_counts(self):
         """⛔ A detector that missed the moment does not undo the passage."""

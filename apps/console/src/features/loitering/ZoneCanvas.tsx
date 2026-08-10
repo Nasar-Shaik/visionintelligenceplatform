@@ -38,6 +38,8 @@ export interface ZoneCanvasProps {
   zones: readonly DetectionZone[];
   /** The polygon under construction, if any — rendered differently from a saved zone. */
   draft?: readonly Point2D[];
+  /** ⚠️ `line` draws the draft open and unfilled — see the rendering note below. */
+  draftKind?: 'area' | 'line' | undefined;
   /**
    * Live tracked subjects, drawn as boxes with their floor-contact anchor marked.
    *
@@ -67,6 +69,7 @@ function toPath(points: readonly Point2D[]): string {
 export function ZoneCanvas({
   zones,
   draft,
+  draftKind,
   tracks,
   highlight,
   onAddPoint,
@@ -134,15 +137,48 @@ export function ZoneCanvas({
         {/* Saved zones. ⚠️ A disabled zone is drawn dashed and dim — present, not evaluated. */}
         {zones.map((zone) => {
           const on = highlighted.size === 0 || highlighted.has(zone.id);
+          const live = zone.enabled && on;
+          /*
+           * ⛔ **A line is drawn OPEN, and it is never filled** (slice 2.9).
+           *
+           * `<polygon>` closes the path implicitly, so a two-point tripwire drawn as one renders as
+           * a degenerate sliver and a bent line renders as a shaded triangle nobody drew. Worse, the
+           * shading reads as an *area* — and the platform's answer for a line is a crossing, not a
+           * membership. A picture that implies an inside for a shape that has none is the editor
+           * teaching an operator the wrong model of what they configured.
+           */
+          const isLine = zone.kind === 'line';
           return (
-            <g key={zone.id} data-testid={`zone-${zone.id}`}>
-              <polygon
-                points={toPath(zone.geometry.points)}
-                fill={zone.enabled && on ? 'rgb(56 189 248 / 0.18)' : 'rgb(148 163 184 / 0.08)'}
-                stroke={zone.enabled && on ? 'rgb(56 189 248)' : 'rgb(148 163 184)'}
-                strokeWidth="0.004"
-                strokeDasharray={zone.enabled ? undefined : '0.02 0.01'}
-              />
+            <g key={zone.id} data-testid={`zone-${zone.id}`} data-kind={zone.kind}>
+              {isLine ? (
+                <>
+                  <polyline
+                    points={toPath(zone.geometry.points)}
+                    fill="none"
+                    stroke={live ? 'rgb(52 211 153)' : 'rgb(148 163 184)'}
+                    strokeWidth="0.008"
+                    strokeLinecap="round"
+                    strokeDasharray={zone.enabled ? undefined : '0.02 0.01'}
+                  />
+                  {/* ⭐ The first vertex, marked. Which side is `left` is decided by the order the
+                      operator drew the points and by nothing else, so the direction of the line has
+                      to be visible — a rule naming a direction is bound to it. */}
+                  <circle
+                    cx={zone.geometry.points[0]?.[0] ?? 0}
+                    cy={zone.geometry.points[0]?.[1] ?? 0}
+                    r="0.014"
+                    fill={live ? 'rgb(52 211 153)' : 'rgb(148 163 184)'}
+                  />
+                </>
+              ) : (
+                <polygon
+                  points={toPath(zone.geometry.points)}
+                  fill={live ? 'rgb(56 189 248 / 0.18)' : 'rgb(148 163 184 / 0.08)'}
+                  stroke={live ? 'rgb(56 189 248)' : 'rgb(148 163 184)'}
+                  strokeWidth="0.004"
+                  strokeDasharray={zone.enabled ? undefined : '0.02 0.01'}
+                />
+              )}
               {/*
                * ⚠️ **No text inside the SVG.** `preserveAspectRatio="none"` is what makes the
                * geometry correct — a zone at x = 0.5 must sit at 50% of the width whatever the
@@ -156,13 +192,25 @@ export function ZoneCanvas({
 
         {/* The polygon being drawn. Vertices are shown so a mis-click can be seen and undone. */}
         {draft !== undefined && draft.length > 0 ? (
-          <g data-testid="zone-draft">
-            <polygon
-              points={toPath(draft)}
-              fill="rgb(52 211 153 / 0.2)"
-              stroke="rgb(52 211 153)"
-              strokeWidth="0.005"
-            />
+          <g data-testid="zone-draft" data-kind={draftKind ?? 'area'}>
+            {/* ⛔ The draft follows the same rule as a saved zone: a line is open and unfilled, or
+                the operator is shown a shape they are not drawing. */}
+            {draftKind === 'line' ? (
+              <polyline
+                points={toPath(draft)}
+                fill="none"
+                stroke="rgb(52 211 153)"
+                strokeWidth="0.008"
+                strokeLinecap="round"
+              />
+            ) : (
+              <polygon
+                points={toPath(draft)}
+                fill="rgb(52 211 153 / 0.2)"
+                stroke="rgb(52 211 153)"
+                strokeWidth="0.005"
+              />
+            )}
             {draft.map(([x, y], i) => (
               <circle key={`${x}-${y}-${i}`} cx={x} cy={y} r="0.012" fill="rgb(52 211 153)" />
             ))}

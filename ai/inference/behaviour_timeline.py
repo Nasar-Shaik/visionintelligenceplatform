@@ -348,6 +348,7 @@ def primitives_for(
     modules: Optional[Sequence[str]] = None,
     subject_labels: Sequence[str] = DEFAULT_SUBJECT_LABELS,
     lines: Sequence[bp.Line] = (),
+    line_state: Optional[str] = None,
 ) -> dict:
     """Every primitive, for every identity in an analysis — the Behaviour API's answer.
 
@@ -399,10 +400,23 @@ def primitives_for(
         # told a subject "lingered" and a rule author choosing a dwell limit are looking at the same
         # numbers, and neither has to read the source to find them.
         "readings": {name: dict(reading) for name, reading in bp.PRIMITIVE_READINGS.items()},
-        # ⛔ Three-valued like `zoneMembership`, and for the same reason: no line geometry reached
-        # this read, so `CrossingModule` was inert. "Nobody crossed a line" would be a different
-        # answer, and the platform cannot yet give it — see `CrossingModule`.
-        "lineGeometry": "present" if context.lines else "absent",
+        # ⛔ **Four-valued**, and the caller's word wins when it has one (slice 2.9).
+        #
+        # `present` · `none` · `absent` · `invalid`. Derived here only when nobody said: geometry
+        # either reached the computation or it did not. But the *route* knows more than that — it can
+        # tell "the camera has no line zones" (`none`, so "nobody crossed" is a real answer) from
+        # "no geometry reached this read" (`absent`, so this says nothing about crossings) from
+        # "geometry arrived and could not be read" (`invalid`, a configuration fault someone must
+        # fix). Collapsing those three into `absent` is how a broken line stays broken for months.
+        #
+        # ⚠️ Passed down rather than recomputed so this field and the route's cannot disagree. Two
+        # values with one name at two levels of one payload is a defect waiting to be read.
+        "lineGeometry": line_state if line_state is not None else ("present" if context.lines else "absent"),
+        # ⭐ **Why a line reported what it reported** (slice 2.9). `sideChanges > 0` with
+        # `crossings == 0` is a line people are walking *past* rather than *through* — almost always
+        # one drawn too short to reach the foot points. Found on the deployment, where a tripwire from
+        # y = 0.05 to y = 0.95 caught nobody because feet sit at y ≈ 0.95. See `bp.LineDiagnostic`.
+        "lineDiagnostics": [d.to_dict() for d in bp.line_diagnostics(context.subjects, context.lines)],
         # ⛔ How much of the scene the pairwise families actually looked at. A truncated scene returns
         # a complete-looking answer in which a merge simply never happened, which is worse than a
         # short list — see `TimelineResult`.
@@ -632,6 +646,11 @@ def timeline_for(
                     ),
                     attributes={
                         "lineId": crossing.line_id,
+                        # ⭐ The operator's own name for the line, carried so a graph node and a WHY
+                        # chain can read "crossed Doorway" rather than "crossed zn-c82f3068-337".
+                        # ⚠️ Omitted rather than defaulted when the line has no name: an id standing
+                        # in for a name is at least honest about being an id.
+                        **({} if line.name is None else {"lineName": line.name}),
                         "fromSide": crossing.from_side,
                         "toSide": crossing.to_side,
                         "segmentIndex": crossing.segment_index,

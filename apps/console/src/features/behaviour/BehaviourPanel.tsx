@@ -45,6 +45,49 @@ export interface BehaviourPanelProps {
   enabled: boolean;
 }
 
+/**
+ * What the read could say about line crossings, and why.
+ *
+ * ⚠️ `present` is deliberately quiet — the crossings themselves are the evidence, and a banner on a
+ * working configuration is noise that trains an operator to ignore banners.
+ */
+function LineGeometryNote({
+  state,
+  lines,
+}: {
+  state: 'present' | 'none' | 'absent' | 'invalid' | undefined;
+  lines: readonly { lineId: string; name?: string | undefined }[];
+}) {
+  if (state === undefined || state === 'present') {
+    return state === 'present' && lines.length > 0 ? (
+      <p className="text-2xs text-muted-foreground" data-testid="line-geometry">
+        Crossings evaluated against {lines.length} line zone(s):{' '}
+        {lines.map((l) => l.name ?? l.lineId).join(', ')}.
+      </p>
+    ) : null;
+  }
+  const message =
+    state === 'none'
+      ? 'This camera has no line zones, so nothing could have been crossed. Draw one in the Zone Editor to report crossings.'
+      : state === 'invalid'
+        ? '⛔ This camera has line geometry that could not be read, so no crossing was evaluated. This is a configuration fault, not a quiet scene — check the zone in the Zone Editor.'
+        : 'No line geometry reached this read, so nothing below says whether anybody crossed a line.';
+  return (
+    <p
+      className={
+        state === 'invalid'
+          ? 'rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs text-destructive'
+          : 'rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs text-amber-500'
+      }
+      role={state === 'invalid' ? 'alert' : 'status'}
+      data-testid="line-geometry"
+      data-state={state}
+    >
+      {message}
+    </p>
+  );
+}
+
 export function BehaviourPanel({
   streamId,
   analysisTimeline,
@@ -57,11 +100,14 @@ export function BehaviourPanel({
   const [selectedIdentity, setSelectedIdentity] = useState<string | undefined>();
   const [highlightEdgeIds, setHighlightEdgeIds] = useState<string[]>([]);
 
-  const timeline = useBehaviourTimeline(streamId, kinds, enabled);
+  /* ⭐ The camera is named on every read: it is how media finds this camera's line geometry, and
+   * without it a crossing cannot be evaluated at all — see `useBehaviour.scope`. */
+  const cameraId = analysisTimeline?.cameraId;
+  const timeline = useBehaviourTimeline(streamId, kinds, enabled, cameraId);
   /* ⚠️ Fetched only when their tab is open. Each is a full recompute in the runtime — 563 ms for a
    * 62-identity camera — and three of them on mount would make opening the page cost all three. */
-  const graph = useBehaviourGraph(streamId, enabled && (tab === 'graph' || tab === 'reasoning'));
-  const primitives = useBehaviourPrimitives(streamId, enabled && tab === 'primitives');
+  const graph = useBehaviourGraph(streamId, enabled && (tab === 'graph' || tab === 'reasoning'), cameraId);
+  const primitives = useBehaviourPrimitives(streamId, enabled && tab === 'primitives', cameraId);
   const history = useTrackHistory(streamId, selectedIdentity, enabled && tab === 'identity');
 
   /**
@@ -132,6 +178,13 @@ export function BehaviourPanel({
           Behaviour cannot be read for this run: {unavailable}
         </p>
       )}
+
+      {/*
+        ⛔ **The four line-geometry states, each said out loud** (slice 2.9). All four render
+        downstream as "no crossings", and only one of them means the platform is working — so the
+        difference has to be on the screen rather than inferred from an empty list.
+      */}
+      <LineGeometryNote state={timeline.data?.lineGeometry} lines={timeline.data?.lines ?? []} />
 
       {timeline.isError ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive" role="alert">

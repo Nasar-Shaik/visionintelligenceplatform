@@ -56,14 +56,26 @@ export function ZoneEditorPage() {
   const [draft, setDraft] = useState<Point2D[]>([]);
   const [name, setName] = useState('');
   const [purpose, setPurpose] = useState('');
+  /**
+   * ⭐ **Which kind of thing is being drawn** (slice 2.9). An `area` answers *were they inside it*;
+   * a `line` answers *did they pass through it*. They are different questions with different
+   * evaluators, and the operator has to choose before the first click — a shape reinterpreted after
+   * the fact is a zone that evaluates something nobody drew.
+   */
+  const [kind, setKind] = useState<'area' | 'line'>('area');
+  const minPoints = kind === 'line' ? 2 : 3;
 
   /** Live geometry verdict, recomputed on every click. */
   const problems = useMemo(
-    () => (draft.length >= 3 ? validateZoneGeometry({ points: draft }, 'area') : []),
-    [draft],
+    () => (draft.length >= minPoints ? validateZoneGeometry({ points: draft }, kind) : []),
+    [draft, kind, minPoints],
   );
   const canSave =
-    canWrite && cameraId !== '' && name.trim() !== '' && draft.length >= 3 && problems.length === 0;
+    canWrite &&
+    cameraId !== '' &&
+    name.trim() !== '' &&
+    draft.length >= minPoints &&
+    problems.length === 0;
 
   const cameraOptions = cameras.data?.cameras ?? [];
   const zoneList = zones.data ?? [];
@@ -72,14 +84,18 @@ export function ZoneEditorPage() {
     const input: CreateDetectionZoneInput = {
       cameraId,
       name: name.trim(),
-      kind: 'area',
+      kind,
       /*
        * ⚠️ `polygon` even for a four-point shape drawn as a rectangle. `shape` records the drawing
        * tool so the editor can re-open it with corner handles; it never changes evaluation, and
        * claiming `rectangle` for a hand-drawn quadrilateral would make a later edit refuse to save
        * (a rectangle must be exactly four points).
+       *
+       * ⚠️ `line` is the exception: there the shape and the kind must agree, because the camera
+       * service checks `ZONE_EVALUATION[shape].kind` and a `line` declared as an area would be fed
+       * to a point-in-polygon test — a zone the operator drew, saw, and that evaluates nothing.
        */
-      shape: 'polygon',
+      shape: kind === 'line' ? 'line' : 'polygon',
       geometry: { points: draft },
       enabled: true,
       attributes: {},
@@ -145,7 +161,7 @@ export function ZoneEditorPage() {
       {cameraId === '' ? (
         <EmptyState
           title="No camera selected"
-          description="A zone is a polygon on one camera's image plane, so there is nothing to draw until you pick one."
+          description="A zone is an area or a line on one camera's image plane, so there is nothing to draw until you pick one."
         />
       ) : (
         <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
@@ -154,14 +170,50 @@ export function ZoneEditorPage() {
               <CardTitle>Zones on this camera</CardTitle>
               <CardDescription>
                 {canWrite
-                  ? 'Click to place points. Three or more make a zone.'
+                  ? kind === 'line'
+                    ? 'Click to place points. Two or more make a line; a crossing is reported when a subject passes through it.'
+                    : 'Click to place points. Three or more make an area.'
                   : 'Read-only — drawing needs camera:write.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
+              {canWrite ? (
+                <fieldset className="flex flex-wrap items-center gap-3">
+                  <legend className="sr-only">What to draw</legend>
+                  {/*
+                    ⭐ Chosen before the first click, because an area and a line are different
+                    questions with different evaluators — see the `kind` state.
+                  */}
+                  {(['area', 'line'] as const).map((option) => (
+                    <label key={option} className="flex items-center gap-1.5 text-sm">
+                      <input
+                        type="radio"
+                        name="zone-kind"
+                        value={option}
+                        checked={kind === option}
+                        data-testid={`zone-kind-${option}`}
+                        onChange={() => {
+                          setKind(option);
+                          /* ⚠️ The draft is cleared: three points meant as a polygon are a bent
+                             tripwire, and reusing them would save geometry nobody drew. */
+                          setDraft([]);
+                        }}
+                      />
+                      {option === 'area' ? 'Area — were they inside it' : 'Line — did they cross it'}
+                    </label>
+                  ))}
+                  <span className="text-xs text-fg-muted">
+                    {kind === 'line'
+                      ? 'Two or more points. ⛔ Reach the frame edges — a crossing is anchored at the subject’s feet, which sit near the bottom of the picture, so a line that stops short is walked around rather than through. The first point is marked: it sets which side the platform calls left.'
+                      : 'Three or more points enclose an area.'}
+                  </span>
+                </fieldset>
+              ) : null}
+
               <ZoneCanvas
                 zones={zoneList}
                 draft={draft}
+                draftKind={kind}
                 tracks={tracks.data?.tracks ?? []}
                 label={`Detection zones on ${cameraId}`}
                 {...(canWrite
@@ -202,9 +254,35 @@ export function ZoneEditorPage() {
                   </Button>
                   <Button
                     variant="secondary"
+                    disabled={kind === 'line'}
                     onClick={() => setDraft(rectanglePoints(0.25, 0.35, 0.5, 0.5))}
                   >
                     Rectangle
+                  </Button>
+                  {/*
+                    ⭐ A vertical tripwire down the middle — the shape a doorway or an aisle mouth
+                    actually has.
+
+                    ⛔ **Edge to edge, 0 → 1, and the margin is not cosmetic.** The first version of
+                    this preset used 0.05 → 0.95 because it looked tidier, and on real footage it
+                    caught a person walking straight across it **zero** times. A crossing is anchored
+                    at the FOOT point and a standing person's feet sit at y ≈ 0.95, so the walk passed
+                    around the bottom end of the line — correctly refused by the geometry, and
+                    completely invisible. Measured, not reasoned about; `lineDiagnostics` now names
+                    the same situation when an operator draws one by hand.
+                  */}
+                  <Button
+                    variant="secondary"
+                    disabled={kind !== 'line'}
+                    data-testid="zone-preset-tripwire"
+                    onClick={() =>
+                      setDraft([
+                        [0.5, 0],
+                        [0.5, 1],
+                      ])
+                    }
+                  >
+                    Tripwire
                   </Button>
                   <Button onClick={save} disabled={!canSave || create.isPending}>
                     <Plus className="size-4" /> Save zone
@@ -248,7 +326,10 @@ export function ZoneEditorPage() {
                         <div className="min-w-0">
                           <p className="truncate font-medium">{zone.name}</p>
                           <p className="text-xs text-fg-muted">
-                            {zone.geometry.points.length} points · v{zone.version}
+                            {/* ⭐ The kind, named. An area and a line answer different questions,
+                                and a list that showed only a point count hid which one this is. */}
+                            {zone.kind === 'line' ? 'line' : 'area'} · {zone.geometry.points.length}{' '}
+                            points · v{zone.version}
                             {zone.purpose ? ` · ${zone.purpose}` : ''}
                           </p>
                         </div>

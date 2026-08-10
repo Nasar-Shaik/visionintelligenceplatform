@@ -35,11 +35,25 @@
  * not something an operator steers; a control that configured nothing would be worse than none.
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { PlanZone } from '@vip/contracts';
 import type { Auth } from '../plugins/auth.js';
 import { success } from '../http.js';
 
 /** Wall-clock ceiling on the runtime hop. A slow runtime is a degraded page, not a hung one. */
 const TRACKING_TIMEOUT_MS = 3_000;
+
+/**
+ * ⛔ **How much line geometry may ride on one behaviour read.**
+ *
+ * Bounded because it travels in a query string, and because an unbounded one would let a
+ * misconfigured camera turn every investigation read into a request nothing can parse. A tripwire is
+ * two points; a bent line is four. These ceilings are far past anything an operator draws and small
+ * enough that the encoded parameter stays under 2 kB.
+ *
+ * ⚠️ Exceeding them is **reported, not truncated**: `lineGeometry: 'absent'` with a stated reason,
+ * because a silently shortened line would produce crossings against geometry nobody drew.
+ */
+export const LINE_READ_LIMITS = { maxLines: 8, maxPointsPerLine: 16 } as const;
 
 export interface TrackingRoutesDeps {
   auth: Auth;
@@ -47,6 +61,48 @@ export interface TrackingRoutesDeps {
   runtimeUrl: string;
   internalKey: string;
   fetch?: typeof fetch;
+  /**
+   * The assignment gate, when this deployment has one — the source of a camera's **line** geometry
+   * for a behaviour read (slice 2.9).
+   *
+   * ⛔ **Line geometry travels with the question, and is never configured into the runtime.** A
+   * crossing needs a trajectory, which only the behaviour layer has; the geometry is the one thing it
+   * lacks. Sending it per read keeps the runtime free of configuration and of configuration *state*:
+   * there is nothing to invalidate, nothing to go stale, and a line edited a second ago is the line
+   * the next read evaluates. That is also what makes a crossing recomputable — a line drawn today
+   * applies to an analysis from last week, exactly as ADR-0054 promises for every other fact here.
+   *
+   * ⚠️ Absent on a deployment with no gate, and the read then reports `lineGeometry: 'absent'` rather
+   * than "nobody crossed a line" — different answers that render identically.
+   */
+  gate?: { entry(tenantId: string, cameraId: string): { zones?: readonly PlanZone[] } | undefined };
+}
+
+/**
+ * The camera's enabled line zones, as the runtime receives them.
+ *
+ * ⚠️ Returns `undefined` when geometry could not be established at all — no gate, no camera named,
+ * no entry — which the caller reports as `absent`. An empty array means the camera *has* no line
+ * zones, which is a different and equally real answer.
+ */
+export function linesForCamera(
+  gate: TrackingRoutesDeps['gate'],
+  tenantId: string,
+  cameraId: string | undefined,
+): { lineId: string; name: string; points: [number, number][]; version: number }[] | undefined {
+  if (gate === undefined || cameraId === undefined || cameraId === '') return undefined;
+  const entry = gate.entry(tenantId, cameraId);
+  if (entry === undefined) return undefined;
+  const lines = (entry.zones ?? []).filter((zone) => zone.kind === 'line');
+  return lines
+    .slice(0, LINE_READ_LIMITS.maxLines)
+    .filter((zone) => zone.points.length >= 2 && zone.points.length <= LINE_READ_LIMITS.maxPointsPerLine)
+    .map((zone) => ({
+      lineId: zone.zoneId,
+      name: zone.name,
+      points: zone.points.map((p) => [p[0], p[1]] as [number, number]),
+      version: zone.version,
+    }));
 }
 
 export function registerTrackingRoutes(app: FastifyInstance, deps: TrackingRoutesDeps): void {
@@ -190,6 +246,23 @@ export function registerTrackingRoutes(app: FastifyInstance, deps: TrackingRoute
           const value = request.query[key];
           if (value !== undefined) params.set(key, value);
         }
+
+        /*
+         * ⭐ **Slice 2.9: the camera's line geometry, sent with the question.** See `linesForCamera`
+         * and the `gate` note above on why it travels per read rather than being configured into the
+         * runtime — and why that is what makes a crossing recomputable.
+         *
+         * ⚠️ Sent even when the list is empty. "This camera has no line zones" and "line geometry
+         * could not be established" are different answers, and the runtime can only tell them apart
+         * if the empty case arrives as an empty list rather than as silence.
+         */
+        const lines = linesForCamera(
+          deps.gate,
+          request.principal?.tenantId ?? '',
+          request.query.cameraId,
+        );
+        if (lines !== undefined) params.set('lines', JSON.stringify(lines));
+
         const query = params.size > 0 ? `?${params.toString()}` : '';
         return reply.send(
           success(

@@ -58,6 +58,30 @@ export function PrimitiveInspectorPanel({
       'No line geometry reached this read, so the crossing primitive was inert. Nothing here says whether anybody crossed a line.',
     );
   }
+  if (view?.lineGeometry === 'invalid') {
+    notes.push(
+      '⛔ This camera has line geometry that could not be read, so no crossing was evaluated. That is a configuration fault rather than a quiet scene — check the zone in the Zone Editor.',
+    );
+  }
+  /*
+   * ⭐ **The finding that makes a silent tripwire explainable** (slice 2.9).
+   *
+   * ⛔ A correctly-drawn line and one drawn too short both report nothing. Measured on the
+   * deployment: a vertical line from y = 0.05 to y = 0.95 caught a person walking straight across it
+   * zero times, because a crossing is anchored at the FOOT point and feet sit at y ≈ 0.95 — the walk
+   * went around the bottom end. The geometry was right and the operator had no way to know.
+   */
+  for (const line of view?.lineDiagnostics ?? []) {
+    if (line.missedTheSegment > 0 && line.crossings === 0) {
+      notes.push(
+        `Line ${line.lineId}: ${String(line.missedTheSegment)} subject(s) changed side without passing through it, and nobody crossed it. People are walking PAST this line rather than through it — it is very likely drawn too short. A crossing is anchored at the subject's feet, which sit near the bottom of the picture, so a tripwire has to reach the frame edges.`,
+      );
+    } else if (line.missedTheSegment > 0) {
+      notes.push(
+        `Line ${line.lineId}: ${String(line.crossings)} crossing(s), and ${String(line.missedTheSegment)} side change(s) that passed around an end of it rather than through it.`,
+      );
+    }
+  }
   if (view?.relational?.truncated === true) {
     notes.push(
       `Only ${String(view.relational.identitiesConsidered)} of this run's subjects were examined for relations (the limit is ${String(view.relational.maxIdentities)}), so proximity, follow, approach and grouping were never computed for the rest.`,

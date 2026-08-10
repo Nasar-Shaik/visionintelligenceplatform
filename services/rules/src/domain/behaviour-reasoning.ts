@@ -374,7 +374,21 @@ function matchesFilters(step: BehaviourStep, edge: GraphEdge, other: GraphNode |
 }
 
 function detail(edge: GraphEdge, other: GraphNode | undefined, seconds: number | undefined): string {
-  const what = other === undefined ? edge.target : `${other.label} ${other.id}`;
+  /*
+   * ⚠️ **The label alone for a place; the label AND the id for a subject.**
+   *
+   * A zone or line node's id is `zone:<zoneId>` / `line:<lineId>` — the same handle the step already
+   * names in its filter — so printing both produced "crossed line zn-c82f… — Doorway line:zn-c82f…
+   * at 16 s" on the deployment: the id three times in one sentence. An identity or object is the
+   * opposite case: its label is a *class* ("person"), and an investigator needs the subject, so the
+   * id is the informative half and must stay.
+   */
+  const what =
+    other === undefined
+      ? edge.target
+      : other.kind === 'zone' || other.kind === 'line'
+        ? other.label
+        : `${other.label} ${other.id}`;
   const span = seconds === undefined ? '' : ` for ${round(seconds)} s`;
   /* ⚠️ The absolute instant, replaced by an offset in `detailSince` before a human sees it. */
   return `${what} at ${round(edge.atSeconds)} s${span}`;

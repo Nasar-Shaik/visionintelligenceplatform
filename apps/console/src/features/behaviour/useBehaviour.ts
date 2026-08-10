@@ -15,9 +15,11 @@ import { behaviourApi } from '@/lib/api/behaviour';
  * for a 62-identity camera).
  */
 const keys = {
-  timeline: (streamId: string, kinds: string) => ['behaviour', 'timeline', streamId, kinds] as const,
-  graph: (streamId: string) => ['behaviour', 'graph', streamId] as const,
-  primitives: (streamId: string) => ['behaviour', 'primitives', streamId] as const,
+  timeline: (streamId: string, kinds: string, cameraId: string) =>
+    ['behaviour', 'timeline', streamId, kinds, cameraId] as const,
+  graph: (streamId: string, cameraId: string) => ['behaviour', 'graph', streamId, cameraId] as const,
+  primitives: (streamId: string, cameraId: string) =>
+    ['behaviour', 'primitives', streamId, cameraId] as const,
   history: (streamId: string, identityId?: string) =>
     ['behaviour', 'track-history', streamId, identityId ?? 'all'] as const,
 };
@@ -35,35 +37,54 @@ const IMMUTABLE = { staleTime: Infinity, retry: false, gcTime: 10 * 60_000 } as 
  * two different documents — reusing one cache entry for both would show a filtered list that had
  * already lost the facts the filter was asked for.
  */
+/**
+ * ⛔ **`cameraId` is not decoration on these reads — it is how line geometry is found** (slice 2.9).
+ *
+ * A crossing is evaluated in the behaviour layer against the camera's line zones, which media looks
+ * up from the assignment gate by camera. Omitting it does not fail: the read succeeds and reports
+ * `lineGeometry: 'absent'`, meaning *nothing here says whether anybody crossed a line*. That is the
+ * honest answer for a caller who did not name a camera, and it is why the panel always names one.
+ */
+function scope(streamId: string, cameraId: string | undefined) {
+  return cameraId === undefined || cameraId === '' ? { streamId } : { streamId, cameraId };
+}
+
 export function useBehaviourTimeline(
   streamId: string | undefined,
   kinds: readonly string[] = [],
   enabled = true,
+  cameraId?: string,
 ) {
   /* ⚠️ Sorted, so `['idle','gap']` and `['gap','idle']` are one cache entry rather than two. */
   const key = [...kinds].sort().join(',');
   return useQuery({
-    queryKey: keys.timeline(streamId ?? '', key),
-    queryFn: () =>
-      behaviourApi.timeline(key === '' ? { streamId: streamId! } : { streamId: streamId!, kinds: key }),
+    queryKey: keys.timeline(streamId ?? '', key, cameraId ?? ''),
+    queryFn: () => {
+      const query = scope(streamId!, cameraId);
+      return behaviourApi.timeline(key === '' ? query : { ...query, kinds: key });
+    },
     enabled: enabled && streamId !== undefined && streamId !== '',
     ...IMMUTABLE,
   });
 }
 
-export function useBehaviourGraph(streamId: string | undefined, enabled = true) {
+export function useBehaviourGraph(streamId: string | undefined, enabled = true, cameraId?: string) {
   return useQuery({
-    queryKey: keys.graph(streamId ?? ''),
-    queryFn: () => behaviourApi.graph({ streamId: streamId! }),
+    queryKey: keys.graph(streamId ?? '', cameraId ?? ''),
+    queryFn: () => behaviourApi.graph(scope(streamId!, cameraId)),
     enabled: enabled && streamId !== undefined && streamId !== '',
     ...IMMUTABLE,
   });
 }
 
-export function useBehaviourPrimitives(streamId: string | undefined, enabled = true) {
+export function useBehaviourPrimitives(
+  streamId: string | undefined,
+  enabled = true,
+  cameraId?: string,
+) {
   return useQuery({
-    queryKey: keys.primitives(streamId ?? ''),
-    queryFn: () => behaviourApi.primitives({ streamId: streamId! }),
+    queryKey: keys.primitives(streamId ?? '', cameraId ?? ''),
+    queryFn: () => behaviourApi.primitives(scope(streamId!, cameraId)),
     enabled: enabled && streamId !== undefined && streamId !== '',
     ...IMMUTABLE,
   });

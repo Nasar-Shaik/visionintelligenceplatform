@@ -942,6 +942,21 @@ def crossings(
 ) -> List[Crossing]:
     """Every time a subject's path passed through `line`, in time order.
 
+    ⚠️ The façade over `_crossings_and_misses`, which is where the docstring lives. Callers that need
+    to know *why* a line reported nothing use that instead — see `LineDiagnostic`.
+    """
+    found, _ = _crossings_and_misses(points, line, use_foot_point=use_foot_point)
+    return found
+
+
+def _crossings_and_misses(
+    points: Sequence[TrackPoint],
+    line: Line,
+    *,
+    use_foot_point: bool = True,
+) -> Tuple[List[Crossing], int]:
+    """Every time a subject's path passed through `line`, in time order.
+
     ⚠️ `segments_intersect` is imported from the runtime's `zones` module rather than reimplemented,
     for the same reason `PolygonZone` borrows `point_in_polygon`: two geometry engines that must agree
     is a defect waiting for a boundary case.
@@ -960,7 +975,7 @@ def crossings(
     stepped exactly onto x = 0.5.
     """
     if len(points) < 2 or len(line.points) < 2:
-        return []
+        return [], 0
     from zones import segments_intersect  # noqa: WPS433 - local, keeps this module import-light
 
     at = (lambda p: p.foot_point) if use_foot_point else (lambda p: p.centroid)
@@ -969,6 +984,8 @@ def crossings(
     #: ⚠️ Per segment, because "left of" is a statement about one straight edge — an operator's line
     #: may bend, and a single global side would be meaningless the moment it did.
     anchored: Dict[int, Tuple[int, str]] = {}
+    #: ⛔ Side flips that did NOT pass through the drawn segment — see `LineDiagnostic`.
+    missed = 0
 
     for index, point in enumerate(points):
         here = at(point)
@@ -987,6 +1004,7 @@ def crossings(
             # everyone in the room.
             start = at(points[previous[0]])
             if not segments_intersect(start, here, a, b):
+                missed += 1
                 continue
             out.append(
                 Crossing(
@@ -999,6 +1017,65 @@ def crossings(
                 )
             )
     out.sort(key=lambda c: (c.at_seconds, c.segment_index))
+    return out, missed
+
+
+@dataclass(frozen=True)
+class LineDiagnostic:
+    """Why a line reported what it reported (slice 2.9).
+
+    ⛔ **This exists because a correctly-drawn tripwire and a badly-drawn one both report nothing.**
+
+    Measured on the deployment: an operator drew a vertical line from y = 0.05 to y = 0.95 — visually
+    spanning the frame — and a person walked straight across it with **zero** crossings reported. The
+    code was right. Zone membership is anchored at the **foot point**, a standing person's feet sit at
+    y ≈ 0.95, and the walk therefore passed *around the bottom end* of the drawn segment. The
+    `segments_intersect` guard rejected it exactly as designed, because somebody walking round the end
+    of a line has not passed through it.
+
+    That is correct and it is invisible. `side_changes` counts every time a subject moved from one
+    side of the line's *infinite extension* to the other; `crossings` counts how many of those passed
+    through the **drawn** segment. `side_changes > 0` with `crossings == 0` is a line that people are
+    walking past rather than through — almost always one drawn too short — and that is a sentence an
+    operator can act on, where silence is not.
+
+    ⚠️ It is a diagnostic, never an event. A missed side change is **not** reported as a crossing, and
+    nothing here loosens the geometry: the fix is to draw the line correctly, not to lower the bar.
+    """
+
+    line_id: str
+    side_changes: int
+    crossings: int
+
+    @property
+    def missed_the_segment(self) -> int:
+        return self.side_changes - self.crossings
+
+    def to_dict(self) -> dict:
+        return {
+            "lineId": self.line_id,
+            "sideChanges": self.side_changes,
+            "crossings": self.crossings,
+            "missedTheSegment": self.missed_the_segment,
+        }
+
+
+def line_diagnostics(
+    subjects: Mapping[str, Sequence[TrackPoint]],
+    lines: Sequence[Line],
+    *,
+    use_foot_point: bool = True,
+) -> List[LineDiagnostic]:
+    """One diagnostic per line, across every subject in the scene."""
+    out: List[LineDiagnostic] = []
+    for line in lines:
+        crossed = 0
+        missed = 0
+        for points in subjects.values():
+            found, near = _crossings_and_misses(points, line, use_foot_point=use_foot_point)
+            crossed += len(found)
+            missed += near
+        out.append(LineDiagnostic(line.line_id, crossed + missed, crossed))
     return out
 
 

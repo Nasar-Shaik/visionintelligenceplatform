@@ -278,13 +278,30 @@ def graph_for(
 
         if entry.kind == "lineCross":
             line_id = str(attributes.get("lineId"))
+            # ⭐ The operator's own name when the line has one — "Doorway", not "zn-c82f3068-337".
+            # ⚠️ Falls back to the id rather than to a placeholder: an id is at least a real handle.
+            line_name = attributes.get("lineName")
             identity_node(identity)
-            node(f"line:{line_id}", "line", line_id, lineId=line_id)
+            node(
+                f"line:{line_id}",
+                "line",
+                str(line_name) if isinstance(line_name, str) and line_name else line_id,
+                lineId=line_id,
+            )
             edge(
                 "crossed",
                 identity,
                 f"line:{line_id}",
                 entry,
+                # ⛔ **`lineId` on the EDGE, not only on the node.** A rule filters
+                # `crossed` by `step.lineId` against `edge.attributes.lineId`, exactly as it filters
+                # `visited` by `edge.attributes.zoneId` — and this edge carried only the two sides.
+                # So every line-scoped rule matched nothing while the `absent` form of the same step
+                # correctly reported "1 fact of that kind was examined": the fact was there and the
+                # filter could not see it. Invisible until slice 2.9, because until then no crossing
+                # had ever existed to filter, and the evaluator's own tests built their fixtures by
+                # hand — with the attribute the producer was not writing.
+                lineId=line_id,
                 fromSide=attributes.get("fromSide"),
                 toSide=attributes.get("toSide"),
             )

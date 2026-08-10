@@ -366,6 +366,66 @@ def _stage(registry, attribute: str):
     return tracker if hasattr(tracker, attribute) else None
 
 
+#: ⛔ What one behaviour read may carry, mirrored from `LINE_READ_LIMITS` in media's tracking route.
+#: Bounded here as well as there because this is the trust boundary: media is a caller, not an
+#: authority, and a runtime that believed whatever arrived would let one misconfigured camera turn
+#: every investigation read into an unbounded geometry walk.
+MAX_READ_LINES = 8
+MAX_READ_LINE_POINTS = 16
+
+
+def _lines_from_query(raw):
+    """Parse the `lines` parameter of a behaviour read into `bp.Line`s and a state word.
+
+    ⛔ **Four states, because they are four different facts** — and the fourth is the one that matters:
+
+    - `absent`  — the parameter never arrived. Nothing here says whether anybody crossed a line.
+    - `none`    — it arrived as an empty list. The camera has no line zones, so "nobody crossed" is
+                  a real and complete answer.
+    - `present` — geometry arrived and every crossing below was evaluated against it.
+    - `invalid` — geometry arrived and could not be read.
+
+    ⚠️ **`invalid` is never folded into `absent`.** A malformed line is a configuration fault that a
+    person has to fix, and the two render identically — "no crossings" — for as long as nobody is
+    told. This platform has met that shape often enough to name it: an overloaded empty value
+    produces confident wrong numbers.
+    """
+    import behaviour_primitives as bp  # noqa: WPS433 - keeps the server import light
+
+    if raw is None or raw == "":
+        return (), "absent"
+    try:
+        payload = json.loads(raw)
+    except (TypeError, ValueError):
+        return (), "invalid"
+    if not isinstance(payload, list):
+        return (), "invalid"
+    if not payload:
+        return (), "none"
+
+    out = []
+    for item in payload[:MAX_READ_LINES]:
+        if not isinstance(item, dict):
+            return (), "invalid"
+        line_id = item.get("lineId")
+        points = item.get("points")
+        if not isinstance(line_id, str) or not line_id:
+            return (), "invalid"
+        if not isinstance(points, list) or not (2 <= len(points) <= MAX_READ_LINE_POINTS):
+            return (), "invalid"
+        parsed = []
+        for point in points:
+            if not isinstance(point, (list, tuple)) or len(point) != 2:
+                return (), "invalid"
+            try:
+                parsed.append((float(point[0]), float(point[1])))
+            except (TypeError, ValueError):
+                return (), "invalid"
+        name = item.get("name")
+        out.append(bp.Line(line_id, parsed, name if isinstance(name, str) else None))
+    return tuple(out), "present"
+
+
 def _live_records(recorder, tenant: str, q) -> list:
     """Open (still-moving) paths for one camera.
 
@@ -695,6 +755,14 @@ def make_handler(
                 stream_id=stream_id or None,
                 identity_id=identity_id or None,
             )
+            # ⭐ **The camera's line geometry, supplied with the question** (slice 2.9).
+            #
+            # A crossing needs the trajectory this layer already holds; the geometry is the one thing
+            # it lacks, and it arrives per read rather than as configuration. The runtime therefore
+            # stores no zone geometry, has nothing to invalidate, and a line edited a second ago is
+            # the line this read evaluates — which is also what makes a crossing recomputable for a
+            # finished analysis (ADR-0054).
+            lines, line_state = _lines_from_query(_first(q.get("lines")))
             out = {
                 "enabled": True,
                 # ⚠️ Echoed back. A caller that mistyped a stream id gets an empty answer either way,
@@ -703,22 +771,31 @@ def make_handler(
                 # ⭐ `durable` vs `live` — a finished analysis and one that is 3 % through render
                 # identically as a record count, and they mean opposite things about the durations.
                 "sources": sources,
+                # ⛔ Four-valued, and every value is a different fact:
+                #   present  — geometry arrived and crossings were evaluated against it
+                #   none     — the camera has no line zones; "nobody crossed" is a real answer here
+                #   absent   — no geometry reached this read at all; silence about crossings
+                #   invalid  — geometry arrived and could not be read. NEVER silently treated as
+                #              absent: a malformed line is a configuration fault someone must fix,
+                #              and hiding it behind "no lines" is how it stays broken for months.
+                "lineGeometry": line_state,
+                "lines": [{"lineId": ln.line_id, "name": ln.name} for ln in lines],
             }
             if view == "primitives":
-                out["primitives"] = bt.primitives_for(records)
+                out["primitives"] = bt.primitives_for(records, lines=lines, line_state=line_state)
             elif view == "graph":
                 # ⭐ A reshaping of the same timeline, never a second computation — see
                 # `behaviour_graph`. A graph with its own idea of a zone visit would eventually
                 # disagree with the timeline about one, and nothing could say which was right.
                 import behaviour_graph as bg  # noqa: WPS433 - keeps the server import light
 
-                out["graph"] = bg.graph_for(records).to_dict()
+                out["graph"] = bg.graph_for(records, lines=lines).to_dict()
             else:
                 # ⭐ `?kinds=idle,linger` narrows BEFORE the cap. A reader cannot filter its way back
                 # to a fact the cap already dropped — see `timeline_for`.
                 raw = _first(q.get("kinds"))
                 wanted = [k.strip() for k in raw.split(",") if k.strip()] if raw else None
-                result = bt.timeline_for(records, kinds=wanted)
+                result = bt.timeline_for(records, kinds=wanted, lines=lines)
                 out["entries"] = [e.to_dict() for e in result.entries]
                 out["truncated"] = result.truncated
                 # ⛔ What the whole run produced, counted before the filter and before the cap. The

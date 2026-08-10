@@ -53,10 +53,10 @@ export const ZoneShape = z.enum([
   'polygon',
   'rectangle',
   /**
-   * ⚠️ **Declared, storable, and not evaluated.** See `ZONE_EVALUATION` below: the geometry layer
-   * accepts a line, the editor can draw one, and the resolver skips it because "inside a polyline" is
-   * not a question with an answer. Crossing is a change of side between two frames, which nothing
-   * computes yet.
+   * ⭐ **Evaluated since slice 2.9.** The resolver still skips it — "inside a polyline" is not a
+   * question with an answer — and that is the point: a crossing is not a membership. It is decided
+   * in the behaviour layer, from the *trajectory* [ADR-0051] made durable, which is the only place
+   * the state a crossing needs already exists. See `ZONE_EVALUATION` below.
    */
   'line',
   /** ⚠️ Reserved (Architect rec 2) — an ordered route. Nothing produces or evaluates one. */
@@ -87,13 +87,25 @@ export const ZONE_EVALUATION: Readonly<
 > = {
   polygon: { evaluable: true, kind: 'area' },
   rectangle: { evaluable: true, kind: 'area' },
-  line: {
-    evaluable: false,
-    kind: 'line',
-    needs:
-      'a side-of-line test carried between frames per subject. Membership is instantaneous; ' +
-      'crossing is a transition, so it needs the previous frame — state the resolver does not keep.',
-  },
+  /**
+   * ⭐ **Evaluable since slice 2.9, and the note it replaces described its own solution.**
+   *
+   * The old `needs` read: *"a side-of-line test carried between frames per subject. Membership is
+   * instantaneous; crossing is a transition, so it needs the previous frame — state the resolver
+   * does not keep."* Every word of that is still true, and the missing state was never missing: a
+   * **trajectory** is exactly "the previous frame, per subject", and [ADR-0051] made trajectories
+   * durable a milestone earlier. So the crossing is decided where the trajectory lives — in the
+   * behaviour layer, from stored movement paths — and the geometry travels to it *with the question*
+   * rather than being configured into it.
+   *
+   * ⛔ **This is why a crossing is not resolved in media beside zone membership.** Media has the
+   * geometry and would need to keep one frame of per-subject state; the behaviour layer has the
+   * whole path and needs the geometry for the length of one call. Both work live. Only the second is
+   * **recomputable**: a line drawn today applies to an analysis from last week, and a corrected line
+   * corrects history — the property every other fact in this milestone has (ADR-0054). A crossing
+   * computed once, live, in media would be the only fact that could never be revisited.
+   */
+  line: { evaluable: true, kind: 'line' },
   path: {
     evaluable: false,
     kind: 'line',
