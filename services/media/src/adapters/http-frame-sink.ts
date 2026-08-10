@@ -24,7 +24,7 @@
  * dropped to make room for it. Retrying frames trades fresh data for stale data and costs twice.
  */
 import type { PlanZone, ZoneEvaluationStats, ZoneMembershipEcho } from '@vip/contracts';
-import type { Frame, FrameDelivery, FrameSink } from '../application/ports.js';
+import type { Frame, FrameDelivery, FrameSink, StreamClosed } from '../application/ports.js';
 import type { AssignmentGate } from '../application/assignment-gate.js';
 import { ResolveTimer, resolveZones, membershipEcho } from '../application/zone-resolver.js';
 
@@ -224,6 +224,13 @@ class Rolling {
   }
 }
 
+/**
+ * Streams whose serving runtime is remembered, so a close reaches the container holding the
+ * evidence. ⚠️ Well above any realistic concurrency — the entry is deleted when the stream closes,
+ * so this cap only ever bites when runs are abandoned without one.
+ */
+const STREAM_RUNTIME_MAX = 256;
+
 export class HttpFrameSink implements FrameSink {
   readonly #url: string;
   readonly #key: string;
@@ -292,6 +299,19 @@ export class HttpFrameSink implements FrameSink {
   #lastDetectionAt: string | undefined;
   #modelId: string | undefined;
   #executionProvider: string | undefined;
+  /**
+   * ⭐ **Which runtime actually served each stream**, so the close reaches the one holding the
+   * evidence.
+   *
+   * ⚠️ The runtime URL comes off the queued item, not off the sink — the assignment gate may route
+   * two cameras in one process to different containers. Closing on `#url` would then tell the
+   * *wrong* runtime, which would answer `closed: 0` and look exactly like success while the real
+   * identities stayed in memory somewhere else.
+   *
+   * ⚠️ Bounded, and an entry is removed when its stream closes, so the steady state is one entry per
+   * run in flight rather than one per run ever.
+   */
+  readonly #streamRuntime = new Map<string, string>();
 
   constructor(opts: HttpFrameSinkOptions) {
     this.#url = opts.url.replace(/\/+$/, '');
@@ -659,6 +679,54 @@ export class HttpFrameSink implements FrameSink {
    * two places for the offline and live paths to drift about what they send the runtime, and a
    * divergence there is precisely what would break offline/live parity without failing a test.
    */
+  /** ⚠️ Bounded. An unbounded map keyed by run id is a slow leak on a long-lived process. */
+  #rememberRuntime(streamId: string, url: string): void {
+    if (this.#streamRuntime.get(streamId) === url) return;
+    this.#streamRuntime.set(streamId, url);
+    while (this.#streamRuntime.size > STREAM_RUNTIME_MAX) {
+      const oldest = this.#streamRuntime.keys().next();
+      if (oldest.done === true) break;
+      this.#streamRuntime.delete(oldest.value);
+    }
+  }
+
+  /**
+   * ⭐ Tell the runtime this run is over, and report what that cost.
+   *
+   * ⛔ **Never throws.** A run that finished successfully must not be recorded as failed because the
+   * runtime was slow to answer a bookkeeping call — the analysis is complete either way. But it must
+   * not be *silent* either: the reason comes back so the worker can attach it to the session, which
+   * is the only place a person will ever look for it.
+   */
+  async closeStream(tenantId: string, cameraId: string, streamId: string): Promise<StreamClosed> {
+    const url = this.#streamRuntime.get(streamId) ?? this.#url;
+    this.#streamRuntime.delete(streamId);
+    try {
+      const res = await fetch(`${url}/tracking/streams/close`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-internal-key': this.#key,
+          'x-tenant-id': tenantId,
+        },
+        body: JSON.stringify({ cameraId, streamId }),
+        signal: AbortSignal.timeout(this.#timeoutMs),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        return { closed: 0, written: 0, reason: `runtime answered ${String(res.status)}: ${text.slice(0, 200)}` };
+      }
+      const body = (await res.json()) as { data?: { closed?: number; written?: number } };
+      return { closed: body.data?.closed ?? 0, written: body.data?.written ?? 0 };
+    } catch (err) {
+      return {
+        closed: 0,
+        written: 0,
+        reason: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
   async #send(item: Queued, signal?: AbortSignal): Promise<FrameDelivery> {
     const started = Date.now();
     const key = `${item.tenantId}\0${item.cameraId}`;
@@ -681,6 +749,13 @@ export class HttpFrameSink implements FrameSink {
         this.#zoneEcho.delete(key);
         this.#zoneEchoSent += 1;
       }
+      /*
+       * ⚠️ Recorded before the request, not after it. A run whose *every* frame failed still has a
+       * stream on that runtime — the tracker may hold identities from an earlier attempt — and a
+       * close that could not find a URL would silently go nowhere.
+       */
+      const streamId = item.frame.provenance?.sessionId;
+      if (streamId !== undefined) this.#rememberRuntime(streamId, item.runtimeUrl);
       const res = await fetch(`${item.runtimeUrl}/infer`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-internal-key': this.#key },

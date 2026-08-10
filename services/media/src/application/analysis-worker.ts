@@ -473,6 +473,62 @@ export class AnalysisWorker {
     );
   }
 
+  /**
+   * ⭐ **Tell the runtime this run is over, so what it saw stops living in memory** (EI-3b).
+   *
+   * ⛔ Nothing used to. The worker delivered its last frame and stopped; the identities still in shot
+   * stayed in the runtime's in-memory buffer until a 300-second camera sweep happened to run — and
+   * that sweep runs on the *frame* path, so a quiet deployment never ran it. Measured on the deployed
+   * stack after a batch of analyses, idle for 26 minutes: **28 open identities across 12 finished
+   * runs**, all destroyed by one `SIGKILL` with the durable record count unchanged and
+   * `write_failures` at zero, because nothing was ever attempted.
+   *
+   * ⚠️ No shutdown handler can close that hole — SIGKILL, an OOM kill and an expired
+   * `stop_grace_period` never consult the process. The only durable answer is to stop *holding*
+   * finished evidence, and this is the one component that knows the run has finished.
+   *
+   * ⭐ **Called from `#stop` and `#fail` rather than from `runSession`**, so every terminal path is
+   * covered by construction. A future `#stop` caller cannot forget it, which is the difference
+   * between a structural guarantee and a convention.
+   *
+   * Returns a finding when something was lost, and `undefined` when there is nothing to say.
+   */
+  async #closeStream(
+    scope: TenantScope,
+    session: AnalysisSessionDoc,
+  ): Promise<AnalysisFinding | undefined> {
+    const sink = this.#deps.sink;
+    /* ⚠️ A sink with no close is a legitimate deployment (`NullFrameSink`), not a failure. */
+    if (sink.closeStream === undefined) return undefined;
+    try {
+      const result = await sink.closeStream(scope.tenantId, session.cameraId, session._id);
+      if (result.reason !== undefined) {
+        return {
+          kind: 'evidence-not-preserved',
+          detail: `this run finished, but the perception runtime could not be told so: ${result.reason}. ⛔ Any subject still in shot at the last frame may not have reached durable storage, and an investigation opened later would show fewer identities than this run actually produced.`,
+        };
+      }
+      if (result.closed > result.written) {
+        const lost = result.closed - result.written;
+        return {
+          kind: 'evidence-not-preserved',
+          detail: `${String(lost)} of ${String(result.closed)} identities open at the end of this run were retired but could not be written to durable storage. ⛔ Their movement paths are gone — this is not "nobody was there", it is evidence this run produced and the platform failed to keep.`,
+        };
+      }
+      return undefined;
+    } catch (err) {
+      /*
+       * ⚠️ Contained. `closeStream` is documented as never throwing, but a sink is an interface and
+       * this is the boundary — and a complete analysis must never be reported as failed because its
+       * own bookkeeping call did.
+       */
+      return {
+        kind: 'evidence-not-preserved',
+        detail: `this run finished, but closing it on the perception runtime threw: ${err instanceof Error ? err.message : String(err)}. ⛔ Any subject still in shot at the last frame may not have reached durable storage.`,
+      };
+    }
+  }
+
   async #stop(
     scope: TenantScope,
     sessionId: string,
@@ -485,6 +541,15 @@ export class AnalysisWorker {
   ): Promise<RunOutcome> {
     const session = await this.#deps.store.getSession(scope, sessionId);
     if (session === null) return { sessionId, state, chunksCompleted, framesProcessed };
+    /*
+     * ⚠️ Before the terminal write, so a loss is recorded in the same update that ends the run. A
+     * second write afterwards could lose the race with a reclaiming worker and drop the finding —
+     * leaving the session terminal, complete-looking, and silent about the evidence it lost.
+     */
+    const lost = await this.#closeStream(scope, session);
+    const merged =
+      lost === undefined ? findings : [...(findings ?? session.findings), lost];
+    findings = merged;
     const now = this.#deps.clock.now();
     await this.#deps.store.compareAndSetSession(
       scope,
@@ -514,6 +579,13 @@ export class AnalysisWorker {
     const attempt = session.lease?.attempt ?? 1;
     const state = stateAfterFailure(attempt, transient);
     const now = this.#deps.clock.now();
+    /*
+     * ⛔ **Only when this is the end.** A `retrying` session is claimed again by a worker that
+     * continues the same stream, and retiring its identities between attempts would split every path
+     * across the retry — two short visits where one long one happened, which is exactly the failure
+     * ADR-0038 exists to prevent, caused by the fix for a different one.
+     */
+    const lost = isTerminalSessionState(state) ? await this.#closeStream(scope, session) : undefined;
     await this.#deps.store.compareAndSetSession(
       scope,
       session._id,
@@ -522,6 +594,7 @@ export class AnalysisWorker {
         ...session,
         state,
         error: message,
+        ...(lost === undefined ? {} : { findings: [...session.findings, lost].slice(0, 50) }),
         /* ⚠️ A retrying session is NOT finished — stamping it would make it look terminal. */
         ...(isTerminalSessionState(state) ? { finishedAt: now.toISOString() } : {}),
       },

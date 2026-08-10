@@ -193,6 +193,22 @@ export const AnalysisFindingKind = z.enum([
    * reported** rather than silently shifting every incident in the file.
    */
   'timestamps-diverged',
+  /**
+   * ⛔ **The run finished and some of what it saw did not reach durable storage** (Evidence
+   * Integrity).
+   *
+   * When a run ends, the runtime is told so that the identities still in shot are closed and written.
+   * This kind is raised when that call could not be made, or when it reported retiring more
+   * identities than it managed to write — a full disk, an unwritable volume, a runtime that had
+   * already gone.
+   *
+   * ⚠️ **Its own kind, never folded into `frames-dropped`.** A dropped frame means part of the
+   * footage was not looked at; this means part of it *was* looked at and the answer was then lost.
+   * An investigator reading a thin timeline has to be able to tell "nothing happened here" from
+   * "something happened here and we no longer have it", and only one of those is worth re-running
+   * the analysis for.
+   */
+  'evidence-not-preserved',
 ]);
 export type AnalysisFindingKind = z.infer<typeof AnalysisFindingKind>;
 

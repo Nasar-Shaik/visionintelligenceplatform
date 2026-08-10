@@ -948,12 +948,98 @@ def make_handler(
                 self._post_models(segs)
             elif segs[:1] == ["sessions"]:
                 self._post_sessions(segs)
+            elif path == "/tracking/streams/close":
+                self._close_stream()
             elif path == "/discovery/onvif":
                 self._guarded(self._discover_onvif, "discovery_error")
             elif path == "/streams/validate":
                 self._guarded(self._validate_stream, "validation_error")
             else:
                 self._err(404, "not_found", f"no route for POST {self.path}")
+
+        def _close_stream(self) -> None:
+            """⭐ **This analysis has finished — make what it saw durable now** (Evidence Integrity).
+
+                POST /tracking/streams/close   {"cameraId": "...", "streamId": "ases_..."}
+
+            ### ⛔ The loss this closes, measured before it was written
+
+            Nothing told the runtime a run had ended. The worker delivered its last frame and stopped,
+            and every identity still in shot at that moment stayed in `TrackHistoryRecorder._live` —
+            in memory — until the 300-second camera sweep happened to run, which it only does **on
+            the frame path**, so a quiet deployment never ran it at all. On the deployed stack, idle
+            for 26 minutes after a batch of analyses:
+
+                BEFORE  live_identities=28  live_streams=12  records=5259  write_failures=0
+                ⏻ docker kill -s KILL
+                AFTER   live_identities=0   live_streams=0   records=5259  write_failures=0
+                                                             ▲▲▲▲▲▲▲▲▲▲▲▲ unchanged
+
+            Twelve *finished* analyses, 28 identities, and not one write attempted. ⚠️ The EI-3
+            shutdown flush cannot reach this: SIGKILL, an OOM kill, a lost host and an expired
+            `stop_grace_period` never consult the process. The fix is not a better shutdown — it is
+            **not holding finished evidence in memory in the first place**.
+
+            ⚠️ **No new machinery.** This drives `retire_stream` and `drain_pending`, which the camera
+            sweep has called since ADR-0051. No second store, no background synchroniser, no recovery
+            daemon; the party that knows the run ended simply says so.
+
+            ⚠️ **Tracker state is deliberately untouched.** Retiring an identity's history is not the
+            same act as forgetting how to track it — `_CameraState` is released by the sweep on its
+            own schedule, and conflating the two would change tracking behaviour to fix a storage bug.
+
+            ⭐ Idempotent, and scoped by stream: a second call reports `closed: 0`, and closing a
+            finished analysis never touches one still running on the same camera.
+            """
+            tenant = self._tenant()
+            if tenant is None:
+                self._err(400, "bad_request", "x-tenant-id header is required")
+                return
+            body, err = self._read_json()
+            if err is not None:
+                self._err(400, "bad_request", err)
+                return
+            camera_id = body.get("cameraId")
+            stream_id = body.get("streamId")
+            # ⛔ Both required, neither defaulted. A missing `streamId` falling back to `None` would
+            # retire the **live camera's** identities — `stream_id=None` is exactly the live path's
+            # key — so a finished upload would silently truncate the real camera's tracking.
+            if not isinstance(camera_id, str) or not camera_id:
+                self._err(400, "bad_request", "cameraId is required")
+                return
+            if not isinstance(stream_id, str) or not stream_id:
+                self._err(400, "bad_request", "streamId is required")
+                return
+
+            tracker = _stage(registry, "tracks")
+            recorder = getattr(tracker, "history", None)
+            if recorder is None:
+                # ⚠️ Not an error. A runtime without track history has nothing to close, and the
+                # caller must be able to tell that apart from "closed nothing because nothing was
+                # open" — hence `enabled`, rather than an ambiguous zero.
+                self._ok({"enabled": False, "closed": 0, "written": 0})
+                return
+            closed = recorder.retire_stream(
+                tenant_id=tenant, camera_id=camera_id, stream_id=stream_id
+            )
+            # ⛔ The drain is part of the operation, not a courtesy the caller must remember.
+            # `retire_stream` only moves records to `_pending`; closing without draining would be the
+            # same loss with an extra step.
+            written = recorder.drain_pending()
+            stats = recorder.stats()
+            self._ok(
+                {
+                    "enabled": True,
+                    "closed": closed,
+                    "written": written,
+                    "pendingWrites": stats["pendingWrites"],
+                    # ⚠️ Returned so the caller can record that evidence was destroyed rather than
+                    # discover it from a dashboard later. A close that retired 3 and wrote 0 is a
+                    # failed run's worth of evidence gone, and the worker is the last thing that
+                    # can attach that fact to the session it belongs to.
+                    "writeFailures": stats["writeFailures"],
+                }
+            )
 
         def _guarded(self, fn, code: str) -> None:  # noqa: ANN001 - a bound handler
             """Run a device-facing handler so an unexpected fault is an ANSWER, not a dropped socket.

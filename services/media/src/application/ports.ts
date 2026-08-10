@@ -176,6 +176,30 @@ export interface FrameSink {
     frame: Frame,
     signal: AbortSignal,
   ): Promise<FrameDelivery>;
+  /**
+   * ⭐ **Tell the runtime a run has ended, so what it saw stops living in memory** (Evidence
+   * Integrity).
+   *
+   * ⛔ Without this, the identities still in shot at the last frame stay in the runtime's live buffer
+   * until a 300-second camera sweep happens to run — and that sweep runs on the *frame* path, so a
+   * deployment that has gone quiet never runs it. Measured on the deployed stack after a batch of
+   * analyses, idle for 26 minutes: **28 open identities across 12 finished runs**, destroyed by one
+   * `SIGKILL` with `records` unchanged and `write_failures` at zero, because nothing was attempted.
+   *
+   * ⚠️ Optional for the same reason `deliver` is: a `NullFrameSink` is a legitimate deployment. A
+   * caller must treat its absence as "this deployment cannot be told", not as success.
+   */
+  closeStream?(tenantId: string, cameraId: string, streamId: string): Promise<StreamClosed>;
+}
+
+/** What the runtime did when told a run had ended. */
+export interface StreamClosed {
+  /** Open identities retired by this call. `0` is ordinary — a run that ended with nobody in shot. */
+  closed: number;
+  /** Of those, how many reached durable storage. ⛔ `closed > written` means evidence was destroyed. */
+  written: number;
+  /** Present when the runtime could not be told at all, so silence is never read as success. */
+  reason?: string;
 }
 
 /**

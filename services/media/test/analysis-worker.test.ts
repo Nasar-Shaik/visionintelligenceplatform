@@ -28,7 +28,7 @@ import type {
   FrameSource,
 } from '../src/application/frame-source.js';
 import type { AnalysisDoc, AnalysisSessionDoc } from '../src/domain/analysis.js';
-import type { Frame } from '../src/application/ports.js';
+import type { Frame, StreamClosed } from '../src/application/ports.js';
 
 const scope = TenantScope.fromTenantId('tnt_a');
 const T0 = new Date('2026-08-07T12:00:00.000Z');
@@ -231,6 +231,15 @@ class FakeSink implements FrameSink {
   readonly delivered: Array<{ cameraId: string; frame: Frame }> = [];
   /** Outcome for the nth delivery, so a refusal can be driven deterministically. */
   outcomeFor: ((index: number) => FrameDelivery) | null = null;
+  /** ⭐ Every end-of-run close, so a test can assert the runtime was told — and told once. */
+  readonly closed: Array<{ tenantId: string; cameraId: string; streamId: string }> = [];
+  /** What the close reports, so a lost-evidence path can be driven deterministically. */
+  closeResult: StreamClosed = { closed: 0, written: 0 };
+
+  async closeStream(tenantId: string, cameraId: string, streamId: string): Promise<StreamClosed> {
+    this.closed.push({ tenantId, cameraId, streamId });
+    return this.closeResult;
+  }
 
   push(): void {
     throw new Error('an offline session must never reach the lossy push path');
@@ -262,6 +271,8 @@ class FakeSource implements FrameSource {
   /** Fire `onAbort` after this many frames of a chunk, so cancellation is deterministic. */
   abortAfterFrames: number | null = null;
   onAbort: (() => void) | null = null;
+  /** ⚠️ Throw from `read`, so a run that fails can be driven without a real decoder. */
+  failWith: Error | null = null;
   /** Footage the file actually contains, which may be less than the container declares. */
   constructor(private readonly realDurationSeconds = 300) {}
 
@@ -271,6 +282,7 @@ class FakeSource implements FrameSource {
     signal: AbortSignal,
   ): Promise<FrameChunkResult> {
     this.requests.push(request);
+    if (this.failWith !== null) throw this.failWith;
     const end = Math.min(
       request.fromOffsetSeconds + request.durationSeconds,
       this.realDurationSeconds,
@@ -667,5 +679,177 @@ describe('AnalysisWorker — running a session', () => {
     expect(outcome.state).toBe('expired');
     expect(outcome.reason).toMatch(/taken by another worker/);
     vi.restoreAllMocks();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * ⛔ **The run must tell the runtime when it ends** (Evidence Integrity, EI-3b).
+ *
+ * Nothing used to. The worker delivered its last frame and stopped, and every identity still in shot
+ * stayed in the runtime's in-memory buffer until a 300-second camera sweep happened to run — which
+ * runs on the *frame* path, so a deployment that has gone quiet never runs it. Measured on the
+ * deployed stack, idle for 26 minutes after a batch of analyses:
+ *
+ *     BEFORE  live_identities=28  live_streams=12  records=5259  write_failures=0
+ *     ⏻ docker kill -s KILL
+ *     AFTER   live_identities=0   live_streams=0   records=5259  write_failures=0
+ *
+ * 28 identities across **12 finished runs**, destroyed, with nothing attempted. ⚠️ No shutdown
+ * handler can fix that — SIGKILL, an OOM kill and an expired grace period never consult the process.
+ * The window between "this run ended" and "something eventually retires it" is the defect, and the
+ * party that knows the run ended is this one.
+ */
+describe('AnalysisWorker — closing the run so its evidence survives', () => {
+  it('tells the runtime when a run succeeds', async () => {
+    const { store, worker, sink } = build();
+    const { session } = await seed(store, 60);
+    await worker.claim(scope, session);
+
+    const outcome = await worker.runSession(scope, 'ases_1');
+
+    expect(outcome.state).toBe('succeeded');
+    expect(sink.closed).toEqual([
+      { tenantId: 'tnt_a', cameraId: 'cam_1', streamId: 'ases_1' },
+    ]);
+  });
+
+  it('tells the runtime when a run is cancelled', async () => {
+    /*
+     * ⛔ A cancelled run has produced real evidence up to the moment it stopped, and an operator who
+     * cancels a four-hour analysis after twenty minutes still expects the twenty minutes.
+     */
+    const source = new FakeSource();
+    const { store, worker, sink } = build({ source });
+    const { session } = await seed(store, 600);
+    await worker.claim(scope, session);
+    /*
+     * ⚠️ Mid-chunk, after frames have been emitted — the existing hook, and the realistic shape.
+     * A cancel landing before the *first* frame of a chunk leaves the offset unadvanced, and the
+     * loop's "a chunk that did not advance ends the run" guard then reports `succeeded`. That is a
+     * pre-existing narrow race, noted in EVIDENCE_INTEGRITY_REPORT.md and out of scope here.
+     */
+    source.abortAfterFrames = 40;
+    source.onAbort = (): void => {
+      worker.cancelLocal('ases_1');
+    };
+
+    const outcome = await worker.runSession(scope, 'ases_1');
+
+    expect(outcome.state).toBe('cancelled');
+    expect(sink.closed).toHaveLength(1);
+    expect(sink.closed[0]?.streamId).toBe('ases_1');
+  });
+
+  it('tells the runtime when a run fails for good', async () => {
+    const source = new FakeSource();
+    source.failWith = new Error('no video stream');
+    const { store, worker, sink } = build({ source });
+    const { session } = await seed(store, 60);
+    await worker.claim(scope, session);
+
+    const outcome = await worker.runSession(scope, 'ases_1');
+
+    expect(outcome.state).toBe('failed');
+    expect(sink.closed).toHaveLength(1);
+  });
+
+  it('does NOT close a run that will be retried', async () => {
+    /*
+     * ⛔ The one that must not fire. A `retrying` session is claimed again by a worker that continues
+     * the same stream; retiring its identities between attempts would split every path across the
+     * retry and produce two short visits where one long one happened — ADR-0038's failure, caused by
+     * the fix for a different one.
+     */
+    const source = new FakeSource();
+    source.failWith = new Error('the object store timed out');
+    const { store, worker, sink } = build({ source });
+    const { session } = await seed(store, 60);
+    await worker.claim(scope, session);
+
+    const outcome = await worker.runSession(scope, 'ases_1');
+
+    expect(outcome.state).toBe('retrying');
+    expect(sink.closed).toEqual([]);
+  });
+
+  it('records a finding when the runtime could not be told', async () => {
+    /*
+     * ⚠️ The analysis still succeeded — a bookkeeping call that failed must not turn a complete run
+     * into a failed one. But it must not be silent: this is the only place the fact can be attached
+     * to the session it belongs to.
+     */
+    const sink = new FakeSink();
+    sink.closeResult = { closed: 0, written: 0, reason: 'connect ECONNREFUSED' };
+    const { store, worker } = build({ sink });
+    const { session } = await seed(store, 60);
+    await worker.claim(scope, session);
+
+    const outcome = await worker.runSession(scope, 'ases_1');
+    const after = await store.getSession(scope, 'ases_1');
+
+    expect(outcome.state).toBe('succeeded');
+    const finding = after?.findings.find((f) => f.kind === 'evidence-not-preserved');
+    expect(finding).toBeDefined();
+    expect(finding?.detail).toMatch(/ECONNREFUSED/);
+  });
+
+  it('records a finding when evidence was retired but not written', async () => {
+    /* ⛔ `closed > written` is a full disk or an unwritable volume: the identities left memory and
+     * never reached storage. The count is the only witness. */
+    const sink = new FakeSink();
+    sink.closeResult = { closed: 3, written: 1 };
+    const { store, worker } = build({ sink });
+    const { session } = await seed(store, 60);
+    await worker.claim(scope, session);
+
+    await worker.runSession(scope, 'ases_1');
+    const after = await store.getSession(scope, 'ases_1');
+
+    const finding = after?.findings.find((f) => f.kind === 'evidence-not-preserved');
+    expect(finding).toBeDefined();
+    expect(finding?.detail).toMatch(/2 of 3/);
+  });
+
+  it('says nothing when the close succeeded', async () => {
+    /* ⚠️ The negative control. A finding that is always present is not a finding. */
+    const sink = new FakeSink();
+    sink.closeResult = { closed: 2, written: 2 };
+    const { store, worker } = build({ sink });
+    const { session } = await seed(store, 60);
+    await worker.claim(scope, session);
+
+    await worker.runSession(scope, 'ases_1');
+    const after = await store.getSession(scope, 'ases_1');
+
+    expect(after?.findings.some((f) => f.kind === 'evidence-not-preserved')).toBe(false);
+  });
+
+  it('does not fail the run when closing throws', async () => {
+    /* ⚠️ `closeStream` is documented as never throwing, but a sink is an interface and this is the
+     * boundary. A complete analysis must not be reported as failed by its own bookkeeping. */
+    const sink = new FakeSink();
+    sink.closeStream = (): Promise<StreamClosed> => Promise.reject(new Error('boom'));
+    const { store, worker } = build({ sink });
+    const { session } = await seed(store, 60);
+    await worker.claim(scope, session);
+
+    const outcome = await worker.runSession(scope, 'ases_1');
+
+    expect(outcome.state).toBe('succeeded');
+  });
+
+  it('still completes when the deployment has no runtime to tell', async () => {
+    /* ⚠️ A sink without `closeStream` is a legitimate deployment, and absence must read as "cannot
+     * be told" rather than as an error. */
+    const sink = new FakeSink();
+    /* ⚠️ An own property shadowing the prototype method — `delete` would not remove a class method. */
+    (sink as { closeStream?: unknown }).closeStream = undefined;
+    const { store, worker } = build({ sink });
+    const { session } = await seed(store, 60);
+    await worker.claim(scope, session);
+
+    expect((await worker.runSession(scope, 'ases_1')).state).toBe('succeeded');
   });
 });
