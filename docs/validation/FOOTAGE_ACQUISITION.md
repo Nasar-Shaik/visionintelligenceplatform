@@ -30,6 +30,35 @@ wrong instrument for "does this detector see a person", because there is no pers
 
 ---
 
+> ⭐ **The ingest path is built and executable** — see `REAL_FOOTAGE_INGEST.md`. A clip is declared
+> with `real_footage_cli.py --register`, which refuses to proceed without a consent record, a capture
+> device and a date. Nothing below is blocked on tooling.
+
+## 1b. The controlled capability list (2026-08-11)
+
+The required initial controlled footage, as scenarios the corpus reports. ⚠️ All 41 are enumerated by
+`benchmark_corpus.SCENARIOS`; these are the ones the Architect named for the first shoot.
+
+| Group | Scenarios |
+| --- | --- |
+| Orientation | `front-facing-person` · `side-facing-person` · `rear-facing-person` |
+| Posture | `person-standing` · `person-sitting` · `person-bending` · `hands-raised` |
+| Movement | `normal-person` (walking) · `person-entering-frame` · `person-leaving-frame` · `approach-recede` |
+| Occlusion | `partially-occluded-person` |
+| Objects | `backpack` · `bottle` · `cup` |
+| Handling | `object-pickup` · `object-putdown` · `person-carrying-object` |
+| Interaction | `two-person-interaction` · `handover` |
+| Geometry | `zone-crossing` · `line-crossing` |
+
+⛔ **The posture group is footage to record now and score later.** No pose model is authorised, and
+declaring these scenarios does not authorise one. They are observations of body configuration —
+never intent — and recording them before the model exists is what makes the eventual model
+measurable on day one rather than six weeks after it lands.
+
+⭐ Many collapse into one shoot: a single continuous take of a person walking in, standing, sitting,
+bending to pick up a bottle, carrying it across a marked line and out of frame covers eleven of them
+with consistent lighting and one consent record.
+
 ## 2. Acquisition checklist — priority order
 
 Ordered by **how many dormant capabilities each unblocks**, not by how easy it is to film.

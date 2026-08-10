@@ -195,6 +195,43 @@ for the priority checklist and the annotation plan. The single highest-value rec
 carrying a bag*: it unblocks four behaviour primitives that have never had real input, plus seven
 object scenarios.
 
+### P3.2 — real-footage ingest: BUILT and executable
+
+⭐ **Nothing is blocked on tooling any more.** The ingest → declare → verify → replay → report path
+is built and was demonstrated end to end on a real 19.04 s, 1080×1920 phone clip:
+
+| | yolox-nano | rtdetr-r18vd |
+| --- | ---: | ---: |
+| Detections / 34 frames | 29 | 43 |
+| Tracks · Events | 4 · 32 | 8 · 46 |
+| Inference avg · FPS | 37.9 ms · 2.85 | 780.4 ms · 0.84 |
+
+⛔ **That settles nothing and the report refuses to pretend otherwise.** RT-DETR produced 48 % more
+detections and twice the tracks on identical frames; with no annotations, nothing distinguishes a
+detector that found more people from one that found more false positives. ⚠️ The clip is **not**
+declared in the committed corpus — its lawful basis is unconfirmed, so it was registered with an
+explicit placeholder for a local demonstration only. The committed corpus is still 16 `AUTHORED` +
+1 `PHOTOGRAPH` + **0 `REAL_FOOTAGE`**.
+
+⭐ Replay was never the missing piece — a clip already ran through the production pipeline two ways
+(`detector_benchmark_cli.py` at the runtime tier, `object-association.mjs --clip` through the
+deployed chain to evidence and WHY), and neither needed a change to accept real footage. What was
+missing was the **declaration**, and it is now guarded in both directions:
+
+    REAL_FOOTAGE          must carry sha256 + capture + consent  →  resolves under .data/real
+    AUTHORED/SYNTHETIC/   must carry none of them                →  resolves under repo fixtures
+    PHOTOGRAPH
+
+so a mislabel is a missing file rather than a quiet reclassification. `SCENARIOS` grew 31 → 41 for
+the required controlled capabilities (orientation, posture, entering frame, put-down,
+approach/recede, zone and line crossing). ⛔ The posture scenarios authorise **no** pose work; they
+are footage to record now and score later.
+
+⛔ One more report defect found and fixed by running it: the banner hardcoded *"every case in this
+corpus is authored or photographic"* beside a computed coverage count, so the first real-footage run
+printed the two contradicting each other in one sentence. Every clause is now computed from the
+corpus. See `docs/validation/REAL_FOOTAGE_INGEST.md`.
+
 ### Evidence Integrity carry-forward — open, non-blocking
 
 | Item | Why still open |

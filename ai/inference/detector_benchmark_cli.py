@@ -14,8 +14,10 @@ per-frame record, so a distribution cannot be recovered from a completed `Analyz
 
 ### ⛔ What this refuses to produce
 
-- **A winner.** No case in the corpus is `REAL_FOOTAGE`, so no scenario reaches `AVAILABLE` and the
-  report says so at the top rather than in a footnote.
+- **A winner, while the corpus cannot support one.** The banner is computed from coverage, not
+  written: as long as no scenario reaches `AVAILABLE` it says so at the top rather than in a
+  footnote. ⚠️ The committed corpus is in that state today; declaring real footage changes what the
+  report is *allowed* to say, which is why the declaration is guarded (`benchmark_corpus`).
 - **Precision or recall.** Not one case carries ground truth. Every number here is *observational*:
   latency, FPS, CPU, memory, detections per frame, confidence distribution, class coverage. A
   detection count is not an accuracy.
@@ -260,6 +262,7 @@ def make_cell_runner(
     store,  # noqa: ANN001 - ModelStore
     corpus: bc.Corpus,
     fixtures_root: str,
+    real_root: str,
     artifact_dir: str,
     tenant_id: str = "tnt_benchmark",
     target_fps: float = TARGET_FPS,
@@ -278,7 +281,8 @@ def make_cell_runner(
 
     def run_cell(model_id: str, case_id: str) -> db.DetectorRun:
         case = corpus.by_id(case_id)
-        path = os.path.join(fixtures_root, case.path)
+        # ⭐ Provenance chooses the tree: real footage never lives among the committed fixtures.
+        path = os.path.join(bc.root_for(case, fixtures_root, real_root), case.path)
         common = {
             "model_id": model_id,
             "case_id": case_id,
@@ -384,12 +388,34 @@ def render_report(summary: dict, corpus: bc.Corpus, rows: Sequence[bc.ScenarioCo
     out: List[str] = ["# Detector benchmark — observational report", ""]
     out.append(f"**{summary.get('at', '—')}** · corpus `{corpus.version}`")
     out.append("")
+    # ⛔ **Every clause below is computed from the corpus, never asserted.** The first version of this
+    # banner hardcoded "every case in this corpus is authored or photographic" beside a coverage
+    # count that was computed — so the first real-footage run printed the two contradicting each
+    # other in one sentence. A report that describes a corpus it did not read is the defect this
+    # whole module exists to prevent.
+    kinds = corpus.kinds()
+    real = kinds.get("REAL_FOOTAGE", 0)
+    total = len(corpus.cases)
     out.append("> ⛔ **THIS REPORT DOES NOT NAME A WINNER, AND CANNOT.**")
     out.append("> ")
+    if real == 0:
+        provenance_clause = (
+            "Every case in this corpus is authored or photographic, so these numbers describe how "
+            "each detector handles *this corpus* — not how it handles people."
+        )
+    else:
+        constructed = total - real
+        provenance_clause = (
+            f"{real} of {total} case(s) are real footage"
+            + (f" and {constructed} are constructed" if constructed else "")
+            + ". ⛔ A detector comparison still may not be settled here: the scenarios below that "
+            "remain PARTIAL or MISSING have no real evidence at all, and no case carries ground "
+            "truth, so nothing separates a detector that found more people from one that found "
+            "more false positives."
+        )
     out.append(
         f"> {counts['AVAILABLE']} of {len(rows)} required scenarios are covered by real footage. "
-        f"Every case in this corpus is authored or photographic, so these numbers describe how each "
-        f"detector handles *this corpus* — not how it handles people. See `CORPUS_COVERAGE.md`."
+        f"{provenance_clause} See `CORPUS_COVERAGE.md`."
     )
     out.append("> ")
     out.append(
@@ -397,6 +423,9 @@ def render_report(summary: dict, corpus: bc.Corpus, rows: Sequence[bc.ScenarioCo
         "ground truth, so precision, recall, false-positive/negative rates, IoU and mAP are absent "
         "rather than estimated. A detection count is not an accuracy: more detections per frame may "
         "mean finding people or finding coat racks, and nothing here separates the two."
+        if not corpus.has_any_ground_truth
+        else "> ⚠️ **Accuracy metrics are permitted only for cases carrying ground truth.** Every "
+        "other number here remains observational."
     )
     out.append("")
     out.append("## Model provenance")
@@ -429,6 +458,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--corpus", default=DEFAULT_CORPUS)
     parser.add_argument("--fixtures", default=os.environ.get("VIP_FIXTURES_DIR", DEFAULT_FIXTURES))
     parser.add_argument("--artifacts", default=os.environ.get("VIP_MODEL_DIR", DEFAULT_ARTIFACTS))
+    parser.add_argument(
+        "--real-root",
+        default=os.environ.get(bc.REAL_ROOT_ENV, bc.DEFAULT_REAL_ROOT),
+        help="where REAL_FOOTAGE clips live — ⛔ outside the repository, by convention",
+    )
     parser.add_argument("--models", default="", help="comma-separated model ids; default every catalogue entry")
     parser.add_argument("--cases", default="", help="comma-separated case ids; default the whole corpus")
     parser.add_argument("--out", default="", help="directory for matrix.json and the reports")
@@ -446,7 +480,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        corpus = bc.load(args.corpus, root=args.fixtures)
+        corpus = bc.load(args.corpus, root=args.fixtures, real_root=args.real_root)
     except bc.CorpusError as exc:
         print(f"⛔ corpus: {exc}", file=sys.stderr)
         return 2
@@ -485,6 +519,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         store=store,
         corpus=corpus,
         fixtures_root=args.fixtures,
+        real_root=args.real_root,
         artifact_dir=args.artifacts,
         target_fps=args.target_fps,
     )

@@ -175,6 +175,37 @@ class ReportTests(unittest.TestCase):
         store = _Store()
         self.assertIn(store.expected[:12], self._report(store))
 
+    def test_the_provenance_clause_is_computed_from_the_corpus(self) -> None:
+        """⛔ **The regression test for a banner that described a corpus it had not read.**
+
+        The clause "every case in this corpus is authored or photographic" was hardcoded beside a
+        coverage count that was computed, so the first real-footage run printed the two contradicting
+        each other in a single sentence.
+        """
+        real = bc.Corpus(
+            version="real",
+            cases=(
+                bc.BenchmarkCase(
+                    case_id="r1", path="r1.mp4", category="real", footage_kind="REAL_FOOTAGE",
+                    scenarios=("normal-person",), sha256="a" * 64, consent="c.md",
+                    capture={"device": "phone"},
+                ),
+            ),
+        )
+        rows = bc.coverage(real)
+        matrix = db.BenchmarkMatrix(
+            rows=[db.DetectorRun(model_id="m", case_id="r1", category="real", frames=30)],
+            corpus_version="real", environment={}, at="2026-08-11T00:00:00Z",
+        )
+        text = cli.render_report(db.summarise(matrix), real, rows, cli.provenance([_Model()], _Store()))
+        self.assertNotIn("Every case in this corpus is authored", text)
+        self.assertIn("1 of 1 case(s) are real footage", text)
+        self.assertIn("DOES NOT NAME A WINNER", text)
+
+    def test_an_authored_corpus_still_says_so(self) -> None:
+        """⚠️ The other branch — the clause has to be right in both directions, not merely absent."""
+        self.assertIn("Every case in this corpus is authored", self._report())
+
     def test_the_report_carries_the_licence(self) -> None:
         """⚠️ Licensing is a selection criterion here, so it belongs beside the numbers."""
         self.assertIn("Apache-2.0", self._report())
