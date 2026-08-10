@@ -43,9 +43,9 @@
       "intent": {
         "people": 2,
         "identities": 2,
-        "note": "Each identity keeps its own row. A swap shows as a track that changes height. They coincide at t=15 — sample either side of it."
+        "note": "Each identity keeps its own row. A swap shows as a track that changes height. They coincide at t=15 \u2014 sample either side of it."
       },
-      "note": "Each identity keeps its own row. A swap shows as a track that changes height. They coincide at t=15 — sample either side of it.",
+      "note": "Each identity keeps its own row. A swap shows as a track that changes height. They coincide at t=15 \u2014 sample either side of it.",
       "measured": {
         "probeAtSeconds": 5,
         "people": 2,
@@ -122,9 +122,9 @@
       "intent": {
         "people": 1,
         "uncertain": true,
-        "note": "Half the subject is outside the frame. Whether the model fires is a property of the model — the manifest records what it did, and the test asserts the platform handled it either way."
+        "note": "Half the subject is outside the frame. Whether the model fires is a property of the model \u2014 the manifest records what it did, and the test asserts the platform handled it either way."
       },
-      "note": "Half the subject is outside the frame. Whether the model fires is a property of the model — the manifest records what it did, and the test asserts the platform handled it either way.",
+      "note": "Half the subject is outside the frame. Whether the model fires is a property of the model \u2014 the manifest records what it did, and the test asserts the platform handled it either way.",
       "measured": {
         "probeAtSeconds": 15,
         "people": 1,
@@ -195,7 +195,7 @@
     {
       "id": "counter-monitoring",
       "file": "validation/counter-monitoring.mp4",
-      "title": "A served counter — one person behind, one arriving in front",
+      "title": "A served counter \u2014 one person behind, one arriving in front",
       "category": "rules",
       "kind": "authored",
       "durationSeconds": 30,
@@ -318,9 +318,9 @@
       "intent": {
         "people": 1,
         "uncertain": true,
-        "note": "Brightness ramps ±0.35 over a 10s cycle. Confidence is expected to move with it; the manifest records the spread."
+        "note": "Brightness ramps \u00b10.35 over a 10s cycle. Confidence is expected to move with it; the manifest records the spread."
       },
-      "note": "Brightness ramps ±0.35 over a 10s cycle. Confidence is expected to move with it; the manifest records the spread.",
+      "note": "Brightness ramps \u00b10.35 over a 10s cycle. Confidence is expected to move with it; the manifest records the spread.",
       "measured": {
         "probeAtSeconds": 15,
         "people": 1,
@@ -396,9 +396,9 @@
       "intent": {
         "people": 1,
         "uncertain": true,
-        "note": "Gaussian sigma 3.5 — a badly focused or dirty dome, which is the single most common real-world camera fault."
+        "note": "Gaussian sigma 3.5 \u2014 a badly focused or dirty dome, which is the single most common real-world camera fault."
       },
-      "note": "Gaussian sigma 3.5 — a badly focused or dirty dome, which is the single most common real-world camera fault.",
+      "note": "Gaussian sigma 3.5 \u2014 a badly focused or dirty dome, which is the single most common real-world camera fault.",
       "measured": {
         "probeAtSeconds": 15,
         "people": 1,
@@ -422,9 +422,9 @@
       "intent": {
         "people": 1,
         "uncertain": true,
-        "note": "The whole frame translates ±10px. Static geometry moves, which is what a pole-mounted camera in wind actually does to a tracker."
+        "note": "The whole frame translates \u00b110px. Static geometry moves, which is what a pole-mounted camera in wind actually does to a tracker."
       },
-      "note": "The whole frame translates ±10px. Static geometry moves, which is what a pole-mounted camera in wind actually does to a tracker.",
+      "note": "The whole frame translates \u00b110px. Static geometry moves, which is what a pole-mounted camera in wind actually does to a tracker.",
       "measured": {
         "probeAtSeconds": 15,
         "people": 1,
@@ -472,9 +472,9 @@
       "codec": "h264",
       "intent": {
         "people": 1,
-        "note": "Source rate far ABOVE the analysis rate. The decoder must decimate to exactly the requested rate — an off-by-one here doubles every customer bill."
+        "note": "Source rate far ABOVE the analysis rate. The decoder must decimate to exactly the requested rate \u2014 an off-by-one here doubles every customer bill."
       },
-      "note": "Source rate far ABOVE the analysis rate. The decoder must decimate to exactly the requested rate — an off-by-one here doubles every customer bill.",
+      "note": "Source rate far ABOVE the analysis rate. The decoder must decimate to exactly the requested rate \u2014 an off-by-one here doubles every customer bill.",
       "measured": {
         "probeAtSeconds": 15,
         "people": 1,
@@ -512,7 +512,7 @@
     {
       "id": "res-180p",
       "file": "validation/res-180p.mp4",
-      "title": "320×180 — below the model input",
+      "title": "320\u00d7180 \u2014 below the model input",
       "category": "transport",
       "axis": "resolution",
       "kind": "authored",
@@ -537,7 +537,7 @@
     {
       "id": "res-360p",
       "file": "validation/res-360p.mp4",
-      "title": "640×360 — the baseline",
+      "title": "640\u00d7360 \u2014 the baseline",
       "category": "transport",
       "axis": "resolution",
       "kind": "authored",
@@ -562,7 +562,7 @@
     {
       "id": "res-720p",
       "file": "validation/res-720p.mp4",
-      "title": "1280×720 — common IP camera",
+      "title": "1280\u00d7720 \u2014 common IP camera",
       "category": "transport",
       "axis": "resolution",
       "kind": "authored",
@@ -587,7 +587,7 @@
     {
       "id": "res-1080p",
       "file": "validation/res-1080p.mp4",
-      "title": "1920×1080 — full HD",
+      "title": "1920\u00d71080 \u2014 full HD",
       "category": "transport",
       "axis": "resolution",
       "kind": "authored",
@@ -612,7 +612,7 @@
     {
       "id": "codec-h264",
       "file": "validation/codec-h264.mp4",
-      "title": "H.264 / avc1 — the universal baseline",
+      "title": "H.264 / avc1 \u2014 the universal baseline",
       "category": "transport",
       "axis": "codec",
       "kind": "authored",
@@ -637,7 +637,7 @@
     {
       "id": "codec-h265-hvc1",
       "file": "validation/codec-h265-hvc1.mp4",
-      "title": "H.265 / hvc1 — plays in Safari",
+      "title": "H.265 / hvc1 \u2014 plays in Safari",
       "category": "transport",
       "axis": "codec",
       "kind": "authored",
@@ -662,7 +662,7 @@
     {
       "id": "codec-h265-hev1",
       "file": "validation/codec-h265-hev1.mp4",
-      "title": "H.265 / hev1 — ⛔ TD-29, refused by WebKit MSE",
+      "title": "H.265 / hev1 \u2014 \u26d4 TD-29, refused by WebKit MSE",
       "category": "transport",
       "axis": "codec",
       "kind": "authored",
@@ -687,7 +687,7 @@
     {
       "id": "codec-mpeg4",
       "file": "validation/codec-mpeg4.mp4",
-      "title": "MPEG-4 Part 2 — a legacy DVR export",
+      "title": "MPEG-4 Part 2 \u2014 a legacy DVR export",
       "category": "transport",
       "axis": "codec",
       "kind": "authored",
@@ -712,7 +712,7 @@
     {
       "id": "angle-eye-level",
       "file": "validation/angle-eye-level.mp4",
-      "title": "Eye level — the baseline framing",
+      "title": "Eye level \u2014 the baseline framing",
       "category": "transport",
       "axis": "angle",
       "kind": "authored",
@@ -737,7 +737,7 @@
     {
       "id": "angle-high",
       "file": "validation/angle-high.mp4",
-      "title": "High angle — perspective-compressed",
+      "title": "High angle \u2014 perspective-compressed",
       "category": "transport",
       "axis": "angle",
       "kind": "authored",
@@ -762,7 +762,7 @@
     {
       "id": "angle-overhead",
       "file": "validation/angle-overhead.mp4",
-      "title": "⚠️ Steep down-angle, NOT true overhead",
+      "title": "\u26a0\ufe0f Steep down-angle, NOT true overhead",
       "category": "transport",
       "axis": "angle",
       "kind": "authored",
@@ -816,31 +816,31 @@
       "category": "corrupt",
       "kind": "damaged",
       "bytes": 0,
-      "expect": "rejected at probe — there is no container to read",
+      "expect": "rejected at probe \u2014 there is no container to read",
       "stage": "upload-confirm",
       "ffprobe": "ffprobe refuses it"
     },
     {
       "id": "corrupt-truncated-header",
       "file": "validation/corrupt-truncated-header.mp4",
-      "title": "The first 200 bytes only — a stalled upload",
+      "title": "The first 200 bytes only \u2014 a stalled upload",
       "category": "corrupt",
       "kind": "damaged",
       "bytes": 200,
-      "expect": "rejected at probe — moov atom absent",
+      "expect": "rejected at probe \u2014 moov atom absent",
       "stage": "upload-confirm",
       "ffprobe": "probes OK but NO VIDEO STREAM"
     },
     {
       "id": "corrupt-truncated-tail",
       "file": "validation/corrupt-truncated-tail.mp4",
-      "title": "The last 40% cut off — a DVR that lost power mid-write",
+      "title": "The last 40% cut off \u2014 a DVR that lost power mid-write",
       "category": "corrupt",
       "kind": "damaged",
       "bytes": 62015,
       "expect": "probe succeeds and MISREPORTS duration; the decode must end honestly, not invent frames",
       "stage": "analysis",
-      "ffprobe": "probes OK: h264 640×360 30.0s"
+      "ffprobe": "probes OK: h264 640\u00d7360 30.0s"
     },
     {
       "id": "corrupt-not-a-video",
@@ -849,7 +849,7 @@
       "category": "corrupt",
       "kind": "damaged",
       "bytes": 11000,
-      "expect": "rejected at probe — no stream of any kind",
+      "expect": "rejected at probe \u2014 no stream of any kind",
       "stage": "upload-confirm",
       "ffprobe": "ffprobe refuses it"
     },
@@ -860,7 +860,7 @@
       "category": "corrupt",
       "kind": "damaged",
       "bytes": 265656,
-      "expect": "rejected — a valid container is not a video",
+      "expect": "rejected \u2014 a valid container is not a video",
       "stage": "upload-confirm",
       "ffprobe": "probes OK but NO VIDEO STREAM"
     },
@@ -871,9 +871,51 @@
       "category": "corrupt",
       "kind": "damaged",
       "bytes": 103359,
-      "expect": "decodes with visible artefacts OR fails with a reason — never silently produces nothing",
+      "expect": "decodes with visible artefacts OR fails with a reason \u2014 never silently produces nothing",
       "stage": "analysis",
-      "ffprobe": "probes OK: h264 640×360 30.0s"
+      "ffprobe": "probes OK: h264 640\u00d7360 30.0s"
+    },
+    {
+      "id": "carried-objects",
+      "file": "validation/carried-objects.mp4",
+      "title": "A person carrying shopping bags \u2014 the only clip in which this platform's detector returns a carriable object",
+      "category": "object-association",
+      "kind": "derived-from-photograph",
+      "durationSeconds": 24,
+      "bytes": 151730,
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "codec": "h264",
+      "sha256": "4a4fa1da078df0d2205613784c66a899e7f423b82ab3489f24e45824bb436528",
+      "source": {
+        "image": "File:Woman shopping car (Unsplash).jpg",
+        "licence": "CC0",
+        "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Woman_shopping_car_(Unsplash).jpg",
+        "derivation": "a slow horizontal pan across the photograph, scaled to 640x360"
+      },
+      "intent": {
+        "people": 1,
+        "objects": [
+          "suitcase",
+          "backpack"
+        ],
+        "note": "\u26d4 THE PIXELS ARE REAL AND THE MOTION IS AUTHORED. Nobody picks anything up in a photograph, so this clip proves the association CHAIN on real multi-class detections \u2014 detection, tracking, association, picked, timeline, graph, reasoning \u2014 and it cannot prove pick-then-drop on real human motion. That remains PENDING FOOTAGE. See docs/validation/OBJECT_ASSOCIATION.md."
+      },
+      "note": "Real detections of real shopping bags. The detector labels them `suitcase` and `backpack`; the bags are neither, and that mislabelling is recorded rather than corrected.",
+      "measured": {
+        "measuredOn": "2026-08-10",
+        "atFloor": 0.2,
+        "objectRecords": 2,
+        "associationSpans": 3,
+        "carriedEntries": 3,
+        "pickedEntries": 3,
+        "atFloor050": {
+          "objectRecords": 0,
+          "associationSpans": 0,
+          "carriedEntries": 0
+        }
+      }
     }
   ],
   "procurement": [
@@ -888,7 +930,7 @@
     {
       "id": "mall-concourse",
       "title": "Shopping-centre concourse, wide angle, heavy footfall",
-      "needs": "Genuine crowd density and mutual occlusion — the thing the `crowd` fixture only gestures at.",
+      "needs": "Genuine crowd density and mutual occlusion \u2014 the thing the `crowd` fixture only gestures at.",
       "blocks": "Crowd counting accuracy; the NMS suppression question the crowd fixture raises.",
       "duration": "10 min, peak",
       "consent": "Centre management agreement; public-space signage."
@@ -897,7 +939,7 @@
       "id": "warehouse",
       "title": "Warehouse aisle with forklift and pedestrian traffic",
       "needs": "Vehicle/person discrimination and high-ceiling perspective.",
-      "blocks": "Any safety claim about pedestrian–vehicle separation.",
+      "blocks": "Any safety claim about pedestrian\u2013vehicle separation.",
       "duration": "15 min, shift hours",
       "consent": "Site operator agreement; union/works-council notice where required."
     },
@@ -907,20 +949,20 @@
       "needs": "Uniform-heavy scenes, trolleys, and long thin geometry with strong perspective.",
       "blocks": "Healthcare deployment claims.",
       "duration": "10 min",
-      "consent": "⛔ Highest bar in this table — patient privacy. Likely requires a synthetic re-enactment on a real ward instead of live footage."
+      "consent": "\u26d4 Highest bar in this table \u2014 patient privacy. Likely requires a synthetic re-enactment on a real ward instead of live footage."
     },
     {
       "id": "factory-floor",
       "title": "Production line, fixed camera, machinery in motion",
-      "needs": "Persistent non-human motion — the single largest false-positive source in industrial installs.",
+      "needs": "Persistent non-human motion \u2014 the single largest false-positive source in industrial installs.",
       "blocks": "Industrial deployment claims; the moving-machinery false-positive rate.",
       "duration": "15 min",
       "consent": "Site operator agreement."
     },
     {
       "id": "parking-area",
-      "title": "Outdoor car park, day→dusk transition",
-      "needs": "Real low-light transition, headlights, and weather — the honest version of `night-footage` and `rain`.",
+      "title": "Outdoor car park, day\u2192dusk transition",
+      "needs": "Real low-light transition, headlights, and weather \u2014 the honest version of `night-footage` and `rain`.",
       "blocks": "Outdoor/overnight claims; everything the `night-footage` and `rain` fixtures approximate.",
       "duration": "30 min spanning dusk",
       "consent": "Site operator agreement; ANPR rules may apply in some jurisdictions."

@@ -417,6 +417,24 @@ def primitives_for(
         # one drawn too short to reach the foot points. Found on the deployment, where a tripwire from
         # y = 0.05 to y = 0.95 caught nobody because feet sit at y ≈ 0.95. See `bp.LineDiagnostic`.
         "lineDiagnostics": [d.to_dict() for d in bp.line_diagnostics(context.subjects, context.lines)],
+        # ⭐ **Why the association layer reported what it reported** (slice 2.10). `AssociationModule`
+        # ran on every frame for three milestones with nothing to associate, and every read looked
+        # exactly like a scene where nobody carried anything. `reason` separates the four causes —
+        # no carriable class detected, no subjects, never observed together, never close enough — and
+        # only the absence of a `reason` means the silence is the product working. See
+        # `bp.AssociationDiagnostic`.
+        #
+        # ⚠️ The span count comes from what the module already produced rather than a second run of
+        # `associations()`: two counts of the same thing is two answers to one question.
+        "associationDiagnostic": bp.association_diagnostic(
+            context.objects,
+            context.subjects,
+            spans=sum(
+                len(bucket["association"].get("heldBy", []))
+                for bucket in identities.values()
+                if isinstance(bucket.get("association"), dict)
+            ),
+        ).to_dict(),
         # ⛔ How much of the scene the pairwise families actually looked at. A truncated scene returns
         # a complete-looking answer in which a merge simply never happened, which is worse than a
         # short list — see `TimelineResult`.

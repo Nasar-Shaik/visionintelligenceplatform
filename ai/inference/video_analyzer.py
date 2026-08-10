@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, List, Mapping, Optional, Sequence
 
 from behavior import BehaviorContext, BehaviorLifecycleStore, frame_seconds, snapshot_track
 from behavior_registry import BehaviorRegistry
@@ -75,6 +75,11 @@ class AnalyzeOptions:
     labels: Sequence[str] = ("person",)
     capability_id: str = "playground.detect"
     min_confidence: float = 0.5
+    #: Per-label overrides of `min_confidence`. ⚠️ Mirrors `CapabilityManifest.min_confidence_by_label`
+    #: so an offline analysis reports what the live path would have reported — a floor that applied
+    #: on one path and not the other would make replay disagree with production for reasons no
+    #: measurement could explain.
+    min_confidence_by_label: Mapping[str, float] = field(default_factory=dict)
     iou_threshold: float = 0.45  # reserved for NMS in a real post-processor (recorded in metadata)
     target_fps: Optional[float] = None
     source: str = "playground"
@@ -191,7 +196,9 @@ class VideoAnalyzer:
     ) -> None:
         self._options = options
         adapter.load({"labels": list(options.labels)})
-        self._postprocessor = postprocessor or ConfidencePostprocessor(labels=options.labels)
+        self._postprocessor = postprocessor or ConfidencePostprocessor(
+            labels=options.labels, floors=options.min_confidence_by_label
+        )
         self._tracker = tracker or NoopTracker()
         self._translator = translator or DefaultResultTranslator()
         self._event_sink = event_sink or NullEventSink()
@@ -605,6 +612,14 @@ class VideoAnalyzer:
             "executionProvider": getattr(self._adapter, "execution_provider", "unknown"),
             "options": {
                 "minConfidence": opts.min_confidence,
+                # ⚠️ Recorded so a stored analysis can say which floors produced it. Two runs of the
+                # same footage under different floors are two different measurements, and a summary
+                # that named only the default would make them look identical.
+                **(
+                    {}
+                    if not opts.min_confidence_by_label
+                    else {"minConfidenceByLabel": dict(sorted(opts.min_confidence_by_label.items()))}
+                ),
                 "iouThreshold": opts.iou_threshold,
                 "targetFps": opts.target_fps,
                 "labels": list(opts.labels),

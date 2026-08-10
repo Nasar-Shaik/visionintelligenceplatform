@@ -97,6 +97,14 @@ infra/docker/fixtures/media/tracking/frames/
 infra/docker/fixtures/media/validation/*.mp4
 infra/docker/fixtures/media/validation/*.png
 infra/docker/fixtures/media/validation/frames/
+# ⭐ **One exception, and it earns it.** The rule above works because an authored clip regenerates
+# from `tools/dataset/generate.mjs` in seconds. This one does not: it is a pan across an external
+# CC0 photograph that has to be fetched, resized and rendered, and it is the **only** clip in this
+# repository from which the deployed detector returns a carriable object. Every object-association
+# number published in `docs/validation/OBJECT_ASSOCIATION.md` was measured on these exact bytes, and
+# a verification whose stimulus cannot be reproduced is a verification nobody can check.
+# ⚠️ CC0, so committing it carries no licensing obligation — provenance is in the manifest entry.
+!infra/docker/fixtures/media/validation/carried-objects.mp4
 # The duration/size ladder — hundreds of MB, generated on demand for a performance run.
 infra/docker/fixtures/media/validation/large/
 

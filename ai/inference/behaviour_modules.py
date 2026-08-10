@@ -349,6 +349,13 @@ class AssociationModule(_BehaviourModule):
         for identity, points in prepared.objects.items():
             if not points:
                 continue
+            # ⛔ The first real multi-class run (slice 2.10) put a parked **car** into this loop
+            # beside the shopping bags. It produced no span — it never came near enough — but only
+            # the geometry stood between the platform and "this person carried a car", and in a car
+            # park a walker passing close to a car is the whole scene. Carrying requires a thing
+            # that can be picked up; the car stays a tracked object for every proximity primitive.
+            if not bp.carriable(points):
+                continue
             spans = bp.associations(points, subjects)
             if not spans:
                 continue

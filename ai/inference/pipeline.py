@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime
-from typing import Any, List, Optional, Protocol, Sequence, Tuple
+from typing import Any, List, Mapping, Optional, Protocol, Sequence, Tuple
 
 from contracts import Detection, DetectionResult, FrameContext, ModelBinding, detection_id
 
@@ -124,19 +124,39 @@ class ResultTranslator(Protocol):
 
 class ConfidencePostprocessor:
     """Default post-processing: normalize raw outputs to `Detection`, dropping sub-threshold scores
-    and mapping class ids to labels. No model/vendor specifics."""
+    and mapping class ids to labels. No model/vendor specifics.
 
-    def __init__(self, labels: Optional[Sequence[str]] = None) -> None:
+    ⭐ **The floor may differ per label, and the label is resolved before it is applied.** A single
+    number chosen for `person` silently zeroes every class the model scores lower — measured in P-11
+    slice 2.10, where the deployed detector scored a real `handbag` at 0.47 against a floor of 0.50
+    and the platform reported, perfectly consistently, that no object had ever been seen.
+
+    ⚠️ `floors` arrives at construction rather than on `run()`, so the `Postprocessor` Protocol —
+    which several stages and both the live and offline paths implement — keeps the signature it has
+    always had. A per-frame override is not a thing any caller wants; a per-deployment one is.
+    """
+
+    def __init__(
+        self,
+        labels: Optional[Sequence[str]] = None,
+        *,
+        floors: Optional[Mapping[str, float]] = None,
+    ) -> None:
         self._labels = list(labels) if labels else []
+        self._floors = dict(floors) if floors else {}
 
     def run(self, raw: Sequence[RawDetection], ctx: FrameContext, min_confidence: float) -> List[Detection]:
         out: List[Detection] = []
         for r in raw:
-            if r.score < min_confidence:
-                continue
             label = r.label
             if label is None and r.class_id is not None and 0 <= r.class_id < len(self._labels):
                 label = self._labels[r.class_id]
+            # ⛔ The label has to be resolved *before* the floor is chosen, which is why this moved
+            # above the comparison. A raw detection carries a class id, and a floor declared for
+            # "handbag" cannot be found by a stage still holding the integer 26. An unlabelled
+            # detection finds nothing in the map and falls back to the capability floor.
+            if r.score < self._floors.get(label, min_confidence):  # type: ignore[arg-type]
+                continue
             out.append(
                 Detection(
                     label=label or (str(r.class_id) if r.class_id is not None else "object"),

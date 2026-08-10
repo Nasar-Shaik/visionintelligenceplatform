@@ -77,7 +77,13 @@ class Capability:
             binding, ref = self._resolver.resolve(self.manifest.required_model)
             self._adapter.load(ref)
             if self._postprocessor is None:
-                self._postprocessor = ConfidencePostprocessor(labels=ref.get("labels"))
+                self._postprocessor = ConfidencePostprocessor(
+                    labels=ref.get("labels"),
+                    # ⚠️ The manifest's per-label floors, not a second copy of them. The capability
+                    # is the only thing that has read the manifest, and a floor decided anywhere
+                    # else would be a second answer to "what does this deployment report".
+                    floors=self.manifest.min_confidence_by_label,
+                )
             preprocessing = ref.get("preprocessing")
             self._preprocessing = preprocessing if isinstance(preprocessing, str) else None
             self._binding = binding

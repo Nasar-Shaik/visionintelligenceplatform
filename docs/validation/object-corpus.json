@@ -1,0 +1,774 @@
+{
+  "note": "The pinned real-photograph corpus behind the object-association measurements (P-11 slice 2.10). Fetch with tools/validation/object-corpus.mjs; measure with ai/mlops/probe_classes.py. Every image is CC0 or public domain. The pixels are deliberately not committed — see the tool for why.",
+  "measuredOn": "2026-08-10",
+  "detector": "yolox-nano 1.0.0 (416x416 letterbox, CPUExecutionProvider)",
+  "roles": {
+    "positive": "a photograph chosen because it plainly contains the named carried object",
+    "negative": "a real photograph NOT chosen for carried objects. ⚠️ NOT a valid negative control: crowds carry things, and control-08 scored handbag 0.4079 on what inspection confirmed was a real shopping bag. The false-positive rate is bounded on AUTHORED fixture footage instead, where no object exists by construction."
+  },
+  "images": [
+    {
+      "file": "backpack-01.jpg",
+      "role": "positive",
+      "expect": "backpack",
+      "licence": "Public domain",
+      "author": "Anne LaBastille",
+      "title": "File:YOUNG MEN WITH BACKPACKS REST AT THE TOP OF INDIAN FALLS ON A MAJOR TRAIL UP MOUNT MARCY IN NEW YORK STATE, IN THE... - NARA - 554509.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:YOUNG_MEN_WITH_BACKPACKS_REST_AT_THE_TOP_OF_INDIAN_FALLS_ON_A_MAJOR_TRAIL_UP_MOUNT_MARCY_IN_NEW_YORK_STATE,_IN_THE..._-_NARA_-_554509.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/YOUNG_MEN_WITH_BACKPACKS_REST_AT_THE_TOP_OF_INDIAN_FALLS_ON_A_MAJOR_TRAIL_UP_MOUNT_MARCY_IN_NEW_YORK_STATE%2C_IN_THE..._-_NARA_-_554509.jpg/1280px-YOUNG_MEN_WITH_BACKPACKS_REST_AT_THE_TOP_OF_INDIAN_FALLS_ON_A_MAJOR_TRAIL_UP_MOUNT_MARCY_IN_NEW_YORK_STATE%2C_IN_THE..._-_NARA_-_554509.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 189105,
+      "sha256": "b4726dc3524d0190aa9492a3f4d3e4cf032553ac207470e1c2629b50567a5b4b",
+      "measuredBest": {
+        "person": 0.8277,
+        "backpack": 0.2151,
+        "bicycle": 0.153,
+        "dog": 0.0816,
+        "handbag": 0.076
+      }
+    },
+    {
+      "file": "backpack-02.jpg",
+      "role": "positive",
+      "expect": "backpack",
+      "licence": "CC0",
+      "author": "Ezra Jeffrey emcomeau",
+      "title": "File:Hiking on a rocky forest trail (Unsplash).jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Hiking_on_a_rocky_forest_trail_(Unsplash).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Hiking_on_a_rocky_forest_trail_%28Unsplash%29.jpg/1280px-Hiking_on_a_rocky_forest_trail_%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 902802,
+      "sha256": "daca676c4136e9bc230f773ef7b9d3e385fdde5ea062f182fff08c7c419ceb28",
+      "measuredBest": {
+        "person": 0.834,
+        "handbag": 0.0949,
+        "car": 0.0766,
+        "frisbee": 0.0676
+      }
+    },
+    {
+      "file": "backpack-03.jpg",
+      "role": "positive",
+      "expect": "backpack",
+      "licence": "CC0",
+      "author": "Christian Joudrey cjoudrey",
+      "title": "File:Hiker on a steel bridge (Unsplash).jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Hiker_on_a_steel_bridge_(Unsplash).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/25/Hiker_on_a_steel_bridge_%28Unsplash%29.jpg/1280px-Hiker_on_a_steel_bridge_%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 270482,
+      "sha256": "725669aa3d3c9b38dbacc33a14b63485ff1f7d7d1799503ded03d1c80ecdd9c7",
+      "measuredBest": {
+        "person": 0.864,
+        "bench": 0.4006,
+        "backpack": 0.1061
+      }
+    },
+    {
+      "file": "backpack-04.jpg",
+      "role": "positive",
+      "expect": "backpack",
+      "licence": "Public domain",
+      "author": "U.S. Forest Service- Pacific Northwest Region",
+      "title": "File:Recreation, hiking backpacking near Elk Cove on Timberline Trail, Mt Hood National Forest (37000797096).jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Recreation,_hiking_backpacking_near_Elk_Cove_on_Timberline_Trail,_Mt_Hood_National_Forest_(37000797096).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Recreation%2C_hiking_backpacking_near_Elk_Cove_on_Timberline_Trail%2C_Mt_Hood_National_Forest_%2837000797096%29.jpg/1280px-Recreation%2C_hiking_backpacking_near_Elk_Cove_on_Timberline_Trail%2C_Mt_Hood_National_Forest_%2837000797096%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 424528,
+      "sha256": "7d105eb7361bfa229dac312105e1712d686dea24d56393b576e7f6c91e4ed83f",
+      "measuredBest": {
+        "person": 0.3486,
+        "fire hydrant": 0.2435,
+        "airplane": 0.063
+      }
+    },
+    {
+      "file": "backpack-05.jpg",
+      "role": "positive",
+      "expect": "backpack",
+      "licence": "Public domain",
+      "author": "Steve Redman (MORA)",
+      "title": "File:Evan Redman hiking Palisades Trail (2815dc628936478886f9f5c9ce62fd36).JPG",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Evan_Redman_hiking_Palisades_Trail_(2815dc628936478886f9f5c9ce62fd36).JPG",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5d/Evan_Redman_hiking_Palisades_Trail_%282815dc628936478886f9f5c9ce62fd36%29.JPG/1280px-Evan_Redman_hiking_Palisades_Trail_%282815dc628936478886f9f5c9ce62fd36%29.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 639025,
+      "sha256": "aaf47d8c43cae9e09efc52be12ca720e26790578d6871a7a6426825eaffdeda5",
+      "measuredBest": {
+        "person": 0.8797,
+        "backpack": 0.1495
+      }
+    },
+    {
+      "file": "backpack-06.jpg",
+      "role": "positive",
+      "expect": "backpack",
+      "licence": "Public domain",
+      "author": "Steve Redman (MORA)",
+      "title": "File:Evan and Adrie Redman backpacking. (701fa259503645eabb14a7339f40675b).JPG",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Evan_and_Adrie_Redman_backpacking._(701fa259503645eabb14a7339f40675b).JPG",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d8/Evan_and_Adrie_Redman_backpacking._%28701fa259503645eabb14a7339f40675b%29.JPG/1280px-Evan_and_Adrie_Redman_backpacking._%28701fa259503645eabb14a7339f40675b%29.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 619068,
+      "sha256": "2f94bca6bfa209731b0288c39ea4a4b3a7a6012f50f3fa039a5a2c9ef770ecc4",
+      "measuredBest": {
+        "person": 0.7084,
+        "motorcycle": 0.3622,
+        "backpack": 0.0502
+      }
+    },
+    {
+      "file": "handbag-01.jpg",
+      "role": "positive",
+      "expect": "handbag",
+      "licence": "Public domain",
+      "author": null,
+      "title": "File:StateLibQld 1 99028 Group of women photographed walking along a street, 1920-1930.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:StateLibQld_1_99028_Group_of_women_photographed_walking_along_a_street,_1920-1930.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/f/f1/StateLibQld_1_99028_Group_of_women_photographed_walking_along_a_street%2C_1920-1930.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+      "bytes": 59714,
+      "sha256": "dd83d7a9e22f95edbbb5eb3895dd09477c2acd2235bbfdc6c109f3b904c9acde",
+      "measuredBest": {
+        "person": 0.8466,
+        "tie": 0.4963
+      }
+    },
+    {
+      "file": "handbag-02.jpg",
+      "role": "positive",
+      "expect": "handbag",
+      "licence": "Public domain",
+      "author": "Sam Hood",
+      "title": "File:SLNSW 37314 Womans gloves and handbag.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:SLNSW_37314_Womans_gloves_and_handbag.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/SLNSW_37314_Womans_gloves_and_handbag.jpg/1280px-SLNSW_37314_Womans_gloves_and_handbag.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 188420,
+      "sha256": "206843b1c7601f1f48ac946295d6be332d1ca9c6c6de0d1328f169c0f215e9be",
+      "measuredBest": {
+        "oven": 0.3315,
+        "person": 0.2324,
+        "suitcase": 0.1744,
+        "bed": 0.0823,
+        "chair": 0.0816,
+        "handbag": 0.0514
+      }
+    },
+    {
+      "file": "handbag-03.jpg",
+      "role": "positive",
+      "expect": "handbag",
+      "licence": "Public domain",
+      "author": "Sam Hood",
+      "title": "File:SLNSW 37333 Womans gloves and handbag.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:SLNSW_37333_Womans_gloves_and_handbag.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/SLNSW_37333_Womans_gloves_and_handbag.jpg/1280px-SLNSW_37333_Womans_gloves_and_handbag.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 202219,
+      "sha256": "96a334185ac060fea4da61d8a071b912f6d35ec048560cc0fc88902c8c04ccbc",
+      "measuredBest": {
+        "suitcase": 0.3637,
+        "laptop": 0.2445,
+        "keyboard": 0.1893,
+        "bed": 0.0789,
+        "backpack": 0.0728,
+        "book": 0.0665,
+        "chair": 0.0636
+      }
+    },
+    {
+      "file": "handbag-04.jpg",
+      "role": "positive",
+      "expect": "handbag",
+      "licence": "CC0",
+      "author": "freestocks.org freestocks",
+      "title": "File:Woman shopping car (Unsplash).jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Woman_shopping_car_(Unsplash).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Woman_shopping_car_%28Unsplash%29.jpg/1280px-Woman_shopping_car_%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 218964,
+      "sha256": "c8ffe1a491f025c06f10a6e3b5820707910c98dc4efb50fb95c8d17b0d9c14b3",
+      "measuredBest": {
+        "car": 0.8906,
+        "person": 0.871,
+        "suitcase": 0.3409,
+        "backpack": 0.3376,
+        "handbag": 0.1106,
+        "truck": 0.0673,
+        "surfboard": 0.0615
+      }
+    },
+    {
+      "file": "handbag-05.jpg",
+      "role": "positive",
+      "expect": "handbag",
+      "licence": "CC0",
+      "author": "Pete Bellis petebellis",
+      "title": "File:Fashionable woman in a skirt (Unsplash).jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Fashionable_woman_in_a_skirt_(Unsplash).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/61/Fashionable_woman_in_a_skirt_%28Unsplash%29.jpg/1280px-Fashionable_woman_in_a_skirt_%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 133276,
+      "sha256": "0fc0079e5d82139b3bffe36f79a97d59c5205c3da140a675eab43cfd663698e1",
+      "measuredBest": {
+        "person": 0.8254,
+        "handbag": 0.2443,
+        "tennis racket": 0.2156,
+        "suitcase": 0.0837,
+        "tie": 0.0505
+      }
+    },
+    {
+      "file": "handbag-06.jpg",
+      "role": "positive",
+      "expect": "handbag",
+      "licence": "Public domain",
+      "author": "UnknownUnknown",
+      "title": "File:Manifestação estudantil contra a Ditadura Militar 530.tif",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Manifesta%C3%A7%C3%A3o_estudantil_contra_a_Ditadura_Militar_530.tif",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Manifesta%C3%A7%C3%A3o_estudantil_contra_a_Ditadura_Militar_530.tif/lossy-page1-1280px-Manifesta%C3%A7%C3%A3o_estudantil_contra_a_Ditadura_Militar_530.tif.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 182716,
+      "sha256": "1a7c16455555d0ae3d60ca36457116b8b4cbf0b73ead86552a3369972cfc3047",
+      "measuredBest": {
+        "person": 0.909,
+        "tie": 0.367,
+        "handbag": 0.1566,
+        "baseball glove": 0.1376
+      }
+    },
+    {
+      "file": "suitcase-01.jpg",
+      "role": "positive",
+      "expect": "suitcase",
+      "licence": "Public domain",
+      "author": "User:Mattes",
+      "title": "File:VTBS-luggage screening.JPG",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:VTBS-luggage_screening.JPG",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/VTBS-luggage_screening.JPG/1280px-VTBS-luggage_screening.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 282410,
+      "sha256": "efe1e08acbe2e0c28b14e3071dfe14ff8680dba9a25fdd9266bb6d863042fc46",
+      "measuredBest": {
+        "person": 0.8704,
+        "chair": 0.7638,
+        "tv": 0.6581,
+        "bottle": 0.4456,
+        "dining table": 0.3802,
+        "potted plant": 0.094,
+        "handbag": 0.078,
+        "backpack": 0.0582
+      }
+    },
+    {
+      "file": "suitcase-02.jpg",
+      "role": "positive",
+      "expect": "suitcase",
+      "licence": "Public domain",
+      "author": "User:Mattes",
+      "title": "File:VTBS-luggage cart collection.JPG",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:VTBS-luggage_cart_collection.JPG",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dc/VTBS-luggage_cart_collection.JPG/1280px-VTBS-luggage_cart_collection.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 263153,
+      "sha256": "21974d58cdaab5d557520651573584b882f20ed4a2117959956b5dba3c0ff4b0",
+      "measuredBest": {
+        "person": 0.8983,
+        "skis": 0.1461,
+        "snowboard": 0.09,
+        "chair": 0.0825
+      }
+    },
+    {
+      "file": "suitcase-03.jpg",
+      "role": "positive",
+      "expect": "suitcase",
+      "licence": "Public domain",
+      "author": "Senior Airman Austin Harvill",
+      "title": "File:724th AMS Airmen apply excellence AF wide 150317-F-XD389-035.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:724th_AMS_Airmen_apply_excellence_AF_wide_150317-F-XD389-035.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fb/724th_AMS_Airmen_apply_excellence_AF_wide_150317-F-XD389-035.jpg/1280px-724th_AMS_Airmen_apply_excellence_AF_wide_150317-F-XD389-035.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 286774,
+      "sha256": "7886945008c37a7691c88b3a6df0d581aa1d91d235294ad9a2e582251e442278",
+      "measuredBest": {
+        "person": 0.8512,
+        "suitcase": 0.1991,
+        "chair": 0.0866,
+        "backpack": 0.054
+      }
+    },
+    {
+      "file": "suitcase-04.jpg",
+      "role": "positive",
+      "expect": "suitcase",
+      "licence": "Public domain",
+      "author": "U.S. Customs and Border Protection",
+      "title": "File:Port of Philadelphia (15341838432).jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Port_of_Philadelphia_(15341838432).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Port_of_Philadelphia_%2815341838432%29.jpg/1280px-Port_of_Philadelphia_%2815341838432%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 229286,
+      "sha256": "2cd387daee1cdbe78e7ab86ca7d6813f8774daef31e2e4171548572eb5ac0754",
+      "measuredBest": {
+        "person": 0.8878,
+        "suitcase": 0.4558,
+        "bottle": 0.144,
+        "oven": 0.118,
+        "laptop": 0.0965,
+        "car": 0.0702,
+        "bowl": 0.0567,
+        "handbag": 0.0533
+      }
+    },
+    {
+      "file": "suitcase-05.jpg",
+      "role": "positive",
+      "expect": "suitcase",
+      "licence": "Public domain",
+      "author": "Department of Defense. American Forces Information Service. Defense Visual Information Cen",
+      "title": "File:Airport luggage carriers are employed as a means to transport evacuees to the main passenger terminal at the Louis Armstrong International Airport, in New Orleans, Louisiana (LA), a - DPLA - 3cf03406642ccff07990e728fb18d855.jpeg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Airport_luggage_carriers_are_employed_as_a_means_to_transport_evacuees_to_the_main_passenger_terminal_at_the_Louis_Armstrong_International_Airport,_in_New_Orleans,_Louisiana_(LA),_a_-_DPLA_-_3cf03406642ccff07990e728fb18d855.jpeg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/Airport_luggage_carriers_are_employed_as_a_means_to_transport_evacuees_to_the_main_passenger_terminal_at_the_Louis_Armstrong_International_Airport%2C_in_New_Orleans%2C_Louisiana_%28LA%29%2C_a_-_DPLA_-_3cf03406642ccff07990e728fb18d855.jpeg/1280px-thumbnail.jpeg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 185956,
+      "sha256": "3d1b701c9fdd03bba595e4c2a40d6bc1b8f99208afa28b25826216bb0f362681",
+      "measuredBest": {
+        "person": 0.8126,
+        "kite": 0.6394,
+        "motorcycle": 0.2354,
+        "truck": 0.1502,
+        "backpack": 0.1025,
+        "car": 0.0851
+      }
+    },
+    {
+      "file": "suitcase-06.jpg",
+      "role": "positive",
+      "expect": "suitcase",
+      "licence": "Public domain",
+      "author": "Department of State. Agency for International Development. 1961-10/1/1979",
+      "title": "File:Fulbright Students Arrive in Paris - DPLA - 83edf8dd18aec536039c9c8950005d8d.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Fulbright_Students_Arrive_in_Paris_-_DPLA_-_83edf8dd18aec536039c9c8950005d8d.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/79/Fulbright_Students_Arrive_in_Paris_-_DPLA_-_83edf8dd18aec536039c9c8950005d8d.jpg/1280px-Fulbright_Students_Arrive_in_Paris_-_DPLA_-_83edf8dd18aec536039c9c8950005d8d.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 205197,
+      "sha256": "57fa2cf510d5155d62371925586979e96bc03d265b2b667bb6e59b1ebdf96b44",
+      "measuredBest": {
+        "person": 0.846,
+        "train": 0.435,
+        "tennis racket": 0.2442,
+        "chair": 0.0635
+      }
+    },
+    {
+      "file": "bottle-01.jpg",
+      "role": "positive",
+      "expect": "bottle",
+      "licence": "CC0",
+      "author": "User:Mattes",
+      "title": "File:Thai Isuzu ELF 150 with large water bottles unloading.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Thai_Isuzu_ELF_150_with_large_water_bottles_unloading.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/4/4b/Thai_Isuzu_ELF_150_with_large_water_bottles_unloading.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+      "bytes": 107703,
+      "sha256": "36dacbd8d689df549ad7d8431c1bad164ad6a53eec861a73fe03f45f44131d9b",
+      "measuredBest": {
+        "person": 0.8552,
+        "bus": 0.7362,
+        "car": 0.6878,
+        "truck": 0.4368,
+        "bicycle": 0.3317,
+        "umbrella": 0.1281,
+        "handbag": 0.1123,
+        "suitcase": 0.0731
+      }
+    },
+    {
+      "file": "bottle-02.jpg",
+      "role": "positive",
+      "expect": "bottle",
+      "licence": "Public domain",
+      "author": "Charles O'Rear",
+      "title": "File:A VENDOR DELIVERS BOTTLED WATER FROM A NEARBY SPRING TO A HOME IN MEXICALI, MEXICO. COLORADO RIVER WATER IS NOT... - NARA - 549093.tif",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:A_VENDOR_DELIVERS_BOTTLED_WATER_FROM_A_NEARBY_SPRING_TO_A_HOME_IN_MEXICALI,_MEXICO._COLORADO_RIVER_WATER_IS_NOT..._-_NARA_-_549093.tif",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/A_VENDOR_DELIVERS_BOTTLED_WATER_FROM_A_NEARBY_SPRING_TO_A_HOME_IN_MEXICALI%2C_MEXICO._COLORADO_RIVER_WATER_IS_NOT..._-_NARA_-_549093.tif/lossy-page1-1280px-A_VENDOR_DELIVERS_BOTTLED_WATER_FROM_A_NEARBY_SPRING_TO_A_HOME_IN_MEXICALI%2C_MEXICO._COLORADO_RIVER_WATER_IS_NOT..._-_NARA_-_549093.tif.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 188160,
+      "sha256": "b4a3114708bc693e74bd6e9cd8129471ca582274b6b2bb3951cc0bb3ddc6221d",
+      "measuredBest": {
+        "person": 0.855,
+        "truck": 0.7086,
+        "horse": 0.1977,
+        "car": 0.1891,
+        "dog": 0.1076
+      }
+    },
+    {
+      "file": "bottle-03.jpg",
+      "role": "positive",
+      "expect": "bottle",
+      "licence": "Public domain",
+      "author": "Unknown authorUnknown author or not provided",
+      "title": "File:William Duncan late in life, exhibiting to friends for photographing the canvas, hammock, clock, water bottle, and... - NARA - 297897.tif",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:William_Duncan_late_in_life,_exhibiting_to_friends_for_photographing_the_canvas,_hammock,_clock,_water_bottle,_and..._-_NARA_-_297897.tif",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fe/William_Duncan_late_in_life%2C_exhibiting_to_friends_for_photographing_the_canvas%2C_hammock%2C_clock%2C_water_bottle%2C_and..._-_NARA_-_297897.tif/lossy-page1-1280px-William_Duncan_late_in_life%2C_exhibiting_to_friends_for_photographing_the_canvas%2C_hammock%2C_clock%2C_water_bottle%2C_and..._-_NARA_-_297897.tif.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 312158,
+      "sha256": "a8b3f042f5911af3486275d77684eb1680c0891a70a6c38d1fbd021dd205e415",
+      "measuredBest": {
+        "person": 0.8946,
+        "clock": 0.7418,
+        "airplane": 0.4962,
+        "boat": 0.1325,
+        "bench": 0.1191,
+        "vase": 0.0598
+      }
+    },
+    {
+      "file": "bottle-04.jpg",
+      "role": "positive",
+      "expect": "bottle",
+      "licence": "Public domain",
+      "author": "Unknown authorUnknown author or not provided",
+      "title": "File:Photographs, with captions, of women making willow water bottle and rabit skin blanket, from Carson Agency Annual... - NARA - 296178.tif",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Photographs,_with_captions,_of_women_making_willow_water_bottle_and_rabit_skin_blanket,_from_Carson_Agency_Annual..._-_NARA_-_296178.tif",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Photographs%2C_with_captions%2C_of_women_making_willow_water_bottle_and_rabit_skin_blanket%2C_from_Carson_Agency_Annual..._-_NARA_-_296178.tif/lossy-page1-1280px-Photographs%2C_with_captions%2C_of_women_making_willow_water_bottle_and_rabit_skin_blanket%2C_from_Carson_Agency_Annual..._-_NARA_-_296178.tif.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 243171,
+      "sha256": "ebfd737b43209db2fa3aeaf769ef2615c9b06674617337b55ea655c4c892ed59",
+      "measuredBest": {
+        "person": 0.6481,
+        "tv": 0.2575
+      }
+    },
+    {
+      "file": "bottle-05.jpg",
+      "role": "positive",
+      "expect": "bottle",
+      "licence": "Public domain",
+      "author": "Jack Corn",
+      "title": "File:ALICE THOMPSON, BESOCO, WEST VIRGINIA, IS SHOWN WITH MILK BOTTLES HER NEIGHBORS FURNISH HER WATER WITH AFTER HER... - NARA - 556498.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:ALICE_THOMPSON,_BESOCO,_WEST_VIRGINIA,_IS_SHOWN_WITH_MILK_BOTTLES_HER_NEIGHBORS_FURNISH_HER_WATER_WITH_AFTER_HER..._-_NARA_-_556498.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/ALICE_THOMPSON%2C_BESOCO%2C_WEST_VIRGINIA%2C_IS_SHOWN_WITH_MILK_BOTTLES_HER_NEIGHBORS_FURNISH_HER_WATER_WITH_AFTER_HER..._-_NARA_-_556498.jpg/1280px-ALICE_THOMPSON%2C_BESOCO%2C_WEST_VIRGINIA%2C_IS_SHOWN_WITH_MILK_BOTTLES_HER_NEIGHBORS_FURNISH_HER_WATER_WITH_AFTER_HER..._-_NARA_-_556498.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 223852,
+      "sha256": "b4af13c1d8ee480620ab273269a648f5599f6aba317641f091767107a63fb610",
+      "measuredBest": {
+        "person": 0.9003,
+        "teddy bear": 0.2687,
+        "bottle": 0.2595,
+        "vase": 0.2381,
+        "apple": 0.0615
+      }
+    },
+    {
+      "file": "bottle-06.jpg",
+      "role": "positive",
+      "expect": "bottle",
+      "licence": "Public domain",
+      "author": "Charles O'Rear",
+      "title": "File:A VENDOR DELIVERS BOTTLED WATER FROM A NEARBY SPRING TO A HOME IN MEXICALI, MEXICO. COLORADO RIVER WATER IS NOT... - NARA - 549093.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:A_VENDOR_DELIVERS_BOTTLED_WATER_FROM_A_NEARBY_SPRING_TO_A_HOME_IN_MEXICALI,_MEXICO._COLORADO_RIVER_WATER_IS_NOT..._-_NARA_-_549093.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fc/A_VENDOR_DELIVERS_BOTTLED_WATER_FROM_A_NEARBY_SPRING_TO_A_HOME_IN_MEXICALI%2C_MEXICO._COLORADO_RIVER_WATER_IS_NOT..._-_NARA_-_549093.jpg/1280px-A_VENDOR_DELIVERS_BOTTLED_WATER_FROM_A_NEARBY_SPRING_TO_A_HOME_IN_MEXICALI%2C_MEXICO._COLORADO_RIVER_WATER_IS_NOT..._-_NARA_-_549093.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 219887,
+      "sha256": "7d0f8461b3eadf7ef47baa9abd591c9a87593f84b0a7480df4e3f0361095119d",
+      "measuredBest": {
+        "person": 0.8573,
+        "truck": 0.7093,
+        "car": 0.1548,
+        "horse": 0.1493,
+        "dog": 0.098
+      }
+    },
+    {
+      "file": "cup-01.jpg",
+      "role": "positive",
+      "expect": "cup",
+      "licence": "CC0",
+      "author": "www.Pixel.la Free Stock Photos",
+      "title": "File:Feet of the photographer with coffee.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Feet_of_the_photographer_with_coffee.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d7/Feet_of_the_photographer_with_coffee.jpg/1280px-Feet_of_the_photographer_with_coffee.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 367263,
+      "sha256": "31e44e71650642f98154307c4f2c3b550fa555c792016184b146a6e532db6087",
+      "measuredBest": {
+        "person": 0.8028,
+        "frisbee": 0.2703,
+        "tennis racket": 0.203,
+        "bowl": 0.191
+      }
+    },
+    {
+      "file": "cup-02.jpg",
+      "role": "positive",
+      "expect": "cup",
+      "licence": "CC0",
+      "author": "PICSELI picseli",
+      "title": "File:Hot coffee on a cold day (Unsplash).jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Hot_coffee_on_a_cold_day_(Unsplash).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/Hot_coffee_on_a_cold_day_%28Unsplash%29.jpg/1280px-Hot_coffee_on_a_cold_day_%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 183479,
+      "sha256": "d08eeb00b5293ec690005b8376cd16534787bcc5b44486004db46929a40265f2",
+      "measuredBest": {
+        "cup": 0.7116,
+        "bowl": 0.1774,
+        "dining table": 0.1734,
+        "teddy bear": 0.1599
+      }
+    },
+    {
+      "file": "cup-03.jpg",
+      "role": "positive",
+      "expect": "cup",
+      "licence": "CC0",
+      "author": "Olu Eletu flenjoore",
+      "title": "File:Elegant man with hot coffee (Unsplash).jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Elegant_man_with_hot_coffee_(Unsplash).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Elegant_man_with_hot_coffee_%28Unsplash%29.jpg/1280px-Elegant_man_with_hot_coffee_%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 95877,
+      "sha256": "d3df67bc663a1fee61fc4eb008739f1a97da7441ae5476b1e48e5b561155b739",
+      "measuredBest": {
+        "person": 0.8981,
+        "cup": 0.7828,
+        "tie": 0.0601
+      }
+    },
+    {
+      "file": "cup-04.jpg",
+      "role": "positive",
+      "expect": "cup",
+      "licence": "CC0",
+      "author": "Olu Eletu flenjoore",
+      "title": "File:Hello Javascript, nice to meet you. (Unsplash).jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Hello_Javascript,_nice_to_meet_you._(Unsplash).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/Hello_Javascript%2C_nice_to_meet_you._%28Unsplash%29.jpg/1280px-Hello_Javascript%2C_nice_to_meet_you._%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 156072,
+      "sha256": "bc8213cb9fe07e0b396afbf9b2a8db7d08d45b8b7d8700bcae1a9fe0cea80292",
+      "measuredBest": {
+        "person": 0.8726,
+        "cup": 0.8652,
+        "chair": 0.1434,
+        "bed": 0.1051,
+        "dining table": 0.0885
+      }
+    },
+    {
+      "file": "cup-05.jpg",
+      "role": "positive",
+      "expect": "cup",
+      "licence": "CC0",
+      "author": "Pete Bellis petebellis",
+      "title": "File:Yacht Club Chic (Unsplash).jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Yacht_Club_Chic_(Unsplash).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/Yacht_Club_Chic_%28Unsplash%29.jpg/1280px-Yacht_Club_Chic_%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 413531,
+      "sha256": "5a9e6b37414e930b7ec6e7c87190ac52e0dca51a82baca32134b54cd96b5b496",
+      "measuredBest": {
+        "person": 0.886,
+        "cup": 0.4023
+      }
+    },
+    {
+      "file": "cup-06.jpg",
+      "role": "positive",
+      "expect": "cup",
+      "licence": "CC0",
+      "author": "Karen Cantú Q karencantuq",
+      "title": "File:Person holding to-go coffee (Unsplash).jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Person_holding_to-go_coffee_(Unsplash).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Person_holding_to-go_coffee_%28Unsplash%29.jpg/1280px-Person_holding_to-go_coffee_%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 335602,
+      "sha256": "174d6edd2c0c61e2488d09720788915f23f939cf354f124d30f637d022e89dce",
+      "measuredBest": {
+        "person": 0.9194,
+        "cell phone": 0.4346,
+        "cup": 0.2041,
+        "tie": 0.0811
+      }
+    },
+    {
+      "file": "control-01.jpg",
+      "role": "negative",
+      "expect": null,
+      "licence": "CC0",
+      "author": "Jamie Taylor jamiehowardtaylor",
+      "title": "File:Kids walking on park path (Unsplash).jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Kids_walking_on_park_path_(Unsplash).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c9/Kids_walking_on_park_path_%28Unsplash%29.jpg/1280px-Kids_walking_on_park_path_%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 512491,
+      "sha256": "9ac4d1e08404c4ece8cacb7f5c07ac6e98cca561c2c46c53f8bb1e01a5a26d9d",
+      "measuredBest": {
+        "person": 0.8279
+      }
+    },
+    {
+      "file": "control-02.jpg",
+      "role": "negative",
+      "expect": null,
+      "licence": "CC0",
+      "author": "Biel Morro bielmb",
+      "title": "File:Woman walking down path (Unsplash).jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Woman_walking_down_path_(Unsplash).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Woman_walking_down_path_%28Unsplash%29.jpg/1280px-Woman_walking_down_path_%28Unsplash%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 198416,
+      "sha256": "deb250dd3022b26f480fc853599c00ad335b9f76a984d3054cd6f9efc741873f",
+      "measuredBest": {
+        "person": 0.8983
+      }
+    },
+    {
+      "file": "control-03.jpg",
+      "role": "negative",
+      "expect": null,
+      "licence": "Public domain",
+      "author": null,
+      "title": "File:People walking along a path at Fairview Park - DPLA - 32b327ab2dd73bdb0e821324f1735757.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:People_walking_along_a_path_at_Fairview_Park_-_DPLA_-_32b327ab2dd73bdb0e821324f1735757.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/31/People_walking_along_a_path_at_Fairview_Park_-_DPLA_-_32b327ab2dd73bdb0e821324f1735757.jpg/1280px-People_walking_along_a_path_at_Fairview_Park_-_DPLA_-_32b327ab2dd73bdb0e821324f1735757.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 417060,
+      "sha256": "33fdb686383acf1cfbf877019523d442bbefdb559cd2258c76a763e9eff1e248",
+      "measuredBest": {
+        "person": 0.8089
+      }
+    },
+    {
+      "file": "control-04.jpg",
+      "role": "negative",
+      "expect": null,
+      "licence": "Public domain",
+      "author": "Credited to The Brown Brothers",
+      "title": "File:Crowd gathers for updates to 1920 World Series.JPG",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Crowd_gathers_for_updates_to_1920_World_Series.JPG",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/1/12/Crowd_gathers_for_updates_to_1920_World_Series.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+      "bytes": 512166,
+      "sha256": "a37bddc7685d8a86a2956cf2c68e989bf5fcdf86f8dc9f1e4f8564d0463650a5",
+      "measuredBest": {
+        "train": 0.7085,
+        "person": 0.5871,
+        "bus": 0.4466,
+        "truck": 0.2151,
+        "airplane": 0.1915,
+        "motorcycle": 0.1875,
+        "bicycle": 0.1067,
+        "car": 0.0659
+      }
+    },
+    {
+      "file": "control-05.jpg",
+      "role": "negative",
+      "expect": null,
+      "licence": "Public domain",
+      "author": "Credited to the Brown Brothers",
+      "title": "File:Crowd gathers for updates to 1919 World Series.JPG",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Crowd_gathers_for_updates_to_1919_World_Series.JPG",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/1/10/Crowd_gathers_for_updates_to_1919_World_Series.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+      "bytes": 651003,
+      "sha256": "f44844cc726173f87e7dec637420334b9f034e512502d5b1ddc69e82ee9a8613",
+      "measuredBest": {
+        "bus": 0.6357,
+        "car": 0.584,
+        "clock": 0.4804,
+        "truck": 0.1798,
+        "train": 0.1425,
+        "person": 0.1244
+      }
+    },
+    {
+      "file": "control-06.jpg",
+      "role": "negative",
+      "expect": null,
+      "licence": "Public domain",
+      "author": "The Press photographer",
+      "title": "File:Crowd in Cathedral Square, 1920s.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Crowd_in_Cathedral_Square,_1920s.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/Crowd_in_Cathedral_Square%2C_1920s.jpg/1280px-Crowd_in_Cathedral_Square%2C_1920s.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 367773,
+      "sha256": "344a3f982eb3aa3df704967a5d02ab8bfac503824d10b571f1e3f03854857fba",
+      "measuredBest": {
+        "kite": 0.3282,
+        "person": 0.1632,
+        "horse": 0.075
+      }
+    },
+    {
+      "file": "control-07.jpg",
+      "role": "negative",
+      "expect": null,
+      "licence": "Public domain",
+      "author": "Unknown authorUnknown author or not provided",
+      "title": "File:Peace rumor, New York. Crowd at Times Square holding up Extras telling about the signing of the Armistice. The... - NARA - 533477.tif",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Peace_rumor,_New_York._Crowd_at_Times_Square_holding_up_Extras_telling_about_the_signing_of_the_Armistice._The..._-_NARA_-_533477.tif",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f8/Peace_rumor%2C_New_York._Crowd_at_Times_Square_holding_up_Extras_telling_about_the_signing_of_the_Armistice._The..._-_NARA_-_533477.tif/lossy-page1-1280px-Peace_rumor%2C_New_York._Crowd_at_Times_Square_holding_up_Extras_telling_about_the_signing_of_the_Armistice._The..._-_NARA_-_533477.tif.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 215902,
+      "sha256": "33a7badcac9117052cc85bbd74948594383faab0e455b487a7fe3fc1bbd7a8b6",
+      "measuredBest": {
+        "person": 0.7008,
+        "umbrella": 0.3499,
+        "tie": 0.132
+      }
+    },
+    {
+      "file": "control-08.jpg",
+      "role": "negative",
+      "expect": null,
+      "licence": "Public domain",
+      "author": "Vasyatka1",
+      "title": "File:2014-03-01 - Protester crowd in Lenina square in Donetsk.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:2014-03-01_-_Protester_crowd_in_Lenina_square_in_Donetsk.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/2014-03-01_-_Protester_crowd_in_Lenina_square_in_Donetsk.jpg/1280px-2014-03-01_-_Protester_crowd_in_Lenina_square_in_Donetsk.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 354388,
+      "sha256": "83bcd7927431663d82c30659a8a4efa3f1f924488bc902b8cdf6846cf1799996",
+      "measuredBest": {
+        "person": 0.7942,
+        "umbrella": 0.4213,
+        "handbag": 0.4079,
+        "car": 0.3497,
+        "backpack": 0.1213,
+        "suitcase": 0.0627,
+        "traffic light": 0.062
+      }
+    },
+    {
+      "file": "control-09.jpg",
+      "role": "negative",
+      "expect": null,
+      "licence": "Public domain",
+      "author": "Unknown authorUnknown author",
+      "title": "File:Crowd Africa square Tunis.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Crowd_Africa_square_Tunis.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/2/28/Crowd_Africa_square_Tunis.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+      "bytes": 81092,
+      "sha256": "d362f666679c77d3b30377e91ca4990c051ae622b1968ab7374a124370e72b7f",
+      "measuredBest": {
+        "person": 0.2637,
+        "horse": 0.2161
+      }
+    },
+    {
+      "file": "control-10.jpg",
+      "role": "negative",
+      "expect": null,
+      "licence": "Public domain",
+      "author": "George Grantham Bain Collection",
+      "title": "File:Crowd in Union Square, NYC LCCN2001704467.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Crowd_in_Union_Square,_NYC_LCCN2001704467.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/79/Crowd_in_Union_Square%2C_NYC_LCCN2001704467.jpg/1280px-Crowd_in_Union_Square%2C_NYC_LCCN2001704467.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 198260,
+      "sha256": "777dc9eb1adfa627bb374528b5e5a320f04f47af0c2515f88cfeaa7d13925868",
+      "measuredBest": {
+        "person": 0.7187
+      }
+    },
+    {
+      "file": "control-11.jpg",
+      "role": "negative",
+      "expect": null,
+      "licence": "Public domain",
+      "author": "George Grantham Bain Collection",
+      "title": "File:Anarchists - May Day crowd in Union Square LCCN2001704492.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Anarchists_-_May_Day_crowd_in_Union_Square_LCCN2001704492.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Anarchists_-_May_Day_crowd_in_Union_Square_LCCN2001704492.jpg/1280px-Anarchists_-_May_Day_crowd_in_Union_Square_LCCN2001704492.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 259227,
+      "sha256": "c6ba1ac13f26f96f9fac3b2fa82032aa20531c0991675d5f3b297331a813a6f3",
+      "measuredBest": {
+        "person": 0.3902
+      }
+    },
+    {
+      "file": "control-12.jpg",
+      "role": "negative",
+      "expect": null,
+      "licence": "Public domain",
+      "author": "Bain News Service, publisher",
+      "title": "File:Crowd watching sign painter, Union Square, New York LCCN2014683302.jpg",
+      "descriptionUrl": "https://commons.wikimedia.org/wiki/File:Crowd_watching_sign_painter,_Union_Square,_New_York_LCCN2014683302.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Crowd_watching_sign_painter%2C_Union_Square%2C_New_York_LCCN2014683302.jpg/1280px-Crowd_watching_sign_painter%2C_Union_Square%2C_New_York_LCCN2014683302.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "bytes": 235502,
+      "sha256": "ca9e52a20f092d9b04dbb5687186b427d11ea052255a346ebcd826580134ff3d",
+      "measuredBest": {
+        "person": 0.897,
+        "train": 0.1134,
+        "handbag": 0.0723
+      }
+    }
+  ]
+}

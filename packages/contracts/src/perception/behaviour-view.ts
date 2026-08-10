@@ -306,6 +306,58 @@ export const BehaviourPrimitives = z.object({
       }),
     )
     .default([]),
+  /**
+   * ⭐ **Why the association layer reported what it reported** (slice 2.10).
+   *
+   * ⛔ `AssociationModule` ran on every frame for three milestones and never once had an object to
+   * associate — and every read looked exactly like a scene where nobody carried anything. Four
+   * different situations render identically as "no association":
+   *
+   * - nobody carried anything — *the product working*;
+   * - the detector never returned a carriable class at all — the truth for three milestones, whose
+   *   cause was a single confidence floor chosen for `person` and applied to eighty classes;
+   * - objects and people were seen, never in the same frame — a timestamp join failing;
+   * - they were in the same frame and never close enough — a real measurement about the scene.
+   *
+   * `reason` names which. ⚠️ Absent when a span was produced, so the *presence* of a reason is
+   * itself the signal. `closestNormalized` is omitted rather than zeroed when nothing was ever
+   * observed together — `0.0` is the one value that means "touching" (ADR-0039).
+   */
+  associationDiagnostic: z
+    .object({
+      subjects: z.number().int().min(0),
+      objects: z.number().int().min(0),
+      objectLabels: z.array(z.string()).default([]),
+      /**
+       * ⛔ Tracked objects excluded because nobody carries one, and their labels.
+       *
+       * On the first real multi-class run the association layer's input was
+       * `["backpack", "car", "suitcase"]` — "object" had meant *any non-subject label* since slice
+       * 2.2, so a **parked car** sat one proximity away from *"this person carried a car"*. ⚠️ It
+       * never produced that span; only the geometry prevented it. Narrowing `carried` to things a
+       * person can pick up removes the possibility, and this field keeps the narrowing from
+       * creating a second silence in which "nothing detected" and "a car detected" look alike.
+       */
+      notCarriable: z.number().int().min(0).default(0),
+      notCarriableLabels: z.array(z.string()).default([]),
+      framesTogether: z.number().int().min(0),
+      unjoinedObjectPoints: z.number().int().min(0),
+      pairsNear: z.number().int().min(0),
+      thresholdNormalized: z.number(),
+      spans: z.number().int().min(0),
+      closestNormalized: z.number().optional(),
+      reason: z
+        .enum([
+          'no-objects-detected',
+          'no-carriable-objects',
+          'no-subjects-detected',
+          'never-observed-together',
+          'never-close-enough',
+          'no-span-formed',
+        ])
+        .optional(),
+    })
+    .optional(),
   readings: z.record(z.string(), BehaviourReading).default({}),
   relational: BehaviourRelationalCoverage.optional(),
   /** ⚠️ A module that threw is named here rather than silently contributing nothing. */

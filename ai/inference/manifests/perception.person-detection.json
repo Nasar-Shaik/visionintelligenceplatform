@@ -13,6 +13,25 @@
     "accelerator": "cpu"
   },
   "minConfidence": 0.5,
+  "minConfidenceByLabel": {
+    "backpack": 0.2,
+    "handbag": 0.2,
+    "suitcase": 0.2,
+    "bottle": 0.2,
+    "cup": 0.2
+  },
+  "minConfidenceByLabelEvidence": {
+    "measuredOn": "2026-08-10",
+    "detector": "yolox-nano 1.0.0, 416x416 letterbox, CPUExecutionProvider",
+    "tool": "ai/mlops/probe_classes.py",
+    "corpus": "docs/validation/object-corpus.json — 30 CC0/public-domain photographs chosen for a carried object; 42 frames of authored fixture footage as the negative control",
+    "why": "0.50 was chosen for `person`, which this detector scores up to 0.919 on real photographs. The same detector scores a real suitcase at 0.456, a real handbag at 0.244 and a real backpack at 0.215 — so a single floor admitted ZERO detections of four of the five carriable classes, and looked exactly like footage that contained none.",
+    "trueMax": { "cup": 0.8652, "suitcase": 0.4558, "bottle": 0.2595, "handbag": 0.2443, "backpack": 0.2151 },
+    "falseMaxOnObjectFreeAuthoredFootage": { "backpack": 0.1554, "handbag": 0.0778, "suitcase": 0.0, "bottle": 0.0, "cup": 0.0 },
+    "tradeoff": "0.15 recovers 11/30 on-target images with 1 false positive; 0.20 recovers 9/30 with 0; 0.25 recovers 6/30 with 0; 0.30 recovers 5/30 with 0. 0.20 is the highest recall at zero observed false positives, 0.045 above the strongest false positive.",
+    "recall": "POOR AND STATED: 9 of 30 photographs chosen for a carried object have it admitted at this floor. This recovers the capability from zero; it does not make yolox-nano a carried-object detector. The remainder is a detector problem and is Phase 3 work.",
+    "negativeControlLimitation": "Real crowd photographs are NOT valid negative controls: crowds carry bags, and a 0.408 handbag in one of them was verified by eye to be a real bag. Only authored footage, where no object exists by construction, can bound the false-positive rate."
+  },
   "tracking": false,
   "preprocessing": "letterbox",
   "postprocessing": "confidence-threshold",

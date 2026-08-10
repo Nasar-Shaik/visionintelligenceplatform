@@ -82,6 +82,49 @@ export function PrimitiveInspectorPanel({
       );
     }
   }
+  /*
+   * ⭐ **Why the association layer reported what it reported** (slice 2.10).
+   *
+   * ⛔ `AssociationModule` ran on every frame for three milestones and never once had an object to
+   * associate, and every read looked exactly like a scene where nobody carried anything. The cause
+   * was a single confidence floor chosen for `person` and applied to eighty classes. Silence is the
+   * correct output for four completely different situations, and only one of them is the product
+   * working — so the reason is stated rather than left to be inferred from an empty list.
+   */
+  const association = view?.associationDiagnostic;
+  if (association !== undefined) {
+    const seen = `${String(association.objects)} carriable object(s) and ${String(association.subjects)} subject(s)`;
+    if (association.reason === 'no-objects-detected') {
+      notes.push(
+        `No association: the detector returned nothing a person could be carrying on this run. That is a finding about the detector or the footage, not about the association layer — nothing downstream can be judged until an object reaches it.`,
+      );
+    } else if (association.reason === 'no-carriable-objects') {
+      notes.push(
+        `No association: ${String(association.notCarriable)} object(s) were tracked (${association.notCarriableLabels.join(', ')}) and none is a thing a person carries. Carrying is only claimed for objects that can be picked up.`,
+      );
+    } else if (association.reason === 'no-subjects-detected') {
+      notes.push(`No association: objects were tracked and no person was, so there was nobody to carry them.`);
+    } else if (association.reason === 'never-observed-together') {
+      notes.push(
+        `No association: ${seen} were tracked and never observed in the same frame — ${String(association.unjoinedObjectPoints)} object observation(s) had no subject observation at the same instant. This is a timing problem rather than a distance one; an object and a person a few milliseconds apart cannot be matched however close they stand.`,
+      );
+    } else if (association.reason === 'never-close-enough') {
+      notes.push(
+        `No association: ${seen} shared ${String(association.framesTogether)} frame(s), and the closest they ever came was ${association.closestNormalized === undefined ? 'unmeasured' : `${(association.closestNormalized * 100).toFixed(1)}% of the frame width`} against a threshold of ${(association.thresholdNormalized * 100).toFixed(1)}%. Nobody was near enough to be carrying anything.`,
+      );
+    } else if (association.reason === 'no-span-formed') {
+      notes.push(
+        `No association, and this one is a defect rather than an empty scene: ${seen} were near each other on at least one frame and no span was produced. Please report this run.`,
+      );
+    }
+    /* ⚠️ Reported even on a successful run: an operator reading "carried" needs to know a car was
+     * excluded, or the absence of that word about the car is itself misleading. */
+    if (association.reason === undefined && association.notCarriable > 0) {
+      notes.push(
+        `${String(association.notCarriable)} tracked object(s) were excluded from carrying because nobody carries one (${association.notCarriableLabels.join(', ')}). They remain in the graph and in every proximity fact.`,
+      );
+    }
+  }
   if (view?.relational?.truncated === true) {
     notes.push(
       `Only ${String(view.relational.identitiesConsidered)} of this run's subjects were examined for relations (the limit is ${String(view.relational.maxIdentities)}), so proximity, follow, approach and grouping were never computed for the rest.`,

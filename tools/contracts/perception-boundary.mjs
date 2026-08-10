@@ -441,6 +441,54 @@ console.log(`\nperception boundary · ${files.length} TypeScript source(s) outsi
   }
 }
 
+/*
+ * ### §K the association diagnostic's reasons mean the same thing in both languages
+ *
+ * ⛔ **A diagnostic whose vocabulary drifts is worse than no diagnostic.** `associationDiagnostic`
+ * exists because four completely different situations render identically as "no association", and
+ * its whole value is that `reason` names which one. If the runtime starts emitting a reason the
+ * contract does not know, the console renders nothing for it — and the operator is back to reading
+ * silence, which is the failure the field was added to end (P-11 slice 2.10).
+ *
+ * ⚠️ Checked in the direction that matters: every reason the runtime can *produce* must be one the
+ * contract accepts. A contract that lists an extra reason is harmless; a runtime that emits an
+ * unlisted one fails the read.
+ */
+{
+  const primitives = readFileSync(join(ROOT, 'ai/inference/behaviour_primitives.py'), 'utf8');
+  const contract = readFileSync(
+    join(ROOT, 'packages/contracts/src/perception/behaviour-view.ts'),
+    'utf8',
+  );
+
+  const start = primitives.indexOf('    def reason(self)');
+  const body = start < 0 ? null : primitives.slice(start, primitives.indexOf('\n    def ', start + 10));
+  const produced = body === null ? null : [...new Set([...body.matchAll(/return "([a-z-]+)"/g)].map((m) => m[1]))];
+
+  const enumStart = contract.indexOf('      reason: z\n        .enum([');
+  const accepted =
+    enumStart < 0
+      ? null
+      : new Set(
+          [...contract.slice(enumStart, contract.indexOf('])', enumStart)).matchAll(/'([a-z-]+)'/g)].map(
+            (m) => m[1],
+          ),
+        );
+
+  if (produced === null || produced.length === 0 || accepted === null) {
+    check(false, '§K the association reasons could be read from both sides', 'reason vocabulary not found');
+  } else {
+    const missing = produced.filter((reason) => !accepted.has(reason));
+    check(
+      missing.length === 0,
+      `§K all ${produced.length} association reasons the runtime produces are accepted by the contract`,
+      missing.length === 0
+        ? produced.join(', ')
+        : `the contract rejects: ${missing.join(', ')} — the read fails, or the console shows silence again`,
+    );
+  }
+}
+
 console.log(
   failures === 0
     ? '\nperception boundary: OK — the runtime is the only thing that knows how a model works.\n'

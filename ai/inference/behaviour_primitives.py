@@ -452,6 +452,68 @@ def observation_gaps(points: Sequence[TrackPoint], *, expected_interval: float, 
 # --- object association -----------------------------------------------------------------------------
 
 
+#: Labels a person can plausibly carry — the domain of `carried`, `picked`, `dropped` and `handover`.
+#:
+#: ⛔ **Found by the first real multi-class run, slice 2.10.** "Object" had meant *any label that is
+#: not a subject* since slice 2.2, and the diagnostic on that run reported the association layer's
+#: input as `["backpack", "car", "suitcase"]` — a **parked car**, sitting in the population
+#: `associations()` scans, one proximity away from the sentence *"this person carried a car"*.
+#:
+#: ⚠️ **It did not produce that span, and the distinction is the honest one.** The car never came
+#: within `NEAR_THRESHOLD` of the walker, so nothing false was published. What was wrong was that
+#: only the geometry stood between the platform and the claim — and in a car park a person passing
+#: close to a car is not an unusual event, it is the whole scene. This removes the possibility
+#: rather than an observation.
+#:
+#: ⚠️ **This narrows one family, not the object concept.** A car stays a tracked object with an
+#: identity; proximity, approach and departure remain perfectly meaningful about it. Only the
+#: statement *carried* requires that the thing can be picked up, and that is a fact about the world
+#: rather than about this scene, so it belongs in a named list rather than in a threshold.
+#:
+#: ⚠️ COCO's vocabulary, because that is what the deployed detector emits. A deployment whose model
+#: has other labels passes its own set — the same way `subject_labels` has always worked.
+DEFAULT_CARRIABLE_LABELS: Tuple[str, ...] = (
+    "backpack",
+    "handbag",
+    "suitcase",
+    "bottle",
+    "cup",
+    "wine glass",
+    "laptop",
+    "book",
+    "cell phone",
+    "umbrella",
+    "sports ball",
+    "banana",
+    "apple",
+    "sandwich",
+    "orange",
+    "frisbee",
+    "remote",
+    "keyboard",
+    "mouse",
+    "scissors",
+    "teddy bear",
+    "hair drier",
+    "toothbrush",
+    "knife",
+    "spoon",
+    "fork",
+    "bowl",
+    "vase",
+    "tie",
+)
+
+
+def carriable(points: Sequence[TrackPoint], *, labels: Sequence[str] = DEFAULT_CARRIABLE_LABELS) -> bool:
+    """Whether this object is the kind of thing a person can carry.
+
+    ⚠️ Decided on the **last** observation's label, matching how every other module names an object.
+    A track whose label changed mid-run is a tracking defect, and resolving it here would hide it.
+    """
+    return bool(points) and points[-1].label in set(labels)
+
+
 @dataclass(frozen=True)
 class Association:
     """A span during which an object stayed near one subject."""
@@ -1077,6 +1139,170 @@ def line_diagnostics(
             missed += near
         out.append(LineDiagnostic(line.line_id, crossed + missed, crossed))
     return out
+
+
+@dataclass(frozen=True)
+class AssociationDiagnostic:
+    """Why the association layer reported what it reported (slice 2.10).
+
+    ⛔ **This exists because `AssociationModule` ran on every frame for three milestones and never
+    once had an object to associate — and nothing anywhere said so.** Every read returned no
+    association, which is exactly what a working platform returns for a scene where nobody carried
+    anything. Four completely different situations render identically:
+
+    | what happened | what the read shows |
+    | --- | --- |
+    | nobody carried anything | no association |
+    | the detector never returned a carriable class at all | no association |
+    | objects and people were seen, never in the same frame | no association |
+    | they were in the same frame and never close enough | no association |
+
+    The first is the product working. The second was the truth for three milestones, and its cause
+    turned out to be a single confidence floor chosen for `person` (see `minConfidenceByLabel`). The
+    third is a timestamp join failing. The fourth is a real measurement about the scene. Only the
+    first is silence a customer should ever be shown.
+
+    ⚠️ **A diagnostic, never an event.** Nothing here creates an association, loosens
+    `NEAR_THRESHOLD` or promotes a near miss. `closest_normalized` reports the best approach actually
+    observed so an operator can see *how far* the scene was from associating — which is the one
+    number that separates "nearly" from "not remotely".
+    """
+
+    #: Distinct identities whose label made them a subject, and a thing to be carried.
+    subjects: int
+    #: ⚠️ **Carriable objects only** — the population `associations()` actually runs over. Counting
+    #: the parked cars here would say "4 objects, no association" about a scene with one bag.
+    objects: int
+    #: Labels of the carriable objects, so "no objects" can be told from "no *carriable* objects".
+    object_labels: Tuple[str, ...] = ()
+    #: Tracked objects excluded because nobody carries one, with their labels. ⛔ Reported rather
+    #: than dropped: once slice 2.10 narrowed `carried` to things a person can pick up, "the detector
+    #: saw nothing" and "the detector saw a car and a bench" would have become the same silence
+    #: again — the exact failure this whole dataclass exists to prevent.
+    not_carriable: int = 0
+    not_carriable_labels: Tuple[str, ...] = ()
+    #: Frames where at least one subject and at least one object were both observed. ⛔ Zero here is
+    #: the entry condition of `associations()` never being met, and no amount of proximity can help.
+    frames_together: int = 0
+    #: Object observations whose rounded timestamp matched no subject observation. ⚠️ The silent one:
+    #: `associations()` joins on `round(at_seconds, 3)`, so an object and a person a few milliseconds
+    #: apart are infinitely far apart. Non-zero with `frames_together` high means a clock problem,
+    #: not a geometry one.
+    unjoined_object_points: int = 0
+    #: Pairs that were close enough on at least one frame.
+    pairs_near: int = 0
+    #: Closest approach observed between any object and any subject, in frame widths. `None` when no
+    #: object and subject were ever observed at the same instant — ⛔ never 0.0, which would read as
+    #: "they touched" (ADR-0039).
+    closest_normalized: Optional[float] = None
+    threshold_normalized: float = NEAR_THRESHOLD
+    spans: int = 0
+
+    @property
+    def reason(self) -> Optional[str]:
+        """The first thing that stopped an association, or `None` when one was produced.
+
+        ⚠️ Ordered as a failure should be read — outside in. Reporting "never close enough" for a run
+        whose detector returned no object at all would send an operator to move a camera when the
+        problem is a threshold.
+        """
+        if self.spans > 0:
+            return None
+        if self.objects == 0:
+            # ⚠️ Two different absences. "Nothing was detected" sends someone to the detector;
+            # "a car was detected and nobody carries a car" sends them nowhere, correctly.
+            return "no-carriable-objects" if self.not_carriable > 0 else "no-objects-detected"
+        if self.subjects == 0:
+            return "no-subjects-detected"
+        if self.frames_together == 0:
+            return "never-observed-together"
+        if self.pairs_near == 0:
+            return "never-close-enough"
+        return "no-span-formed"
+
+    def to_dict(self) -> dict:
+        out: dict = {
+            "subjects": self.subjects,
+            "objects": self.objects,
+            "objectLabels": list(self.object_labels),
+            "notCarriable": self.not_carriable,
+            "notCarriableLabels": list(self.not_carriable_labels),
+            "framesTogether": self.frames_together,
+            "unjoinedObjectPoints": self.unjoined_object_points,
+            "pairsNear": self.pairs_near,
+            "thresholdNormalized": self.threshold_normalized,
+            "spans": self.spans,
+        }
+        # ⛔ Omitted rather than zeroed when nothing was ever observed together: `0.0` is the one
+        # value that means "touching", and it is the opposite of what happened.
+        if self.closest_normalized is not None:
+            out["closestNormalized"] = self.closest_normalized
+        reason = self.reason
+        if reason is not None:
+            out["reason"] = reason
+        return out
+
+
+def association_diagnostic(
+    objects: Mapping[str, Sequence[TrackPoint]],
+    subjects: Mapping[str, Sequence[TrackPoint]],
+    *,
+    threshold: float = NEAR_THRESHOLD,
+    spans: Optional[int] = None,
+) -> AssociationDiagnostic:
+    """One diagnostic for the whole scene.
+
+    ⚠️ `spans` is passed in rather than recomputed. The caller has already run `associations()`, and
+    a second count here would be a second answer to "did this associate" — the first time the two
+    disagreed nobody could say which was right.
+
+    ⚠️ `objects` is filtered to carriable labels here for the same reason `AssociationModule` filters
+    it: this describes the population association actually ran over. What was excluded is reported
+    beside it rather than dropped.
+    """
+    carriable_objects = {i: p for i, p in objects.items() if carriable(p)}
+    excluded = {i: p for i, p in objects.items() if i not in carriable_objects}
+    object_labels = sorted({p.label for points in carriable_objects.values() for p in points if p.label})
+    excluded_labels = sorted({p.label for points in excluded.values() for p in points if p.label})
+    objects = carriable_objects
+
+    # The same join `associations()` performs, so a failure here is that failure and not a model of it.
+    subject_times: Dict[float, List[TrackPoint]] = {}
+    for points in subjects.values():
+        for point in points:
+            subject_times.setdefault(round(point.at_seconds, 3), []).append(point)
+
+    frames = set()
+    unjoined = 0
+    closest: Optional[float] = None
+    near_pairs = set()
+    for identity, points in objects.items():
+        for point in points:
+            partners = subject_times.get(round(point.at_seconds, 3), [])
+            if not partners:
+                unjoined += 1
+                continue
+            frames.add(round(point.at_seconds, 3))
+            for partner in partners:
+                gap = distance_between(point, partner)
+                if closest is None or gap < closest:
+                    closest = gap
+                if near(point, partner, threshold=threshold):
+                    near_pairs.add((identity, partner.identity_id))
+
+    return AssociationDiagnostic(
+        subjects=len(subjects),
+        objects=len(objects),
+        object_labels=tuple(object_labels),
+        not_carriable=len(excluded),
+        not_carriable_labels=tuple(excluded_labels),
+        frames_together=len(frames),
+        unjoined_object_points=unjoined,
+        pairs_near=len(near_pairs),
+        closest_normalized=None if closest is None else round(closest, 6),
+        threshold_normalized=threshold,
+        spans=0 if spans is None else spans,
+    )
 
 
 # --- the gap between two subjects ---------------------------------------------------------------------

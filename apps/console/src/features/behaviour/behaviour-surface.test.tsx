@@ -410,6 +410,114 @@ describe('the primitive inspector', () => {
     );
   });
 
+  /*
+   * ⭐ **The association diagnostic** (slice 2.10). ⛔ `AssociationModule` ran on every frame for
+   * three milestones with nothing to associate, and the console rendered exactly what it renders
+   * for a scene where nobody carried anything: an empty list. Each reason below is a different
+   * situation that produces that same emptiness, and only one of them is the product working.
+   */
+  describe('the association diagnostic', () => {
+    const withDiagnostic = (diagnostic: Record<string, unknown>) =>
+      server.use(
+        http.get('/api/behaviour/primitives', () =>
+          HttpResponse.json({
+            success: true,
+            data: {
+              ...primitivesPayload,
+              primitives: { ...primitivesPayload.primitives, associationDiagnostic: diagnostic },
+            },
+          }),
+        ),
+      );
+
+    const base = {
+      subjects: 1,
+      objects: 0,
+      objectLabels: [],
+      notCarriable: 0,
+      notCarriableLabels: [],
+      framesTogether: 0,
+      unjoinedObjectPoints: 0,
+      pairsNear: 0,
+      thresholdNormalized: 0.05,
+      spans: 0,
+    };
+
+    it('says the detector returned nothing carriable, rather than showing an empty list', async () => {
+      withDiagnostic({ ...base, reason: 'no-objects-detected' });
+      mountPanel();
+      await userEvent.click(screen.getByRole('tab', { name: 'Primitives' }));
+      expect(await screen.findByTestId('behaviour-incompleteness')).toHaveTextContent(
+        /the detector returned nothing a person could be carrying/i,
+      );
+    });
+
+    /** ⛔ A tracked car is not the same absence as an empty frame, and must not read as one. */
+    it('names the objects it excluded as things nobody carries', async () => {
+      withDiagnostic({ ...base, notCarriable: 1, notCarriableLabels: ['car'], reason: 'no-carriable-objects' });
+      mountPanel();
+      await userEvent.click(screen.getByRole('tab', { name: 'Primitives' }));
+      expect(await screen.findByTestId('behaviour-incompleteness')).toHaveTextContent(
+        /1 object\(s\) were tracked \(car\) and none is a thing a person carries/i,
+      );
+    });
+
+    /** ⚠️ The silent one: a timestamp join, not a distance. */
+    it('distinguishes a timing failure from a distance failure', async () => {
+      withDiagnostic({ ...base, objects: 1, objectLabels: ['handbag'], unjoinedObjectPoints: 12, reason: 'never-observed-together' });
+      mountPanel();
+      await userEvent.click(screen.getByRole('tab', { name: 'Primitives' }));
+      expect(await screen.findByTestId('behaviour-incompleteness')).toHaveTextContent(
+        /timing problem rather than a distance one/i,
+      );
+    });
+
+    /** ⭐ How far the scene was from associating — the number that separates "nearly" from "not at all". */
+    it('reports the closest approach against the threshold', async () => {
+      withDiagnostic({
+        ...base,
+        objects: 1,
+        objectLabels: ['handbag'],
+        framesTogether: 30,
+        closestNormalized: 0.32,
+        reason: 'never-close-enough',
+      });
+      mountPanel();
+      await userEvent.click(screen.getByRole('tab', { name: 'Primitives' }));
+      expect(await screen.findByTestId('behaviour-incompleteness')).toHaveTextContent(
+        /closest they ever came was 32.0% of the frame width against a threshold of 5.0%/i,
+      );
+    });
+
+    /** ⚠️ Reported on a SUCCESSFUL run too: silence about the excluded car would mislead. */
+    it('still names an excluded object when the run did associate', async () => {
+      withDiagnostic({
+        ...base,
+        objects: 1,
+        objectLabels: ['handbag'],
+        notCarriable: 1,
+        notCarriableLabels: ['car'],
+        framesTogether: 30,
+        pairsNear: 1,
+        spans: 1,
+      });
+      mountPanel();
+      await userEvent.click(screen.getByRole('tab', { name: 'Primitives' }));
+      expect(await screen.findByTestId('behaviour-incompleteness')).toHaveTextContent(
+        /excluded from carrying because nobody carries one \(car\)/i,
+      );
+    });
+
+    /** ⛔ A run that associated and has nothing to explain says nothing about association. */
+    it('says nothing when a span was produced and nothing was excluded', async () => {
+      withDiagnostic({ ...base, objects: 1, objectLabels: ['handbag'], framesTogether: 30, pairsNear: 1, spans: 1 });
+      mountPanel();
+      await userEvent.click(screen.getByRole('tab', { name: 'Primitives' }));
+      const notes = await screen.findByTestId('behaviour-incompleteness');
+      expect(notes).not.toHaveTextContent(/association/i);
+    });
+  });
+
   it('opens a primitive into its instances, each with a frame', async () => {
     mountPanel();
     await userEvent.click(screen.getByRole('tab', { name: 'Primitives' }));

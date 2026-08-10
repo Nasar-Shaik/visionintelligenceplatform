@@ -12,6 +12,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
+import behaviour_primitives as bp  # noqa: E402
 from behaviour_primitives import (  # noqa: E402
     PRIMITIVE_READINGS,
     Association,
@@ -729,6 +730,121 @@ class ReadingTests(unittest.TestCase):
             "exit_zone",
         ):
             self.assertIn(name, PRIMITIVE_READINGS)
+
+
+class AssociationDiagnosticTests(unittest.TestCase):
+    """`association_diagnostic` — P-11 slice 2.10.
+
+    ⛔ **The whole point is that all four of these render identically on the read.** No association
+    is what a working platform returns for a scene where nobody carried anything, and it is also
+    what it returned for three milestones while the confidence floor discarded every carried object
+    before the primitive ever saw one. A diagnostic that could not tell them apart would be another
+    way of saying nothing.
+    """
+
+    def test_a_parked_car_is_not_something_a_person_carries(self):
+        """⛔ Found by the first real multi-class run, which fed a parked **car** into the
+        association layer beside the shopping bags. ⚠️ It produced no span — the car never came near
+        enough — so nothing false was published; what was wrong is that only the geometry stood
+        between the platform and "this person carried a car", and in a car park a walker passing
+        close to a car is the whole scene."""
+        person = walk("id_p", 0.50, 0.0, 10)
+        car = walk("id_car", 0.50, 0.0, 10, label="car")
+        d = bp.association_diagnostic({"id_car": car}, {"id_p": person}, spans=0)
+        self.assertEqual(d.objects, 0)
+        self.assertEqual(d.not_carriable, 1)
+        self.assertEqual(d.not_carriable_labels, ("car",))
+        # ⚠️ And it must not become the same silence as "the detector saw nothing".
+        self.assertEqual(d.reason, "no-carriable-objects")
+
+    def test_narrowing_carried_does_not_hide_a_detector_that_saw_nothing(self):
+        person = walk("id_p", 0.50, 0.0, 10)
+        self.assertEqual(bp.association_diagnostic({}, {"id_p": person}, spans=0).reason, "no-objects-detected")
+
+    def test_a_bag_beside_a_car_is_still_carried(self):
+        """⚠️ The narrowing removes one label, not the scene."""
+        person = walk("id_p", 0.50, 0.0, 10)
+        car = walk("id_car", 0.50, 0.0, 10, label="car")
+        bag = walk("id_bag", 0.50, 0.0, 10, label="handbag")
+        d = bp.association_diagnostic({"id_car": car, "id_bag": bag}, {"id_p": person}, spans=1)
+        self.assertEqual(d.objects, 1)
+        self.assertEqual(d.object_labels, ("handbag",))
+        self.assertEqual(d.not_carriable, 1)
+        self.assertIsNone(d.reason)
+
+    def test_carriable_reads_the_last_label_and_covers_the_measured_classes(self):
+        for label in ("backpack", "handbag", "suitcase", "bottle", "cup"):
+            with self.subTest(label=label):
+                self.assertTrue(bp.carriable(walk("o", 0.5, 0.0, 3, label=label)))
+        for label in ("car", "bus", "truck", "bench", "person"):
+            with self.subTest(label=label):
+                self.assertFalse(bp.carriable(walk("o", 0.5, 0.0, 3, label=label)))
+        self.assertFalse(bp.carriable([]))
+
+    def test_nothing_carriable_detected_names_itself(self):
+        person = walk("id_p", 0.10, 0.02, 20)
+        d = bp.association_diagnostic({}, {"id_p": person}, spans=0)
+        self.assertEqual(d.reason, "no-objects-detected")
+        self.assertEqual(d.objects, 0)
+        self.assertEqual(d.subjects, 1)
+        # ⛔ Never 0.0 — that value means "touching", which is the opposite of what happened.
+        self.assertIsNone(d.closest_normalized)
+        self.assertNotIn("closestNormalized", d.to_dict())
+
+    def test_an_object_with_nobody_there_is_a_different_reason(self):
+        bottle = walk("id_b", 0.50, 0.0, 20, label="bottle")
+        d = bp.association_diagnostic({"id_b": bottle}, {}, spans=0)
+        self.assertEqual(d.reason, "no-subjects-detected")
+        self.assertEqual(d.object_labels, ("bottle",))
+
+    def test_seen_in_different_frames_is_never_observed_together(self):
+        """⚠️ The silent one. `associations()` joins on `round(at_seconds, 3)`, so an object and a
+        person half a second apart are infinitely far apart however close they stand."""
+        person = walk("id_p", 0.50, 0.0, 10, at=0.0, step=1.0)
+        bottle = walk("id_b", 0.50, 0.0, 10, at=0.5, step=1.0, label="bottle")
+        d = bp.association_diagnostic({"id_b": bottle}, {"id_p": person}, spans=0)
+        self.assertEqual(d.reason, "never-observed-together")
+        self.assertEqual(d.frames_together, 0)
+        # ⭐ Every object observation failed the join, and that count is what says so.
+        self.assertEqual(d.unjoined_object_points, 10)
+        self.assertIsNone(d.closest_normalized)
+
+    def test_together_but_far_apart_reports_how_far(self):
+        person = walk("id_p", 0.05, 0.0, 10)
+        bottle = walk("id_b", 0.80, 0.0, 10, label="bottle")
+        d = bp.association_diagnostic({"id_b": bottle}, {"id_p": person}, spans=0)
+        self.assertEqual(d.reason, "never-close-enough")
+        self.assertEqual(d.frames_together, 10)
+        self.assertEqual(d.unjoined_object_points, 0)
+        self.assertEqual(d.pairs_near, 0)
+        # ⭐ The number that separates "nearly" from "not remotely".
+        self.assertIsNotNone(d.closest_normalized)
+        self.assertGreater(d.closest_normalized, bp.NEAR_THRESHOLD)
+
+    def test_a_run_that_associated_has_no_reason_at_all(self):
+        person = walk("id_p", 0.50, 0.0, 10)
+        bottle = walk("id_b", 0.50, 0.0, 10, label="bottle")
+        d = bp.association_diagnostic({"id_b": bottle}, {"id_p": person}, spans=1)
+        self.assertIsNone(d.reason)
+        self.assertNotIn("reason", d.to_dict())
+        self.assertGreaterEqual(d.pairs_near, 1)
+
+    def test_close_enough_yet_no_span_is_its_own_reason(self):
+        """⚠️ Reachable, and it means the caller's `associations()` and this scan disagree — which is
+        a defect in one of them and must never look like an empty scene."""
+        person = walk("id_p", 0.50, 0.0, 10)
+        bottle = walk("id_b", 0.50, 0.0, 10, label="bottle")
+        d = bp.association_diagnostic({"id_b": bottle}, {"id_p": person}, spans=0)
+        self.assertEqual(d.reason, "no-span-formed")
+
+    def test_the_published_threshold_is_the_one_that_was_applied(self):
+        person = walk("id_p", 0.05, 0.0, 4)
+        bottle = walk("id_b", 0.30, 0.0, 4, label="bottle")
+        loose = bp.association_diagnostic({"id_b": bottle}, {"id_p": person}, threshold=0.9, spans=0)
+        self.assertEqual(loose.to_dict()["thresholdNormalized"], 0.9)
+        self.assertGreaterEqual(loose.pairs_near, 1)
+        tight = bp.association_diagnostic({"id_b": bottle}, {"id_p": person}, threshold=0.01, spans=0)
+        self.assertEqual(tight.pairs_near, 0)
 
 
 class ObjectEventTests(unittest.TestCase):
