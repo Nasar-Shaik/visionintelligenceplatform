@@ -177,20 +177,52 @@ const differences = (a, b, path = '') => {
   return keys.flatMap((key) => differences(a[key], b[key], path === '' ? key : `${path}.${key}`));
 };
 
+/**
+ * ⭐ **The only differences a correct replay may contain, each one justified.**
+ *
+ * ⛔ Not an ignore-list. Every entry is a field that describes **where the answer came from**, not
+ * what the answer is — and each one is *required* to change across a restart, because before it the
+ * evidence was live and after it the evidence is durable. A replay in which these did NOT move would
+ * mean the flush had not happened.
+ *
+ * ⚠️ Everything else must match exactly, including every derived value. Two of those used to drift —
+ * `directionDegrees` and `pathLengthNormalized` — because the in-memory point kept more precision
+ * than the stored one. That was a defect, not provenance, and it is fixed at source
+ * (`STORED_PRECISION`) rather than excused here.
+ */
+const PROVENANCE = [
+  /* Which half of the read answered: live buffer or durable store. */
+  /(^|\.)sources\.(durable|live|records)$/,
+  /* The recorder's own counters — they describe the process, not the run. */
+  /(^|\.)stats\.(liveIdentities|liveStreams|identitiesRetired|pointsObserved|pendingWrites)$/,
+  /(^|\.)stats\.store\./,
+  /* A record moves from `live` to `records` when it is flushed. Same evidence, different half. */
+  /^history\.(records|live)\b/,
+];
+
 const diff = differences(before.reads, capture.reads);
+const provenance = diff.filter((d) => PROVENANCE.some((re) => re.test(d.path)));
+const evidence = diff.filter((d) => !PROVENANCE.some((re) => re.test(d.path)));
 
 console.log(`\n=== replay: ${String(AGAINST)} vs this read ===`);
-if (diff.length === 0) {
-  console.log('⭐ byte for byte identical after normalisation.');
+console.log(`provenance differences (expected): ${String(provenance.length)}`);
+for (const d of provenance.slice(0, 8)) {
+  console.log(`  ~ ${d.path}: ${JSON.stringify(d.before)} → ${JSON.stringify(d.after)}`);
+}
+if (provenance.length > 8) console.log(`  … and ${String(provenance.length - 8)} more`);
+
+if (evidence.length === 0) {
+  console.log('\n⭐ EVIDENCE IS BYTE-IDENTICAL. Every difference is documented provenance.');
   process.exit(0);
 }
+const diffShown = evidence;
 
-console.log(`${String(diff.length)} difference(s):\n`);
-for (const d of diff.slice(0, 40)) {
+console.log(`\n⛔ ${String(diffShown.length)} EVIDENCE difference(s) — these are not provenance:\n`);
+for (const d of diffShown.slice(0, 40)) {
   const show = (v) => (v === undefined ? '(absent)' : JSON.stringify(v)).slice(0, 160);
   console.log(`  ${d.path}\n    before ${show(d.before)}\n    after  ${show(d.after)}`);
 }
-if (diff.length > 40) console.log(`  … and ${String(diff.length - 40)} more`);
+if (diffShown.length > 40) console.log(`  … and ${String(diffShown.length - 40)} more`);
 
 /*
  * ⚠️ A difference is not automatically a failure — a deliberate change SHOULD move these numbers,

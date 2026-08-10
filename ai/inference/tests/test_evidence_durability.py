@@ -152,6 +152,90 @@ class ShutdownFlushTests(unittest.TestCase):
         self.assertIsNotNone(recorder.stats()["lastWriteError"])
 
 
+class SinglePrecisionTests(unittest.TestCase):
+    """⛔ **The second half of the durability defect, and the subtler one.**
+
+    Flushing evidence at shutdown made it *survive* a restart. It did not make it *identical*.
+    Measured on the deployed stack after the flush landed, comparing every leaf field of every
+    graph node across a restart — only two moved, on exactly the three identities that were live
+    before and durable after:
+
+        node person   directionDegrees      93.1173  → 93.1216
+        node car      directionDegrees     100.3144  → 100.3131
+                      pathLengthNormalized   0.026627 → 0.026626
+        node backpack directionDegrees     309.1818  → 306.8699
+                      pathLengthNormalized   0.000006 → 0.000009
+
+    ⚠️ `samples` and `durationSeconds` were **identical**, so no point was lost, gained or
+    reordered. Every thresholded fact — idle, linger, dwell, association — was identical too,
+    because a perturbation this small never crosses a threshold.
+
+    ⭐ The cause: `HistoryPoint.to_dict()` rounds `bbox` to six decimals **on serialisation**, and
+    the in-memory record keeps full precision. The live read therefore derives direction and path
+    length from one set of coordinates and the durable read from another. On a near-stationary
+    object whose whole displacement is ~1e-5, a 1e-6 rounding is a ten-percent perturbation — which
+    is the 2.3° swing above.
+
+    ⛔ **Two precisions for one fact is the defect; rounding is not.** Rounding at the storage
+    boundary is right — full binary float repr in JSONL would be larger and platform-sensitive. The
+    fix is to round **once, at observation**, so the record a live read sees is bit-identical to the
+    record a durable read will see.
+    """
+
+    def setUp(self) -> None:
+        self._dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._dir.cleanup)
+        self.recorder = TrackHistoryRecorder(store=JsonlTrackHistoryStore(self._dir.name))
+
+    #: More precision than the store keeps, in every component.
+    RAW_BBOX = (0.1234567891, 0.2345678912, 0.1000000049, 0.2000000051)
+
+    def _observe_raw(self, identity: str = "id_p") -> None:
+        self.recorder.observe(
+            tenant_id=TENANT, camera_id="cam_1", stream_id="ases_1", identity_id=identity,
+            track_id="t", frame_index=0, at="2026-02-14T18:30:00.000Z", bbox=self.RAW_BBOX,
+        )
+
+    def test_the_live_record_holds_the_value_the_store_will_hold(self) -> None:
+        """⭐ The invariant, stated directly: one fact, one representation."""
+        self._observe_raw()
+        live = list(self.recorder.live_records(TENANT, "cam_1", "ases_1"))[0]
+        self.assertEqual(
+            tuple(live.points[0].bbox),
+            tuple(round(v, 6) for v in self.RAW_BBOX),
+        )
+
+    def test_a_live_point_and_its_durable_twin_are_byte_identical(self) -> None:
+        """⛔ The assertion that would have caught the drift: serialise the live point, flush, read
+        the durable point back, and compare the wire form of each."""
+        self._observe_raw()
+        live = list(self.recorder.live_records(TENANT, "cam_1", "ases_1"))[0]
+        before = live.points[0].to_dict()
+        self.recorder.retire_all()
+        after = self.recorder.store.records(TENANT)[0].points[0].to_dict()
+        self.assertEqual(after, before)
+
+    def test_confidence_is_held_to_the_same_single_precision(self) -> None:
+        """⚠️ `to_dict` rounds confidence too, so it has the identical two-precision problem."""
+        self.recorder.observe(
+            tenant_id=TENANT, camera_id="cam_1", stream_id="ases_1", identity_id="id_c",
+            track_id="t", frame_index=0, at="2026-02-14T18:30:00.000Z",
+            bbox=(0.1, 0.1, 0.1, 0.2), confidence=0.8765432198,
+        )
+        live = list(self.recorder.live_records(TENANT, "cam_1", "ases_1"))[0]
+        self.assertEqual(live.points[0].confidence, round(0.8765432198, 6))
+
+    def test_a_value_needing_no_rounding_is_untouched(self) -> None:
+        """⚠️ The control: rounding must not perturb a coordinate that was already exact."""
+        exact = (0.25, 0.5, 0.125, 0.0625)
+        self.recorder.observe(
+            tenant_id=TENANT, camera_id="cam_1", stream_id="ases_1", identity_id="id_e",
+            track_id="t", frame_index=0, at="2026-02-14T18:30:00.000Z", bbox=exact,
+        )
+        live = list(self.recorder.live_records(TENANT, "cam_1", "ases_1"))[0]
+        self.assertEqual(tuple(live.points[0].bbox), exact)
+
+
 class RestartEquivalenceTests(unittest.TestCase):
     """⭐ The milestone's acceptance criterion, in one assertion.
 

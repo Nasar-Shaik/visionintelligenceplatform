@@ -80,6 +80,22 @@ DEFAULT_RETENTION_HOURS = 72.0
 #: The record shape's own version, so an archive read three years from now can be interpreted.
 TRACK_HISTORY_SCHEMA_VERSION = "1.0"
 
+#: Decimal places a stored coordinate keeps — **the platform's single precision for a movement path.**
+#:
+#: ⛔ **Named once because two places used to round independently, and one of them did not.**
+#: `to_dict` has always rounded on the way to disk; the in-memory point kept full precision. A live
+#: read and a durable read of the *same observation* therefore derived from different coordinates, and
+#: across a restart `directionDegrees` moved 309.1818 → 306.8699 on a near-stationary object whose
+#: entire displacement is ~1e-5 — where a 1e-6 rounding is a ten-percent perturbation. Nothing was
+#: lost: `samples` and `durationSeconds` were identical. The two paths simply disagreed in the seventh
+#: decimal, and every derived number inherited the disagreement.
+#:
+#: ⚠️ 1e-6 of a frame width is ~0.002 px on a 1920-wide image — far below what any detector resolves,
+#: so this discards no information. Rounding at the storage boundary is correct; **holding one fact at
+#: two precisions is the defect**, and the fix is to round at observation so the live record is
+#: bit-identical to the durable one by construction rather than by both sides remembering to.
+STORED_PRECISION = 6
+
 
 @dataclass(frozen=True)
 class HistoryPoint:
@@ -129,10 +145,10 @@ class HistoryPoint:
         out = {
             "frameIndex": int(self.frame_index),
             "at": self.at,
-            "bbox": [round(float(v), 6) for v in self.bbox],
+            "bbox": [round(float(v), STORED_PRECISION) for v in self.bbox],
             "trackId": self.track_id,
             "label": self.label,
-            "confidence": round(float(self.confidence), 6),
+            "confidence": round(float(self.confidence), STORED_PRECISION),
         }
         # ⚠️ Present-when-settled, absent otherwise — including when settled to nothing, which
         # serialises as `[]`. Absence is the only encoding of "undecided" that a reader cannot
@@ -744,10 +760,29 @@ class TrackHistoryRecorder:
                 HistoryPoint(
                     frame_index=frame_index,
                     at=at,
-                    bbox=(float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])),
+                    # ⛔ **Rounded here, once, to exactly what the store will hold.**
+                    #
+                    # `to_dict` has always rounded to `STORED_PRECISION` on the way out, and the
+                    # in-memory point kept full precision — so a live read and a durable read of the
+                    # *same observation* derived from different coordinates. Measured across a
+                    # restart: `directionDegrees` moved 309.1818 → 306.8699 and
+                    # `pathLengthNormalized` 0.000006 → 0.000009 on a near-stationary object, where
+                    # the whole displacement is ~1e-5 and a 1e-6 rounding is a ten-percent
+                    # perturbation. `samples` and `durationSeconds` were identical, so nothing was
+                    # lost — the two paths simply disagreed in the seventh decimal.
+                    #
+                    # ⚠️ Rounding at the storage boundary is right; **two precisions for one fact**
+                    # is the defect. Doing it at observation makes the live record bit-identical to
+                    # the durable one by construction, rather than by both sides remembering to.
+                    bbox=(
+                        round(float(bbox[0]), STORED_PRECISION),
+                        round(float(bbox[1]), STORED_PRECISION),
+                        round(float(bbox[2]), STORED_PRECISION),
+                        round(float(bbox[3]), STORED_PRECISION),
+                    ),
                     track_id=track_id,
                     label=label,
-                    confidence=float(confidence),
+                    confidence=round(float(confidence), STORED_PRECISION),
                 )
             )
             _trim_points(record, self._max_points)
