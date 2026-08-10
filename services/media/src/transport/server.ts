@@ -35,7 +35,7 @@ import { registerLiveRoutes } from './routes/live.js';
 import { registerRecordingRoutes } from './routes/recordings.js';
 import { registerClipRoutes } from './routes/clips.js';
 import { registerPerceptionRoutes } from './routes/perception.js';
-import { registerTrackingRoutes } from './routes/tracking.js';
+import { registerTrackingRoutes, type TrackingRoutesDeps } from './routes/tracking.js';
 import { registerEventBridgeRoutes } from './routes/event-bridge.js';
 import { registerAssignmentRoutes } from './routes/assignment.js';
 import { registerAnalysisRoutes } from './routes/analyses.js';
@@ -68,7 +68,7 @@ export interface BuildServerOptions {
    */
   analyses?: AnalysisService;
   /** When a run finished, for the evidence read's `expired` state (EI-4). See `TrackingRoutesDeps`. */
-  sessions?: { finishedAt(tenantId: string, sessionId: string): Promise<string | undefined> };
+  sessions?: TrackingRoutesDeps['sessions'];
   /**
    * Camera Processing Assignment (P-8 Phase 6). Present only when the gate is enabled — absent is a
    * valid deployment that analyses every camera, and the routes say so rather than reporting zeroes.

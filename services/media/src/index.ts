@@ -308,12 +308,17 @@ async function main(): Promise<void> {
      * ⚠️ Narrow on purpose — the tracking route gets one fact, not the whole store.
      */
     sessions: {
-      async finishedAt(tenantId: string, sessionId: string): Promise<string | undefined> {
+      async evidenceContext(tenantId: string, sessionId: string) {
         const session = await mongo.analyses.getSession(
           TenantScope.fromTenantId(tenantId),
           sessionId,
         );
-        return session?.finishedAt;
+        if (session === null) return undefined;
+        const lost = session.findings.find((f) => f.kind === 'evidence-not-preserved');
+        return {
+          ...(session.finishedAt === undefined ? {} : { finishedAt: session.finishedAt }),
+          ...(lost === undefined ? {} : { evidenceNotPreserved: lost.detail }),
+        };
       },
     },
     readiness,

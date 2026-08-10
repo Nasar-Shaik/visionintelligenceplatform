@@ -871,9 +871,12 @@ describe('evidence expiry — a kept promise, not a defect', () => {
     enabled: true,
     evidence: { state, detail: 'x', durable: 0, live: 0, records: 0, damagedRecords: 0, retentionHorizonAt: horizon },
   });
-  const sessions = (finishedAt?: string) => ({
-    async finishedAt(): Promise<string | undefined> {
-      return finishedAt;
+  const sessions = (finishedAt?: string, evidenceNotPreserved?: string) => ({
+    async evidenceContext(): Promise<{ finishedAt?: string; evidenceNotPreserved?: string }> {
+      return {
+        ...(finishedAt === undefined ? {} : { finishedAt }),
+        ...(evidenceNotPreserved === undefined ? {} : { evidenceNotPreserved }),
+      };
     },
   });
   const stateOf = (out: unknown): unknown => (out as { evidence: { state: unknown } }).evidence.state;
@@ -937,7 +940,7 @@ describe('evidence expiry — a kept promise, not a defect', () => {
     /* ⚠️ A store that is down must not manufacture an explanation for missing evidence. */
     const out = await resolveEvidenceExpiry(answer('absent'), {
       sessions: {
-        async finishedAt(): Promise<string | undefined> {
+        async evidenceContext(): Promise<never> {
           throw new Error('mongo is unreachable');
         },
       },
@@ -945,6 +948,33 @@ describe('evidence expiry — a kept promise, not a defect', () => {
       streamId: 'ases_1',
     });
     expect(stateOf(out)).toBe('absent');
+  });
+
+  it('reports a run that recorded losing evidence as lost, not absent', async () => {
+    /*
+     * ⛔ **The stress run found this one.** A run SIGKILLed mid-flight had analysed 24 frames and
+     * produced 69 detections; those identities were live in the process that died and are genuinely
+     * unrecoverable. The run said so twice — `frames-dropped` and `evidence-not-preserved` — and the
+     * behaviour read still answered `absent`, because the RESTARTED runtime has no memory of what
+     * the dead one was holding. The session outlives the restart; the runtime does not.
+     */
+    const out = await resolveEvidenceExpiry(answer('absent'), {
+      sessions: sessions(undefined, 'the perception runtime could not be told so: fetch failed'),
+      tenantId: 'tnt_a',
+      streamId: 'ases_1',
+    });
+    expect(stateOf(out)).toBe('lost');
+    expect((out as { evidence: { detail: string } }).evidence.detail).toMatch(/not a claim that nothing happened/);
+  });
+
+  it('calls a run that both lost evidence and aged out lost, never expired', async () => {
+    /* ⛔ Reporting it as `expired` would file a defect under a policy that was kept. */
+    const out = await resolveEvidenceExpiry(answer('absent'), {
+      sessions: sessions('2026-08-01T09:00:00.000Z', 'fetch failed'),
+      tenantId: 'tnt_a',
+      streamId: 'ases_1',
+    });
+    expect(stateOf(out)).toBe('lost');
   });
 
   it('passes a read with no evidence block through untouched', async () => {

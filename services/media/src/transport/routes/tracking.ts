@@ -89,7 +89,21 @@ export interface TrackingRoutesDeps {
    * ⚠️ Absent on a deployment with no analysis store, and the read then stays `absent` rather than
    * guessing.
    */
-  sessions?: { finishedAt(tenantId: string, sessionId: string): Promise<string | undefined> };
+  sessions?: { evidenceContext(tenantId: string, sessionId: string): Promise<SessionEvidenceContext | undefined> };
+}
+
+/**
+ * What the session record knows that the runtime cannot.
+ *
+ * ⛔ **Both fields exist because the runtime is a different process from the one that may have lost
+ * the evidence.** A runtime restarted after a kill has no memory of what the dead one was holding,
+ * so it can only answer `absent` — truthfully, and incompletely. The session outlives the restart.
+ */
+export interface SessionEvidenceContext {
+  /** When the run reached a terminal state. Turns `absent` into `expired`. */
+  finishedAt?: string;
+  /** ⛔ The run recorded that evidence it produced was not preserved. Turns `absent` into `lost`. */
+  evidenceNotPreserved?: string;
 }
 
 /**
@@ -133,7 +147,9 @@ export function linesForCamera(
 export async function resolveEvidenceExpiry(
   answer: unknown,
   ctx: {
-    sessions?: { finishedAt(tenantId: string, sessionId: string): Promise<string | undefined> };
+    sessions?: {
+      evidenceContext(tenantId: string, sessionId: string): Promise<SessionEvidenceContext | undefined>;
+    };
     tenantId: string;
     streamId?: string;
   },
@@ -142,24 +158,43 @@ export async function resolveEvidenceExpiry(
   const evidence = (answer as { evidence?: unknown }).evidence;
   if (evidence === null || typeof evidence !== 'object') return answer;
   const state = evidence as { state?: unknown; retentionHorizonAt?: unknown };
-  if (state.state !== 'absent' || typeof state.retentionHorizonAt !== 'string') return answer;
+  /* ⚠️ Only `absent` is ever upgraded — see the doc comment. */
+  if (state.state !== 'absent') return answer;
   if (ctx.sessions === undefined || ctx.streamId === undefined) return answer;
 
-  const finishedAt = await ctx.sessions.finishedAt(ctx.tenantId, ctx.streamId).catch(() => undefined);
-  if (finishedAt === undefined) return answer;
-  const finished = Date.parse(finishedAt);
+  const session = await ctx.sessions
+    .evidenceContext(ctx.tenantId, ctx.streamId)
+    .catch(() => undefined);
+  if (session === undefined) return answer;
+
+  const upgraded = (next: string, detail: string): unknown => ({
+    ...answer,
+    evidence: { ...evidence, state: next, detail },
+  });
+
+  /*
+   * ⛔ **`lost` is decided before `expired`**, and the order is the point. A run that lost evidence
+   * to an ungraceful kill AND is now older than retention is still a run that lost evidence —
+   * reporting it as `expired` would file a defect under a policy that was kept, which is the most
+   * comfortable of the six things this could say and the least true.
+   */
+  if (session.evidenceNotPreserved !== undefined) {
+    return upgraded(
+      'lost',
+      `this run recorded that some of what it saw was not preserved: ${session.evidenceNotPreserved} ⛔ The empty answer below is not a claim that nothing happened.`,
+    );
+  }
+
+  if (typeof state.retentionHorizonAt !== 'string' || session.finishedAt === undefined) return answer;
+  const finished = Date.parse(session.finishedAt);
   const horizon = Date.parse(state.retentionHorizonAt);
   /* ⚠️ An unparseable timestamp must not manufacture an explanation for missing evidence. */
   if (Number.isNaN(finished) || Number.isNaN(horizon) || finished >= horizon) return answer;
 
-  return {
-    ...answer,
-    evidence: {
-      ...evidence,
-      state: 'expired',
-      detail: `this run finished at ${finishedAt}, before the retention horizon of ${state.retentionHorizonAt}. ⚠️ Its movement paths were removed as the retention policy promises — they were not lost, and this is not a claim that nothing happened.`,
-    },
-  };
+  return upgraded(
+    'expired',
+    `this run finished at ${session.finishedAt}, before the retention horizon of ${state.retentionHorizonAt}. ⚠️ Its movement paths were removed as the retention policy promises — they were not lost, and this is not a claim that nothing happened.`,
+  );
 }
 
 export function registerTrackingRoutes(app: FastifyInstance, deps: TrackingRoutesDeps): void {

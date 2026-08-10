@@ -49,6 +49,11 @@ rule-replay          | Rule replay determinism            | events/rule-replay.s
 nightly-tests        | Timing suites on an idle machine   | platform/nightly-tests.sh| RUN_NIGHTLY_TESTS        | preflight | continue | TIMEOUT_NIGHTLY_TESTS
 loitering-zones      | Zones on the plan, evaluated       | loitering/zones.sh       | RUN_LOITERING_ZONES      | preflight | continue | TIMEOUT_LOITERING_ZONES
 rule-browser         | Loitering pages in a browser       | loitering/rule-browser.sh| RUN_RULE_BROWSER         | preflight | continue | TIMEOUT_RULE_BROWSER
+# ⚠️ Nightly rather than on the commit because the useful size is 120+ analyses run twice — the
+# bounded 24-run version takes 45 s and ran on the commit. Every defect Evidence Integrity found was
+# a STEADY-STATE defect (28 open identities across 12 finished runs, accumulated in 26 minutes), and
+# a property that holds for the first run and fails for the hundredth is exactly what was found here.
+evidence             | Evidence integrity under load     | runtime/evidence.sh     | RUN_EVIDENCE             | preflight | continue | TIMEOUT_EVIDENCE
 stability            | Stability run                     | runtime/stability.sh    | RUN_SOAK                 | preflight | continue | TIMEOUT_SOAK
 benchmark            | Capacity ladder and benchmark     | runtime/benchmark.sh    | RUN_BENCHMARK            | preflight | continue | TIMEOUT_BENCHMARK
 tracking-benchmark   | Tracking capacity ladder          | tracking/benchmark.sh   | RUN_TRACKING_BENCHMARK   | preflight | continue | TIMEOUT_TRACKING_BENCHMARK
