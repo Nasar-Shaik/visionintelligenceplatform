@@ -6,6 +6,7 @@ matrix logic itself is `test_detector_benchmark.py` and is unchanged by this mil
 """
 
 import hashlib
+import json
 import os
 import re
 import sys
@@ -290,6 +291,139 @@ class UnmeasuredColumnTests(unittest.TestCase):
         text = db.render_summary(db.summarise(matrix))
         self.assertIn("structurally zero", text)
         self.assertIn("not measured", text)
+
+
+class AccuracySectionTests(unittest.TestCase):
+    """⛔ The accuracy section must be **absent** without annotations and **honest** with them."""
+
+    def _corpus(self):
+        return bc.Corpus(
+            version="v",
+            cases=(bc.BenchmarkCase(case_id="c1", path="c1.mp4", category="motion",
+                                    footage_kind="AUTHORED", scenarios=("normal-person",)),),
+        )
+
+    def _report(self, scores):
+        corpus = self._corpus()
+        matrix = db.BenchmarkMatrix(
+            rows=[db.DetectorRun(model_id="m", case_id="c1", category="motion", frames=10)],
+            corpus_version="v", environment={}, at="2026-08-11T00:00:00Z",
+        )
+        return cli.render_report(
+            db.summarise(matrix), corpus, bc.coverage(corpus),
+            cli.provenance([_Model()], _Store()), scores,
+        )
+
+    def test_no_accuracy_section_exists_without_annotations(self) -> None:
+        """⛔ Absent, not zeroed — no heading that implies a measurement was attempted."""
+        text = self._report({})
+        self.assertNotIn("Accuracy —", text)
+        self.assertNotIn("| Precision |", text)
+        self.assertNotIn("Per class", text)
+        # ⚠️ The standing disclaimer *does* say "Precision and recall are absent", and should — the
+        # assertion is that no accuracy table exists, not that the word never appears.
+        self.assertIn("Precision and recall are absent", text)
+
+    def test_a_measured_case_is_rendered_with_its_threshold(self) -> None:
+        scores = {
+            "m::c1": {
+                "modelId": "m", "caseId": "c1", "iouThreshold": 0.5, "framesScored": 10,
+                "truePositives": 8, "falsePositives": 1, "falseNegatives": 2,
+                "precision": 0.888889, "recall": 0.8, "f1": 0.842105, "meanIou": 0.71,
+                "perClass": [{"label": "person", "truePositives": 8, "falsePositives": 1,
+                              "falseNegatives": 2, "precision": 0.888889, "recall": 0.8,
+                              "meanIou": 0.71}],
+            }
+        }
+        text = self._report(scores)
+        self.assertIn("Accuracy — measured against Tier-1 ground truth", text)
+        self.assertIn("IoU threshold **0.5**", text)
+        self.assertIn("`person`", text)
+
+    def test_a_refusal_is_printed_rather_than_omitted(self) -> None:
+        """⛔ "No accuracy number" and "the annotations did not match the pixels" look identical in
+        a report that omits both, and only the second is somebody's bug."""
+        text = self._report({"m::c1": {"modelId": "m", "caseId": "c1",
+                                       "refused": "annotations describe sha256:aaaa… — different pixels"}})
+        self.assertIn("could not score a run", text)
+        self.assertIn("different pixels", text)
+        self.assertNotIn("| Detector | Case | Frames |", text)
+
+
+class ScoringWiringTests(unittest.TestCase):
+    """⭐ End-to-end through `_score_case`: the wiring, not the arithmetic."""
+
+    def setUp(self) -> None:
+        import annotations as ann
+
+        self.root = tempfile.mkdtemp()
+        self.digest = "d" * 64
+        self.gt = {
+            "schemaVersion": ann.SCHEMA_VERSION, "caseId": "c1", "clipSha256": self.digest,
+            "annotatedFps": 2.0,
+            "frames": [
+                {"frameIndex": i, "boxes": [{"label": "person", "bbox": [0.1, 0.1, 0.2, 0.4]}]}
+                for i in range(4)
+            ],
+        }
+        with open(os.path.join(self.root, "c1.json"), "w", encoding="utf-8") as h:
+            json.dump(self.gt, h)
+        self.case = bc.BenchmarkCase(
+            case_id="c1", path="c1.mp4", category="real", footage_kind="REAL_FOOTAGE",
+            scenarios=("normal-person",), ground_truth="c1.json", sha256=self.digest,
+            consent="c.md", capture={"device": "phone"},
+        )
+
+    def _frames(self, n=4, bbox=(0.1, 0.1, 0.2, 0.4)):
+        class Frame:
+            def __init__(self) -> None:
+                self.detections = [{"label": "person", "bbox": list(bbox), "confidence": 0.9}]
+
+        return [Frame() for _ in range(n)]
+
+    def test_a_matching_run_is_scored(self) -> None:
+        scores: dict = {}
+        cli._score_case(scores, self.case, "m", self._frames(), 2.0, "/fixtures", self.root)
+        self.assertEqual(scores["m::c1"]["precision"], 1.0)
+        self.assertEqual(scores["m::c1"]["recall"], 1.0)
+
+    def test_scoring_uses_every_sampled_frame_including_warmup(self) -> None:
+        """⛔ **The alignment trap.** Warm-up frames are excluded from latency but still analysed;
+        scoring the trimmed list would align annotation 0 against sampled frame 3 and shift every
+        box, collapsing precision and recall together in a way that looks like a bad detector."""
+        scores: dict = {}
+        cli._score_case(scores, self.case, "m", self._frames(4), 2.0, "/fixtures", self.root)
+        self.assertEqual(scores["m::c1"]["framesScored"], 4)
+        self.assertGreater(cli.WARMUP_FRAMES, 0)
+
+    def test_a_digest_mismatch_refuses_rather_than_scores(self) -> None:
+        case = bc.BenchmarkCase(
+            case_id="c1", path="c1.mp4", category="real", footage_kind="REAL_FOOTAGE",
+            scenarios=("normal-person",), ground_truth="c1.json", sha256="e" * 64,
+            consent="c.md", capture={"device": "phone"},
+        )
+        scores: dict = {}
+        cli._score_case(scores, case, "m", self._frames(), 2.0, "/fixtures", self.root)
+        self.assertIn("refused", scores["m::c1"])
+        self.assertNotIn("precision", scores["m::c1"])
+
+    def test_a_rate_mismatch_refuses(self) -> None:
+        scores: dict = {}
+        cli._score_case(scores, self.case, "m", self._frames(), 5.0, "/fixtures", self.root)
+        self.assertIn("refused", scores["m::c1"])
+
+    def test_unreadable_annotations_are_refused_not_skipped(self) -> None:
+        with open(os.path.join(self.root, "c1.json"), "w", encoding="utf-8") as h:
+            h.write("{not json")
+        scores: dict = {}
+        cli._score_case(scores, self.case, "m", self._frames(), 2.0, "/fixtures", self.root)
+        self.assertIn("refused", scores["m::c1"])
+
+    def test_identity_problems_travel_with_the_score(self) -> None:
+        """⚠️ A clip can score detection perfectly while its identities are unusable."""
+        scores: dict = {}
+        cli._score_case(scores, self.case, "m", self._frames(), 2.0, "/fixtures", self.root)
+        self.assertIn("identityProblems", scores["m::c1"])
 
 
 class SamplingTests(unittest.TestCase):

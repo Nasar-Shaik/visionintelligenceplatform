@@ -232,6 +232,45 @@ corpus is authored or photographic"* beside a computed coverage count, so the fi
 printed the two contradicting each other in one sentence. Every clause is now computed from the
 corpus. See `docs/validation/REAL_FOOTAGE_INGEST.md`.
 
+### P3.2c — Tier-1 ground truth: BUILT, and waiting on one thing
+
+⭐ **The scoring path is complete and tested. It has never scored anything, because nothing is
+annotated** — and that is the accurate description, not a gap in the work.
+
+| Slice | State |
+| --- | --- |
+| P3.1 detector benchmark lab | ✅ complete (`9502f80`) |
+| P3.2a classification/provenance guard | ✅ complete (`eb9a961`) |
+| P3.2b registration · verification · gap reporting | ✅ complete (`32f4b77`) |
+| P3.2c annotation foundation + detector validation | ✅ complete — **executable, unexercised** |
+
+**Real footage:** 0 clips declared in the committed corpus. One real clip exists on this machine and
+is **not** declared — its lawful basis is unconfirmed. **Annotations: 0.**
+
+`annotations.py` — Tier-1 schema `tier1-2026-08-11`, versioned and **bound to the clip by digest**.
+`detection_scoring.py` — class-aware greedy IoU matching, precision · recall · F1 · mean IoU · per
+class · FP · FN. ⛔ Neither can run without annotations, and there is no default that lets them: no
+`expected=None` branch, no "assume the detector was right" fallback. The accuracy section is **absent**
+from the report when nothing is annotated, never zeroed.
+
+⭐ Four alignment refusals, each because its absence produces a *plausible wrong number* rather than
+an error: a re-exported clip (same name, different pixels), a rate mismatch (box 30 compared against
+a detection 9 s away), annotations beyond the frames analysed, and one clip's ground truth scoring
+another. ⚠️ A refusal is **printed**, never dropped — "no accuracy number" and "the annotations did
+not describe the pixels" look identical in a report that omits both.
+
+**Pose dependency:** ⛔ blocked on annotated real footage, nothing else. The seam is already built and
+load-bearing — `RawInstance.keypoints` + `skeleton`, with `visible` deliberately separate from
+`confidence`, riding in the frozen `Detection.attributes` open record. Integration is three files and
+no new stage; the one connection that does not exist is `video_analyzer` understanding a
+`PerceptionOutput` from `infer()`. Pinned by `PoseSeamTests`. See `POSE_SEAM.md`.
+
+**Detector-validation dependency:** annotated real footage. Until then RT-DETR's 48 % higher detection
+count remains uninterpretable and **no winner may be declared**.
+
+**Remaining scenarios:** 41 of 41 have no real footage. `RECORDING_PROTOCOL.md` covers all twenty
+required capabilities in **eight takes**, of which take 1 alone covers eleven.
+
 ### Evidence Integrity carry-forward — open, non-blocking
 
 | Item | Why still open |

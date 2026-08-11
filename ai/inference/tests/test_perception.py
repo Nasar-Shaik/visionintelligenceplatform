@@ -298,3 +298,71 @@ class RegistryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PoseSeamTests(unittest.TestCase):
+    """⭐ P3.2c — the seam pose will arrive through, asserted rather than assumed.
+
+    ⛔ No pose model is authorised and none is implemented. These tests pin the *contract* so the
+    design in `docs/validation/POSE_SEAM.md` is checkable: if any of them starts failing, the seam
+    described there has moved and the plan built on it is wrong.
+    """
+
+    class _Raw:
+        """Stands in for `pipeline.RawDetection` — injected, never imported (see `to_raw_detections`)."""
+
+        def __init__(self, bbox, score, class_id=None, label=None):
+            self.bbox, self.score, self.class_id, self.label = bbox, score, class_id, label
+
+    def _posed(self) -> RawInstance:
+        return RawInstance(
+            score=0.9,
+            bbox=(0.1, 0.1, 0.2, 0.5),
+            class_id=0,
+            label="person",
+            skeleton="coco-17",
+            keypoints=[
+                Keypoint(name="left_wrist", x=0.15, y=0.30, confidence=0.81, visible=True),
+                Keypoint(name="right_wrist", x=0.24, y=0.31, confidence=0.44, visible=False),
+            ],
+        )
+
+    def test_a_posed_instance_narrows_to_an_ordinary_detection(self) -> None:
+        """⭐ The box reaches the existing post-processing stage unchanged, so tracking, identity and
+        every behaviour primitive keep working on a pose model's output with no change."""
+        out = PerceptionOutput(task=TASK_DETECTION, instances=[self._posed()])
+        narrowed = to_raw_detections(out, self._Raw)
+        self.assertEqual(len(narrowed), 1)
+        self.assertEqual(narrowed[0].label, "person")
+        self.assertEqual(narrowed[0].bbox, (0.1, 0.1, 0.2, 0.5))
+
+    def test_the_keypoints_survive_the_narrowing_in_attributes(self) -> None:
+        """⛔ `RawDetection` has four slots and must not grow a fifth. Pose rides in the frozen
+        `attributes` map, which the TS contract declares as an open record."""
+        attributes = self._posed().to_attributes()
+        self.assertEqual(len(attributes[ATTR_POSE]["keypoints"]), 2)
+        self.assertEqual(attributes[ATTR_POSE]["skeleton"], "coco-17")
+
+    def test_visibility_and_confidence_remain_separate_facts(self) -> None:
+        """⚠️ A joint the model is sure is *hidden* is high-confidence and not visible; a joint it
+        guessed at is low-confidence. Collapsing them loses the distinction occlusion reasoning is
+        built on — and occlusion is the retail case."""
+        keypoints = self._posed().to_attributes()[ATTR_POSE]["keypoints"]
+        hidden = next(k for k in keypoints if k["name"] == "right_wrist")
+        self.assertFalse(hidden["visible"])
+        self.assertEqual(hidden["confidence"], 0.44)
+
+    def test_a_plain_detection_is_byte_identical_without_pose(self) -> None:
+        """⛔ The regression guarantee: adding the vocabulary changed nothing for the shipped
+        detector. An empty attributes map, not a `{"pose": null}`."""
+        plain = RawInstance(score=0.9, bbox=(0.1, 0.1, 0.2, 0.5), label="person")
+        self.assertEqual(plain.to_attributes(), {})
+
+    def test_an_instance_with_no_box_is_dropped_rather_than_placed_at_the_origin(self) -> None:
+        """⛔ A pose with no bounding box is not a detection; a zero box would read as a real
+        observation of something at the top-left corner."""
+        out = PerceptionOutput(
+            task=TASK_DETECTION,
+            instances=[RawInstance(score=0.5, keypoints=[Keypoint(name="nose", x=0.5, y=0.5)])],
+        )
+        self.assertEqual(to_raw_detections(out, self._Raw), [])

@@ -43,7 +43,7 @@ import resource
 import subprocess
 import sys
 import time
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Mapping, Optional, Sequence
 
 import benchmark_corpus as bc
 import detector_benchmark as db
@@ -257,6 +257,62 @@ def _percentile(values: Sequence[float], fraction: float) -> Optional[float]:
     return round(ordered[index], 3)
 
 
+def _score_case(
+    scores: Dict[str, object],
+    case: bc.BenchmarkCase,
+    model_id: str,
+    frames: Sequence[object],
+    target_fps: float,
+    fixtures_root: str,
+    real_root: str,
+) -> None:
+    """Score one cell against its Tier-1 ground truth — ⛔ or record precisely why it was not.
+
+    ⚠️ A refusal is **stored**, never dropped. "This clip has no accuracy number" and "this clip's
+    annotations did not match its pixels" look identical in a report that omits both, and the second
+    is a defect somebody has to fix.
+    """
+    import annotations as ann  # noqa: WPS433 - only needed when ground truth actually exists
+    import detection_scoring as ds  # noqa: WPS433
+
+    key = f"{model_id}::{case.case_id}"
+    path = os.path.join(bc.root_for(case, fixtures_root, real_root), case.ground_truth or "")
+    try:
+        truth = ann.load(path)
+    except ann.AnnotationError as exc:
+        scores[key] = {"caseId": case.case_id, "modelId": model_id, "refused": str(exc)}
+        return
+
+    alignment = ann.align(
+        truth,
+        case_id=case.case_id,
+        clip_sha256=case.sha256 or "",
+        sampled_fps=target_fps,
+        analysed_frames=len(frames),
+    )
+    if not alignment.aligned:
+        scores[key] = {
+            "caseId": case.case_id,
+            "modelId": model_id,
+            "refused": "; ".join(alignment.problems),
+        }
+        return
+
+    predictions: Dict[int, List[ds.Prediction]] = {}
+    for index, frame in enumerate(frames):
+        predictions[index] = [
+            ds.Prediction(
+                label=str(d.get("label") or ""),
+                bbox=tuple(float(v) for v in (d.get("bbox") or (0.0, 0.0, 0.0, 0.0))),
+                confidence=float(d.get("confidence") or 0.0),
+            )
+            for d in (getattr(frame, "detections", None) or [])
+            if d.get("bbox")
+        ]
+    scored = ds.score(truth, predictions)
+    scores[key] = {"modelId": model_id, **scored.to_dict(), "identityProblems": list(ann.identity_problems(truth))}
+
+
 def make_cell_runner(
     *,
     store,  # noqa: ANN001 - ModelStore
@@ -266,6 +322,7 @@ def make_cell_runner(
     artifact_dir: str,
     tenant_id: str = "tnt_benchmark",
     target_fps: float = TARGET_FPS,
+    scores: Optional[Dict[str, object]] = None,
 ):
     """Build the `run_cell` that `detector_benchmark.run_matrix` injects.
 
@@ -351,6 +408,12 @@ def make_cell_runner(
 
         frames = list(result.frames)
         timed = frames[WARMUP_FRAMES:] if len(frames) > WARMUP_FRAMES else []
+        # ⛔ Scoring uses **every** sampled frame, not `timed`. Warm-up frames are excluded from the
+        # latency samples but they are still analysed and still produce detections; scoring the
+        # trimmed list would align annotation 0 against sampled frame 3 and shift every box by three
+        # frames — a silent, plausible collapse in both precision and recall.
+        if scores is not None and case.ground_truth:
+            _score_case(scores, case, model_id, frames, target_fps, fixtures_root, real_root)
         # ⚠️ Warm-up is dropped from the LATENCY samples by the same index, so the discarded frames
         # are the discarded measurements — one `WARMUP_FRAMES` governing both.
         inference = timed_adapter.samples[WARMUP_FRAMES:] if len(frames) > WARMUP_FRAMES else []
@@ -382,7 +445,13 @@ def make_cell_runner(
 # --- reporting --------------------------------------------------------------------------------
 
 
-def render_report(summary: dict, corpus: bc.Corpus, rows: Sequence[bc.ScenarioCoverage], models: List[dict]) -> str:
+def render_report(
+    summary: dict,
+    corpus: bc.Corpus,
+    rows: Sequence[bc.ScenarioCoverage],
+    models: List[dict],
+    scores: Optional[Mapping[str, object]] = None,
+) -> str:
     """`DETECTOR_BENCHMARK.md` — the observational report, with its ceiling stated first."""
     counts = bc.coverage_counts(rows)
     out: List[str] = ["# Detector benchmark — observational report", ""]
@@ -447,7 +516,80 @@ def render_report(summary: dict, corpus: bc.Corpus, rows: Sequence[bc.ScenarioCo
     )
     out.append("")
     out.append(db.render_summary(summary))
+    out.append(_render_accuracy(scores or {}))
     return "\n".join(out)
+
+
+def _render_accuracy(scores: Mapping[str, object]) -> str:
+    """The accuracy section — ⛔ absent entirely when nothing is annotated, never zeroed.
+
+    ⚠️ Refusals are printed rather than dropped. "This clip has no accuracy number" and "this clip's
+    annotations did not describe its pixels" look identical in a report that omits both, and only the
+    second is somebody's bug to fix.
+    """
+    import detection_scoring as ds  # noqa: WPS433 - only when ground truth exists
+
+    if not scores:
+        return ""
+    measured: List = []
+    refused: List[tuple] = []
+    for key, value in sorted(scores.items()):
+        row = dict(value)  # type: ignore[arg-type]
+        if row.get("refused"):
+            refused.append((key, row["refused"]))
+        else:
+            measured.append((row.get("modelId", "?"), row))
+
+    lines: List[str] = []
+    if measured:
+        lines.append("## Accuracy — measured against Tier-1 ground truth")
+        lines.append("")
+        first = measured[0][1]
+        lines.append(
+            f"⚠️ IoU threshold **{first.get('iouThreshold')}**, class-aware, greedy by descending "
+            f"confidence (the COCO convention). Precision at 0.5 and at 0.75 are different numbers."
+        )
+        lines.append("")
+        lines.append("| Detector | Case | Frames | TP | FP | FN | Precision | Recall | F1 | Mean IoU |")
+        lines.append("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
+        for model_id, row in measured:
+            lines.append(
+                f"| `{model_id}` | `{row.get('caseId')}` | {row.get('framesScored')} | "
+                f"{row.get('truePositives')} | {row.get('falsePositives')} | "
+                f"{row.get('falseNegatives')} | {ds._num(row.get('precision'))} | "
+                f"{ds._num(row.get('recall'))} | {ds._num(row.get('f1'))} | "
+                f"{ds._num(row.get('meanIou'))} |"
+            )
+        lines.append("")
+        lines.append("### Per class")
+        lines.append("")
+        lines.append("| Detector | Case | Class | TP | FP | FN | Precision | Recall | Mean IoU |")
+        lines.append("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |")
+        for model_id, row in measured:
+            for c in row.get("perClass", []):
+                lines.append(
+                    f"| `{model_id}` | `{row.get('caseId')}` | `{c['label']}` | "
+                    f"{c['truePositives']} | {c['falsePositives']} | {c['falseNegatives']} | "
+                    f"{ds._num(c['precision'])} | {ds._num(c['recall'])} | {ds._num(c['meanIou'])} |"
+                )
+        lines.append("")
+        lines.append(
+            "⚠️ A blank precision means nothing was predicted for that class; a blank recall means "
+            "the class does not appear in the ground truth. ⛔ Neither is a zero."
+        )
+    if refused:
+        lines.append("")
+        lines.append("### ⛔ Annotations that could not score a run")
+        lines.append("")
+        for key, why in refused:
+            lines.append(f"- `{key}` — {why}")
+        lines.append("")
+        lines.append(
+            "⚠️ These are **not** absent measurements. Ground truth that does not describe the "
+            "pixels, the instants or the frames of the run it is compared against produces a "
+            "plausible wrong number, which is why it is refused rather than approximated."
+        )
+    return "\n".join(lines)
 
 
 # --- CLI --------------------------------------------------------------------------------------
@@ -515,6 +657,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     print(f"models  {', '.join(getattr(m, 'id', '?') for m in models)}")
     print(f"⚠️  {bc.coverage_counts(rows)['AVAILABLE']} scenario(s) covered by real footage\n")
 
+    # ⛔ Populated only by cases that declare ground truth. An empty dict means no accuracy section
+    # is rendered at all — absent, not zeroed.
+    scores: Dict[str, object] = {}
     runner = make_cell_runner(
         store=store,
         corpus=corpus,
@@ -522,6 +667,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         real_root=args.real_root,
         artifact_dir=args.artifacts,
         target_fps=args.target_fps,
+        scores=scores,
     )
 
     def traced(model_id: str, case_id: str) -> db.DetectorRun:
@@ -559,15 +705,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.out:
         os.makedirs(args.out, exist_ok=True)
         with open(os.path.join(args.out, "matrix.json"), "w", encoding="utf-8") as h:
-            json.dump({**matrix.to_dict(), "provenance": prov, "coverage": [r.to_dict() for r in rows]}, h, indent=2)
+            json.dump({**matrix.to_dict(), "provenance": prov, "coverage": [r.to_dict() for r in rows],
+                       "accuracy": scores}, h, indent=2)
         with open(os.path.join(args.out, "DETECTOR_BENCHMARK.md"), "w", encoding="utf-8") as h:
-            h.write(render_report(summary, corpus, rows, prov))
+            h.write(render_report(summary, corpus, rows, prov, scores))
         with open(os.path.join(args.out, "CORPUS_COVERAGE.md"), "w", encoding="utf-8") as h:
             h.write(bc.render_coverage(corpus, rows))
         print(f"\nwrote {args.out}/matrix.json, DETECTOR_BENCHMARK.md, CORPUS_COVERAGE.md")
     else:
         print()
-        print(render_report(summary, corpus, rows, prov))
+        print(render_report(summary, corpus, rows, prov, scores))
     return 0
 
 
