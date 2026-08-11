@@ -45,6 +45,13 @@ from perception import COCO_17, DEFAULT_SKELETON, Keypoint
 #: Model input, width × height. Read off the exported graph (`image [1,3,256,192]`), not the paper.
 INPUT_W, INPUT_H = 192, 256
 
+#: The catalogue `outputFormat` this module decodes. ⛔ Declared here rather than registered in
+#: `adapters/model_formats.py`: that registry maps a format to a `Decoder`, whose contract is
+#: `tensors → RawDetection[]`. A pose model produces keypoints for a box the detector already found,
+#: so it has no detections to return, and a decoder that returned none would be a lie shaped like an
+#: implementation. The catalogue guard checks this name alongside the detector decoders.
+OUTPUT_FORMAT = "rtmpose"
+
 #: SimCC bins per pixel. The artifact emits `simcc_x [1,17,384]` and `simcc_y [1,17,512]`;
 #: 384/192 == 512/256 == 2.0. ⛔ Verified against the traced graph at load time by `check_outputs`.
 SPLIT_RATIO = 2.0

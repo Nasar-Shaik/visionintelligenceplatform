@@ -12,6 +12,7 @@ from __future__ import annotations
 import time
 from typing import Optional
 
+import obslog
 from contracts import CapabilityState, DetectionResult, FrameContext, ModelBinding
 from errors import CapabilityLoadError, InferenceError
 from manifest import CapabilityManifest
@@ -45,6 +46,7 @@ class Capability:
         metrics: Optional[Metrics] = None,
         clock=time.time,
         postprocessor: Optional[Postprocessor] = None,
+        pose_estimator=None,  # noqa: ANN001 - pose_estimator.PoseEstimator; None = pose off
         tracker: Optional[Tracker] = None,
         translator: Optional[ResultTranslator] = None,
         event_sink: Optional[EventSink] = None,
@@ -57,6 +59,10 @@ class Capability:
         self._clock = clock
         self._postprocessor = postprocessor  # built from resolved labels at init if None
         self._tracker = tracker or NoopTracker()
+        # Optional and off by default: a runtime with no pose model behaves exactly as before.
+        self._pose = pose_estimator
+        self._pose_ms: float = 0.0
+        self._pose_failures = 0
         self._translator = translator or DefaultResultTranslator()
         self._event_sink = event_sink or NullEventSink()
         self._binding: Optional[ModelBinding] = None
@@ -130,6 +136,20 @@ class Capability:
                 out["adapter"] = describe()
             except Exception as exc:  # noqa: BLE001 - a status call must never break the runtime
                 out["adapter"] = {"error": str(exc)[:200]}
+        # ⛔ **The counter that was missing, and its absence cost a whole diagnosis cycle.** Until
+        # here, the only number pose ever published was `stats()` printed at LOAD — a constant zero
+        # by construction, since nothing had been inferred yet. Re-reading it after a run and
+        # concluding "pose never executed" is not a stretch; it is the only reading available. A
+        # counter that cannot move is not evidence, so pose now reports where it is running.
+        stats = getattr(self._pose, "stats", None)
+        if callable(stats):
+            try:
+                pose = dict(self._pose.stats())
+                pose["frameFailures"] = self._pose_failures
+                pose["lastFrameMs"] = round(self._pose_ms, 3)
+                out["pose"] = pose
+            except Exception as exc:  # noqa: BLE001
+                out["pose"] = {"error": str(exc)[:200]}
         return out
 
     # --- pipeline ------------------------------------------------------------------
@@ -151,6 +171,23 @@ class Capability:
         t2 = self._clock()
 
         detections = self._postprocessor.run(raw, ctx, self.manifest.min_confidence)
+        # ⭐ **After detection, before tracking** — the same order the batch analyser uses, and the
+        # order is the integration. Pose reads the detector's person boxes, so presence is never its
+        # answer; and it must precede the tracker, because the tracker copies a detection's
+        # attributes onto the track and the live console overlay reads TRACKS. Posing after tracking
+        # would produce keypoints nothing carried to the browser.
+        if self._pose is not None:
+            pose_started = time.perf_counter()
+            try:
+                detections = self._pose.estimate(ctx.image, detections)
+            except Exception as exc:  # noqa: BLE001 - an enrichment must never delete a detection
+                # ⛔ Counted and logged, never silent. A swallowed enrichment failure that reports
+                # nothing is indistinguishable from a frame with nobody in it — which is how three
+                # milestones of this project have lost time.
+                self._pose_failures += 1
+                obslog.warn("pose failed for a frame; detection continues",
+                            cameraId=ctx.camera_id, error=str(exc)[:200])
+            self._pose_ms = (time.perf_counter() - pose_started) * 1000.0
         detections = self._tracker.run(detections, ctx)
         result: DetectionResult = self._translator.run(
             detections,

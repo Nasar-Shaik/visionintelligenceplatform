@@ -381,6 +381,43 @@ not approve Re-ID.
 
 ## 7b. Professional Perception
 
+### P3.3 — pose: running in the deployed runtime, reaching the console
+
+⭐ **`rtmpose-tiny` is catalogued, staged, loaded and inferring in production.** Exported in-house
+(P3.3a) because every published RTMPose ONNX is a `body7` model whose licence VIP cannot accept;
+sha256 `38b1d4724f67…`, Apache-2.0, `source: null`, verified at build and again at process start.
+Real movie101 footage through the deployed `/infer`: **36 person detections, 36 posed, 0 missed**,
+17 keypoints each, carried Detection → Tracker → `/tracking/tracks` → the Live Capture overlay.
+
+⛔ **The defect that cost a full diagnosis cycle was a missing counter, not a broken pipeline.**
+`poseInferences` was published in exactly one place — `stats()` logged at model load, where it is
+zero by construction. Read after a run, it says "pose never executed", and that is the only reading
+the evidence allowed. The pipeline had been correct the whole time. `Capability.health()` now
+reports pose counters, `/runtime` surfaces them on `loadedModels[].pose`, and the seam that hands
+the estimator to the capability `/infer` resolves is injectable and asserted in
+`tests/test_pose_wiring.py` — six of whose tests fail against the implementation that shipped.
+
+⚠️ **A second defect surfaced only because the cost was measured against a switched-off arm.** With
+pose enabled, frames containing *no person* cost **+25 ms** — a full 1080×1920 decode performed so
+that every detection on the frame could then be skipped. The detector gate ran per-detection, after
+the decode. It now decides before it, and non-person frames are back at baseline (99.2 ms vs 96.8).
+
+| deployed, 111 frames × 3 passes | pose off | pose on |
+| --- | --- | --- |
+| person detections / posed | 36 / 0 | 36 / **36** |
+| frames with a person, median | 92.4 ms | 153.8 ms |
+| frames without one, median | 96.8 ms | 99.2 ms |
+| pose model, per person | — | ~18–21 ms |
+| RSS peak | 201 MiB | 230 MiB |
+
+⚠️ The per-person cost is ~21 ms of model and ~40 ms of pixel work, because **the frame is decoded a
+second time** — the detector adapter already decoded it. Sharing a decoded frame across stages is an
+architectural change (it belongs on `FrameContext`), deliberately not made here.
+
+⛔ **Not yet accepted:** the physical webcam. Everything behind it is proven with real footage; the
+last step is the Architect standing in front of the laptop camera. No accuracy number exists or may
+be quoted — there are still zero human keypoint annotations, so PCK is not computable.
+
 ⭐ Evidence Integrity closed 2026-08-10. Full account: `docs/project/EVIDENCE_INTEGRITY_REPORT.md`.
 Four root causes, each measured before it was fixed: shutdown discarded open evidence; one fact was
 held at two precisions; **nothing closed a run when it ended** (28 identities across 12 finished runs

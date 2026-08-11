@@ -65,6 +65,18 @@ COPY ai/inference /app
 # mismatch. A build that pulls "whatever is at that URL today" produces an image whose behaviour
 # depends on a third party's release process, which is not a property a CCTV product may have.
 ENV INFERENCE_MODEL_DIR=/opt/vip/models
+
+# Artifacts VIP produces itself, staged into place before the fetch step.
+#
+# ⭐ **Not a bypass of the checksum — the opposite.** `fetch_models.py` already returns early when an
+# artifact is present and its sha256 matches the catalogue, and its own error names this case: "has
+# no source URL and no verified artifact on disk". A model with `source: null` (`rtmpose-tiny`,
+# exported in-house because every published RTMPose ONNX is a `body7` model) reaches the image this
+# way and is verified exactly like a downloaded one — at build, and again at process start.
+#
+# ⚠️ The directory holds only a README in git; a build with the wrong file here FAILS at fetch.
+COPY infra/docker/models-staged/ "$INFERENCE_MODEL_DIR"/
+
 RUN if [ "$INFERENCE_BACKEND" = "onnx" ]; then \
       python fetch_models.py --dest "$INFERENCE_MODEL_DIR" \
       && chown -R vip:vip "$INFERENCE_MODEL_DIR"; \

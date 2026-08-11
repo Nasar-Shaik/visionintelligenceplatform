@@ -310,6 +310,77 @@
         "hair drier",
         "toothbrush"
       ]
+    },
+    {
+      "id": "rtmpose-tiny",
+      "name": "rtmpose-tiny (AIC+COCO)",
+      "version": "1.0.0",
+      "task": "pose-estimation",
+      "family": "rtmpose",
+      "engine": "onnx",
+      "accelerators": [
+        "cpu"
+      ],
+      "capabilities": [
+        "perception.pose-estimation"
+      ],
+      "status": "enabled",
+      "default": false,
+      "artifact": "rtmpose-tiny-aic-coco-1.0.0.onnx",
+      "sha256": "38b1d4724f679639fbe3f2ba4679b87d99b737eda01d7bc0e0666700df461a68",
+      "sizeBytes": 13374614,
+      "source": null,
+      "license": "Apache-2.0",
+      "licenseHolder": "OpenMMLab (MMPose / RTMPose)",
+      "trainedOn": "AI Challenger + COCO 2017",
+      "input": {
+        "width": 192,
+        "height": 256,
+        "layout": "NCHW",
+        "dtype": "float32",
+        "colorOrder": "RGB",
+        "resize": "letterbox",
+        "padValue": 114,
+        "scale": 1.0,
+        "mean": [
+          123.675,
+          116.28,
+          103.53
+        ],
+        "std": [
+          58.395,
+          57.12,
+          57.375
+        ]
+      },
+      "outputFormat": "rtmpose",
+      "outputParams": {
+        "splitRatio": 2.0,
+        "simccX": 384,
+        "simccY": 512,
+        "visibilityThreshold": 0.3
+      },
+      "labels": [
+        "nose",
+        "left_eye",
+        "right_eye",
+        "left_ear",
+        "right_ear",
+        "left_shoulder",
+        "right_shoulder",
+        "left_elbow",
+        "right_elbow",
+        "left_wrist",
+        "right_wrist",
+        "left_hip",
+        "right_hip",
+        "left_knee",
+        "right_knee",
+        "left_ankle",
+        "right_ankle"
+      ],
+      "exportedBy": "ai/mlops/export_rtmpose_onnx.py",
+      "sourceModel": "open-mmlab/mmpose rtmpose-tiny_simcc-aic-coco_pt-aic-coco_420e-256x192-cfc8f33d_20230126.pth"
     }
   ]
 }

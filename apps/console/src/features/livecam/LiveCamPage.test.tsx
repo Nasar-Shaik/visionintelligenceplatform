@@ -129,6 +129,106 @@ describe('LiveCamPage', () => {
     );
   });
 
+  it('draws the skeleton the runtime attached to a tracked person, and says what visible means', async () => {
+    /*
+     * ⛔ The end of the chain P3.3b exists to close: `Detection.attributes.pose` → tracker → the
+     * live tracks API → this overlay. The page is the only place a reviewer will ever look, and a
+     * skeleton drawn here without the caveat beside it invites "the model can see through that box".
+     */
+    server.use(
+      mswHttp.get('*/api/tracking/tracks', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            tracks: [
+              {
+                trackId: 'trk_pose_1',
+                tenantId: 'tnt',
+                cameraId: CAMERA,
+                label: 'person',
+                state: 'confirmed',
+                confidence: 0.93,
+                bbox: [0.24, 0.32, 0.7, 0.66],
+                firstSeen: { frameIndex: 1, at: new Date().toISOString() },
+                lastSeen: { frameIndex: 9, at: new Date().toISOString() },
+                age: 9,
+                hits: 9,
+                quality: {},
+                history: [],
+                attributes: {
+                  pose: {
+                    skeleton: 'coco-17',
+                    model: 'rtmpose-tiny',
+                    threshold: 0.3,
+                    artifactSha256: '38b1d472',
+                    visibleMeaning: 'model-localized above threshold; NOT a claim about physical occlusion',
+                    keypoints: [
+                      { name: 'nose', x: 0.5, y: 0.3, confidence: 0.94, visible: true },
+                      { name: 'left_shoulder', x: 0.45, y: 0.4, confidence: 0.9, visible: true },
+                      { name: 'right_shoulder', x: 0.55, y: 0.4, confidence: 0.9, visible: true },
+                      { name: 'left_ankle', x: 0.46, y: 0.99, confidence: 0.09, visible: false },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    stubMediaDevices(() => Promise.reject(new Error('x')));
+    renderWithProviders(<LiveCamPage />);
+    await userEvent.selectOptions(await screen.findByTestId('livecam-camera'), CAMERA);
+
+    expect(await screen.findByTestId('pose-trk_pose_1')).toBeInTheDocument();
+    expect(screen.getByTestId('joint-nose')).toBeInTheDocument();
+    expect(screen.getByTestId('limb-left_shoulder-right_shoulder')).toBeInTheDocument();
+    /* The joint the model scored 0.09 is absent — not drawn faintly, not clamped to the box edge. */
+    expect(screen.queryByTestId('joint-left_ankle')).not.toBeInTheDocument();
+    expect(screen.getByTestId('livecam-pose-caveat')).toHaveTextContent(
+      /not a claim about physical occlusion/i,
+    );
+    expect(screen.getByTestId('livecam-pose-caveat')).toHaveTextContent(/rtmpose-tiny/);
+  });
+
+  it('draws no skeleton for a tracked object the pose model never ran on', async () => {
+    /* ⛔ The negative control, on the page: a `tie` track carries no pose and must draw nothing. */
+    server.use(
+      mswHttp.get('*/api/tracking/tracks', () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            tracks: [
+              {
+                trackId: 'trk_tie_1',
+                tenantId: 'tnt',
+                cameraId: CAMERA,
+                label: 'tie',
+                state: 'confirmed',
+                confidence: 0.55,
+                bbox: [0.1, 0.1, 0.2, 0.2],
+                firstSeen: { frameIndex: 1, at: new Date().toISOString() },
+                lastSeen: { frameIndex: 4, at: new Date().toISOString() },
+                age: 4,
+                hits: 4,
+                quality: {},
+                history: [],
+                attributes: {},
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    stubMediaDevices(() => Promise.reject(new Error('x')));
+    renderWithProviders(<LiveCamPage />);
+    await userEvent.selectOptions(await screen.findByTestId('livecam-camera'), CAMERA);
+
+    await screen.findByTestId('livecam-overlay-age');
+    expect(screen.queryByTestId('pose-trk_tie_1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('livecam-pose-caveat')).not.toBeInTheDocument();
+  });
+
   it('lists only video inputs in the device picker', async () => {
     stubMediaDevices(() => Promise.reject(new Error('x')));
     renderWithProviders(<LiveCamPage />);

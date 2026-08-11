@@ -370,6 +370,12 @@ services:
       # ⚠️ Warm-up stays ON in production. It is exposed here only so the hardening verification can
       # turn it off and MEASURE what it buys — a claim nobody had numbers for until P-8 Phase 3H.
       INFERENCE_ONNX_WARMUP: ${INFERENCE_ONNX_WARMUP:-1}
+      # ── pose estimation (P3.3b) ─────────────────────────────────────────────────────────────────
+      # ⚠️ ON, and exposed for the same reason as warm-up above: the cost of the pose stage is a
+      # measurement, not an estimate, and measuring it needs a deployment with the stage switched
+      # off. Turning it off costs the skeletons and changes nothing else — a runtime without the
+      # pose model detects, tracks and publishes exactly as it did before P3.3.
+      INFERENCE_POSE_ENABLED: ${INFERENCE_POSE_ENABLED:-1}
       # ── behaviour primitives + durable track history (P-11 slice 2.2, ADR-0051) ────────────────
       # ⚠️ ON, like tracking, and for the same reason: a stage that is off in production is a stage
       # nobody has verified in production. It adds no model and no inference.

@@ -7,8 +7,11 @@ DISABLED). Future: per-tenant capability sets layer on top of the same manifest 
 
 from __future__ import annotations
 
+import os
+
 from typing import Callable, Dict, List
 
+import obslog
 from capability import Capability
 from manifest import CapabilityManifest, load_manifests
 from pipeline import EventSink, ModelAdapter, NoopTracker, NullEventSink, Tracker
@@ -21,6 +24,7 @@ class CapabilityRegistry:
         runtime_version: str,
         event_sink: EventSink | None = None,
         tracker: Tracker | None = None,
+        pose_estimator: object | None = None,
     ) -> None:
         self._runtime_version = runtime_version
         # Shared across capabilities: the result carries its own tenant/capability, so one sink
@@ -33,6 +37,46 @@ class CapabilityRegistry:
         self._tracker: Tracker = tracker or NoopTracker()
         self._by_id: Dict[str, Capability] = {}
         self._default_id: str | None = None
+        # ⭐ ONE pose model across every capability, for the tracker's reason: a 13 MB session per
+        # capability is the same artifact loaded twice. Injectable, so the seam that hands it to the
+        # capability `/infer` resolves can be asserted without onnxruntime — an untestable seam is
+        # exactly where this integration silently came apart.
+        self._pose: object | None = pose_estimator
+        self._pose_tried = pose_estimator is not None
+
+    def _pose_estimator(self):
+        """The shared pose model — loaded once, lazily, and ⛔ never allowed to break detection.
+
+        ⭐ Pose is an *enrichment* of a record already travelling down the pipeline. A runtime that
+        cannot load it must still detect, track and publish exactly as before, so a failure here is
+        logged and swallowed rather than raised: the alternative is that a missing 13 MB artifact
+        takes down person detection, which is the capability the product actually sells.
+
+        ⚠️ Off entirely when `INFERENCE_POSE_ENABLED` is falsey, so a deployment can run the shipped
+        detector path unchanged without editing the catalogue.
+        """
+        if self._pose_tried:
+            return self._pose
+        self._pose_tried = True
+        if os.environ.get("INFERENCE_POSE_ENABLED", "1").lower() in ("0", "false", "no"):
+            obslog.info("pose disabled by INFERENCE_POSE_ENABLED")
+            return None
+        try:
+            from pose_estimator import PoseEstimator  # noqa: WPS433 - optional, needs onnxruntime
+
+            estimator = PoseEstimator()
+            estimator.load()
+            self._pose = estimator
+            obslog.info("pose model loaded", **estimator.stats())
+        except Exception as exc:  # noqa: BLE001 - see the docstring
+            obslog.warn("pose unavailable; detection continues without it", error=str(exc))
+            self._pose = None
+        return self._pose
+
+    @property
+    def pose_estimator(self) -> object | None:
+        """The shared pose stage, or `None` when this runtime has none. Loads on first read."""
+        return self._pose_estimator()
 
     @property
     def tracker(self) -> Tracker:
@@ -52,6 +96,7 @@ class CapabilityRegistry:
             self._runtime_version,
             event_sink=self._event_sink,
             tracker=self._tracker,
+            pose_estimator=self._pose_estimator(),
         )
         self._by_id[manifest.capability_id] = capability
         if self._default_id is None and manifest.enabled:

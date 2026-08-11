@@ -122,7 +122,13 @@ class ShippedCatalogueTests(unittest.TestCase):
         # The decoders themselves need numpy, so this checks the *names* — the catalogue may not
         # reference a format the runtime has never heard of. Kept in step with
         # `model_formats.available_decoders()`, which asserts the same set from the other side.
-        known = {"yolox", "rtdetr", "yolo11"}
+        # ⭐ Derived from both decode paths rather than widened by hand. Detector families resolve
+        # through `model_formats`; a pose model does not — its decoder's contract would be
+        # `tensors → RawDetection[]` and it has no detections to return. `pose.OUTPUT_FORMAT` is the
+        # single declaration for that path, so this guard still refuses a format nothing handles.
+        import pose
+
+        known = {"yolox", "rtdetr", "yolo11", pose.OUTPUT_FORMAT}
         for model in self.store.all():
             self.assertIn(model.output_format, known, f"{model.id} declares an unknown outputFormat")
 

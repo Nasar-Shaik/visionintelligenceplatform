@@ -76,6 +76,8 @@ export { DetectionOverlay } from './soc/detection-overlay';
 export type { DetectionBox } from './soc/detection-overlay';
 export { EmptyState } from './soc/empty-state';
 export { FilterBar } from './soc/filter-bar';
+export { PoseOverlay, POSE_EDGES } from './soc/pose-overlay';
+export type { PoseKeypoint, PoseSkeleton } from './soc/pose-overlay';
 export { IncidentCard } from './soc/incident-card';
 export type { IncidentCardStatus } from './soc/incident-card';
 export { CardSkeleton, TableSkeleton, TileSkeleton } from './soc/loading-skeleton';

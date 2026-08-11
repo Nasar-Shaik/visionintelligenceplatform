@@ -110,6 +110,9 @@ class StageTimings:
     preprocess_ms: float = 0.0
     inference_ms: float = 0.0
     postprocess_ms: float = 0.0
+    #: ⛔ Its own line, never folded into postprocess: a top-down model costs one inference
+    #: PER PERSON, so this is the number that scales with the scene rather than the frame.
+    pose_ms: float = 0.0
     tracking_ms: float = 0.0
     zone_counting_ms: float = 0.0
     behavior_ms: float = 0.0
@@ -123,6 +126,7 @@ class StageTimings:
             "preprocessMs": round(self.preprocess_ms, 3),
             "inferenceMs": round(self.inference_ms, 3),
             "postprocessMs": round(self.postprocess_ms, 3),
+            "poseMs": round(self.pose_ms, 3),
             "trackingMs": round(self.tracking_ms, 3),
             "zoneCountingMs": round(self.zone_counting_ms, 3),
             "behaviorMs": round(self.behavior_ms, 3),
@@ -188,6 +192,7 @@ class VideoAnalyzer:
         translator: Optional[ResultTranslator] = None,
         event_sink: Optional[EventSink] = None,
         behavior_registry: Optional[BehaviorRegistry] = None,
+        pose_estimator=None,  # noqa: ANN001 - pose_estimator.PoseEstimator; None = pose off
         runtime_version: str = _RUNTIME_VERSION,
         clock: Callable[[], float] = time.perf_counter,
         now_iso: Optional[Callable[[], str]] = None,
@@ -200,6 +205,10 @@ class VideoAnalyzer:
             labels=options.labels, floors=options.min_confidence_by_label
         )
         self._tracker = tracker or NoopTracker()
+        # ⭐ Optional and off by default. A runtime without a pose model behaves exactly as
+        # before — pose is an enrichment of a record already travelling down this pipeline,
+        # not a stage the pipeline depends on.
+        self._pose = pose_estimator
         self._translator = translator or DefaultResultTranslator()
         self._event_sink = event_sink or NullEventSink()
         self._runtime_version = runtime_version
@@ -385,6 +394,14 @@ class VideoAnalyzer:
 
         t = self._clock()
         dets = self._postprocessor.run(raw, ctx, opts.min_confidence)
+        # ⭐ **Between post-processing and tracking, and the order is the integration.** Pose reads
+        # the detector's person boxes — so presence is never its answer — and it must run BEFORE the
+        # tracker, because the tracker copies the detection's attributes onto the track and the live
+        # console overlay reads tracks. Posing after tracking would produce keypoints nothing carried.
+        if self._pose is not None:
+            t_pose = self._clock()
+            dets = self._pose.estimate(ctx.image, dets)
+            timings.pose_ms += (self._clock() - t_pose) * 1000.0
         dets = self._tracker.run(dets, ctx)
         det_result = self._translator.run(
             dets,

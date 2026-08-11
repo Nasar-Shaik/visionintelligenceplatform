@@ -316,6 +316,11 @@ def runtime_view(registry, supervisor, service_name: str, version: str, model_st
             "executionProvider": entry.get("executionProvider"),
             "model": entry.get("model"),
             "adapter": entry.get("adapter"),
+            # ⚠️ The pose model is loaded outside the resolver — it is an enrichment stage, not the
+            # capability's bound model — so it appeared in NO list an operator reads. "loadedModels:
+            # [yolox-nano]" on a runtime that had loaded rtmpose is a true sentence that answers the
+            # question wrongly.
+            "pose": entry.get("pose"),
         }
         for entry in capabilities
     ]

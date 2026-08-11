@@ -116,3 +116,6 @@ tools/e2e-browser/artifacts/
 # output is not — SOAK_REPORT.md and its siblings carry the conclusions into the repo.
 .soak*/
 .soak-real.mp4
+
+# Staged model artifacts are produced locally, never committed (see the README there).
+infra/docker/models-staged/*.onnx

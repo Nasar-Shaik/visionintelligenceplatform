@@ -39,9 +39,12 @@ import {
   CardTitle,
   DetectionOverlay,
   PageHeader,
+  PoseOverlay,
   type DetectionBox,
+  type PoseSkeleton,
 } from '@/ui';
 import { useCameras } from '@/features/cameras/useCameras';
+import { parsePose } from '@/features/tracking/poseAttribute';
 import { useLiveTracks } from '@/features/tracking/useTracking';
 import {
   LiveCaptureLoop,
@@ -331,6 +334,42 @@ export function LiveCamPage() {
   }, [tracks.data, cameraId]);
 
   /**
+   * The skeletons, from the same tracks the boxes come from.
+   *
+   * ⚠️ Derived from `tracks`, not from a second request. The tracker clears a track's attributes the
+   * moment it misses a frame, so a skeleton on screen belongs to a track the runtime updated — there
+   * is no path here that can draw last second's pose over this second's person.
+   */
+  const skeletons: PoseSkeleton[] = useMemo(() => {
+    const rows = tracks.data?.tracks ?? [];
+    return rows
+      .filter((t) => t.cameraId === cameraId && (t.state === 'confirmed' || t.state === 'tentative'))
+      .flatMap((t) => {
+        const pose = parsePose(t.attributes);
+        return pose === null ? [] : [{ id: t.trackId, keypoints: pose.keypoints }];
+      });
+  }, [tracks.data, cameraId]);
+
+  /** What produced those skeletons — read from the payload, never hard-coded beside it. */
+  const poseModel = useMemo(() => {
+    const rows = tracks.data?.tracks ?? [];
+    for (const t of rows) {
+      const pose = parsePose(t.attributes);
+      if (pose !== null) return pose.model;
+    }
+    return 'unknown';
+  }, [tracks.data]);
+
+  const poseThreshold = useMemo(() => {
+    const rows = tracks.data?.tracks ?? [];
+    for (const t of rows) {
+      const pose = parsePose(t.attributes);
+      if (pose !== null) return pose.threshold;
+    }
+    return 0;
+  }, [tracks.data]);
+
+  /**
    * How stale the boxes are, in seconds — the newest `lastSeen` among the drawn tracks against now.
    *
    * ⚠️ `null` when nothing is drawn, and the panel says "no tracks" rather than "0.0 s". An age of
@@ -493,6 +532,7 @@ export function LiveCamPage() {
                 data-testid="livecam-video"
               />
               <DetectionOverlay detections={boxes} />
+              <PoseOverlay skeletons={skeletons} />
             </div>
             <canvas ref={canvasRef} className="hidden" data-testid="livecam-canvas" />
             <p className="text-2xs text-muted-foreground tabular" data-testid="livecam-overlay-age">
@@ -502,6 +542,16 @@ export function LiveCamPage() {
                     boxAgeSeconds === null ? 'of unknown age' : `${boxAgeSeconds.toFixed(1)} s behind the preview`
                   }`}
             </p>
+            {/*
+              ⛔ Stated on the page, not only in a doc. A skeleton on screen is the most convincing
+              artefact this product produces, and a viewer who reads "visible" as "not occluded" will
+              read an occlusion claim into a rendering that never made one.
+            */}
+            {skeletons.length > 0 && (
+              <p className="text-2xs text-muted-foreground" data-testid="livecam-pose-caveat">
+                {`${String(skeletons.length)} ${skeletons.length === 1 ? 'skeleton' : 'skeletons'} · ${poseModel} · joints drawn only where the model localized them above ${poseThreshold} confidence — visibility is a model score, not a claim about physical occlusion.`}
+              </p>
+            )}
           </CardContent>
         </Card>
 
