@@ -25,6 +25,14 @@ proposal — every document reports what was observed, on which build, with what
 | --- | --- |
 | [DETECTOR_COMPARISON](DETECTOR_COMPARISON.md) | ⭐ **Two detector families through one unchanged runtime.** Latency, throughput, memory, ONNX operator inventory, licensing — and the cross-model localisation check (mean IoU **0.95**) that verifies the decoder without ground truth |
 
+## Pose — P3.3 (2026-08-12)
+
+| Document | What it answers |
+| --- | --- |
+| [POSE_VERIFICATION](POSE_VERIFICATION.md) | ⭐ **The closure report.** Does pose run on real frames in the deployed runtime, and reach the operator's screen? Keeps *implemented* · *verified on recorded footage* · *verified on physical webcam* strictly apart, and records what is still unproved |
+| [POSE_ARTIFACT](POSE_ARTIFACT.md) | Where the weights came from, under what licence, and what was checked before any of it was catalogued |
+| [POSE_SEAM](POSE_SEAM.md) | The seam pose arrived through — written before there was a model, so integration would be integration rather than architecture |
+
 ## Release soaks
 
 | Document | What it answers |

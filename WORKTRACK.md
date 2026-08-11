@@ -381,7 +381,13 @@ not approve Re-ID.
 
 ## 7b. Professional Perception
 
-### P3.3 — pose: running in the deployed runtime, reaching the console
+### P3.3 — pose: CLOSED 2026-08-12, accepted on the physical webcam
+
+⭐ **Full closure report: `docs/validation/POSE_VERIFICATION.md`.** The Architect stood in front of
+the laptop webcam and confirmed their own 17-keypoint skeleton rendered by the console — the primary
+acceptance criterion, met. Three evidence states are kept apart there and must stay apart:
+**implemented** · **verified on recorded footage** · **verified on physical webcam**.
+
 
 ⭐ **`rtmpose-tiny` is catalogued, staged, loaded and inferring in production.** Exported in-house
 (P3.3a) because every published RTMPose ONNX is a `body7` model whose licence VIP cannot accept;
@@ -414,9 +420,15 @@ the decode. It now decides before it, and non-person frames are back at baseline
 second time** — the detector adapter already decoded it. Sharing a decoded frame across stages is an
 architectural change (it belongs on `FrameContext`), deliberately not made here.
 
-⛔ **Not yet accepted:** the physical webcam. Everything behind it is proven with real footage; the
-last step is the Architect standing in front of the laptop camera. No accuracy number exists or may
-be quoted — there are still zero human keypoint annotations, so PCK is not computable.
+⭐ **Accepted on the physical webcam, 2026-08-12**, by the Architect in person — not by the synthetic
+sender, not by recorded footage, not by an API-only test and not by a mocked browser response. No
+accuracy number exists or may be quoted: there are still **zero human keypoint annotations**, so PCK
+is not computable and none is claimed.
+
+⛔ **Carried forward as debt, not fixed:** the frame is decoded **twice** per person-frame — once by
+the detector adapter, once by the pose stage. Optimization candidate: shared decoded pixels through
+`FrameContext`. Not implemented, not scheduled; it changes a frozen contract and touches every stage
+that consumes a frame.
 
 ⭐ Evidence Integrity closed 2026-08-10. Full account: `docs/project/EVIDENCE_INTEGRITY_REPORT.md`.
 Four root causes, each measured before it was fixed: shutdown discarded open evidence; one fact was

@@ -1,8 +1,14 @@
 # Pose artifact — provenance and verification (P3.3a)
 
-⛔ **This artifact is NOT catalogued and NOT enabled.** `models/registry.json` is unchanged, the
-runtime is unchanged, and no pose inference runs anywhere in the platform. This records what was
-produced and what was checked, for review before integration.
+> ⭐ **Superseded 2026-08-12.** This artifact is now catalogued as `rtmpose-tiny`, staged into the
+> production image, and inferring in the deployed runtime. Integration, verification and the live
+> acceptance are in **`POSE_VERIFICATION.md`** (P3.3b closure). The sections below remain the record
+> of the export and of what was checked *before* integration — unchanged, because the provenance of
+> the weights is exactly what a later reader needs and exactly what must not be rewritten.
+
+⛔ **As written at P3.3a, this artifact was NOT catalogued and NOT enabled.** `models/registry.json`
+was unchanged, the runtime was unchanged, and no pose inference ran anywhere in the platform. This
+records what was produced and what was checked, for review before integration.
 
 ---
 

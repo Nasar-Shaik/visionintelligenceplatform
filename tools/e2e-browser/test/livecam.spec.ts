@@ -287,3 +287,93 @@ test.describe('live capture — the edge permits the camera', () => {
     expect(policy).toContain('microphone=()');
   });
 });
+
+test.describe('live capture — the pose overlay (P3.3b)', () => {
+  /*
+   * ⛔ **A RENDERING claim, and only that.** These specs put a known skeleton payload on the tracks
+   * endpoint and assert the deployed console bundle draws it correctly. They prove nothing about
+   * perception: no model runs, and Chrome's fake device shows a rolling test pattern with nobody in
+   * it. Whether RTMPose finds a real person's joints was verified two other ways — on recorded
+   * movie101 footage through the deployed `/infer`, and by the operator in front of the physical
+   * webcam on 2026-08-12. Conflating the three is exactly how a demo starts proving itself.
+   */
+  const skeleton = (cameraId: string) => ({
+    success: true,
+    data: {
+      tracks: [
+        {
+          trackId: 'trk_browser_pose',
+          tenantId: TENANT,
+          cameraId,
+          label: 'person',
+          state: 'confirmed',
+          confidence: 0.93,
+          bbox: [0.24, 0.32, 0.7, 0.66],
+          firstSeen: { frameIndex: 1, at: new Date().toISOString() },
+          lastSeen: { frameIndex: 9, at: new Date().toISOString() },
+          age: 9,
+          hits: 9,
+          quality: {},
+          history: [],
+          attributes: {
+            pose: {
+              skeleton: 'coco-17',
+              model: 'rtmpose-tiny',
+              threshold: 0.3,
+              artifactSha256: '38b1d4724f679639fbe3f2ba4679b87d99b737eda01d7bc0e0666700df461a68',
+              visibleMeaning:
+                'model-localized above threshold; NOT a claim about physical occlusion',
+              keypoints: [
+                { name: 'nose', x: 0.5, y: 0.3, confidence: 0.94, visible: true },
+                { name: 'left_shoulder', x: 0.45, y: 0.4, confidence: 0.9, visible: true },
+                { name: 'right_shoulder', x: 0.55, y: 0.4, confidence: 0.9, visible: true },
+                { name: 'left_hip', x: 0.47, y: 0.62, confidence: 0.88, visible: true },
+                { name: 'right_hip', x: 0.53, y: 0.62, confidence: 0.87, visible: true },
+                { name: 'left_ankle', x: 0.46, y: 0.99, confidence: 0.09, visible: false },
+              ],
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  test('the deployed bundle draws the 17-keypoint skeleton, and omits the joints the model did not localize', async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.route('**/api/tracking/tracks*', (route) =>
+      route.fulfill({ json: skeleton(CAMERA) }),
+    );
+    await page.goto('/live/webcam');
+    await page.getByTestId('livecam-camera').selectOption(CAMERA);
+
+    await expect(page.getByTestId('pose-trk_browser_pose')).toBeAttached({ timeout: 30_000 });
+    await expect(page.getByTestId('joint-nose')).toBeAttached();
+    await expect(page.getByTestId('limb-left_shoulder-right_shoulder')).toBeAttached();
+    await expect(page.getByTestId('limb-left_hip-right_hip')).toBeAttached();
+
+    /* ⛔ 0.09 confidence: absent, not faint and not clamped to the bottom of the box. */
+    await expect(page.getByTestId('joint-left_ankle')).toHaveCount(0);
+    await expect(page.getByTestId('limb-left_ankle-left_knee')).toHaveCount(0);
+  });
+
+  test('⛔ the page says what "visible" means, beside the skeleton itself', async ({ page }) => {
+    /*
+     * A skeleton is the most persuasive artefact this product renders. A viewer who reads "visible"
+     * as "unoccluded" will read an occlusion claim into a drawing that never made one — and there is
+     * nowhere else they would go looking for the correction.
+     */
+    await signIn(page);
+    await page.route('**/api/tracking/tracks*', (route) =>
+      route.fulfill({ json: skeleton(CAMERA) }),
+    );
+    await page.goto('/live/webcam');
+    await page.getByTestId('livecam-camera').selectOption(CAMERA);
+
+    const caveat = page.getByTestId('livecam-pose-caveat');
+    await expect(caveat).toBeVisible({ timeout: 30_000 });
+    await expect(caveat).toContainText(/not a claim about physical occlusion/i);
+    await expect(caveat).toContainText('rtmpose-tiny');
+  });
+});
