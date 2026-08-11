@@ -288,6 +288,48 @@ class ManifestValidationTests(unittest.TestCase):
         with self.assertRaises(bc.CorpusError):
             bc.load(self._write({"version": "v", "cases": []}), require_files=False)
 
+    # --- real footage is absent by design, and absence is not health ---------------------------
+
+    def _real(self, **over) -> str:
+        case = {
+            "caseId": "movie", "path": "movie.mp4", "footageKind": "REAL_FOOTAGE",
+            "scenarios": ["normal-person"], "sha256": "e" * 64, "consent": "consent.md",
+            "capture": {"device": "phone", "capturedAt": "2026-08-07"},
+        }
+        case.update(over)
+        return self._write({"version": "v", "cases": [case]})
+
+    def test_a_declared_real_clip_that_is_not_on_this_machine_still_loads(self) -> None:
+        """⭐ **The manifest is committed; the pixels are not.**
+
+        ⛔ Registering the first real clip broke the whole suite: `require_files` refused a case whose
+        footage is deliberately git-ignored, so a committed declaration was unloadable on every
+        machine — including the one holding the file, because `.data/real` resolved against the
+        caller's working directory rather than the repository.
+        """
+        corpus = bc.load(self._real(), root=tempfile.mkdtemp(),
+                         real_root=tempfile.mkdtemp(), require_files=True)
+        self.assertEqual(corpus.case_ids(), ["movie"])
+
+    def test_a_missing_constructed_fixture_is_still_refused(self) -> None:
+        """⚠️ The control. Constructed fixtures live in git, so an absent one is corruption — the
+        exemption above must not have disabled the check for everything."""
+        path = self._write(
+            {"version": "v", "cases": [{"caseId": "a", "path": "nope.mp4", "footageKind": "AUTHORED"}]}
+        )
+        with self.assertRaises(bc.CorpusError):
+            bc.load(path, root=tempfile.mkdtemp(), real_root=tempfile.mkdtemp(), require_files=True)
+
+    def test_an_absent_real_clip_still_fails_verification(self) -> None:
+        """⛔ **Loading is not verifying.** Absence must never read as health: the clip loads, and
+        `verify_real_footage` — the check that answers "does this machine hold these bytes" — still
+        reports it. Two questions, two answers, deliberately not merged."""
+        real_root = tempfile.mkdtemp()
+        corpus = bc.load(self._real(), root=tempfile.mkdtemp(),
+                         real_root=real_root, require_files=True)
+        findings = bc.verify_real_footage(corpus, real_root)
+        self.assertEqual([case_id for case_id, _ in findings], ["movie"])
+
 
 class DeclaredCorpusTests(unittest.TestCase):
     """The corpus this repository actually ships — asserted, so it cannot drift silently."""
@@ -300,16 +342,35 @@ class DeclaredCorpusTests(unittest.TestCase):
     def test_every_declared_clip_exists(self) -> None:
         self.assertGreater(len(self.corpus.cases), 0)
 
-    def test_no_case_is_real_footage_today(self) -> None:
-        """⛔ The standing fact of 2026-08-10, asserted so its change is a deliberate act.
+    def test_every_declared_real_clip_is_provenance_bound(self) -> None:
+        """⭐ **The tripwire fired on 2026-08-11, as designed.**
 
-        ⚠️ When real footage lands, this test fails — and that failure is the signal to re-run the
-        benchmark and revisit every conclusion drawn from the authored corpus.
+        Its predecessor asserted "no case is REAL_FOOTAGE today", with a note that the failure would
+        be the signal that real footage had landed. `movie101` landed, and it was.
+
+        ⚠️ Replaced by the rule that outlives the fact rather than deleted. A test that only recorded
+        a count would now assert `1` and go stale again on the next recording; what must hold forever
+        is that **every** real clip carries the three things that make it evidence — a digest binding
+        it to specific bytes, a consent record an auditor can follow, and a capture date.
         """
-        self.assertNotIn("REAL_FOOTAGE", self.corpus.kinds())
+        real = [c for c in self.corpus.cases if c.footage_kind == "REAL_FOOTAGE"]
+        self.assertTrue(real, "real footage was declared on 2026-08-11 and must not silently vanish")
+        for case in real:
+            with self.subTest(case=case.case_id):
+                self.assertRegex(case.sha256 or "", r"^[0-9a-f]{64}$")
+                self.assertTrue(case.consent, "a real clip with no consent record")
+                self.assertTrue((case.capture or {}).get("capturedAt"))
 
-    def test_no_scenario_is_available(self) -> None:
-        self.assertEqual(bc.coverage_counts(self.rows)["AVAILABLE"], 0)
+    def test_a_scenario_is_available_only_when_real_footage_covers_it(self) -> None:
+        """⛔ **The rule the count was standing in for**, and it is strictly stronger.
+
+        `AVAILABLE` means "footage of real people exists for this scenario" — nothing else promotes.
+        Asserting the equivalence in both directions catches the two failures that matter: authored
+        material promoting a scenario it cannot answer, and real footage failing to promote one.
+        """
+        for row in self.rows:
+            with self.subTest(scenario=row.scenario):
+                self.assertEqual(row.state == "AVAILABLE", "REAL_FOOTAGE" in row.kinds)
 
     def test_no_real_footage_case_carries_ground_truth(self) -> None:
         """⛔ **The standing fact, narrowed on 2026-08-11 and deliberately.**
@@ -334,10 +395,24 @@ class DeclaredCorpusTests(unittest.TestCase):
         self.assertEqual([c.case_id for c in scored], ["walk-tracking"])
         self.assertEqual(scored[0].footage_kind, "AUTHORED")
 
-    def test_the_coverage_report_says_no_winner_may_be_declared(self) -> None:
+    def test_the_coverage_report_still_forbids_declaring_a_winner(self) -> None:
+        """⛔ **The disclaimer had to survive the arrival of real footage, and nearly did not.**
+
+        It was emitted only inside `if AVAILABLE == 0`, so declaring `movie101` deleted the strongest
+        warning in the document — at exactly the moment over-claiming became possible, because the
+        table now shows real footage and a reader could reasonably assume it is scoreable.
+
+        ⚠️ Covered and measurable are different: footage of real people makes a scenario observable;
+        only human annotations make it measurable. This asserts the sentence that says so.
+        """
         text = bc.render_coverage(self.corpus, self.rows)
-        self.assertIn("No scenario is covered by real footage", text)
         self.assertIn("no winner may be declared", text.lower())
+
+    def test_the_coverage_report_says_real_footage_is_not_yet_scoreable(self) -> None:
+        """⚠️ Not the same claim as above: this is the reason, and it must be stated rather than
+        left for a reader to infer from an empty ground-truth column."""
+        text = bc.render_coverage(self.corpus, self.rows)
+        self.assertIn("no real clip carries human annotations", text)
 
     def test_the_coverage_report_names_every_missing_scenario(self) -> None:
         text = bc.render_coverage(self.corpus, self.rows)

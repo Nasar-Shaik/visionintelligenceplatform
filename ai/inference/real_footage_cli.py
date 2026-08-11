@@ -34,7 +34,7 @@ import hashlib
 import json
 import os
 import sys
-from typing import Dict, List, Mapping, Optional, Sequence
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 import annotations as ann
 import benchmark_corpus as bc
@@ -57,6 +57,14 @@ def probe(path: str) -> Dict[str, object]:
     ⚠️ Recorded at registration because the benchmark's sampler derives its stride from the clip's
     own frame rate. A clip whose rate is assumed rather than read is sampled wrongly and reads as a
     faster or slower detector — the defect P3.1 found in its own runner.
+
+    ⛔ **`fps` is rounded for reading; `fpsExact` is what a decision may be derived from.** They are
+    both here because rounding one of them was a real defect: the first real clip measured
+    27.00052530204868 fps, `round(…, 3)` recorded 27.001, and `validate_annotations` divided *that*
+    by the stride to decide what rate the annotator should have used. The answer — 1.9286428… against
+    a true 1.9286089… — is wrong by 3.4e-5, thirty-four times the tolerance `align()` allows, so the
+    tool refused the very skeleton it had just generated. ⚠️ Every authored fixture has an integer
+    rate, where rounding changes nothing; only a real clip could expose it.
     """
     out: Dict[str, object] = {"bytes": os.path.getsize(path)}
     try:
@@ -72,7 +80,10 @@ def probe(path: str) -> Dict[str, object]:
             {
                 "width": int(capture.get(cv2.CAP_PROP_FRAME_WIDTH) or 0),
                 "height": int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0),
+                # Rounded, and read by people: this is what lands in the manifest's capture block.
                 "fps": round(fps, 3),
+                # ⛔ Unrounded, and read by code. See the warning above.
+                "fpsExact": fps,
                 "frames": int(frames),
                 "durationSeconds": round(frames / fps, 3) if fps > 0 else None,
             }
@@ -203,6 +214,51 @@ def annotation_skeleton(summary: Mapping[str, object], *, case_id: str, clip_sha
     }
 
 
+def skeleton_digest(
+    clip_path: str, *, clip_id: str, corpus: Optional[bc.Corpus]
+) -> Tuple[Optional[str], List[str]]:
+    """Which digest a generated skeleton must carry — ⛔ whatever the case itself declares.
+
+    ⚠️ **A skeleton that is not digest-bound cannot pass its own validator**, and the annotator finds
+    out only after the work. The first real ingestion generated exactly that: every skeleton was
+    written with `clipSha256: null`, so `align()` reported *"the case is bound by sha256 but these
+    annotations declare none"* against a file the tool had produced seconds earlier.
+
+    The rule is to mirror the corpus rather than to invent, because the two footage kinds disagree on
+    purpose and `align()` refuses both mismatches:
+
+    - **real footage** is digest-bound — the skeleton carries the case's digest;
+    - **constructed fixtures** declare none (git binds file to content), so the skeleton declares none;
+    - **an undeclared clip** is bound to the bytes it was actually extracted from, and says so.
+
+    ⛔ A digest is never copied from the case without checking it against the file. Binding a skeleton
+    to a digest the extracted pixels do not have would defeat the one check that ties boxes to bytes.
+    """
+    measured = sha256_file(clip_path)
+    case = None
+    if corpus is not None and clip_id:
+        try:
+            case = corpus.by_id(clip_id)
+        except bc.CorpusError:
+            case = None
+
+    if case is None:
+        return measured, [
+            f"⚠️ '{clip_id or 'this clip'}' is not declared in the corpus. The skeleton is bound to "
+            f"the file it came from (sha256:{measured[:12]}…), but nothing checks its rate or frame "
+            f"range until the clip is registered."
+        ]
+    if case.sha256 is None:
+        return None, []
+    if case.sha256.lower() != measured:
+        raise bc.CorpusError(
+            f"'{clip_id}' declares sha256:{case.sha256[:12]}… but the file being extracted is "
+            f"sha256:{measured[:12]}…. ⛔ These are different pixels — a skeleton built from one and "
+            f"bound to the other would score boxes against footage they were never drawn on."
+        )
+    return case.sha256.lower(), []
+
+
 def validate_annotations(
     path: str,
     *,
@@ -259,7 +315,9 @@ def validate_annotations(
     analysed: Optional[int] = None
     if os.path.isfile(clip):
         measured = probe(clip)
-        source_fps = measured.get("fps")
+        # ⛔ The exact rate, never the rounded one — dividing a 3-decimal copy by the stride refuses
+        # a correct annotator. See `probe`.
+        source_fps = measured.get("fpsExact", measured.get("fps"))
         frames = measured.get("frames")
         if isinstance(source_fps, (int, float)) and source_fps > 0:
             # ⛔ The runtime's own integer stride, so the rate checked is the rate SAMPLED — a 27 fps
@@ -351,13 +409,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if not args.frames_out:
             print("⛔ --extract-frames needs --frames-out", file=sys.stderr)
             return 2
+        # ⚠️ Loaded before any frame is written, so a clip whose digest disagrees with its declared
+        # case fails before an annotator is handed 37 images to work from.
+        declared: Optional[bc.Corpus] = None
         try:
+            declared = bc.load(
+                args.corpus, root=args.fixtures, real_root=args.real_root, require_files=False
+            )
+        except bc.CorpusError:
+            declared = None
+        try:
+            digest, notes = skeleton_digest(
+                args.extract_frames, clip_id=args.clip_id, corpus=declared
+            )
             summary = extract_frames(args.extract_frames, args.frames_out, target_fps=args.target_fps)
         except bc.CorpusError as exc:
             print(f"⛔ {exc}", file=sys.stderr)
             return 2
         skeleton = annotation_skeleton(
-            summary, case_id=args.clip_id or "UNNAMED-CASE", clip_sha256=None
+            summary, case_id=args.clip_id or "UNNAMED-CASE", clip_sha256=digest
         )
         with open(os.path.join(args.frames_out, "annotations.skeleton.json"), "w", encoding="utf-8") as h:
             json.dump(skeleton, h, indent=1)
@@ -369,6 +439,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         # ⛔ Printed every time, because it is the number that goes in `annotatedFps` and it is NOT
         # the rate that was requested.
         print(f"⚠️ annotate at the EFFECTIVE rate: {summary['effectiveFps']} fps (asked for {args.target_fps})")
+        for note in notes:
+            print(note)
+        if digest:
+            print(f"✓ skeleton bound to sha256:{digest[:12]}…")
         return 0
 
     if args.list_scenarios:

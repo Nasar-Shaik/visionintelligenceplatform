@@ -196,10 +196,6 @@ class GapTests(unittest.TestCase):
         self.assertIn("No real footage is declared", rf.render_gap(corpus))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class FrameExtractionTests(unittest.TestCase):
     """⭐ The tool that makes annotation possible — and the rate it reports.
 
@@ -401,6 +397,135 @@ class AnnotationValidatorTests(unittest.TestCase):
             self.assertFalse(any(word in p.lower() for p in problems))
 
 
+class SkeletonBindingTests(unittest.TestCase):
+    """⛔ **A skeleton that cannot pass its own validator.**
+
+    The first real ingestion generated 37 frames and an annotation skeleton, and the validator
+    refused the skeleton immediately: `clipSha256` was hard-coded `None`, so every real-footage
+    skeleton failed *"the case is bound by sha256 but these annotations declare none"*. ⚠️ No
+    authored fixture could expose it — those declare no digest, so `None` was correct for every case
+    the suite had.
+    """
+
+    def setUp(self) -> None:
+        self.path = clip(b"pixels of a particular clip")
+        self.digest = rf.sha256_file(self.path)
+
+    def _corpus(self, **case) -> bc.Corpus:
+        base = {"case_id": "walk-01", "path": "walk-01.mp4", "category": "motion",
+                "footage_kind": "AUTHORED", "scenarios": ("normal-person",)}
+        base.update(case)
+        return bc.Corpus(version="v", cases=(bc.BenchmarkCase(**base),))
+
+    def _real(self, digest: str) -> bc.Corpus:
+        return self._corpus(footage_kind="REAL_FOOTAGE", sha256=digest,
+                            consent="docs/validation/consent/x.md",
+                            capture={"device": "d", "capturedAt": "2026-08-07"})
+
+    def test_a_real_footage_skeleton_is_bound_to_the_declared_digest(self) -> None:
+        digest, notes = rf.skeleton_digest(
+            self.path, clip_id="walk-01", corpus=self._real(self.digest))
+        self.assertEqual(digest, self.digest)
+        self.assertEqual(notes, [])
+
+    def test_the_bound_skeleton_passes_alignment(self) -> None:
+        """⭐ The property that actually matters: the generated file survives the gate it will meet."""
+        import annotations as ann
+
+        corpus = self._real(self.digest)
+        digest, _ = rf.skeleton_digest(self.path, clip_id="walk-01", corpus=corpus)
+        doc = rf.annotation_skeleton(
+            {"effectiveFps": 1.928609, "frames": [{"frameIndex": 0, "atSeconds": 0.0}]},
+            case_id="walk-01", clip_sha256=digest)
+        report = ann.align(ann.parse(doc), case_id="walk-01", clip_sha256=self.digest)
+        self.assertEqual(report.problems, ())
+
+    def test_a_constructed_fixture_skeleton_declares_no_digest(self) -> None:
+        """⛔ The mirror image: git binds an authored fixture, and `align()` refuses annotations that
+        declare a digest the case does not."""
+        digest, notes = rf.skeleton_digest(self.path, clip_id="walk-01", corpus=self._corpus())
+        self.assertIsNone(digest)
+        self.assertEqual(notes, [])
+
+    def test_extracting_a_different_file_than_the_case_declares_is_refused(self) -> None:
+        """⛔ The digest is never copied from the case without checking it against the bytes —
+        otherwise the binding would certify pixels the frames did not come from."""
+        with self.assertRaises(bc.CorpusError) as caught:
+            rf.skeleton_digest(self.path, clip_id="walk-01", corpus=self._real("b" * 64))
+        self.assertIn("different pixels", str(caught.exception))
+
+    def test_an_undeclared_clip_is_bound_to_its_own_bytes_and_says_so(self) -> None:
+        digest, notes = rf.skeleton_digest(self.path, clip_id="walk-01", corpus=None)
+        self.assertEqual(digest, self.digest)
+        self.assertTrue(any("not declared" in n for n in notes))
+
+
+class SampleRateRoundingTests(unittest.TestCase):
+    """⛔ **A rounded number used for a decision.**
+
+    `probe` rounded the frame rate to 3 decimals for display, and `validate_annotations` divided that
+    rounded copy by the stride to decide what rate the annotator should have worked at. The first
+    real clip measured 27.00052530204868 fps: the extractor sampled at 1.9286089…, the validator
+    expected 1.9286428…, and the tool refused the skeleton it had generated seconds earlier.
+
+    ⚠️ 3.4e-5 is thirty-four times `align()`'s tolerance — and invisible on every authored fixture,
+    which all have integer rates where rounding changes nothing.
+    """
+
+    EXACT = 27.00052530204868          # what the file actually reports
+    EFFECTIVE = 1.928609               # EXACT / 14, to 6 dp — what the extractor writes
+    FROM_ROUNDED = 1.9286428571428573  # round(EXACT, 3) / 14 — the wrong expectation
+
+    def setUp(self) -> None:
+        import annotations as ann
+
+        self.dir = tempfile.mkdtemp()
+        self.clip = os.path.join(self.dir, "walk-01.mp4")
+        with open(self.clip, "wb") as handle:
+            handle.write(b"clip")
+        self.doc = {
+            "schemaVersion": ann.SCHEMA_VERSION, "caseId": "walk-01",
+            "clipSha256": None, "annotatedFps": self.EFFECTIVE, "annotator": "nasar",
+            "frames": [{"frameIndex": 0, "atSeconds": 0.0, "boxes": []}],
+        }
+        self._real_probe = rf.probe
+        rf.probe = lambda _path: {  # noqa: ARG005
+            "bytes": 4, "width": 1080, "height": 1920,
+            "fps": round(self.EXACT, 3), "fpsExact": self.EXACT,
+            "frames": 514, "durationSeconds": 19.037,
+        }
+
+    def tearDown(self) -> None:
+        rf.probe = self._real_probe
+
+    def _validate(self, fps: float):
+        self.doc["annotatedFps"] = fps
+        path = os.path.join(self.dir, "a.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(self.doc, handle)
+        corpus = bc.Corpus(version="v", cases=(bc.BenchmarkCase(
+            case_id="walk-01", path="walk-01.mp4", category="motion",
+            footage_kind="AUTHORED", scenarios=("normal-person",)),))
+        return [p for p in rf.validate_annotations(path, corpus=corpus, real_root=self.dir,
+                                                   fixtures_root=self.dir)
+                if not p.startswith("⚠️ NOT CHECKED")]
+
+    def test_the_rate_the_extractor_reports_is_the_rate_the_validator_accepts(self) -> None:
+        """⭐ The regression: these two numbers are produced by different code and must agree."""
+        self.assertEqual(self._validate(self.EFFECTIVE), [])
+
+    def test_the_rate_derived_from_the_rounded_probe_is_refused(self) -> None:
+        """⛔ Proves the fix did not simply widen the tolerance — the wrong value still fails."""
+        problems = self._validate(self.FROM_ROUNDED)
+        self.assertTrue(any("different instants" in p for p in problems), problems)
+
+    def test_a_genuinely_wrong_rate_still_fails(self) -> None:
+        """⚠️ The check this one exists for: 2.0 instead of 1.93 is a 3.6% drift that misaligns
+        every box by a growing offset."""
+        problems = self._validate(2.0)
+        self.assertTrue(any("different instants" in p for p in problems), problems)
+
+
 class EntrypointTests(unittest.TestCase):
     """⛔ **The defect unit tests structurally cannot catch.**
 
@@ -408,15 +533,34 @@ class EntrypointTests(unittest.TestCase):
     the module defines everything before anything runs, so every test here passed — while running
     the file as a script raised `NameError` on the first use. Found by executing the CLI in the
     built image, which is the only place the distinction exists.
+
+    ⚠️ **The check now covers this file too, because this file had the same defect.** The guard sat
+    at line 199 with six classes below it, so `python3 tests/test_real_footage_cli.py` silently ran a
+    third of the suite and reported OK. Discovery imports the module and finds everything, so the
+    green run was true for discovery and false for the command a person would actually type. A rule
+    applied to the code under test and not to the test is a rule with a hole in it.
     """
 
-    def test_the_entrypoint_is_the_last_statement_in_the_file(self) -> None:
+    #: Every file in this slice that carries a `__main__` guard. ⭐ Listed rather than globbed so a
+    #: new file has to be considered rather than silently exempted.
+    GUARDED = ("real_footage_cli.py", os.path.join("tests", "test_real_footage_cli.py"))
+
+    def test_no_definition_follows_a_main_guard(self) -> None:
+        for name in self.GUARDED:
+            with self.subTest(file=name):
+                source = open(os.path.join(os.path.dirname(__file__), "..", name),
+                              encoding="utf-8").read().rstrip()
+                after = source[source.index('if __name__ == "__main__":'):]
+                self.assertNotIn("\ndef ", after, f"{name}: a function is defined after the guard")
+                self.assertNotIn("\nclass ", after, f"{name}: a class is defined after the guard")
+
+    def test_the_cli_entrypoint_is_the_last_statement_in_the_file(self) -> None:
         import re
 
         source = open(os.path.join(os.path.dirname(__file__), "..", "real_footage_cli.py"),
                       encoding="utf-8").read().rstrip()
-        guard = source.index('if __name__ == "__main__":')
-        after = source[guard:]
-        self.assertNotIn("\ndef ", after, "a function is defined after the __main__ guard")
-        self.assertNotIn("\nclass ", after, "a class is defined after the __main__ guard")
         self.assertTrue(re.search(r"raise SystemExit\(main\(\)\)\s*$", source))
+
+
+if __name__ == "__main__":
+    unittest.main()

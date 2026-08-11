@@ -1,7 +1,7 @@
 # WORKTRACK
 
 **Read this first.** Engineering handoff for the Vision Intelligence Platform — current state, not
-history. Last revised **2026-08-10** at `9b5cc68`.
+history. Last revised **2026-08-11** at `6347799`.
 
 > Maintain this file. When a milestone closes, update it and delete what stopped being true.
 > Milestone narrative belongs in `docs/project/`; this file is the 5-minute picture.
@@ -34,7 +34,7 @@ when evidence *is* lost, the read says so: six states, never collapsed. See § 5
 Foundation                ✔ Complete      6 foundations frozen, additive-only
 Behaviour Intelligence    ✔ Complete      primitives · graph · reasoning · console
 Evidence Integrity        ✔ Complete      durability · six-state reads · byte-identical replay
-Professional Perception   ⬅ ACTIVE        P3.1 benchmark lab BUILT · P3.2 blocked on real footage
+Professional Perception   ⬅ ACTIVE        P3.1 lab BUILT · P3.2 first real clip DECLARED · 0 annotations
 Retail Intelligence         Not started   shelf, checkout, loss prevention
 Production CCTV             Not started   RTSP estates, NVR, scale
 Customer Deployments        Not started   install, support, SLA
@@ -164,8 +164,8 @@ model provenance, and generates its reports. See `docs/validation/DETECTOR_BENCH
 
 ⛔ **Its first honest output is that it cannot yet answer the question it was built for.**
 
-    0 AVAILABLE · 19 PARTIAL · 12 MISSING   of 31 required scenarios
-    16 AUTHORED cases · 1 PHOTOGRAPH · 0 REAL_FOOTAGE · 0 with ground truth
+    11 AVAILABLE · 13 PARTIAL · 17 MISSING  of 41 required scenarios
+    17 AUTHORED cases · 1 PHOTOGRAPH · 1 REAL_FOOTAGE · 0 real clips with ground truth
 
 ⭐ The rule is enforced in code, not in a document: `benchmark_corpus._state_for` caps any scenario
 backed only by authored, synthetic or photographic material at `PARTIAL`. **There is no path by which
@@ -210,8 +210,9 @@ is built and was demonstrated end to end on a real 19.04 s, 1080×1920 phone cli
 detections and twice the tracks on identical frames; with no annotations, nothing distinguishes a
 detector that found more people from one that found more false positives. ⚠️ The clip is **not**
 declared in the committed corpus — its lawful basis is unconfirmed, so it was registered with an
-explicit placeholder for a local demonstration only. The committed corpus is still 16 `AUTHORED` +
-1 `PHOTOGRAPH` + **0 `REAL_FOOTAGE`**.
+explicit placeholder for a local demonstration only. ⭐ **Resolved on 2026-08-11**: the same clip is
+now declared as `movie101` against a consent record — see P3.2h below. The committed corpus is
+17 `AUTHORED` + 1 `PHOTOGRAPH` + **1 `REAL_FOOTAGE`**.
 
 ⭐ Replay was never the missing piece — a clip already ran through the production pipeline two ways
 (`detector_benchmark_cli.py` at the runtime tier, `object-association.mjs --clip` through the
@@ -269,8 +270,8 @@ the detector and the annotation.
 | `clipSha256` was required unconditionally | The corpus *forbids* authored cases a digest, so authored ground truth was unparseable and the exemption in `align()` was unreachable. Now `null` is permitted explicitly, and the pairing is checked **both ways** |
 | `case.sha256 or ""` | Collapsed "not digest-bound" into "should have been bound and is not", refusing every authored case with a message about real footage |
 
-**Real footage:** 0 clips declared in the committed corpus. One real clip exists on this machine and
-is **not** declared — its lawful basis is unconfirmed. **Annotations: 0.**
+**Real footage:** 1 clip declared (`movie101`, 2026-08-11). **Annotations: 0** — so no accuracy
+number about real people exists, and none may be produced. See P3.2h.
 
 `annotations.py` — Tier-1 schema `tier1-2026-08-11`, versioned and **bound to the clip by digest**.
 `detection_scoring.py` — class-aware greedy IoU matching, precision · recall · F1 · mean IoU · per
@@ -293,8 +294,9 @@ no new stage; the one connection that does not exist is `video_analyzer` underst
 **Detector-validation dependency:** annotated real footage. Until then RT-DETR's 48 % higher detection
 count remains uninterpretable and **no winner may be declared**.
 
-**Remaining scenarios:** 41 of 41 have no real footage. `RECORDING_PROTOCOL.md` covers all twenty
-required capabilities in **eight takes**, of which take 1 alone covers eleven.
+**Remaining scenarios:** 30 of 41 have no real footage — `movie101` covers 11, and **none** of the
+object, posture, or multi-person capabilities. `RECORDING_PROTOCOL.md` covers all twenty required
+capabilities in **eight takes**, of which take 1 alone covers eleven.
 
 ### P3.2e — the browser failure, explained and fixed
 
@@ -324,6 +326,43 @@ render disabled, with `data-offset` empty (never `"0"`, which would read as "the
 recording"), and clicking it must do nothing. The end-to-end test now asserts every unplaceable
 control is disabled and empty, then measures the seek on a fact there is actually a frame for, and
 skips with a stated reason only if *every* fact is unplaceable.
+
+### P3.2h — the first real clip is declared, and three defects it exposed
+
+⭐ **`movie101` is declared**: 1080×1920, **27.001 fps**, 19.037 s, sha256 `e6f1448f5482…`, consent
+record `docs/validation/consent/2026-08-07-movie101.md`. 37 frames extracted at the effective rate
+**1.928609 fps** (stride 14), annotation skeleton generated and **validated PASS**.
+
+⛔ **It is the same bytes as `.soak-real.mp4`**, the clip processed in the 2026-08-08/09 soaks — so
+the declaration is provenance recorded *after* the processing it authorises, and the consent record
+says so. ⚠️ Its consent record is **incomplete**: subject identity, retention, permitted use and
+third-party app terms are unanswered, so nothing derived from it may leave the repository yet.
+
+⚠️ **It covers 11 of 41 scenarios and none of the ones P3.2 was blocked on** — no object handling, no
+second person, no sitting, bending or raised hands. It unblocks single-person detection, entry/exit
+and re-entry. It does **not** unblock object association or pose.
+
+⛔ Three defects, each invisible to every authored fixture and found only by running the workflow on
+a real clip:
+
+| Defect | Why only real footage could find it |
+| --- | --- |
+| The generated skeleton was hard-coded `clipSha256: null`, so **every real-footage skeleton failed its own validator** | Authored fixtures declare no digest, so `null` was correct for every case that existed |
+| `probe()` rounded fps to 3 dp and `validate_annotations` divided *that* by the stride — expecting 1.9286428 where the extractor sampled at 1.9286089 | Every authored clip is exactly 30.000 fps, where rounding changes nothing. 3.4e-5 is **34× the tolerance** `align()` allows |
+| The *"no winner may be declared"* banner was printed only while `AVAILABLE == 0` | It had never been possible for a real clip to exist, so the branch that deletes the warning had never been reachable |
+
+⭐ The third is the one worth remembering: **declaring the first real clip would have silently removed
+the strongest disclaimer in `CORPUS_COVERAGE.md`**, at exactly the moment the table began showing
+real footage and a reader could assume it was scoreable. Covered and measurable are different
+questions; the report now states both.
+
+⚠️ A fourth, at the seam between the committed manifest and the git-ignored footage: `bc.load` refused
+any case whose file is absent, so the first committed real declaration **broke the suite on every
+machine** — real clips are deliberately not in git. Absence is now expected for `REAL_FOOTAGE` and
+fatal for constructed fixtures, with `verify_real_footage` still owning "does this machine hold it".
+⛔ The same trap is still armed for `groundTruth`: declaring annotations that live outside git will
+fail `load` elsewhere. Left deliberately — the conservative side — but it must be faced when
+annotations are declared.
 
 ### Evidence Integrity carry-forward — open, non-blocking
 

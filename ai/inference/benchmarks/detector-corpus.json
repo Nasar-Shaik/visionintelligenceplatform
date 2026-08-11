@@ -263,6 +263,42 @@
       ],
       "groundTruth": "tracking/walk-tracking-gt.json",
       "note": "\u2b50 The only case with ground truth. Construction-derived (see the annotation file's own note), so every benchmark run exercises the accuracy path \u2014 but it is AUTHORED and proves nothing about detection on real people."
+    },
+    {
+      "caseId": "movie101",
+      "path": "movie101.mp4",
+      "category": "real",
+      "footageKind": "REAL_FOOTAGE",
+      "scenarios": [
+        "normal-person",
+        "close-person",
+        "front-facing-person",
+        "side-facing-person",
+        "person-standing",
+        "partially-occluded-person",
+        "person-entering-frame",
+        "person-leaving-frame",
+        "re-entry",
+        "portrait-video",
+        "motion-blur"
+      ],
+      "sceneTags": [
+        "real"
+      ],
+      "groundTruth": null,
+      "note": "Single adult male, domestic room. Enters/stands/turns/leaves three times with empty-room frames between. No second person, no object handling, no sitting/bending/raised hands. Byte-identical to the .soak-real.mp4 clip processed in the 2026-08-08/09 soaks. Consent record is INCOMPLETE \u2014 see the pending section.",
+      "sha256": "e6f1448f54821fae4d5a197e464a08fc6c5a85453309f98fffc407aa99396107",
+      "consent": "docs/validation/consent/2026-08-07-movie101.md",
+      "capture": {
+        "device": "UNVERIFIED \u2014 container says Apple MacBookPro18,1 / macOS 26.5.2; pixels watermarked camphotoapp.com; mounting, height and angle not recorded",
+        "capturedAt": "2026-08-07",
+        "bytes": 22753372,
+        "width": 1080,
+        "height": 1920,
+        "fps": 27.001,
+        "frames": 514,
+        "durationSeconds": 19.037
+      }
     }
   ]
 }

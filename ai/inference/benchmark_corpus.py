@@ -461,11 +461,24 @@ def load(
         )
         if require_files:
             resolved = os.path.join(root_for(case, base, real_base), case.path)
-            if not os.path.isfile(resolved):
+            if not os.path.isfile(resolved) and case.footage_kind not in CONCLUSIVE_KINDS:
+                # ⛔ Constructed fixtures live in git, so an absent one is corruption.
                 raise CorpusError(
                     f"case '{case_id}' points at '{case.path}', which does not exist "
                     f"(resolved to '{resolved}')"
                 )
+            # ⭐ **A real clip that is not on this machine is the expected state, not a fault.**
+            # Real footage is deliberately git-ignored — the manifest entry is what gets committed,
+            # the pixels are not — so it is absent on every machine except the one that recorded it.
+            # Raising here made the first committed real declaration fail the suite for everyone,
+            # including the machine holding the file, because the check resolved `.data/real`
+            # against the caller's working directory.
+            #
+            # ⚠️ Absence is **not** silently promoted to health. `verify_real_footage` is the check
+            # that the bytes are present and match their digest, and it is deliberately separate:
+            # coverage answers "what does the corpus DECLARE" — a committed, machine-independent
+            # fact — while verification answers "does this machine hold it". Folding presence into
+            # coverage would make CORPUS_COVERAGE.md say different things on different laptops.
             if case.ground_truth is not None:
                 gt = os.path.join(root_for(case, base, real_base), case.ground_truth)
                 if not os.path.isfile(gt):
@@ -495,12 +508,29 @@ def render_coverage(corpus: Corpus, rows: Sequence[ScenarioCoverage]) -> str:
     )
     lines.append("")
 
+    # ⛔ **The disclaimer must survive the arrival of real footage.** It used to be printed only
+    # while `AVAILABLE == 0`, so the first real clip would have silently deleted the strongest
+    # warning in the document at exactly the moment over-claiming became possible. Coverage and
+    # scoreability are different questions: footage of real people makes a scenario *covered*, and
+    # only human annotations make it *measurable*.
+    real_scored = [c for c in corpus.cases if c.footage_kind in CONCLUSIVE_KINDS and c.has_ground_truth]
     if counts["AVAILABLE"] == 0:
         lines.append(
             "> ⛔ **No scenario is covered by real footage.** Every row below is either authored "
             "material or absent. A detector comparison over this corpus measures how detectors "
             "handle *this corpus* — it does not measure how they handle people, and no winner may "
             "be declared from it."
+        )
+        lines.append("")
+    elif not real_scored:
+        lines.append(
+            f"> ⛔ **Real footage is declared, and no winner may be declared from it.** "
+            f"{counts['AVAILABLE']} scenario(s) are now covered by footage of real people, which is "
+            f"what makes them *observable* — but no real clip carries human annotations, so nothing "
+            f"makes them **measurable**. Precision, recall and IoU about people remain uncomputable, "
+            f"and the numbers below any real clip are observational only: detections per frame, "
+            f"latency, track counts. ⚠️ A detector that leads on those has not been shown to be "
+            f"more accurate; it has been shown to emit more boxes."
         )
         lines.append("")
 
