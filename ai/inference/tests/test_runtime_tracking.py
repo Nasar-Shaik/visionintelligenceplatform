@@ -828,6 +828,75 @@ class RuntimeTrackerTests(unittest.TestCase):
         self.assertEqual(rt.stats()["occlusionsSurvived"], a)
 
 
+class ObservationAttributeTests(unittest.TestCase):
+    """⛔ **The gap the P3.3 audit found: `Detection.attributes` did not reach `Track`.**
+
+    Both records declare an open `attributes` map, and `POSE_SEAM.md` described integration as three
+    files on the strength of that. But `_spawn` copied label, bbox, class_id, centroid, quality and
+    history — and never `det.attributes` — so a keypoint payload reached a `Detection` and died
+    there. The live console overlay reads *tracks*, so on the shipped code no skeleton could ever
+    have appeared however correct the pose model was.
+
+    ⚠️ The tracker stays model-agnostic here: it copies an open map and never names `pose`.
+    """
+
+    def _mgr(self):
+        return TrackManager(IouAssociator(min_iou=0.1), session_id="s")
+
+    def _posed(self, **kw):
+        d = det(**kw)
+        return Detection(label=d.label, confidence=d.confidence, bbox=d.bbox, class_id=d.class_id,
+                         attributes={"pose": {"skeleton": "coco-17", "keypoints": [{"name": "nose"}]}})
+
+    def test_detection_attributes_reach_the_track(self) -> None:
+        m = self._mgr()
+        m.update([self._posed()], tenant_id="t", camera_id="c", frame_index=0, at="0s")
+        self.assertEqual(m.active()[0].attributes["pose"]["skeleton"], "coco-17")
+
+    def test_attributes_are_refreshed_on_every_matched_frame(self) -> None:
+        """⭐ A per-frame observation must describe THIS frame."""
+        m = self._mgr()
+        m.update([self._posed()], tenant_id="t", camera_id="c", frame_index=0, at="0s")
+        second = Detection(label="person", confidence=0.9, bbox=(0.4, 0.4, 0.1, 0.1), class_id=0,
+                           attributes={"pose": {"skeleton": "coco-17", "keypoints": [{"name": "left_wrist"}]}})
+        m.update([second], tenant_id="t", camera_id="c", frame_index=1, at="1s")
+        kp = m.active()[0].attributes["pose"]["keypoints"]
+        self.assertEqual(kp[0]["name"], "left_wrist", "the track kept a stale observation")
+
+    def test_attributes_are_replaced_not_merged(self) -> None:
+        """⛔ A merge leaves last frame's key in place when this frame produced none, and no consumer
+        can tell a current reading from a retained one."""
+        m = self._mgr()
+        m.update([self._posed()], tenant_id="t", camera_id="c", frame_index=0, at="0s")
+        m.update([det()], tenant_id="t", camera_id="c", frame_index=1, at="1s")
+        self.assertNotIn("pose", m.active()[0].attributes)
+
+    def test_a_missed_frame_clears_the_observation(self) -> None:
+        """⛔ **Negative control: no stale skeleton.** A LOST track is predicted, not seen — keeping
+        its last pose would draw a skeleton at a position nobody measured."""
+        m = TrackManager(IouAssociator(min_iou=0.1), session_id="s", max_age=5)
+        m.update([self._posed()], tenant_id="t", camera_id="c", frame_index=0, at="0s")
+        m.update([], tenant_id="t", camera_id="c", frame_index=1, at="1s")
+        self.assertEqual(m.active()[0].attributes, {}, "a lost track kept a stale pose")
+
+    def test_two_people_keep_their_own_observations(self) -> None:
+        """⛔ Skeleton A must never attach to person B."""
+        left = Detection(label="person", confidence=0.9, bbox=(0.05, 0.4, 0.1, 0.2), class_id=0,
+                         attributes={"pose": {"who": "left"}})
+        right = Detection(label="person", confidence=0.9, bbox=(0.80, 0.4, 0.1, 0.2), class_id=0,
+                          attributes={"pose": {"who": "right"}})
+        m = self._mgr()
+        m.update([left, right], tenant_id="t", camera_id="c", frame_index=0, at="0s")
+        m.update([left, right], tenant_id="t", camera_id="c", frame_index=1, at="1s")
+        by_x = sorted(m.active(), key=lambda t: t.bbox[0])
+        self.assertEqual([t.attributes["pose"]["who"] for t in by_x], ["left", "right"])
+
+    def test_a_detection_without_attributes_leaves_an_empty_map(self) -> None:
+        m = self._mgr()
+        m.update([det()], tenant_id="t", camera_id="c", frame_index=0, at="0s")
+        self.assertEqual(m.active()[0].attributes, {})
+
+
 class ManagerAdditionsTests(unittest.TestCase):
     """The additive changes to the AI-2 TrackManager, which batch analysis still depends on."""
 

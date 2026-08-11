@@ -197,6 +197,14 @@ class TrackManager:
         t.centroid = _centroid(det.bbox)
         t.confidence = det.confidence
         t.class_id = det.class_id
+        # ⭐ **The track carries THIS frame's observation attributes, and only those.**
+        #
+        # Replaced rather than merged, and the difference is load-bearing. A per-frame observation
+        # such as `pose` describes the instant it was measured; merging would leave last frame's key
+        # in place when this frame's model produced none, and the consumer cannot tell a current
+        # reading from a retained one. ⚠️ The tracker stays model-agnostic — it copies an open map
+        # and never names `pose`, exactly as it never names a detector.
+        t.attributes = dict(det.attributes)
         t.hits += 1
         t.last_seen_frame = frame_index
         t.last_seen_at = at
@@ -214,6 +222,13 @@ class TrackManager:
     def _apply_miss(self, live: _Live, frame_index: int) -> None:
         t = live.track
         live.misses += 1
+        # ⛔ **No observation this frame, so no observation attributes.**
+        #
+        # A LOST track is predicted, not seen. Retaining the last `pose` would draw a skeleton at a
+        # position nobody measured — and on re-entry it would still be hanging off the old frame,
+        # which is precisely the stale-skeleton failure this must not have. Cleared rather than aged:
+        # "measured a moment ago" and "measured now" are different claims and only one is true here.
+        t.attributes = {}
         t.age = frame_index - t.first_seen_frame
         t.quality.prediction_frames = (t.quality.prediction_frames or 0) + 1
         t.quality.lost_frames = (t.quality.lost_frames or 0) + 1
@@ -249,6 +264,8 @@ class TrackManager:
             centroid=centroid,
             quality=TrackQuality(tracking_confidence=det.confidence, prediction_frames=0, lost_frames=0),
             history=list(history),
+            # A new track's first observation is the detection that spawned it. See `_apply_match`.
+            attributes=dict(det.attributes),
         )
         self._live[tid] = _Live(track, history)
         return tid
