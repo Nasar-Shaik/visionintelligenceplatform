@@ -262,7 +262,7 @@ def _score_case(
     case: bc.BenchmarkCase,
     model_id: str,
     frames: Sequence[object],
-    target_fps: float,
+    effective_fps: float,
     fixtures_root: str,
     real_root: str,
 ) -> None:
@@ -286,8 +286,11 @@ def _score_case(
     alignment = ann.align(
         truth,
         case_id=case.case_id,
-        clip_sha256=case.sha256 or "",
-        sampled_fps=target_fps,
+        # ⛔ `case.sha256`, never `... or ""`: `None` means "not digest-bound" (a constructed fixture
+        # that git binds instead), while `""` means "should have been bound and is not". Collapsing
+        # them refused every authored case with the real-footage message.
+        clip_sha256=case.sha256,
+        sampled_fps=effective_fps,
         analysed_frames=len(frames),
     )
     if not alignment.aligned:
@@ -388,9 +391,13 @@ def make_cell_runner(
             # stride as `source_fps / target_fps`, so a wrong source rate silently changes how many
             # frames a case contributes — and the corpus deliberately holds clips at 1, 15 and 30 fps.
             # Assuming 15 would sample the 1 fps clip 15× too sparsely and read as a fast detector.
-            result = analyzer.analyze(
-                decoder, FrameSampler(source_fps=_probe_fps(path), target_fps=target_fps)
-            )
+            sampler = FrameSampler(source_fps=_probe_fps(path), target_fps=target_fps)
+            # ⛔ **The rate actually sampled, which is not the rate requested.** `stride` is an
+            # integer, so a 15 fps clip at target 2.0 gets stride 8 and is sampled at 1.875 fps —
+            # 6.25 % low, 8.75 frames of divergence over 70 s. Scoring must be aligned against what
+            # happened, not what was asked for.
+            effective_fps = _probe_fps(path) / max(1, int(sampler.stride))
+            result = analyzer.analyze(decoder, sampler)
         except Exception as exc:  # noqa: BLE001 - a detector that falls over is a RESULT
             return db.DetectorRun(**common, status="error", detail=f"{type(exc).__name__}: {exc}"[:200])
         finally:
@@ -413,7 +420,7 @@ def make_cell_runner(
         # trimmed list would align annotation 0 against sampled frame 3 and shift every box by three
         # frames — a silent, plausible collapse in both precision and recall.
         if scores is not None and case.ground_truth:
-            _score_case(scores, case, model_id, frames, target_fps, fixtures_root, real_root)
+            _score_case(scores, case, model_id, frames, effective_fps, fixtures_root, real_root)
         # ⚠️ Warm-up is dropped from the LATENCY samples by the same index, so the discarded frames
         # are the discarded measurements — one `WARMUP_FRAMES` governing both.
         inference = timed_adapter.samples[WARMUP_FRAMES:] if len(frames) > WARMUP_FRAMES else []

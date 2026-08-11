@@ -38,7 +38,7 @@ together rather than splitting across a third location).
 | `schemaVersion` | ✔ | ⚠️ Bumped when a field's *meaning* changes, never for a new optional one — a scorer must distinguish "predates that rule" from "disagrees with it" |
 | `caseId` | ✔ | The benchmark case these boxes score |
 | `clipSha256` | ✔ | ⛔ The binding. See §2 |
-| `annotatedFps` | ✔ | The rate the annotator worked at |
+| `annotatedFps` | ✔ | The rate the annotator worked at. ⛔ The **effective** rate, not the requested one — see §2b |
 | `frames[].frameIndex` | ✔ | Index into the **sampled** sequence, from 0 |
 | `frames[].atSeconds` | — | Wall time into the clip; convenience for a human |
 | `boxes[].label` | ✔ | Class name, matching the detector's vocabulary (`person`, `bottle`, `backpack`, …) |
@@ -64,10 +64,36 @@ Three more refusals, each because its absence produces a *plausible wrong number
 | **Range** | Annotations beyond the frames the run produced are not misses; they are frames nobody analysed |
 | **Case id** | One clip's ground truth scoring another clip |
 
-⚠️ **Constructed fixtures declare no digest** and are exempt: they live in the repository, where git
-already binds file to content. An *empty* digest is not the same as no digest and is refused.
+⚠️ **Constructed fixtures declare `"clipSha256": null`** and are exempt: they live in the repository,
+where git already binds file to content — the same rule the corpus applies, which *forbids* authored
+cases a `sha256`. ⛔ An **empty or malformed** digest is not the same as an explicit `null`: that is
+somebody who meant to bind and got it wrong, and it is refused.
+
+The pairing is checked **both ways**: digest-bound footage may not be scored by unbound annotations
+(that would silently drop the only check tying boxes to pixels), and unbound footage may not be
+scored by digest-bound annotations (a pairing mistake somewhere).
 
 ---
+
+## 2b. ⛔ Annotate at the rate the benchmark *actually* samples
+
+`FrameSampler.stride` is an **integer**: `stride = round(source_fps / target_fps)`. A 15 fps clip
+asked for 2.0 fps therefore gets stride 8 and is sampled at **1.875 fps** — 6.25 % low, and 8.75
+frames of divergence over a 70 s clip.
+
+| Source fps | Target | Stride | **Effective** |
+| ---: | ---: | ---: | ---: |
+| 30 | 2.0 | 15 | 2.000 |
+| 15 | 2.0 | 8 | **1.875** |
+| 27 | 2.0 | 14 | **1.929** |
+| 25 | 2.0 | 13 | **1.923** |
+
+⭐ **`annotatedFps` must be the effective rate**, and alignment is checked against it. This was found
+by running the first end-to-end scoring job: aligning against the *requested* rate would refuse an
+annotator who correctly worked at the true rate and accept one who assumed 2.0.
+
+⚠️ In practice the annotator works from the **extracted sampled frames**, so `frameIndex` alignment
+is exact by construction; the rate matters for `atSeconds` and for this check.
 
 ## 3. ⛔ What the schema deliberately refuses
 

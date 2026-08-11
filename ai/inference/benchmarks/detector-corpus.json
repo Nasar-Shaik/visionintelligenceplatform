@@ -246,6 +246,23 @@
       ],
       "groundTruth": null,
       "note": "A pan across 42 CC0/public-domain photographs of people carrying objects. Real imagery, but stills \u2014 it cannot answer a question about motion, tracking or interaction over time."
+    },
+    {
+      "caseId": "walk-tracking",
+      "path": "tracking/walk.mp4",
+      "category": "motion",
+      "footageKind": "AUTHORED",
+      "scenarios": [
+        "normal-person",
+        "person-entering-frame",
+        "person-leaving-frame"
+      ],
+      "sceneTags": [
+        "one-subject",
+        "composited-sprite"
+      ],
+      "groundTruth": "tracking/walk-tracking-gt.json",
+      "note": "\u2b50 The only case with ground truth. Construction-derived (see the annotation file's own note), so every benchmark run exercises the accuracy path \u2014 but it is AUTHORED and proves nothing about detection on real people."
     }
   ]
 }

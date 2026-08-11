@@ -1,0 +1,2061 @@
+{
+ "schemaVersion": "tier1-2026-08-11",
+ "caseId": "walk-tracking",
+ "annotatedFps": 1.875,
+ "annotator": "derived from docs/review/p8/tracking-fixtures.mjs (the generator)",
+ "note": "\u26d4 AUTHORED \u2014 NOT a human annotation and NOT real-footage evidence. Boxes are computed from the ffmpeg overlay expression that DREW the sprite, so they are ground truth by construction. Verified against the pixels by rendering three frames. Their purpose is to exercise the scoring pipeline end to end; they say nothing about detector accuracy on real people, because the subject is a cut-out sprite on flat grey.",
+ "frames": [
+  {
+   "frameIndex": 0,
+   "atSeconds": 0.0,
+   "boxes": []
+  },
+  {
+   "frameIndex": 1,
+   "atSeconds": 0.533,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.0,
+      0.416667,
+      0.009762,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 2,
+   "atSeconds": 1.067,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.0,
+      0.416667,
+      0.019524,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 3,
+   "atSeconds": 1.6,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.0,
+      0.416667,
+      0.029286,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 4,
+   "atSeconds": 2.133,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.0,
+      0.416667,
+      0.039048,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 5,
+   "atSeconds": 2.667,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.0,
+      0.416667,
+      0.04881,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 6,
+   "atSeconds": 3.2,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.0,
+      0.416667,
+      0.058571,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 7,
+   "atSeconds": 3.733,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.0,
+      0.416667,
+      0.068333,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 8,
+   "atSeconds": 4.267,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.0,
+      0.416667,
+      0.078095,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 9,
+   "atSeconds": 4.8,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.0,
+      0.416667,
+      0.087857,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 10,
+   "atSeconds": 5.333,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.0,
+      0.416667,
+      0.097619,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 11,
+   "atSeconds": 5.867,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.0,
+      0.416667,
+      0.107381,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 12,
+   "atSeconds": 6.4,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.0,
+      0.416667,
+      0.117143,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 13,
+   "atSeconds": 6.933,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.0,
+      0.416667,
+      0.126905,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 14,
+   "atSeconds": 7.467,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.0,
+      0.416667,
+      0.136667,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 15,
+   "atSeconds": 8.0,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.005804,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 16,
+   "atSeconds": 8.533,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.015565,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 17,
+   "atSeconds": 9.067,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.025327,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 18,
+   "atSeconds": 9.6,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.035089,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 19,
+   "atSeconds": 10.133,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.044851,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 20,
+   "atSeconds": 10.667,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.054613,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 21,
+   "atSeconds": 11.2,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.064375,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 22,
+   "atSeconds": 11.733,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.074137,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 23,
+   "atSeconds": 12.267,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.083899,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 24,
+   "atSeconds": 12.8,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.093661,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 25,
+   "atSeconds": 13.333,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.103423,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 26,
+   "atSeconds": 13.867,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.113185,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 27,
+   "atSeconds": 14.4,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.122946,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 28,
+   "atSeconds": 14.933,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.132708,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 29,
+   "atSeconds": 15.467,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.14247,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 30,
+   "atSeconds": 16.0,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.152232,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 31,
+   "atSeconds": 16.533,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.161994,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 32,
+   "atSeconds": 17.067,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.171756,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 33,
+   "atSeconds": 17.6,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.181518,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 34,
+   "atSeconds": 18.133,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.19128,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 35,
+   "atSeconds": 18.667,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.201042,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 36,
+   "atSeconds": 19.2,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.210804,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 37,
+   "atSeconds": 19.733,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.220565,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 38,
+   "atSeconds": 20.267,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.230327,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 39,
+   "atSeconds": 20.8,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.240089,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 40,
+   "atSeconds": 21.333,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.249851,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 41,
+   "atSeconds": 21.867,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.259613,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 42,
+   "atSeconds": 22.4,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.269375,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 43,
+   "atSeconds": 22.933,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.279137,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 44,
+   "atSeconds": 23.467,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.288899,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 45,
+   "atSeconds": 24.0,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.298661,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 46,
+   "atSeconds": 24.533,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.308423,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 47,
+   "atSeconds": 25.067,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.318185,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 48,
+   "atSeconds": 25.6,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.327946,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 49,
+   "atSeconds": 26.133,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.337708,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 50,
+   "atSeconds": 26.667,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.34747,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 51,
+   "atSeconds": 27.2,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.357232,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 52,
+   "atSeconds": 27.733,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.366994,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 53,
+   "atSeconds": 28.267,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.376756,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 54,
+   "atSeconds": 28.8,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.386518,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 55,
+   "atSeconds": 29.333,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.39628,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 56,
+   "atSeconds": 29.867,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.406042,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 57,
+   "atSeconds": 30.4,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.415804,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 58,
+   "atSeconds": 30.933,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.425565,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 59,
+   "atSeconds": 31.467,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.435327,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 60,
+   "atSeconds": 32.0,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.445089,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 61,
+   "atSeconds": 32.533,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.454851,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 62,
+   "atSeconds": 33.067,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.464613,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 63,
+   "atSeconds": 33.6,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.474375,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 64,
+   "atSeconds": 34.133,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.484137,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 65,
+   "atSeconds": 34.667,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.493899,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 66,
+   "atSeconds": 35.2,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.503661,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 67,
+   "atSeconds": 35.733,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.513423,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 68,
+   "atSeconds": 36.267,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.523185,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 69,
+   "atSeconds": 36.8,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.532946,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 70,
+   "atSeconds": 37.333,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.542708,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 71,
+   "atSeconds": 37.867,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.55247,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 72,
+   "atSeconds": 38.4,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.562232,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 73,
+   "atSeconds": 38.933,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.571994,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 74,
+   "atSeconds": 39.467,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.581756,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 75,
+   "atSeconds": 40.0,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.591518,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 76,
+   "atSeconds": 40.533,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.60128,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 77,
+   "atSeconds": 41.067,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.611042,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 78,
+   "atSeconds": 41.6,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.620804,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 79,
+   "atSeconds": 42.133,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.630565,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 80,
+   "atSeconds": 42.667,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.640327,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 81,
+   "atSeconds": 43.2,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.650089,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 82,
+   "atSeconds": 43.733,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.659851,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 83,
+   "atSeconds": 44.267,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.669613,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 84,
+   "atSeconds": 44.8,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.679375,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 85,
+   "atSeconds": 45.333,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.689137,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 86,
+   "atSeconds": 45.867,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.698899,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 87,
+   "atSeconds": 46.4,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.708661,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 88,
+   "atSeconds": 46.933,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.718423,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 89,
+   "atSeconds": 47.467,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.728185,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 90,
+   "atSeconds": 48.0,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.737946,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 91,
+   "atSeconds": 48.533,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.747708,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 92,
+   "atSeconds": 49.067,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.75747,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 93,
+   "atSeconds": 49.6,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.767232,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 94,
+   "atSeconds": 50.133,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.776994,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 95,
+   "atSeconds": 50.667,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.786756,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 96,
+   "atSeconds": 51.2,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.796518,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 97,
+   "atSeconds": 51.733,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.80628,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 98,
+   "atSeconds": 52.267,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.816042,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 99,
+   "atSeconds": 52.8,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.825804,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 100,
+   "atSeconds": 53.333,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.835565,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 101,
+   "atSeconds": 53.867,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.845327,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 102,
+   "atSeconds": 54.4,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.855089,
+      0.416667,
+      0.140625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 103,
+   "atSeconds": 54.933,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.864851,
+      0.416667,
+      0.135149,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 104,
+   "atSeconds": 55.467,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.874613,
+      0.416667,
+      0.125387,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 105,
+   "atSeconds": 56.0,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.884375,
+      0.416667,
+      0.115625,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 106,
+   "atSeconds": 56.533,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.894137,
+      0.416667,
+      0.105863,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 107,
+   "atSeconds": 57.067,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.903899,
+      0.416667,
+      0.096101,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 108,
+   "atSeconds": 57.6,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.913661,
+      0.416667,
+      0.086339,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 109,
+   "atSeconds": 58.133,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.923423,
+      0.416667,
+      0.076577,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 110,
+   "atSeconds": 58.667,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.933185,
+      0.416667,
+      0.066815,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 111,
+   "atSeconds": 59.2,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.942946,
+      0.416667,
+      0.057054,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 112,
+   "atSeconds": 59.733,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.952708,
+      0.416667,
+      0.047292,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 113,
+   "atSeconds": 60.267,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.96247,
+      0.416667,
+      0.03753,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 114,
+   "atSeconds": 60.8,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.972232,
+      0.416667,
+      0.027768,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 115,
+   "atSeconds": 61.333,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.981994,
+      0.416667,
+      0.018006,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 116,
+   "atSeconds": 61.867,
+   "boxes": [
+    {
+     "label": "person",
+     "bbox": [
+      0.991756,
+      0.416667,
+      0.008244,
+      0.527778
+     ],
+     "gtId": 1,
+     "visibility": "fully-visible"
+    }
+   ]
+  },
+  {
+   "frameIndex": 117,
+   "atSeconds": 62.4,
+   "boxes": []
+  },
+  {
+   "frameIndex": 118,
+   "atSeconds": 62.933,
+   "boxes": []
+  },
+  {
+   "frameIndex": 119,
+   "atSeconds": 63.467,
+   "boxes": []
+  },
+  {
+   "frameIndex": 120,
+   "atSeconds": 64.0,
+   "boxes": []
+  },
+  {
+   "frameIndex": 121,
+   "atSeconds": 64.533,
+   "boxes": []
+  },
+  {
+   "frameIndex": 122,
+   "atSeconds": 65.067,
+   "boxes": []
+  },
+  {
+   "frameIndex": 123,
+   "atSeconds": 65.6,
+   "boxes": []
+  },
+  {
+   "frameIndex": 124,
+   "atSeconds": 66.133,
+   "boxes": []
+  },
+  {
+   "frameIndex": 125,
+   "atSeconds": 66.667,
+   "boxes": []
+  },
+  {
+   "frameIndex": 126,
+   "atSeconds": 67.2,
+   "boxes": []
+  },
+  {
+   "frameIndex": 127,
+   "atSeconds": 67.733,
+   "boxes": []
+  },
+  {
+   "frameIndex": 128,
+   "atSeconds": 68.267,
+   "boxes": []
+  },
+  {
+   "frameIndex": 129,
+   "atSeconds": 68.8,
+   "boxes": []
+  },
+  {
+   "frameIndex": 130,
+   "atSeconds": 69.333,
+   "boxes": []
+  },
+  {
+   "frameIndex": 131,
+   "atSeconds": 69.867,
+   "boxes": []
+  }
+ ]
+}

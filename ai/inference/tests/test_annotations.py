@@ -50,9 +50,19 @@ class SchemaTests(unittest.TestCase):
         with self.assertRaises(ann.AnnotationError):
             ann.parse(doc(schemaVersion=""))
 
-    def test_a_file_without_a_clip_digest_is_refused(self) -> None:
+    def test_an_explicitly_unbound_file_parses(self) -> None:
+        """⭐ **One rule at both layers.** The corpus *forbids* constructed fixtures a `sha256` — git
+        binds them — so requiring one here made authored ground truth unparseable and the exemption
+        in `align()` unreachable. Found by running the first end-to-end scoring job, not by review.
+        """
+        self.assertIsNone(ann.parse(doc(clipSha256=None)).clip_sha256)
+
+    def test_a_malformed_digest_is_still_refused(self) -> None:
+        """⚠️ Explicit `null` is a decision; a broken string is somebody who meant to bind."""
         with self.assertRaises(ann.AnnotationError):
             ann.parse(doc(clipSha256=""))
+        with self.assertRaises(ann.AnnotationError):
+            ann.parse(doc(clipSha256="not-a-digest"))
 
     def test_a_truncated_digest_is_refused(self) -> None:
         """⚠️ 64 hex characters. A prefix would look right in a diff and bind to nothing."""
@@ -163,21 +173,28 @@ class AlignmentTests(unittest.TestCase):
         self.assertFalse(report.aligned)
         self.assertIn("nobody analysed", report.problems[0])
 
-    def test_a_constructed_fixture_is_bound_by_git_not_a_digest(self) -> None:
-        """⭐ `None` means the case declares no digest, which the corpus permits **only** for
-        constructed fixtures — they live in the repository, where git already binds file to content.
-
-        ⚠️ Without this, authored fixtures could never be scored at all: the provenance guard forbids
-        them from carrying a `sha256`, so a digest comparison would refuse every one of them forever
-        — and authored ground truth is the cheapest way to validate the scorer itself.
-        """
-        report = ann.align(self.a, case_id="walk-01", clip_sha256=None, sampled_fps=2.0)
-        self.assertTrue(report.aligned)
-
     def test_an_empty_digest_is_not_the_same_as_no_digest(self) -> None:
         """⛔ A case that *should* have carried one is refused; only an explicit `None` skips."""
         report = ann.align(self.a, case_id="walk-01", clip_sha256="", sampled_fps=2.0)
         self.assertFalse(report.aligned)
+
+    def test_digest_bound_footage_may_not_be_scored_by_unbound_annotations(self) -> None:
+        """⛔ **The direction that matters.** Real footage carries a digest; annotations that carry
+        none would silently drop the only check tying these boxes to those pixels."""
+        unbound = ann.parse(doc(clipSha256=None))
+        report = ann.align(unbound, case_id="walk-01", clip_sha256=DIGEST, sampled_fps=2.0)
+        self.assertFalse(report.aligned)
+        self.assertIn("must be digest-bound", report.problems[0])
+
+    def test_unbound_footage_may_not_be_scored_by_digest_bound_annotations(self) -> None:
+        """⚠️ The other direction is a pairing mistake too, and is reported rather than ignored."""
+        report = ann.align(self.a, case_id="walk-01", clip_sha256=None, sampled_fps=2.0)
+        self.assertFalse(report.aligned)
+
+    def test_an_unbound_pairing_aligns(self) -> None:
+        """⚠️ The positive control for constructed fixtures: both unbound is the authored case."""
+        unbound = ann.parse(doc(clipSha256=None))
+        self.assertTrue(ann.align(unbound, case_id="walk-01", clip_sha256=None, sampled_fps=2.0).aligned)
 
     def test_a_different_case_is_refused(self) -> None:
         report = ann.align(self.a, case_id="other-clip", clip_sha256=DIGEST)

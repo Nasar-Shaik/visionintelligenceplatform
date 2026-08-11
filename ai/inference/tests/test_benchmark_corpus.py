@@ -311,9 +311,28 @@ class DeclaredCorpusTests(unittest.TestCase):
     def test_no_scenario_is_available(self) -> None:
         self.assertEqual(bc.coverage_counts(self.rows)["AVAILABLE"], 0)
 
-    def test_no_case_carries_ground_truth(self) -> None:
-        """⛔ So no accuracy metric may be emitted by anything reading this corpus."""
-        self.assertFalse(self.corpus.has_any_ground_truth)
+    def test_no_real_footage_case_carries_ground_truth(self) -> None:
+        """⛔ **The standing fact, narrowed on 2026-08-11 and deliberately.**
+
+        This asserted that *nothing* carried ground truth. One authored case now does —
+        `walk-tracking`, whose boxes are derived from the ffmpeg expression that drew the sprite —
+        so the scoring path is exercised on every run instead of never.
+
+        ⚠️ The claim that matters is unchanged and is now stated precisely: **no real footage has
+        ground truth**, so no accuracy number about real people can be produced. Widening the old
+        assertion would have been the easy edit; narrowing it keeps the tripwire pointed at the thing
+        that actually needs guarding.
+        """
+        scored_real = [
+            c for c in self.corpus.cases if c.footage_kind == "REAL_FOOTAGE" and c.has_ground_truth
+        ]
+        self.assertEqual(scored_real, [])
+
+    def test_the_only_ground_truth_is_authored_and_says_so(self) -> None:
+        """⚠️ A reader must not mistake the accuracy table for evidence about people."""
+        scored = [c for c in self.corpus.cases if c.has_ground_truth]
+        self.assertEqual([c.case_id for c in scored], ["walk-tracking"])
+        self.assertEqual(scored[0].footage_kind, "AUTHORED")
 
     def test_the_coverage_report_says_no_winner_may_be_declared(self) -> None:
         text = bc.render_coverage(self.corpus, self.rows)

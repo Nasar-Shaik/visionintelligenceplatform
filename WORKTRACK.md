@@ -242,7 +242,32 @@ annotated** — and that is the accurate description, not a gap in the work.
 | P3.1 detector benchmark lab | ✅ complete (`9502f80`) |
 | P3.2a classification/provenance guard | ✅ complete (`eb9a961`) |
 | P3.2b registration · verification · gap reporting | ✅ complete (`32f4b77`) |
-| P3.2c annotation foundation + detector validation | ✅ complete — **executable, unexercised** |
+| P3.2c annotation foundation + detector validation | ✅ complete |
+| P3.2d first end-to-end scoring run | ✅ **the pipeline is proven — on authored footage** |
+
+⭐ **The scoring pipeline runs end to end and produces real accuracy numbers.** Proven on
+`walk-tracking`, an authored fixture whose ground truth is derived from the ffmpeg overlay expression
+that **drew** the sprite — construction-known, verified against the pixels by rendering frames, and
+now a committed case so every benchmark run exercises the accuracy path:
+
+| | TP | FP | FN | Precision | Recall | F1 | Mean IoU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `rtdetr-r18vd` | 109 | 0 | 7 | 1.000 | 0.940 | 0.969 | 0.966 |
+| `yolox-nano` | 107 | 0 | 9 | 1.000 | 0.922 | 0.960 | 0.956 |
+
+⛔ **These are not detector evidence and must never be quoted as such.** The subject is a cut-out
+sprite on flat grey — the easiest detection problem that exists. Precision 1.000 with zero false
+positives is a property of the background, not of the detector. ⚠️ Every miss is a frame-edge sliver
+(5–37 px of a 90 px sprite as the subject enters or leaves), which is the honest behaviour of both
+the detector and the annotation.
+
+⭐ Three defects found by *running* it, none of which review had caught:
+
+| Defect | Why it mattered |
+| --- | --- |
+| Alignment compared the **requested** sample rate, not the effective one | `stride` is an integer: 15 fps at target 2.0 samples at **1.875**. An annotator who worked at the true rate would have been refused; one who assumed 2.0 accepted, with 8.75 frames of drift over 70 s |
+| `clipSha256` was required unconditionally | The corpus *forbids* authored cases a digest, so authored ground truth was unparseable and the exemption in `align()` was unreachable. Now `null` is permitted explicitly, and the pairing is checked **both ways** |
+| `case.sha256 or ""` | Collapsed "not digest-bound" into "should have been bound and is not", refusing every authored case with a message about real footage |
 
 **Real footage:** 0 clips declared in the committed corpus. One real clip exists on this machine and
 is **not** declared — its lawful basis is unconfirmed. **Annotations: 0.**

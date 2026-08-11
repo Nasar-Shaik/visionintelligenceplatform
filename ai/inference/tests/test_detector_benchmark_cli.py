@@ -396,6 +396,28 @@ class ScoringWiringTests(unittest.TestCase):
         self.assertEqual(scores["m::c1"]["framesScored"], 4)
         self.assertGreater(cli.WARMUP_FRAMES, 0)
 
+    def test_an_authored_case_scores_without_a_digest(self) -> None:
+        """⛔ **The regression test for `case.sha256 or ""`.**
+
+        Every wiring test here used a digest-bound REAL_FOOTAGE case, so none caught that `or ""`
+        turns `None` ("not digest-bound", the authored case) into `""` ("should have been bound and
+        is not"). The first authored scoring run was refused with a message about real footage.
+        """
+        import annotations as ann
+
+        gt = dict(self.gt)
+        gt.pop("clipSha256")
+        with open(os.path.join(self.root, "a1.json"), "w", encoding="utf-8") as h:
+            json.dump(gt, h)
+        case = bc.BenchmarkCase(
+            case_id="c1", path="a1.mp4", category="motion", footage_kind="AUTHORED",
+            scenarios=("normal-person",), ground_truth="a1.json",
+        )
+        scores: dict = {}
+        cli._score_case(scores, case, "m", self._frames(), 2.0, self.root, "/real")
+        self.assertNotIn("refused", scores["m::c1"])
+        self.assertEqual(scores["m::c1"]["precision"], 1.0)
+
     def test_a_digest_mismatch_refuses_rather_than_scores(self) -> None:
         case = bc.BenchmarkCase(
             case_id="c1", path="c1.mp4", category="real", footage_kind="REAL_FOOTAGE",
@@ -411,6 +433,25 @@ class ScoringWiringTests(unittest.TestCase):
         scores: dict = {}
         cli._score_case(scores, self.case, "m", self._frames(), 5.0, "/fixtures", self.root)
         self.assertIn("refused", scores["m::c1"])
+
+    def test_alignment_uses_the_rate_actually_sampled_not_the_one_requested(self) -> None:
+        """⛔ **Found while attempting the first real scoring run.** `FrameSampler.stride` is an
+        integer, so a 15 fps clip asked for 2.0 fps is sampled at 15/8 = **1.875** — 6.25 % low, and
+        8.75 frames of divergence over a 70 s clip.
+
+        Aligning against the *requested* rate would refuse an annotator who correctly worked at the
+        true rate, and accept one who assumed 2.0. This asserts the effective rate is what reaches
+        `align`, by scoring a run whose annotations declare 1.875.
+        """
+        import annotations as ann
+
+        gt = dict(self.gt, annotatedFps=1.875)
+        with open(os.path.join(self.root, "c1.json"), "w", encoding="utf-8") as h:
+            json.dump(gt, h)
+        scores: dict = {}
+        cli._score_case(scores, self.case, "m", self._frames(), 15 / 8, "/fixtures", self.root)
+        self.assertNotIn("refused", scores["m::c1"])
+        self.assertEqual(scores["m::c1"]["precision"], 1.0)
 
     def test_unreadable_annotations_are_refused_not_skipped(self) -> None:
         with open(os.path.join(self.root, "c1.json"), "w", encoding="utf-8") as h:

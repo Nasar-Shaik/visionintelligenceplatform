@@ -116,8 +116,9 @@ class Annotations:
 
     schema_version: str
     case_id: str
-    #: ⛔ The digest of the clip these boxes describe. This is the binding that makes them evidence.
-    clip_sha256: str
+    #: ⛔ The digest of the clip these boxes describe — the binding that makes them evidence.
+    #: `None` only for constructed fixtures, which git binds instead; real footage must carry one.
+    clip_sha256: Optional[str]
     #: The rate the annotator worked at. ⚠️ Must match the benchmark's sampling rate, or box 30
     #: describes a different instant than detection 30.
     annotated_fps: float
@@ -167,12 +168,23 @@ def parse(raw: Mapping[str, object], *, source: str = "<memory>") -> Annotations
             f"annotations '{source}' declare no schemaVersion. ⛔ A scorer cannot tell a file that "
             f"predates a rule from one that disagrees with it."
         )
-    digest = str(raw.get("clipSha256") or "").strip().lower()
-    if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
-        raise AnnotationError(
-            f"annotations '{source}' declare clipSha256 '{raw.get('clipSha256')}', which is not a "
-            f"64-character hex digest. ⛔ Without it these boxes describe no particular pixels."
-        )
+    # ⛔ **One rule, applied at both layers.** The corpus *forbids* constructed fixtures a `sha256`
+    # (git binds file to content there) and *requires* one for real footage. Requiring it here
+    # unconditionally made authored ground truth unparseable, so the exemption in `align()` was
+    # unreachable — found by running the first end-to-end scoring job.
+    #
+    # ⚠️ Explicit `null` means "not digest-bound" and is permitted. A *malformed* value is still
+    # refused: that is somebody who meant to bind and got it wrong.
+    raw_digest = raw.get("clipSha256", None)
+    if raw_digest is None:
+        digest = None
+    else:
+        digest = str(raw_digest).strip().lower()
+        if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise AnnotationError(
+                f"annotations '{source}' declare clipSha256 '{raw_digest}', which is not a "
+                f"64-character hex digest. ⛔ Without it these boxes describe no particular pixels."
+            )
     case_id = str(raw.get("caseId") or "").strip()
     if not case_id:
         raise AnnotationError(f"annotations '{source}' name no caseId")
@@ -285,11 +297,22 @@ def align(
     # fixtures — those live in the repository, where git already binds the file to its content. Real
     # footage lives outside git and is required to carry a digest, so `None` cannot reach here for
     # it. ⛔ An empty string is *not* the same thing: that is a case that should have had one.
-    if clip_sha256 is not None and annotations.clip_sha256 != clip_sha256.lower():
+    if clip_sha256 is not None and annotations.clip_sha256 is None:
+        # ⛔ The case is digest-bound (real footage) and the annotations are not. Scoring here would
+        # silently drop the only check that ties these boxes to those pixels.
+        problems.append(
+            "the case is bound by sha256 but these annotations declare none — real footage must be "
+            "digest-bound, or a re-exported clip scores against boxes drawn on different pixels"
+        )
+    elif clip_sha256 is None and annotations.clip_sha256 is not None:
+        problems.append(
+            f"annotations declare sha256:{annotations.clip_sha256[:12]}… but the case declares none "
+            f"— a constructed fixture is bound by git, so this pairing is a mistake somewhere"
+        )
+    elif clip_sha256 is not None and annotations.clip_sha256 != clip_sha256.lower():
         problems.append(
             f"annotations describe sha256:{annotations.clip_sha256[:12]}…, "
-            f"clip is sha256:{(clip_sha256 or '(none declared)')[:12]}… — these boxes describe "
-            f"different pixels"
+            f"clip is sha256:{clip_sha256[:12]}… — these boxes describe different pixels"
         )
     if sampled_fps is not None and abs(annotations.annotated_fps - sampled_fps) > 1e-6:
         problems.append(
