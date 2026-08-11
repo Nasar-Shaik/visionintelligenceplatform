@@ -1,0 +1,109 @@
+# One-off toolchain for `export_rtmpose_onnx.py` (P3.3a).
+#
+# ⛔ NOT a serving image and never built in CI. torch + mmpose is a multi-hundred-MB dependency the
+# runtime does not have and does not need — it consumes ONNX through onnxruntime. This exists so the
+# conversion is reproducible by anyone who needs to re-derive the artifact, which is the whole point
+# of exporting it ourselves rather than trusting a third-party ONNX of unclear provenance.
+#
+# ⚠️ Versions are pinned together deliberately. mmcv ships prebuilt wheels per (python, torch) pair;
+# an unpinned install resolves to a wheel that does not match the installed torch and fails at import
+# with a message about ops, not about versions.
+#
+# ⛔ **Pinned to linux/amd64, and it must be.** OpenMMLab's mmcv wheel index publishes
+# `manylinux1_x86_64` and `macosx` only — there is no linux/arm64 wheel. On an Apple Silicon host
+# Docker defaults to arm64, pip finds no wheel, falls back to compiling mmcv from source, and dies
+# with `legacy-install-failure` — a message about packaging that says nothing about the real cause.
+# Emulation is slow and entirely acceptable here: this is a one-off tool and an ONNX graph is
+# architecture-independent, so the artifact is identical either way.
+FROM --platform=linux/amd64 python:3.10-slim
+
+ARG TORCH_VERSION=2.1.0
+#: torchvision 0.16.0 is the release paired with torch 2.1.0 in PyTorch's own compatibility matrix.
+#: ⛔ Pinned because mmpose depends on torchvision *unpinned*: left alone, pip resolved it to the
+#: latest, which requires torch 2.13.0, silently REPLACED the torch installed above, and pulled
+#: ~1.5 GB of CUDA wheels into a CPU-only image. mmcv is an ABI-compiled wheel built against one
+#: torch — so that upgrade breaks it, and the resulting error talks about ops, not versions.
+ARG TORCHVISION_VERSION=0.16.0
+# ⚠️ Spelled out rather than derived from TORCH_VERSION: Dockerfile ARG substitution supports only
+# `${v:-default}` / `${v:+alt}`, so a shell suffix-strip like `${TORCH_VERSION%.*}` is passed through
+# literally and silently produces a 404 index URL — which pip reports as a source-build failure.
+ARG MMCV_TORCH_INDEX=torch2.1.0
+ARG MMCV_VERSION=2.1.0
+ARG MMPOSE_REF=v1.3.2
+
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# ⭐ One constraints file, exported to EVERY subsequent pip invocation. This makes the pin
+# structural rather than hopeful: a transitive dependency that wants a different torch now fails
+# loudly at resolve time instead of quietly succeeding and leaving mmcv linked against a torch that
+# is no longer installed.
+RUN printf 'torch==%s\ntorchvision==%s\nnumpy<2\n' "${TORCH_VERSION}" "${TORCHVISION_VERSION}" > /etc/pip-constraints.txt
+ENV PIP_CONSTRAINT=/etc/pip-constraints.txt
+
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
+      "torch==${TORCH_VERSION}" "torchvision==${TORCHVISION_VERSION}"
+
+# mmcv from OpenMMLab's own wheel index for this exact torch build.
+RUN pip install --no-cache-dir "mmengine>=0.10,<1.0" \
+    && pip install --no-cache-dir --only-binary=:all: "mmcv==${MMCV_VERSION}" \
+       -f "https://download.openmmlab.com/mmcv/dist/cpu/${MMCV_TORCH_INDEX}/index.html"
+
+# mmpose from source, because the RTMPose configs live under projects/ and are not shipped in the wheel.
+RUN git clone --depth 1 --branch "${MMPOSE_REF}" https://github.com/open-mmlab/mmpose.git /opt/mmpose \
+    && pip install --no-cache-dir -r /opt/mmpose/requirements/build.txt \
+    && pip install --no-cache-dir -e /opt/mmpose \
+    && pip install --no-cache-dir onnx onnxruntime
+
+# ⛔ Required, despite this export never running a detector. `mmpose.models.__init__` imports every
+# head unconditionally, and `RTMOHead` imports `mmdet.utils` — so the moment `MODELS.build` resolves
+# anything, mmdet must be importable. Not a guess: the traceback names the module and the line.
+# ⚠️ mmdet 3.x targets mmcv >=2.0,<2.2, which is why mmcv is pinned at 2.1.0 above; the constraints
+# file keeps mmdet from dragging torch or numpy with it.
+ARG MMDET_VERSION=3.3.0
+RUN pip install --no-cache-dir "mmdet==${MMDET_VERSION}"
+
+# ⛔ Last, and after every other install, because mmcv/mmpose both depend on `opencv-python` and a
+# later resolve would pull the GUI build straight back in. That build links libGL/libxcb, which a
+# slim image has no reason to carry, so importing mmcv dies with `ImportError: libxcb.so.1` — an
+# error about X11 raised by a tool that will never open a window. The headless wheel is the same
+# OpenCV without the GUI module; swapping it is smaller than installing an X stack to satisfy an
+# import nothing calls.
+RUN pip uninstall -y opencv-python opencv-contrib-python 2>/dev/null; \
+    pip install --no-cache-dir "opencv-python-headless<4.11"
+
+# ⛔ **The build fails here, not ten minutes into an export.** Every failure in this toolchain so far
+# reported a cause that was not the cause: a 404 index read as `legacy-install-failure`, a missing
+# arm64 wheel read the same way, an X11 `libxcb.so.1` from a tool that never opens a window, and a
+# silent torch upgrade that would have surfaced as an mmcv ops error. Importing the stack — and
+# asserting torch did not drift — turns all of them into one honest failure at the layer that caused it.
+RUN python - <<'PY'
+import numpy, torch, torchvision, cv2, mmcv, mmengine, mmpose
+
+# ⚠️ Version assertions only. The check that the toolchain actually WORKS is `--selftest` below,
+# after the script is copied — three import-based smoke tests in a row passed over a toolchain that
+# could not run, because an import list can only ever test the imports someone thought to write.
+
+# ⛔ NumPy 2 changed the C ABI. torch 2.1.0 and xtcocotools are both compiled against 1.x, and the
+# mismatch surfaces as `numpy.dtype size changed ... Expected 96 from C header, got 88` — a message
+# about struct sizes that never mentions numpy's major version.
+assert numpy.__version__.startswith("1."), f"numpy is {numpy.__version__}, expected 1.x (C ABI)"
+expected = "2.1.0"
+assert torch.__version__.startswith(expected), (
+    f"torch is {torch.__version__}, expected {expected} — a transitive dependency moved it, and "
+    f"mmcv is an ABI-compiled wheel built against {expected}"
+)
+print(f"numpy {numpy.__version__} · torch {torch.__version__} · torchvision {torchvision.__version__}")
+print(f"cv2 {cv2.__version__} · mmcv {mmcv.__version__} · mmengine {mmengine.__version__} · mmpose {mmpose.__version__}")
+PY
+
+COPY export_rtmpose_onnx.py /work/export_rtmpose_onnx.py
+WORKDIR /work
+
+# ⛔ **The build fails here if the toolchain cannot build the network.** This runs the real
+# construction path — `Config.fromfile` → `init_default_scope` → `MODELS.build` — offline, with no
+# checkpoint. Every earlier failure (xtcocotools, mmdet, the silent torch swap) is caught by this
+# one step, at the layer that caused it, instead of ten minutes into an export.
+RUN python /work/export_rtmpose_onnx.py --selftest --variant tiny
+
+ENTRYPOINT ["python", "/work/export_rtmpose_onnx.py"]
