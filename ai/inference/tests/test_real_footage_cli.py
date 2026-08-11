@@ -249,3 +249,174 @@ class FrameExtractionTests(unittest.TestCase):
         import annotations as ann
 
         self.assertEqual(ann.parse(doc).clip_sha256, "a" * 64)
+
+
+class AnnotationValidatorTests(unittest.TestCase):
+    """⛔ **The command a human runs before two hours of work is scored.**
+
+    It computes no accuracy, changes nothing and repairs nothing. Every rule it applies is the one
+    the scorer already applies — called, not restated, because a second implementation eventually
+    disagrees with the first and the disagreement is discovered as an unexplained score.
+    """
+
+    DIGEST = "e" * 64
+
+    def setUp(self) -> None:
+        import annotations as ann
+
+        self.dir = tempfile.mkdtemp()
+        self.doc = {
+            "schemaVersion": ann.SCHEMA_VERSION,
+            "caseId": "take-01",
+            "clipSha256": None,
+            "annotatedFps": 2.0,
+            "annotator": "nasar",
+            "frames": [
+                {"frameIndex": 0, "atSeconds": 0.0, "boxes": [
+                    {"label": "person", "bbox": [0.1, 0.1, 0.2, 0.5], "gtId": 1,
+                     "visibility": "fully-visible"}]},
+                {"frameIndex": 1, "atSeconds": 0.5, "boxes": []},
+            ],
+        }
+
+    def _write(self, doc=None) -> str:
+        path = os.path.join(self.dir, "a.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(doc if doc is not None else self.doc, handle)
+        return path
+
+    def _corpus(self, **case) -> bc.Corpus:
+        base = {"case_id": "take-01", "path": "take-01.mp4", "category": "motion",
+                "footage_kind": "AUTHORED", "scenarios": ("normal-person",)}
+        base.update(case)
+        return bc.Corpus(version="v", cases=(bc.BenchmarkCase(**base),))
+
+    # --- positive controls ---
+
+    @staticmethod
+    def _errors(problems):
+        """⚠️ A "NOT CHECKED" line is a disclosure, not a defect — the CLI separates them the same
+        way, and a positive control that counted notes as failures would test the wrong thing."""
+        return [p for p in problems if not p.startswith("⚠️ NOT CHECKED")]
+
+    def test_a_valid_file_passes(self) -> None:
+        """⚠️ First, because a validator that refuses everything passes every negative test."""
+        self.assertEqual(self._errors(rf.validate_annotations(self._write(), corpus=self._corpus())), [])
+
+    def test_a_valid_file_with_keypoints_passes(self) -> None:
+        self.doc["frames"][0]["boxes"][0]["keypoints"] = [
+            {"name": "left_wrist", "x": 0.2, "y": 0.3, "visible": True},
+            {"name": "right_wrist", "x": 0.3, "y": 0.3, "visible": False},
+        ]
+        self.assertEqual(self._errors(rf.validate_annotations(self._write(), corpus=self._corpus())), [])
+
+    def test_the_cli_reports_pass_and_exits_zero(self) -> None:
+        """⭐ The integration test: through `main`, as a human would run it."""
+        corpus_path = os.path.join(self.dir, "corpus.json")
+        with open(corpus_path, "w", encoding="utf-8") as handle:
+            json.dump({"version": "v", "cases": [
+                {"caseId": "take-01", "path": "take-01.mp4", "footageKind": "AUTHORED",
+                 "scenarios": ["normal-person"]}]}, handle)
+        code = rf.main([
+            "--validate-annotations", self._write(), "--corpus", corpus_path, "--case", "take-01",
+        ])
+        self.assertEqual(code, 0)
+
+    # --- refusals ---
+
+    def test_a_missing_file_is_a_usage_error(self) -> None:
+        self.assertEqual(rf.main(["--validate-annotations", "/nonexistent.json"]), 2)
+
+    def test_a_malformed_file_fails(self) -> None:
+        path = os.path.join(self.dir, "bad.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("{not json")
+        self.assertEqual(rf.main(["--validate-annotations", path]), 1)
+
+    def test_a_schema_failure_is_terminal_and_not_padded(self) -> None:
+        """⚠️ One problem, not a list of speculative extras: nothing downstream can be checked
+        against a file that did not parse."""
+        self.doc["annotatedFps"] = 0
+        problems = rf.validate_annotations(self._write(), corpus=self._corpus())
+        self.assertEqual(len(problems), 1)
+
+    def test_a_bad_bounding_box_fails(self) -> None:
+        self.doc["frames"][0]["boxes"][0]["bbox"] = [100, 200, 50, 300]
+        self.assertTrue(rf.validate_annotations(self._write(), corpus=self._corpus()))
+
+    def test_a_bad_keypoint_fails(self) -> None:
+        self.doc["frames"][0]["boxes"][0]["keypoints"] = [{"name": "left_hand", "x": 0.2, "y": 0.3, "visible": True}]
+        self.assertTrue(rf.validate_annotations(self._write(), corpus=self._corpus()))
+
+    def test_an_inconsistent_identity_fails(self) -> None:
+        """⛔ One subject cannot be in two places in one frame."""
+        self.doc["frames"][0]["boxes"].append(
+            {"label": "person", "bbox": [0.5, 0.1, 0.2, 0.5], "gtId": 1})
+        self.assertTrue(rf.validate_annotations(self._write(), corpus=self._corpus()))
+
+    def test_a_digest_mismatch_fails(self) -> None:
+        """⛔ The check that catches boxes drawn on different pixels."""
+        self.doc["clipSha256"] = self.DIGEST
+        problems = rf.validate_annotations(
+            self._write(),
+            corpus=self._corpus(footage_kind="REAL_FOOTAGE", sha256="f" * 64,
+                                consent="c.md", capture={"device": "phone"}),
+        )
+        self.assertTrue(any("different pixels" in p for p in problems))
+
+    def test_an_unknown_case_fails(self) -> None:
+        self.doc["caseId"] = "not-a-case"
+        self.assertTrue(rf.validate_annotations(self._write(), corpus=self._corpus()))
+
+    def test_a_wrong_schema_version_fails(self) -> None:
+        self.doc["schemaVersion"] = "tier1-2020-01-01"
+        problems = rf.validate_annotations(self._write(), corpus=self._corpus())
+        self.assertTrue(any("schemaVersion" in p for p in problems))
+
+    # --- disclosure ---
+
+    def test_unbound_validation_discloses_what_it_did_not_check(self) -> None:
+        """⛔ A PASS that quietly skipped alignment is a weaker claim wearing the same word."""
+        problems = rf.validate_annotations(self._write())
+        self.assertTrue(any(p.startswith("⚠️ NOT CHECKED") for p in problems))
+
+    def test_a_not_checked_note_does_not_fail_the_file(self) -> None:
+        """⚠️ A disclosure is not a defect — it must be visible without turning PASS into FAIL."""
+        self.assertEqual(rf.main(["--validate-annotations", self._write(), "--corpus", "/nonexistent"]), 0)
+
+    def test_the_validator_never_modifies_the_file(self) -> None:
+        """⛔ It must not silently repair anything."""
+        path = self._write()
+        with open(path, "rb") as handle:
+            before = handle.read()
+        rf.validate_annotations(path, corpus=self._corpus())
+        with open(path, "rb") as handle:
+            self.assertEqual(handle.read(), before)
+
+    def test_the_validator_computes_no_accuracy(self) -> None:
+        """⛔ Its entire output is problems. There is no path by which it emits a score."""
+        problems = rf.validate_annotations(self._write(), corpus=self._corpus())
+        self.assertTrue(all(isinstance(p, str) for p in problems))
+        for word in ("precision", "recall", "f1", "iou"):
+            self.assertFalse(any(word in p.lower() for p in problems))
+
+
+class EntrypointTests(unittest.TestCase):
+    """⛔ **The defect unit tests structurally cannot catch.**
+
+    `_validate` was appended below `if __name__ == "__main__": raise SystemExit(main())`. Importing
+    the module defines everything before anything runs, so every test here passed — while running
+    the file as a script raised `NameError` on the first use. Found by executing the CLI in the
+    built image, which is the only place the distinction exists.
+    """
+
+    def test_the_entrypoint_is_the_last_statement_in_the_file(self) -> None:
+        import re
+
+        source = open(os.path.join(os.path.dirname(__file__), "..", "real_footage_cli.py"),
+                      encoding="utf-8").read().rstrip()
+        guard = source.index('if __name__ == "__main__":')
+        after = source[guard:]
+        self.assertNotIn("\ndef ", after, "a function is defined after the __main__ guard")
+        self.assertNotIn("\nclass ", after, "a class is defined after the __main__ guard")
+        self.assertTrue(re.search(r"raise SystemExit\(main\(\)\)\s*$", source))

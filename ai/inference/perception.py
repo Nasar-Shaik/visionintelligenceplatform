@@ -119,6 +119,43 @@ def describe_task(task: str) -> str:
     return description
 
 
+# --- skeleton topologies -------------------------------------------------------------------------
+
+#: The joints of `skeleton="coco-17"`, in the order the convention numbers them.
+#:
+#: ⭐ **Declared once, here, because `skeleton` is a property of the *convention* rather than of any
+#: one producer.** A pose decoder and a human annotator must agree on the spelling of a joint or
+#: their outputs cannot be compared at all — and "left_wrist" versus "leftWrist" is exactly the kind
+#: of disagreement that surfaces as a plausible, terrible accuracy score rather than as an error.
+#:
+#: ⚠️ There is no `hand` joint. COCO annotates the **wrist**, and a model trained on it cannot report
+#: something the labels never contained.
+COCO_17: Tuple[str, ...] = (
+    "nose",
+    "left_eye",
+    "right_eye",
+    "left_ear",
+    "right_ear",
+    "left_shoulder",
+    "right_shoulder",
+    "left_elbow",
+    "right_elbow",
+    "left_wrist",
+    "right_wrist",
+    "left_hip",
+    "right_hip",
+    "left_knee",
+    "right_knee",
+    "left_ankle",
+    "right_ankle",
+)
+
+#: Every topology this platform recognises, by the name that travels in `RawInstance.skeleton`.
+SKELETONS: Mapping[str, Tuple[str, ...]] = {"coco-17": COCO_17}
+
+DEFAULT_SKELETON = "coco-17"
+
+
 # --- reserved attribute names --------------------------------------------------------------------
 
 #: Where each modality rides inside the frozen `Detection.attributes` map. ⚠️ Declared once; a module

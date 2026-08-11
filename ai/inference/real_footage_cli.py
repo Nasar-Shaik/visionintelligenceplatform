@@ -36,6 +36,7 @@ import os
 import sys
 from typing import Dict, List, Mapping, Optional, Sequence
 
+import annotations as ann
 import benchmark_corpus as bc
 
 DEFAULT_CORPUS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "benchmarks", "detector-corpus.json")
@@ -202,6 +203,86 @@ def annotation_skeleton(summary: Mapping[str, object], *, case_id: str, clip_sha
     }
 
 
+def validate_annotations(
+    path: str,
+    *,
+    corpus: Optional[bc.Corpus] = None,
+    case_id: str = "",
+    fixtures_root: str = DEFAULT_FIXTURES,
+    real_root: str = bc.DEFAULT_REAL_ROOT,
+) -> List[str]:
+    """Check a finished annotation file. Returns every problem found; empty means PASS.
+
+    ⛔ **This computes no accuracy, modifies nothing, and repairs nothing.** It exists because a
+    person finishing two hours of annotation previously had no way to learn whether their file would
+    be accepted — `--verify` checks clip digests and `align()` only ran inside a benchmark. Finding
+    a rate mistake after the work is the expensive order to find it in.
+
+    ⭐ **Every rule is the one the scorer already applies**, called here rather than restated:
+    `annotations.load` for the schema, boxes and keypoints; `align` for digest, rate, range and
+    case; `identity_problems` for gtId consistency. A second implementation would eventually
+    disagree with the first, and the disagreement would be discovered as an unexplained score.
+    """
+    try:
+        parsed = ann.load(path)
+    except ann.AnnotationError as exc:
+        # ⛔ Schema failure is terminal: nothing downstream can be checked against a file that did
+        # not parse, and listing speculative further problems would be noise.
+        return [str(exc)]
+
+    problems: List[str] = []
+    if parsed.schema_version != ann.SCHEMA_VERSION:
+        problems.append(
+            f"schemaVersion is '{parsed.schema_version}', this tool validates "
+            f"'{ann.SCHEMA_VERSION}' — the meaning of a field may have changed between them"
+        )
+    problems.extend(ann.identity_problems(parsed))
+
+    if corpus is None:
+        # ⚠️ Reported, never silently skipped: alignment is the half that catches a file describing
+        # different pixels, and a PASS that omitted it would be a weaker claim wearing the same word.
+        problems.append(
+            "⚠️ NOT CHECKED: digest, rate, range and case alignment — pass --corpus and --case to "
+            "bind this file to a declared clip. Schema, boxes, keypoints and identity were checked."
+        )
+        return problems
+
+    wanted = case_id or parsed.case_id
+    try:
+        case = corpus.by_id(wanted)
+    except bc.CorpusError as exc:
+        problems.append(str(exc))
+        return problems
+
+    clip = os.path.join(bc.root_for(case, fixtures_root, real_root), case.path)
+    sampled_fps: Optional[float] = None
+    analysed: Optional[int] = None
+    if os.path.isfile(clip):
+        measured = probe(clip)
+        source_fps = measured.get("fps")
+        frames = measured.get("frames")
+        if isinstance(source_fps, (int, float)) and source_fps > 0:
+            # ⛔ The runtime's own integer stride, so the rate checked is the rate SAMPLED — a 27 fps
+            # clip asked for 2.0 is sampled at 1.929, and comparing against 2.0 would refuse a
+            # correct annotator and accept a drifting one.
+            stride = max(1, round(float(source_fps) / 2.0))
+            sampled_fps = float(source_fps) / stride
+            if isinstance(frames, int) and frames > 0:
+                analysed = (frames + stride - 1) // stride
+    else:
+        problems.append(f"⚠️ NOT CHECKED: rate and range — the clip is not present at '{clip}'")
+
+    report = ann.align(
+        parsed,
+        case_id=case.case_id,
+        clip_sha256=case.sha256,
+        sampled_fps=sampled_fps,
+        analysed_frames=analysed,
+    )
+    problems.extend(report.problems)
+    return problems
+
+
 def gaps(corpus: bc.Corpus) -> List[str]:
     """Scenarios no real footage covers — ⭐ the recording list, generated rather than maintained."""
     rows = bc.coverage(corpus)
@@ -255,7 +336,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--extract-frames", default="", help="clip to extract sampled frames from")
     parser.add_argument("--frames-out", default="", help="directory for the extracted frames")
     parser.add_argument("--target-fps", type=float, default=2.0)
+    parser.add_argument(
+        "--validate-annotations",
+        default="",
+        help="check a finished annotation file. ⛔ Computes no accuracy and changes nothing",
+    )
+    parser.add_argument("--case", default="", help="the corpus case to align the annotations against")
     args = parser.parse_args(argv)
+
+    if args.validate_annotations:
+        return _validate(args)
 
     if args.extract_frames:
         if not args.frames_out:
@@ -374,6 +464,50 @@ def _register(args) -> int:  # noqa: ANN001
     print(f"\n✓ declared '{entry['caseId']}' in {args.corpus}", file=sys.stderr)
     return 0
 
+
+
+def _validate(args) -> int:  # noqa: ANN001
+    """`--validate-annotations`. ⛔ PASS or FAIL, every error listed, nothing repaired."""
+    if not os.path.isfile(args.validate_annotations):
+        print(f"⛔ no such annotation file: {args.validate_annotations}", file=sys.stderr)
+        return 2
+
+    # ⭐ Binding is opt-in via `--case`, so the two modes are a choice rather than an accident of
+    # whether a default corpus file happens to exist. Without it the file is still fully checked for
+    # schema, boxes, keypoints and identity — and the report says what it could not check.
+    corpus = None
+    if args.case:
+        try:
+            corpus = bc.load(
+                args.corpus, root=args.fixtures, real_root=args.real_root, require_files=False
+            )
+        except bc.CorpusError as exc:
+            print(f"⛔ corpus: {exc}", file=sys.stderr)
+            return 2
+
+    problems = validate_annotations(
+        args.validate_annotations,
+        corpus=corpus,
+        case_id=args.case,
+        fixtures_root=args.fixtures,
+        real_root=args.real_root,
+    )
+    # ⚠️ A "NOT CHECKED" note is a disclosure, not a defect: it must not fail the file, and it must
+    # not be hidden either — a PASS that quietly skipped alignment is a weaker claim wearing the
+    # same word.
+    errors = [p for p in problems if not p.startswith("⚠️ NOT CHECKED")]
+    notes = [p for p in problems if p.startswith("⚠️ NOT CHECKED")]
+
+    for note in notes:
+        print(note)
+    for problem in errors:
+        print(f"  ⛔ {problem}", file=sys.stderr)
+
+    if errors:
+        print(f"\nFAIL — {len(errors)} problem(s) in {args.validate_annotations}", file=sys.stderr)
+        return 1
+    print(f"\nPASS — {args.validate_annotations}")
+    return 0
 
 if __name__ == "__main__":
     raise SystemExit(main())

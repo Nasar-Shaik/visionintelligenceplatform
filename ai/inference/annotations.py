@@ -34,6 +34,8 @@ import json
 from dataclasses import dataclass
 from typing import Dict, List, Mapping, Optional, Tuple
 
+from perception import DEFAULT_SKELETON, SKELETONS
+
 #: The annotation format's own version. ⚠️ Bumped when the *meaning* of a field changes, never for a
 #: new optional one — a scorer must be able to tell "this file predates that rule" from "this file
 #: disagrees with it".
@@ -55,6 +57,98 @@ class AnnotationError(ValueError):
 
 
 @dataclass(frozen=True)
+class GroundTruthKeypoint:
+    """One joint a **human** located. ⛔ Deliberately not `perception.Keypoint`.
+
+    The two carry the same joint vocabulary and the same `visible` semantics — they must, or a
+    prediction and a label cannot be compared — but a model's keypoint has a `confidence` and a
+    human's does not, and that difference is load-bearing:
+
+    | | says | stated by |
+    | --- | --- | --- |
+    | `visible` | the joint is **there but hidden** vs plainly in shot | the annotator |
+    | `confidence` | how sure the **model** was | ⛔ the model, never the annotator |
+
+    ⚠️ A human confidence written here would be compared against model confidence at scoring time and
+    would mean something entirely different, so the field is **refused** rather than ignored. A
+    person is not uncertain the way a model is; where they are unsure of a joint's position they omit
+    the joint, which is a different and honest fact.
+    """
+
+    name: str
+    x: float
+    y: float
+    #: ⛔ Required, with no default. A joint whose visibility nobody stated cannot answer the one
+    #: question pose is being bought for — recall on *occluded* wrists.
+    visible: bool
+
+    def to_dict(self) -> dict:
+        return {"name": self.name, "x": self.x, "y": self.y, "visible": self.visible}
+
+
+def _keypoints(raw: object, *, label: str, skeleton: str) -> Tuple[GroundTruthKeypoint, ...]:
+    """Parse and validate one box's keypoints. ⛔ Every defect raises; none is dropped."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, (list, tuple)):
+        raise AnnotationError(f"box '{label}' has a keypoints field that is not a list")
+
+    allowed = SKELETONS.get(skeleton)
+    if allowed is None:
+        raise AnnotationError(
+            f"box '{label}' declares skeleton '{skeleton}', which is not a known topology "
+            f"({', '.join(sorted(SKELETONS))}). A joint vocabulary nobody shares cannot be scored."
+        )
+
+    out: List[GroundTruthKeypoint] = []
+    seen: set = set()
+    for entry in raw:
+        if not isinstance(entry, Mapping):
+            raise AnnotationError(f"box '{label}' has a keypoint that is not an object: {entry!r}")
+        if "confidence" in entry:
+            raise AnnotationError(
+                f"box '{label}' keypoint '{entry.get('name')}' carries a confidence. ⛔ Ground truth "
+                f"has none: `confidence` is how sure a MODEL was, and a human number here would be "
+                f"compared against it at scoring time. Use `visible`, or omit the joint entirely."
+            )
+        name = str(entry.get("name") or "")
+        if name not in allowed:
+            raise AnnotationError(
+                f"box '{label}' has keypoint '{name}', which is not a joint of '{skeleton}'. "
+                f"⚠️ There is no `hand` joint — COCO annotates the wrist. Known: {', '.join(allowed)}"
+            )
+        if name in seen:
+            # ⛔ One subject has one left wrist. Two records for it is not a merge question: which is
+            # the truth is unknowable, and either choice silently halves or doubles that joint's score.
+            raise AnnotationError(f"box '{label}' declares keypoint '{name}' twice")
+        seen.add(name)
+        if "visible" not in entry:
+            raise AnnotationError(
+                f"box '{label}' keypoint '{name}' has no `visible`. ⛔ Required: a joint whose "
+                f"visibility nobody stated cannot answer the question pose is bought for — whether "
+                f"an occluded wrist was found."
+            )
+        visible = entry.get("visible")
+        if not isinstance(visible, bool):
+            raise AnnotationError(
+                f"box '{label}' keypoint '{name}' has visible={visible!r}, expected true or false"
+            )
+        try:
+            x, y = float(entry["x"]), float(entry["y"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise AnnotationError(f"box '{label}' keypoint '{name}' has no usable x/y: {exc}") from exc
+        for axis, value in (("x", x), ("y", y)):
+            if not (0.0 <= value <= 1.0):
+                raise AnnotationError(
+                    f"box '{label}' keypoint '{name}' has {axis}={value}, outside [0,1]. ⚠️ Keypoints "
+                    f"are normalized like every other coordinate here; pixels would score as a total "
+                    f"miss at every threshold."
+                )
+        out.append(GroundTruthKeypoint(name=name, x=x, y=y, visible=visible))
+    return tuple(out)
+
+
+@dataclass(frozen=True)
 class Box:
     """One annotated object. ⚠️ `[x, y, w, h]` normalized to `[0,1]` — the runtime's own convention,
     so a comparison needs no transform that could itself be wrong."""
@@ -65,8 +159,13 @@ class Box:
     #: frames; the same integer in another clip is a different person.
     gt_id: Optional[int] = None
     visibility: str = "fully-visible"
-    #: ⭐ Accepted, never scored here. Present so pose validation needs no format change.
-    keypoints: Tuple[Mapping[str, object], ...] = ()
+    #: ⭐ Validated here, scored later. Present so pose validation needs no format change — and
+    #: validated now so two hours of hand-written joints are not discovered to be unusable after
+    #: the fact. See `GroundTruthKeypoint`.
+    keypoints: Tuple["GroundTruthKeypoint", ...] = ()
+    #: The topology `keypoints` are named in. ⚠️ One name per box, because two joints in one box
+    #: cannot belong to different conventions.
+    skeleton: str = DEFAULT_SKELETON
 
     def __post_init__(self) -> None:
         if not self.label:
@@ -239,13 +338,15 @@ def _box(raw: Mapping[str, object], *, source: str, frame: int) -> Box:
     gt_id = raw.get("gtId")
     if gt_id is not None and not isinstance(gt_id, int):
         raise AnnotationError(f"annotations '{source}' frame {frame}: gtId '{gt_id}' is not an integer")
-    keypoints = raw.get("keypoints") or ()
+    label = str(raw.get("label") or "")
+    skeleton = str(raw.get("skeleton") or DEFAULT_SKELETON)
     return Box(
-        label=str(raw.get("label") or ""),
+        label=label,
         bbox=tuple(float(v) for v in bbox),  # type: ignore[arg-type]
         gt_id=gt_id,
         visibility=str(raw.get("visibility") or "fully-visible"),
-        keypoints=tuple(keypoints),  # type: ignore[arg-type]
+        keypoints=_keypoints(raw.get("keypoints"), label=label or "<unlabelled>", skeleton=skeleton),
+        skeleton=skeleton,
     )
 
 

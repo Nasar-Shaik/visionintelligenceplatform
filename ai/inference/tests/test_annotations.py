@@ -133,11 +133,15 @@ class BoxTests(unittest.TestCase):
         a = self._box(visibility="partially-occluded")
         self.assertEqual(a.frames[0].boxes[0].visibility, "partially-occluded")
 
-    def test_keypoints_are_accepted_and_not_scored(self) -> None:
+    def test_keypoints_are_validated_and_not_scored(self) -> None:
         """⭐ The format does not have to change when pose validation begins — and accepting the
-        field authorises no pose model."""
-        a = self._box(keypoints=[{"name": "left_wrist", "x": 0.2, "y": 0.3}])
-        self.assertEqual(len(a.frames[0].boxes[0].keypoints), 1)
+        field authorises no pose model. ⚠️ `visible` is required, so this differs from the earlier
+        permissive form, which let an unusable joint through."""
+        a = self._box(keypoints=[{"name": "left_wrist", "x": 0.2, "y": 0.3, "visible": True}])
+        kp = a.frames[0].boxes[0].keypoints
+        self.assertEqual(len(kp), 1)
+        self.assertEqual(kp[0].name, "left_wrist")
+        self.assertTrue(kp[0].visible)
 
     def test_a_non_integer_identity_is_refused(self) -> None:
         with self.assertRaises(ann.AnnotationError):
@@ -241,3 +245,121 @@ class IdentityConsistencyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class KeypointValidationTests(unittest.TestCase):
+    """⛔ **Keypoints were opaque dictionaries until P3.2g.**
+
+    Nothing checked a joint name, a coordinate range, or whether `visible` was even present. A typo,
+    a pixel coordinate or a missing field parsed silently and surfaced much later as a garbage PCK —
+    after the annotation cost was already sunk. Every rule below has both directions.
+    """
+
+    def _kp(self, *keypoints, skeleton=None):
+        box = {"label": "person", "bbox": [0.1, 0.1, 0.2, 0.5], "keypoints": list(keypoints)}
+        if skeleton is not None:
+            box["skeleton"] = skeleton
+        return ann.parse(doc(frames=[{"frameIndex": 0, "boxes": [box]}]))
+
+    def _valid(self, **kw):
+        base = {"name": "left_wrist", "x": 0.2, "y": 0.3, "visible": True}
+        base.update(kw)
+        return base
+
+    # --- the positive controls, first: a validator that refuses everything passes every negative ---
+
+    def test_a_well_formed_keypoint_is_accepted(self) -> None:
+        self.assertEqual(len(self._kp(self._valid()).frames[0].boxes[0].keypoints), 1)
+
+    def test_a_hidden_joint_is_accepted_and_keeps_its_position(self) -> None:
+        """⭐ The case pose is bought for: a wrist that is *there but hidden* still has a location,
+        and "did the model put the hidden wrist in the right place" is the question."""
+        kp = self._kp(self._valid(visible=False)).frames[0].boxes[0].keypoints[0]
+        self.assertFalse(kp.visible)
+        self.assertEqual((kp.x, kp.y), (0.2, 0.3))
+
+    def test_every_coco_joint_is_accepted(self) -> None:
+        from perception import COCO_17
+
+        kps = [{"name": n, "x": 0.5, "y": 0.5, "visible": True} for n in COCO_17]
+        self.assertEqual(len(self._kp(*kps).frames[0].boxes[0].keypoints), len(COCO_17))
+
+    def test_a_box_with_no_keypoints_is_still_valid(self) -> None:
+        """⚠️ Boxes come first and pose later; detector scoring must not wait on joints."""
+        self.assertEqual(self._kp().frames[0].boxes[0].keypoints, ())
+
+    # --- and the refusals ---
+
+    def test_an_unknown_joint_is_refused(self) -> None:
+        """⛔ `left_hand` is not a COCO joint — COCO annotates the wrist. A vocabulary the model
+        never learned cannot be scored against it."""
+        with self.assertRaises(ann.AnnotationError) as caught:
+            self._kp(self._valid(name="left_hand"))
+        self.assertIn("wrist", str(caught.exception))
+
+    def test_a_misspelled_joint_is_refused(self) -> None:
+        """⚠️ `leftWrist` vs `left_wrist` is the disagreement that surfaces as a terrible score
+        rather than as an error."""
+        with self.assertRaises(ann.AnnotationError):
+            self._kp(self._valid(name="leftWrist"))
+
+    def test_a_keypoint_without_visible_is_refused(self) -> None:
+        """⛔ A joint whose visibility nobody stated cannot answer the occlusion question."""
+        kp = self._valid()
+        del kp["visible"]
+        with self.assertRaises(ann.AnnotationError):
+            self._kp(kp)
+
+    def test_a_non_boolean_visible_is_refused(self) -> None:
+        for bad in ("true", 1, None, "yes"):
+            with self.assertRaises(ann.AnnotationError):
+                self._kp(self._valid(visible=bad))
+
+    def test_a_pixel_coordinate_keypoint_is_refused(self) -> None:
+        """⛔ Normalized like every other coordinate; pixels score as a total miss everywhere."""
+        with self.assertRaises(ann.AnnotationError):
+            self._kp(self._valid(x=412, y=508))
+
+    def test_a_negative_coordinate_is_refused(self) -> None:
+        with self.assertRaises(ann.AnnotationError):
+            self._kp(self._valid(y=-0.01))
+
+    def test_a_keypoint_with_no_coordinates_is_refused(self) -> None:
+        kp = {"name": "left_wrist", "visible": True}
+        with self.assertRaises(ann.AnnotationError):
+            self._kp(kp)
+
+    def test_a_malformed_keypoint_is_refused(self) -> None:
+        """⚠️ A bare string where an object belongs — the shape mistake a hand-written file makes."""
+        with self.assertRaises(ann.AnnotationError):
+            self._kp("left_wrist")
+
+    def test_a_keypoints_field_that_is_not_a_list_is_refused(self) -> None:
+        box = {"label": "person", "bbox": [0.1, 0.1, 0.2, 0.5], "keypoints": {"name": "left_wrist"}}
+        with self.assertRaises(ann.AnnotationError):
+            ann.parse(doc(frames=[{"frameIndex": 0, "boxes": [box]}]))
+
+    def test_a_duplicate_joint_is_refused(self) -> None:
+        """⛔ One subject has one left wrist. Which record is the truth is unknowable, and either
+        choice silently halves or doubles that joint's score."""
+        with self.assertRaises(ann.AnnotationError):
+            self._kp(self._valid(), self._valid(x=0.9))
+
+    def test_a_human_confidence_is_refused(self) -> None:
+        """⛔ **The one that protects the measurement.** `confidence` is how sure a MODEL was; a
+        human number there would be compared against it at scoring time and mean something else
+        entirely. `visible` carries the human's fact; an unsure joint is omitted."""
+        with self.assertRaises(ann.AnnotationError) as caught:
+            self._kp(self._valid(confidence=0.8))
+        self.assertIn("MODEL", str(caught.exception))
+
+    def test_an_unknown_skeleton_is_refused(self) -> None:
+        with self.assertRaises(ann.AnnotationError):
+            self._kp(self._valid(), skeleton="halpe-26")
+
+    def test_the_default_skeleton_is_the_pose_seam_s_own(self) -> None:
+        """⭐ One vocabulary, declared in `perception` where `skeleton` already lived — not a second
+        keypoint representation invented alongside it."""
+        from perception import DEFAULT_SKELETON
+
+        self.assertEqual(self._kp().frames[0].boxes[0].skeleton, DEFAULT_SKELETON)

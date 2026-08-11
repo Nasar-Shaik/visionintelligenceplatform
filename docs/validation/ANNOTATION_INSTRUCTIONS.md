@@ -114,8 +114,13 @@ Per person box, add:
 ]
 ```
 
-Names: `left_wrist`, `right_wrist`, `left_hand`, `right_hand` — spelled exactly, COCO convention.
-Coordinates are the **joint centre**, normalized `[0,1]`, like every other coordinate.
+Names: **`left_wrist`, `right_wrist`** — spelled exactly. Coordinates are the **joint centre**,
+normalized `[0,1]`, like every other coordinate.
+
+⛔ **There is no `hand` joint.** An earlier draft of this document listed `left_hand`/`right_hand`;
+that was wrong. COCO-17 annotates the **wrist**, and a model trained on those labels cannot report
+something they never contained. The validator now refuses any name outside the topology — the full
+list is `perception.COCO_17`, and `python3 real_footage_cli.py --validate-annotations` prints it.
 
 ### Which frames
 - Every frame of **step 7** (hands raised) — wrists clearly visible.
@@ -145,13 +150,36 @@ This is the distinction the whole pose evaluation turns on, so it is worth being
 
 ---
 
-## 9. When you finish
+## 9. When you finish — ⭐ check it before anyone scores it
 
 1. `annotator`: your name. `note`: anything ambiguous you decided, and how.
 2. ⛔ Delete the `UNFILLED SKELETON` note — it is there so an unreviewed file cannot be mistaken for
    a finished one.
 3. Save as `.data/real/take-01-spine.json`, beside the clip.
-4. Hand it back for validation **before** any score is produced.
+4. **Run the validator.** It takes seconds and it is the difference between finding a mistake now
+   and finding it after the numbers are quoted:
+
+```
+python3 real_footage_cli.py --validate-annotations .data/real/take-01-spine.json \
+    --case take-01-spine --real-root .data/real
+```
+
+`PASS` (exit 0) or `FAIL` (exit 1) with **every** problem listed — not just the first.
+
+| It checks | Because |
+| --- | --- |
+| schema version | a field's meaning may have changed between versions |
+| every box: label, `[0,1]` range, non-zero area, visibility enum | a pixel coordinate scores as a total miss |
+| every keypoint: known joint, `[0,1]`, `visible` present and boolean, no duplicates, **no `confidence`** | see §8 |
+| `gtId` consistency | one subject cannot be in two places in one frame, or change class |
+| clip digest | ⛔ that these boxes describe *these* pixels |
+| annotated rate vs the rate actually sampled | box 30 must mean the same instant on both sides |
+| frame range | annotations beyond the analysed frames are not misses |
+| case id | one clip's ground truth cannot score another |
+
+⛔ It computes **no accuracy**, modifies nothing, and repairs nothing — it refuses rather than
+producing a plausible result. ⚠️ Lines beginning `⚠️ NOT CHECKED` are disclosures, not failures:
+without `--case` it cannot check digest, rate or range, and it says so rather than passing silently.
 
 ⚠️ Expect **~2 hours** for 120–180 frames of boxes, and roughly the same again for the keypoint
 frames. ⛔ That cost is why only take-01 is annotated until it has been through the whole pipeline.
