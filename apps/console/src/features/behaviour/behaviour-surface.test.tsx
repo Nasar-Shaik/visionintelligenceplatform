@@ -241,6 +241,54 @@ describe('the behaviour timeline', () => {
     expect(onSeek).not.toHaveBeenCalledWith(4);
   });
 
+  /**
+   * ⛔ **The state the browser certification tripped over, pinned deterministically here.**
+   *
+   * A fact whose footage instant falls outside this recording is **unplaceable**: the control is
+   * disabled, `data-offset` is empty, and clicking does nothing. That is correct and deliberate —
+   * seeking to 0 or to the nearest frame would put an operator on a frame where the thing being
+   * explained is not happening, with the same confidence as a correct seek.
+   *
+   * ⚠️ It is asserted here, at a tier with no timing in it, because the end-to-end test read
+   * `data-offset` unconditionally: `Number('')` is **0**, so an unplaceable first fact made the
+   * suite fail intermittently depending on which facts a run happened to produce.
+   */
+  it('disables the seek for a fact that does not fall inside this recording', async () => {
+    server.use(
+      http.get('/api/behaviour/timeline', () =>
+        HttpResponse.json({
+          success: true,
+          data: timelinePayload({
+            entries: [
+              {
+                kind: 'zoneEntry',
+                identityId: 'trk_a',
+                atSeconds: 2,
+                /* ⚠️ An hour past the end of a 30 s recording — neither reading lands inside it. */
+                footageSeconds: START_SECONDS + 3600,
+                cameraId: 'cam_1',
+                streamId: 'ases_1',
+                summary: 'identity trk_a entered zone z_till',
+                attributes: { zoneId: 'z_till' },
+                evidence: { frameIndex: 20, trackId: 'trk_a' },
+              },
+            ],
+          }),
+        }),
+      ),
+    );
+    const { onSeek } = mountPanel();
+    const rows = await screen.findAllByTestId('behaviour-row');
+    const seek = within(rows[0]!).getByTestId('behaviour-seek');
+
+    expect(seek).toHaveAttribute('data-basis', 'unplaceable');
+    expect(seek).toBeDisabled();
+    /* ⛔ Empty, never "0" — a zero here reads as "the start of the recording", which is a claim. */
+    expect(seek).toHaveAttribute('data-offset', '');
+    await userEvent.click(seek);
+    expect(onSeek).not.toHaveBeenCalled();
+  });
+
   /** ⭐ The count is the whole run's, not the page's — which is what makes the cap visible. */
   it('reports what the whole run produced, including the kinds it did not return', async () => {
     mountPanel();

@@ -313,7 +313,14 @@ def _score_case(
             if d.get("bbox")
         ]
     scored = ds.score(truth, predictions)
-    scores[key] = {"modelId": model_id, **scored.to_dict(), "identityProblems": list(ann.identity_problems(truth))}
+    # ⚠️ The footage kind travels WITH the score, so no downstream reader has to look it up to
+    # know whether the number is evidence about people.
+    scores[key] = {
+        "modelId": model_id,
+        "footageKind": case.footage_kind,
+        **scored.to_dict(),
+        "identityProblems": list(ann.identity_problems(truth)),
+    }
 
 
 def make_cell_runner(
@@ -552,16 +559,38 @@ def _render_accuracy(scores: Mapping[str, object]) -> str:
         lines.append("## Accuracy — measured against Tier-1 ground truth")
         lines.append("")
         first = measured[0][1]
+        # ⛔ **The provenance of the ground truth travels with every accuracy number.** A precision of
+        # 1.000 on a cut-out sprite against flat grey is a property of the background, and a reader
+        # six months from now has only this banner to tell them so.
+        authored = [row for _, row in measured if row.get("footageKind") != "REAL_FOOTAGE"]
+        if authored:
+            lines.append(
+                f"> ⛔ **CONSTRUCTION-KNOWN · AUTHORED · NON-EVIDENCE** — {len(authored)} of "
+                f"{len(measured)} row(s) below score a constructed fixture whose ground truth was "
+                f"derived from the code that drew it, not from a human watching real footage."
+            )
+            lines.append("> ")
+            lines.append(
+                "> ⛔ **These numbers may not select a detector.** They prove the scoring pipeline "
+                "executes; they say nothing about detection on real people, because there is no "
+                "person — the subject is a composited sprite on a plain background, which is the "
+                "easiest detection problem that exists."
+            )
+            lines.append("")
         lines.append(
             f"⚠️ IoU threshold **{first.get('iouThreshold')}**, class-aware, greedy by descending "
             f"confidence (the COCO convention). Precision at 0.5 and at 0.75 are different numbers."
         )
         lines.append("")
-        lines.append("| Detector | Case | Frames | TP | FP | FN | Precision | Recall | F1 | Mean IoU |")
-        lines.append("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
+        lines.append(
+            "| Detector | Case | Provenance | Frames | TP | FP | FN | Precision | Recall | F1 | Mean IoU |"
+        )
+        lines.append("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |")
         for model_id, row in measured:
+            kind = row.get("footageKind") or "?"
+            mark = "✅ REAL_FOOTAGE" if kind == "REAL_FOOTAGE" else f"⛔ {kind} · NON-EVIDENCE"
             lines.append(
-                f"| `{model_id}` | `{row.get('caseId')}` | {row.get('framesScored')} | "
+                f"| `{model_id}` | `{row.get('caseId')}` | {mark} | {row.get('framesScored')} | "
                 f"{row.get('truePositives')} | {row.get('falsePositives')} | "
                 f"{row.get('falseNegatives')} | {ds._num(row.get('precision'))} | "
                 f"{ds._num(row.get('recall'))} | {ds._num(row.get('f1'))} | "

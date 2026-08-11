@@ -324,6 +324,33 @@ class AccuracySectionTests(unittest.TestCase):
         # assertion is that no accuracy table exists, not that the word never appears.
         self.assertIn("Precision and recall are absent", text)
 
+    def test_authored_accuracy_is_labelled_non_evidence(self) -> None:
+        """⛔ **A precision of 1.000 on a cut-out sprite is a property of the background.**
+
+        A reader six months from now has only this banner to tell them the ground truth was derived
+        from the code that drew the pixels, so the label travels in the table itself — not in a
+        neighbouring document somebody may not open.
+        """
+        text = self._report({"m::c1": {
+            "modelId": "m", "caseId": "c1", "footageKind": "AUTHORED", "iouThreshold": 0.5,
+            "framesScored": 10, "truePositives": 8, "falsePositives": 0, "falseNegatives": 2,
+            "precision": 1.0, "recall": 0.8, "f1": 0.888, "meanIou": 0.9, "perClass": [],
+        }})
+        self.assertIn("CONSTRUCTION-KNOWN · AUTHORED · NON-EVIDENCE", text)
+        self.assertIn("may not select a detector", text)
+        self.assertIn("⛔ AUTHORED · NON-EVIDENCE", text)
+
+    def test_real_footage_accuracy_is_not_labelled_non_evidence(self) -> None:
+        """⚠️ The other branch: the warning must disappear when the footage is genuinely real, or it
+        becomes noise everyone learns to skip."""
+        text = self._report({"m::c1": {
+            "modelId": "m", "caseId": "c1", "footageKind": "REAL_FOOTAGE", "iouThreshold": 0.5,
+            "framesScored": 10, "truePositives": 8, "falsePositives": 0, "falseNegatives": 2,
+            "precision": 1.0, "recall": 0.8, "f1": 0.888, "meanIou": 0.9, "perClass": [],
+        }})
+        self.assertNotIn("NON-EVIDENCE", text)
+        self.assertIn("✅ REAL_FOOTAGE", text)
+
     def test_a_measured_case_is_rendered_with_its_threshold(self) -> None:
         scores = {
             "m::c1": {

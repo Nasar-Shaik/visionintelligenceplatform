@@ -127,6 +127,21 @@ while its identities are unusable):
 
 ---
 
+## 4b. How an annotator actually starts
+
+```
+python3 real_footage_cli.py --extract-frames <clip.mp4> --frames-out <dir> --clip-id <case>
+```
+
+Writes the **exact frames the benchmark will score**, numbered as it numbers them, plus
+`frames.json` and an `annotations.skeleton.json` pre-filled with one entry per sampled frame.
+
+⭐ Annotating those files rather than the video makes `frameIndex` alignment exact by construction —
+it removes the single failure mode `align()` exists to catch. The command prints the **effective**
+rate to copy into `annotatedFps`.
+
+⛔ Every skeleton frame starts `"boxes": []`, which is **a claim to confirm, not a placeholder**.
+
 ## 5. ⭐ Keypoints: accepted now, scored later
 
 `boxes[].keypoints` parses and round-trips today and **nothing scores it**. The field exists so the

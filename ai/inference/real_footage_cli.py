@@ -34,7 +34,7 @@ import hashlib
 import json
 import os
 import sys
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Mapping, Optional, Sequence
 
 import benchmark_corpus as bc
 
@@ -121,6 +121,87 @@ def entry_for(
     }
 
 
+def extract_frames(path: str, out_dir: str, *, target_fps: float = 2.0) -> Dict[str, object]:
+    """Write the **exact frames the benchmark will score**, numbered as it numbers them.
+
+    ⭐ **This is what makes annotation possible at all, and it is deliberately tiny.** An annotator
+    working from the video would have to guess which instants were sampled; working from these files
+    the `frameIndex` alignment is exact by construction, which removes the single failure mode
+    `align()` exists to catch.
+
+    ⚠️ The stride is the runtime's own integer rule (`round(source/target)`), so the effective rate
+    is reported and is what belongs in `annotatedFps` — a 15 fps clip asked for 2.0 is sampled at
+    1.875, and an annotator who assumed 2.0 would be describing different instants.
+    """
+    try:
+        import cv2  # noqa: WPS433
+    except Exception as exc:  # noqa: BLE001
+        raise bc.CorpusError(f"frame extraction needs OpenCV: {exc}") from exc
+
+    os.makedirs(out_dir, exist_ok=True)
+    capture = cv2.VideoCapture(path)
+    source_fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
+    if source_fps <= 0:
+        capture.release()
+        raise bc.CorpusError(f"cannot read a frame rate from '{path}'")
+    stride = max(1, round(source_fps / target_fps))
+    effective = source_fps / stride
+
+    index = kept = 0
+    manifest: List[dict] = []
+    while True:
+        ok, frame = capture.read()
+        if not ok:
+            break
+        if index % stride == 0:
+            name = f"frame-{kept:05d}.png"
+            cv2.imwrite(os.path.join(out_dir, name), frame)
+            manifest.append({"frameIndex": kept, "sourceFrame": index,
+                             "atSeconds": round(index / source_fps, 3), "file": name})
+            kept += 1
+        index += 1
+    capture.release()
+
+    summary = {
+        "clip": os.path.basename(path),
+        "sourceFps": round(source_fps, 3),
+        "stride": stride,
+        # ⛔ The rate to put in `annotatedFps`. Not the one that was asked for.
+        "effectiveFps": round(effective, 6),
+        "sourceFrames": index,
+        "sampledFrames": kept,
+        "frames": manifest,
+    }
+    with open(os.path.join(out_dir, "frames.json"), "w", encoding="utf-8") as handle:
+        json.dump(summary, handle, indent=2)
+        handle.write("\n")
+    return summary
+
+
+def annotation_skeleton(summary: Mapping[str, object], *, case_id: str, clip_sha256: Optional[str]) -> dict:
+    """An empty Tier-1 file with one entry per sampled frame, ready for a human to fill in.
+
+    ⛔ **Every frame starts with `"boxes": []`, and that is a claim the annotator must confirm.** An
+    empty frame is a positive statement that nothing was there — it is what makes false positives
+    measurable — so the skeleton cannot silently pass off "not yet annotated" as "nothing here".
+    The `note` says so, and `annotator` is left blank for a person to sign.
+    """
+    return {
+        "schemaVersion": "tier1-2026-08-11",
+        "caseId": case_id,
+        "clipSha256": clip_sha256,
+        "annotatedFps": summary.get("effectiveFps"),
+        "annotator": "",
+        "note": "⛔ UNFILLED SKELETON. Every frame reads as empty, which is a CLAIM — confirm or "
+                "replace each one. An unreviewed empty frame scores every detection in it as a "
+                "false positive.",
+        "frames": [
+            {"frameIndex": f["frameIndex"], "atSeconds": f["atSeconds"], "boxes": []}
+            for f in summary.get("frames", [])  # type: ignore[union-attr]
+        ],
+    }
+
+
 def gaps(corpus: bc.Corpus) -> List[str]:
     """Scenarios no real footage covers — ⭐ the recording list, generated rather than maintained."""
     rows = bc.coverage(corpus)
@@ -171,7 +252,34 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--note", default="")
     parser.add_argument("--write", action="store_true", help="append the entry to the corpus manifest")
     parser.add_argument("--list-scenarios", action="store_true")
+    parser.add_argument("--extract-frames", default="", help="clip to extract sampled frames from")
+    parser.add_argument("--frames-out", default="", help="directory for the extracted frames")
+    parser.add_argument("--target-fps", type=float, default=2.0)
     args = parser.parse_args(argv)
+
+    if args.extract_frames:
+        if not args.frames_out:
+            print("⛔ --extract-frames needs --frames-out", file=sys.stderr)
+            return 2
+        try:
+            summary = extract_frames(args.extract_frames, args.frames_out, target_fps=args.target_fps)
+        except bc.CorpusError as exc:
+            print(f"⛔ {exc}", file=sys.stderr)
+            return 2
+        skeleton = annotation_skeleton(
+            summary, case_id=args.clip_id or "UNNAMED-CASE", clip_sha256=None
+        )
+        with open(os.path.join(args.frames_out, "annotations.skeleton.json"), "w", encoding="utf-8") as h:
+            json.dump(skeleton, h, indent=1)
+            h.write("\n")
+        print(
+            f"✓ {summary['sampledFrames']} frame(s) from {summary['sourceFrames']} "
+            f"(stride {summary['stride']}) → {args.frames_out}"
+        )
+        # ⛔ Printed every time, because it is the number that goes in `annotatedFps` and it is NOT
+        # the rate that was requested.
+        print(f"⚠️ annotate at the EFFECTIVE rate: {summary['effectiveFps']} fps (asked for {args.target_fps})")
+        return 0
 
     if args.list_scenarios:
         for scenario in bc.SCENARIOS:

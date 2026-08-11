@@ -198,3 +198,54 @@ class GapTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FrameExtractionTests(unittest.TestCase):
+    """⭐ The tool that makes annotation possible — and the rate it reports.
+
+    ⛔ These do not need a video: `extract_frames` is exercised end to end by the container check in
+    the slice report, while the arithmetic that decides WHICH frames get annotated is asserted here,
+    because it is the arithmetic that silently misaligns every box when it is wrong.
+    """
+
+    def test_the_skeleton_carries_the_effective_rate_not_the_requested_one(self) -> None:
+        """⛔ 15 fps asked for 2.0 is sampled at 1.875. An annotator who writes 2.0 is describing
+        different instants, and `align()` will refuse the file they spent two hours on."""
+        summary = {"effectiveFps": 1.875, "frames": [{"frameIndex": 0, "atSeconds": 0.0}]}
+        doc = rf.annotation_skeleton(summary, case_id="take-01", clip_sha256=None)
+        self.assertEqual(doc["annotatedFps"], 1.875)
+
+    def test_every_sampled_frame_appears_in_the_skeleton(self) -> None:
+        summary = {"effectiveFps": 2.0,
+                   "frames": [{"frameIndex": i, "atSeconds": i / 2} for i in range(5)]}
+        doc = rf.annotation_skeleton(summary, case_id="take-01", clip_sha256=None)
+        self.assertEqual([f["frameIndex"] for f in doc["frames"]], [0, 1, 2, 3, 4])
+
+    def test_the_skeleton_says_its_empty_frames_are_unconfirmed(self) -> None:
+        """⛔ An empty frame is a CLAIM that nothing was there — it is what makes false positives
+        measurable. A skeleton that passed off "not yet annotated" as "nothing here" would score
+        every detection in those frames as a false positive."""
+        doc = rf.annotation_skeleton({"effectiveFps": 2.0, "frames": []}, case_id="t", clip_sha256=None)
+        self.assertIn("UNFILLED SKELETON", doc["note"])
+        self.assertEqual(doc["annotator"], "")
+
+    def test_the_skeleton_parses_as_a_valid_annotation_file(self) -> None:
+        """⭐ It must be loadable the moment a human starts filling it in, not after a fix-up step."""
+        import annotations as ann
+
+        summary = {"effectiveFps": 1.875,
+                   "frames": [{"frameIndex": i, "atSeconds": i * 0.533} for i in range(3)]}
+        doc = rf.annotation_skeleton(summary, case_id="take-01", clip_sha256=None)
+        parsed = ann.parse(doc)
+        self.assertEqual(parsed.case_id, "take-01")
+        self.assertIsNone(parsed.clip_sha256)
+        self.assertEqual(parsed.box_count, 0)
+
+    def test_a_digest_bound_skeleton_keeps_its_binding(self) -> None:
+        doc = rf.annotation_skeleton(
+            {"effectiveFps": 2.0, "frames": [{"frameIndex": 0, "atSeconds": 0.0}]},
+            case_id="take-01", clip_sha256="a" * 64,
+        )
+        import annotations as ann
+
+        self.assertEqual(ann.parse(doc).clip_sha256, "a" * 64)

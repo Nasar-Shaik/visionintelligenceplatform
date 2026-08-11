@@ -103,6 +103,52 @@ Eight takes cover all twenty capabilities. **Take 1 alone covers eleven.**
 
 ---
 
+## 4b. ⭐ take-01-spine — the operational checklist
+
+**Print this.** One person, one continuous take, 60–90 s, no cuts.
+
+### Before rolling
+- [ ] Written consent signed by everyone who will appear → `docs/validation/consent/<date>-session-1.md`
+- [ ] Room closed; nobody incidental in frame
+- [ ] Tripod fixed, **2.2–2.5 m**, angled down 15–20°, no pan/zoom
+- [ ] **4K, 30 fps, landscape**, exposure and white balance **locked**, audio off
+- [ ] Zone A and LINE L taped on the floor **and photographed**
+- [ ] Distance marks at 2 m, 5 m, 10 m
+- [ ] Bottle and backpack on the table
+- [ ] Capture metadata written down: device, lens, height, angle, who, what, wall-clock start
+
+### ⛔ Roll with an empty frame first
+- [ ] **5 s of empty room before anyone enters**, and **5 s after they leave**
+
+> ⭐ **This is not padding — it is the negative control**, and it is the single most commonly
+> forgotten item. Frames with no person are what make **false positives measurable**: a detector that
+> hallucinates in a quiet room is invisible without them, and a pose model that draws a skeleton on
+> an empty aisle is worse than none. Without these seconds the recall number has no counterweight.
+
+### The take, in order
+- [ ] 1 · Person **enters** from the left edge, walking
+- [ ] 2 · **Walks** across to mid-frame
+- [ ] 3 · **Stands** still, facing camera — hold 5 s
+- [ ] 4 · Turns to side profile — hold 5 s
+- [ ] 5 · Turns back to camera — hold 5 s
+- [ ] 6 · Walks to the 2 m mark and back to 10 m (**approach/recede**)
+- [ ] 7 · **Raises one hand, then both** — hold 5 s ⭐ *the wrist/hand material pose needs*
+- [ ] 8 · **Sits** on the chair — hold 8 s
+- [ ] 9 · Stands, walks to the table, **bends** to the bottle — hold 5 s
+- [ ] 10 · **Picks up the bottle**
+- [ ] 11 · **Carries** it, moving
+- [ ] 12 · **Crosses LINE L** into ZONE A
+- [ ] 13 · **Puts the bottle down** in Zone A
+- [ ] 14 · Walks past the table so the lower body is **occluded** — hold 3 s
+- [ ] 15 · **Exits** the right edge
+- [ ] 16 · **5 s of empty room**
+
+### After rolling
+- [ ] Play it back once, end to end, before anyone leaves the room
+- [ ] Confirm: never out of focus, never clipped by the frame edge except on entry/exit, the line
+      crossing is unambiguous, the bottle is visible in the hand
+- [ ] ⚠️ If any step is wrong, **re-shoot now** — reassembling the room later costs more than the take
+
 ## 5. After the session
 
 ```
@@ -119,8 +165,44 @@ object-putdown,person-carrying-object,line-crossing,zone-crossing \
 python3 real_footage_cli.py --verify
 ```
 
-Then annotate **take 1, 3 and 4 first** at **2 fps** — the benchmark's sampling rate, so `frameIndex`
-means the same instant on both sides. See `ANNOTATION_SCHEMA.md`.
+### ⛔ Annotate take-01 only, and only after it completes the pipeline
 
-⚠️ At 90 s and 2 fps a take is **180 annotated frames**. Budget ~2 hours per take for Tier-1 boxes.
-⛔ That cost is the reason the protocol is eight takes and not twenty.
+```
+python3 real_footage_cli.py --extract-frames .data/real/take-01.mp4 \
+    --frames-out .data/real/take-01-frames --clip-id take-01-spine
+```
+
+⭐ **Annotate the extracted frames, never the video.** They are the exact frames the benchmark will
+score, numbered as it numbers them, so `frameIndex` alignment is exact by construction. The command
+also writes `annotations.skeleton.json` — one entry per sampled frame, ready to fill in — and prints
+the **effective** rate to put in `annotatedFps`.
+
+⚠️ **The effective rate is not 2.0.** `stride` is an integer, so a 30 fps clip gives exactly 2.000
+but a 27.001 fps phone clip gives **1.929** and a 15 fps clip **1.875**. The tool prints it; copy
+that number. An annotator who assumes 2.0 describes different instants and `align()` refuses the
+file after the work is done.
+
+⛔ Every frame in the skeleton starts `"boxes": []`, and **that is a claim, not a placeholder** —
+confirm or replace each one. An unreviewed empty frame scores every detection in it as a false
+positive.
+
+⚠️ At 60–90 s a take is **120–180 annotated frames**; budget ~2 hours. ⛔ That cost is why the
+protocol is eight takes and not twenty, and why **no second take is annotated until take-01 has gone
+end to end through registration → verification → scoring → report.**
+
+## 6. ⭐ Pose comes from the same take — record for it now
+
+No pose model is authorised, and the Tier-1 schema **already accepts** `keypoints` per box, so
+take-01 can carry pose ground truth later **without being re-annotated or re-shot**. What that needs
+from the recording is only that the material exists:
+
+| Needed for pose | Which step provides it |
+| --- | --- |
+| Wrists clearly visible | 7 (hands raised), 10–11 (pick up and carry) |
+| Wrists **occluded** | 9 (bending to the table), 14 (behind the table) |
+| Visibility independent of confidence | 14 — a joint *known* to be hidden, which is the distinction the schema keeps |
+| Whole-body configuration variety | 3, 4, 8, 9 (stand · profile · sit · bend) |
+| Empty frames | the 5 s head and tail — ⛔ a skeleton drawn there is a hallucination |
+
+⛔ **Do not generate pose ground truth from a model.** Keypoints are annotated by a human or not at
+all; a model scored against its own output measures nothing. See `POSE_SEAM.md`.

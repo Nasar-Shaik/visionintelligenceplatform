@@ -296,6 +296,35 @@ count remains uninterpretable and **no winner may be declared**.
 **Remaining scenarios:** 41 of 41 have no real footage. `RECORDING_PROTOCOL.md` covers all twenty
 required capabilities in **eight takes**, of which take 1 alone covers eleven.
 
+### P3.2e — the browser failure, explained and fixed
+
+⛔ **It was a real test defect, not a flake in the product.** `behaviour.spec.ts:118` read
+`data-offset` from the first seek control unconditionally.
+
+⭐ A fact whose footage instant falls outside the recording is **`unplaceable`**: the console
+disables the control and leaves `data-offset` empty — deliberately, because seeking to 0 would put an
+operator on a frame where the thing being explained is not happening, with the same confidence as a
+correct seek. Reading that attribute anyway gives `Number('') === 0`, which then fails against the
+fact's real offset.
+
+⚠️ **That is why it was intermittent**: whether the test passed depended on whether the run's *first*
+behaviour fact happened to land inside the recording, which varies with what each fresh analysis
+produced. Same family as [[offline-replays-live-time-assumptions]] — facts keyed to footage time,
+compared against a recording window.
+
+| Evidence | Result |
+| --- | --- |
+| Original certification | 1 failed / 211 passed / 20 skipped |
+| Reproduction run 1 (unchanged code) | `[edge] :118` **passed** — intermittent, not deterministic |
+| Console unit test, new | ⭐ reproduces the state **deterministically**, no timing involved |
+| Reproduction run 2 (fixed code) | see the slice report |
+
+**Fixed in two places.** The console suite now pins the state directly — an out-of-window fact must
+render disabled, with `data-offset` empty (never `"0"`, which would read as "the start of the
+recording"), and clicking it must do nothing. The end-to-end test now asserts every unplaceable
+control is disabled and empty, then measures the seek on a fact there is actually a frame for, and
+skips with a stated reason only if *every* fact is unplaceable.
+
 ### Evidence Integrity carry-forward — open, non-blocking
 
 | Item | Why still open |

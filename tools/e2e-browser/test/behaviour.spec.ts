@@ -128,13 +128,39 @@ test.describe('the behaviour surface is on the investigation page', () => {
     const analysisTimeline = (await timelineRes.json()).data;
     const startSeconds = Date.parse(analysisTimeline.footageStartedAt) / 1000;
 
-    const seek = page.getByTestId('behaviour-seek').first();
-    await expect(seek).toBeVisible();
-    const basis = await seek.getAttribute('data-basis');
+    /*
+     * ⛔ **Not `.first()` unconditionally — that made this test intermittent.**
+     *
+     * A fact whose footage instant falls outside this recording is `unplaceable`: the console
+     * disables the control and leaves `data-offset` empty, deliberately, because seeking to 0 would
+     * put an operator on a frame where the thing being explained is not happening. Reading that
+     * attribute regardless gives `Number('') === 0`, which then fails against the fact's real
+     * offset — so whether this test passed depended on whether the run's FIRST fact happened to
+     * land inside the recording. That state is pinned deterministically in the console's own suite
+     * (`behaviour-surface.test.tsx`, "disables the seek for a fact that does not fall inside this
+     * recording"); here we assert it and then measure the seek on a fact there is a frame for.
+     */
+    const seeks = page.getByTestId('behaviour-seek');
+    await expect(seeks.first()).toBeVisible();
+    const bases = await seeks.evaluateAll((nodes) =>
+      nodes.map((n) => (n as HTMLElement).dataset.basis ?? ''),
+    );
+    for (const [i, basis] of bases.entries()) {
+      if (basis === 'unplaceable') {
+        await expect(seeks.nth(i)).toBeDisabled();
+        await expect(seeks.nth(i)).toHaveAttribute('data-offset', '');
+      }
+    }
+    const index = bases.findIndex((b) => b !== 'unplaceable' && b !== '');
+    test.skip(index === -1, 'every fact this run produced is unplaceable in this recording');
+
+    const seek = seeks.nth(index);
+    const basis = bases[index];
     const offset = Number(await seek.getAttribute('data-offset'));
 
-    /* ⛔ The console's own arithmetic, recomputed here from the raw payloads. */
-    const fact = api.entries[0]!;
+    /* ⛔ The console's own arithmetic, recomputed here from the raw payloads. ⚠️ `entries[index]`,
+     * because row order and entry order correspond — asserted by the sibling test above. */
+    const fact = api.entries[index]!;
     const expected = basis === 'footage-clock' ? fact.footageSeconds - startSeconds : fact.footageSeconds;
     expect(offset).toBeCloseTo(Math.min(Math.max(expected, 0), analysisTimeline.durationSeconds ?? expected), 2);
 
