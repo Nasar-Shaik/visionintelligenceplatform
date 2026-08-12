@@ -315,6 +315,12 @@ class AutosaveTests(unittest.TestCase):
         self.assertIn("showSaveStatus", code())
         self.assertIn("blocks local storage", html())
 
+    def test_a_box_without_joints_is_reported(self) -> None:
+        """⛔ 12 boxes were annotated with no keypoints at all, exported, and passed validation.
+        The torso check only ran once a joint existed, so the one state that makes pose
+        unmeasurable — a person boxed but never posed — raised nothing."""
+        self.assertIn("a box with NO joints", html())
+
     def test_the_work_can_be_discarded_deliberately(self) -> None:
         self.assertIn("function clearDraft", code())
         self.assertIn("discardDraft", html())

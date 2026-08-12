@@ -155,7 +155,7 @@ const context = vm.createContext(sandbox);
    NOT properties of globalThis. The trailing expression hands out exactly what this check needs. */
 const LIFT =
   '({ state, buildDocument, exportJson, blankFrame, STATUS, COCO_17, EXPORT_FILENAME,' +
-  '   saveDraft, readDraft, clearDraft, applyDocument, DRAFT_KEY })';
+  '   saveDraft, readDraft, clearDraft, applyDocument, DRAFT_KEY, problems })';
 vm.runInContext(script[1] + '\n;' + LIFT, context, { filename: 'pose-annotator.html' });
 const api = vm.runInContext(LIFT, context);
 
@@ -340,6 +340,33 @@ check(
 );
 check(failed.text.includes('object URL refused'), 'the banner carries the actual error');
 check(failed.text.includes('do not close it'), 'the banner tells them not to lose the work');
+
+/* ── An unscorable person must be called out ──────────────────────────────────────────────────────
+ *
+ * ⛔ REGRESSION. 12 boxes were annotated with not one keypoint between them, exported, and passed
+ * the validator — because the torso check only ran once at least one joint existed, so a box with
+ * zero joints raised nothing. Pose accuracy was unmeasurable and nothing said so.
+ */
+loadCleanCorpus();
+const boxOnly = api.state.frames[1];
+boxOnly.joints = new Map(); /* a box was drawn, no joints were placed */
+const jointless = api.problems('all').filter((p) => /NO joints/.test(p));
+check(jointless.length === 1, `⛔ a box with no joints is reported — got ${jointless.length}`);
+check(jointless[0]?.startsWith('⛔'), 'it is blocking, not advisory');
+
+/* ⚠️ And it must NOT fire for the states that are legitimately jointless. */
+loadCleanCorpus();
+api.state.frames[1].joints = new Map();
+api.state.frames[1].bbox = null;
+check(
+  api.problems('all').filter((p) => /NO joints/.test(p)).length === 0,
+  'a frame with neither a box nor joints is not accused of missing joints',
+);
+loadCleanCorpus();
+check(
+  api.problems('all').filter((p) => /NO joints/.test(p)).length === 0,
+  'a properly annotated person is not accused',
+);
 
 /* ── Autosave: the work must survive the tab ──────────────────────────────────────────────────────
  *

@@ -483,6 +483,14 @@ function problems(scope) {
     if (f.joints.size > 0 && !f.bbox) {
       out.push("⛔ " + where + "joints without a bounding box — the scorer matches people by box");
     }
+    /* ⛔ The mirror of the check above, and the one that was missing. A box with no joints is a
+       person whose pose CANNOT be scored — and it used to raise nothing at all, because the torso
+       check below only runs once at least one joint exists. Twelve boxes were annotated, exported
+       and validated as PASS with not a single keypoint in them. An absence must be stated. */
+    if (f.bbox && f.joints.size === 0 && f.status !== STATUS.EMPTY) {
+      out.push("⛔ " + where + "a box with NO joints — this person cannot be scored for pose at " +
+        "all. Press J and click each joint, or Clear the frame.");
+    }
     if (f.bbox) {
       if (!(f.bbox[2] > 0 && f.bbox[3] > 0)) out.push("⛔ " + where + "box has zero area");
       for (const v of f.bbox) {
