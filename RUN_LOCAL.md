@@ -20,7 +20,12 @@ pnpm seed             # 2. dev tenant + admin + sample data (idempotent)
 pnpm dev:all          # 3. all backend services + the Operations Console
 ```
 
-Then open **http://localhost:5173** and log in — tenant **`tnt_dev`**, password **`123456`**:
+Then open **http://localhost:5173** and log in:
+
+| Field        | Value                                                |
+| ------------ | ---------------------------------------------------- |
+| **Tenant**   | `tnt_dev` — ⚠️ the tenant **id**, not the slug `dev` |
+| **Password** | `123456` — every seeded account shares it            |
 
 | Email              | Role                     |
 | ------------------ | ------------------------ |
@@ -30,6 +35,40 @@ Then open **http://localhost:5173** and log in — tenant **`tnt_dev`**, passwor
 | `owner@vip.dev`    | `owner`                  |
 
 That's it — the dashboard, events, rules, incidents, and alerts are all populated by the seed.
+
+⛔ **Dev only.** `tools/seed/seed.ts` refuses to seed these under `NODE_ENV=production`: a
+`SEED_PASSWORD` of 12+ characters is required and the development default is rejected outright.
+
+### ⚠️ Use `localhost`, not `127.0.0.1`
+
+Vite sets no `host`, so it binds **IPv6 localhost only**. `http://127.0.0.1:5173` is refused while
+`http://localhost:5173` serves normally — the same page, one address dead:
+
+```
+http://127.0.0.1:5173  →  connection refused
+http://localhost:5173  →  200
+```
+
+Run `pnpm --filter @vip/console dev -- --host` if you need both.
+
+### Is it actually up?
+
+⛔ A login that fails is usually a **dead gateway, not a wrong password** — the console is a static
+page and loads fine with every service down, and `vite.config.ts` proxies `/api` to `:8080`. Check
+the tier below the console before retyping credentials:
+
+```bash
+docker compose -f infra/docker/docker-compose.dev.yml ps   # infra: expect containers running
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/health   # gateway: expect 200
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:5173          # console: expect 200
+```
+
+| Symptom                                    | Cause                                        |
+| ------------------------------------------ | -------------------------------------------- |
+| Console loads, login says invalid          | gateway down (`000` above) → `pnpm dev:all`  |
+| Gateway up, login 401                      | not seeded → `pnpm seed`                     |
+| Nothing on 5173                            | console not started, or you used `127.0.0.1` |
+| Ports 3000/3001/4000 answer but look wrong | ⚠️ another project on this machine, not VIP  |
 
 ## What each command does
 
