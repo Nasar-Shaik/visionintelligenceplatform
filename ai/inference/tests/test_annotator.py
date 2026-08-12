@@ -52,6 +52,14 @@ def code() -> str:
     return re.sub(r"^\s*//.*$", "", page, flags=re.M)
 
 
+def injected_line(name: str) -> str:
+    """The raw right-hand side of a `const` — for values that are expressions, not literals."""
+    match = re.search(r"^const\s+" + name + r"\s*=\s*(.+?);\s*$", html(), re.M)
+    if match is None:
+        raise AssertionError(f"{name} is not declared in the generated annotator")
+    return match.group(1)
+
+
 def injected(name: str):
     """Read one injected constant back out of the generated file."""
     match = re.search(r"^const\s+" + name + r"\s*=\s*(.+?);\s*$", html(), re.M)
@@ -259,6 +267,57 @@ class ExportFeedbackTests(unittest.TestCase):
     def test_the_banner_is_never_suppressed_by_the_hidden_class(self) -> None:
         """`className = outcome` replaces `hidden` outright; a `classList.add` would not."""
         self.assertIn("el.className = outcome;", code())
+
+
+class AutosaveTests(unittest.TestCase):
+    """⛔ The work must survive the tab.
+
+    An hour of hand annotation was lost when the tab holding it was closed: nothing reached disk
+    until an export succeeded, and there was no second copy anywhere. The export bug hid the loss;
+    the absence of autosave caused it.
+    """
+
+    def test_every_committed_change_is_saved(self) -> None:
+        """⛔ The single hook. `renderSidebar` runs after every committed change — a joint placed,
+        moved, deleted, a frame marked EMPTY or cleared — while a mousemove mid-drag redraws only
+        the canvas. Removing this line is the regression."""
+        sidebar = re.search(r"^function renderSidebar\(\) \{(.*?)^\}$", code(), re.S | re.M)
+        self.assertIsNotNone(sidebar, "renderSidebar is not declared")
+        self.assertIn("saveDraft();", sidebar.group(1))
+
+    def test_the_draft_is_bound_to_this_clip(self) -> None:
+        """⚠️ A draft for other pixels restoring over these would be precise and wrong."""
+        self.assertIn("CASE_ID", injected_line("DRAFT_KEY"))
+        self.assertIn("CLIP_SHA256", injected_line("DRAFT_KEY"))
+
+    def test_a_foreign_document_is_refused_on_restore(self) -> None:
+        page = code()
+        self.assertIn("different clip digest", page)
+        self.assertIn("function applyDocument", page)
+
+    def test_the_draft_and_the_export_share_one_serialisation(self) -> None:
+        """⭐ The draft stores `buildDocument()` itself, so a restored draft and an exported file
+        cannot drift into two shapes — the vocabulary-drift failure this project keeps meeting."""
+        save = re.search(r"^function saveDraft\(\) \{(.*?)^\}$", code(), re.S | re.M)
+        self.assertIsNotNone(save)
+        self.assertIn("buildDocument()", save.group(1))
+
+    def test_no_frame_pixels_are_ever_stored(self) -> None:
+        """⛔ movie101 is consented footage of an identifiable person. Coordinates may be kept in
+        browser storage; the images may not."""
+        save = re.search(r"^function saveDraft\(\) \{(.*?)^\}$", code(), re.S | re.M)
+        for banned in ("toDataURL", "state.images", "canvas"):
+            with self.subTest(api=banned):
+                self.assertNotIn(banned, save.group(1))
+
+    def test_a_failure_to_save_is_visible(self) -> None:
+        """A silent persistence failure is the same lie as a silent export."""
+        self.assertIn("showSaveStatus", code())
+        self.assertIn("blocks local storage", html())
+
+    def test_the_work_can_be_discarded_deliberately(self) -> None:
+        self.assertIn("function clearDraft", code())
+        self.assertIn("discardDraft", html())
 
 
 class ExportBehaviourTests(unittest.TestCase):

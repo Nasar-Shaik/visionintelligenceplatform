@@ -27,36 +27,36 @@ No server, no build step, no dependencies, no internet. Then press **Choose fram
 select **all 37** PNGs in `.data/real/movie101-frames/` (⌘A / Ctrl-A in the file dialog).
 
 ⚠️ The tool refuses a selection whose frame indices are not contiguous from `0` — a gap means your
-frame *N* and the runtime's frame *N* are different pixels, which is the join everything downstream
+frame _N_ and the runtime's frame _N_ are different pixels, which is the join everything downstream
 depends on.
 
 ---
 
 ## Annotate
 
-| | |
-| --- | --- |
-| <kbd>←</kbd> <kbd>→</kbd> | previous / next frame |
-| **click** | place the selected joint, then advance to the next unplaced one |
-| **drag a joint** | move it |
-| <kbd>N</kbd> <kbd>P</kbd> | select next / previous joint |
-| <kbd>V</kbd> | toggle the selected joint **visible ⇄ occluded** |
-| <kbd>X</kbd> | delete the selected joint |
-| <kbd>B</kbd> / <kbd>J</kbd> | box mode / joint mode |
-| <kbd>E</kbd> | mark the frame **EMPTY** — nobody is here |
-| <kbd>C</kbd> | clear the frame back to **UNREVIEWED** |
-| **wheel** | zoom at the cursor · <kbd>space</kbd>+drag pans · <kbd>0</kbd> fits |
+|                             |                                                                     |
+| --------------------------- | ------------------------------------------------------------------- |
+| <kbd>←</kbd> <kbd>→</kbd>   | previous / next frame                                               |
+| **click**                   | place the selected joint, then advance to the next unplaced one     |
+| **drag a joint**            | move it                                                             |
+| <kbd>N</kbd> <kbd>P</kbd>   | select next / previous joint                                        |
+| <kbd>V</kbd>                | toggle the selected joint **visible ⇄ occluded**                    |
+| <kbd>X</kbd>                | delete the selected joint                                           |
+| <kbd>B</kbd> / <kbd>J</kbd> | box mode / joint mode                                               |
+| <kbd>E</kbd>                | mark the frame **EMPTY** — nobody is here                           |
+| <kbd>C</kbd>                | clear the frame back to **UNREVIEWED**                              |
+| **wheel**                   | zoom at the cursor · <kbd>space</kbd>+drag pans · <kbd>0</kbd> fits |
 
 Filled circles are **visible** joints, hollow ones **occluded**. Blue is the subject's **left**,
 amber the subject's **right**.
 
 ### The three frame states
 
-| | Means |
-| --- | --- |
-| **UNREVIEWED** | you have not looked at this frame |
-| **EMPTY** | ⭐ you looked, and state that nobody was there |
-| **ANNOTATED** | a box and/or joints exist |
+|                | Means                                          |
+| -------------- | ---------------------------------------------- |
+| **UNREVIEWED** | you have not looked at this frame              |
+| **EMPTY**      | ⭐ you looked, and state that nobody was there |
+| **ANNOTATED**  | a box and/or joints exist                      |
 
 ⛔ **EMPTY is a deliberate human statement and UNREVIEWED is not.** An empty frame is what makes a
 false positive measurable; an unreviewed one is a gap. The exporter warns about every frame still
@@ -72,7 +72,7 @@ UNREVIEWED, and the distinction is recorded in the file as `reviewStatus`.
 - **If you cannot tell where a joint is, delete it.** Omitted and hidden are different facts and the
   scorer counts them differently. A guessed joint is worse than an absent one.
 - ⚠️ **Place all four torso joints** (both shoulders, both hips) whenever you can, hidden ones
-  included. Without a shoulder *and* the opposite hip there is no torso, and the scorer normalizes
+  included. Without a shoulder _and_ the opposite hip there is no torso, and the scorer normalizes
   PCK by torso length — that person is **excluded from the score entirely**. The tool warns per
   frame when the torso is incomplete.
 - No `confidence` field is ever written. Ground truth has none; the parser refuses it.
@@ -95,21 +95,27 @@ A banner under the toolbar states the outcome of **every** press, because an ear
 returned silently when the confirm dialog was dismissed — indistinguishable from success, and an
 hour of annotation was lost to it.
 
-| Banner | Means |
-| --- | --- |
-| ✓ **Exported annotations.json** — *n* frames, *n* reviewed, *n* person(s) | the file was written; move it to the path above |
-| ⚠️ **Export cancelled — nothing was written** | you dismissed the dialog. ⛔ **The work is still only in this tab** |
-| ⛔ **Export failed — nothing was written** | the browser refused; the error is shown and the work is still in the tab |
+| Banner                                                                    | Means                                                                    |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| ✓ **Exported annotations.json** — _n_ frames, _n_ reviewed, _n_ person(s) | the file was written; move it to the path above                          |
+| ⚠️ **Export cancelled — nothing was written**                             | you dismissed the dialog. ⛔ **The work is still only in this tab**      |
+| ⛔ **Export failed — nothing was written**                                | the browser refused; the error is shown and the work is still in the tab |
 
-⚠️ **There is no autosave.** Nothing is written to disk until an export succeeds and you see the
-green banner. If the tab is ever closed with unsaved work, this recovers it from the console:
+### ⭐ Your work is saved as you go
 
-```js
-const a = document.createElement('a');
-a.href = URL.createObjectURL(new Blob([JSON.stringify(buildDocument(), null, 1)],
-                                      { type: 'application/json' }));
-a.download = 'annotations.json'; a.click();
-```
+Every committed change — a joint placed, moved or deleted, a frame marked EMPTY or cleared — is
+written to this browser's storage immediately. The header shows `saved 14:32:07 · 12/37 reviewed`.
+
+⛔ **This is not a substitute for exporting.** Scoring reads a file on disk; browser storage is only
+insurance against losing the session. Export when you finish.
+
+If the tab is closed, reloaded, or the browser crashes, just open the tool again and choose the same
+37 PNGs — the annotations come back automatically. The frames themselves are never stored (a browser
+cannot reopen files without you, and consented footage does not belong in browser storage), which is
+why it asks for them again. **Discard saved work** on the start screen clears it deliberately.
+
+⚠️ If the header says storage is blocked — private windows do this — export often. It says so
+rather than failing quietly.
 
 **Import…** reads a previously exported file back, so you can stop and resume. It refuses a file
 whose `caseId` or `clipSha256` describes a different clip.
@@ -132,15 +138,15 @@ rate-and-range check, which needs `opencv-python-headless` and the clip on disk.
 
 `pose-annotator.html` is written by `build_annotator.py` from the Python that owns the definitions:
 
-| Injected | From |
-| --- | --- |
-| joint names | `perception.COCO_17` |
-| skeleton edges | `pose.COCO_17_EDGES` |
-| schema version, visibility enum | `annotations.SCHEMA_VERSION`, `annotations.VISIBILITY` |
-| case id, clip digest, frame size | `benchmarks/detector-corpus.json` |
-| `annotatedFps` | ⭐ the extraction artifact that produced these very PNGs — **1.928609**, the measured rate, not the manifest's rounded `27.001 / 14 = 1.928643` |
+| Injected                         | From                                                                                                                                            |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| joint names                      | `perception.COCO_17`                                                                                                                            |
+| skeleton edges                   | `pose.COCO_17_EDGES`                                                                                                                            |
+| schema version, visibility enum  | `annotations.SCHEMA_VERSION`, `annotations.VISIBILITY`                                                                                          |
+| case id, clip digest, frame size | `benchmarks/detector-corpus.json`                                                                                                               |
+| `annotatedFps`                   | ⭐ the extraction artifact that produced these very PNGs — **1.928609**, the measured rate, not the manifest's rounded `27.001 / 14 = 1.928643` |
 
-A browser cannot import a Python tuple, so the copy is *derived* rather than typed —
+A browser cannot import a Python tuple, so the copy is _derived_ rather than typed —
 `"left_wrist"` versus `"leftWrist"` is exactly the disagreement that surfaces as a plausible,
 terrible accuracy score rather than as an error.
 
@@ -157,7 +163,8 @@ from, so vocabulary drift is a red test rather than a bad number six weeks later
 ## Checking the export path
 
 ```bash
-node tools/annotator/verify-export.mjs
+node tools/annotator/verify-export.mjs     # export shape, export UX, autosave round trip (headless)
+node tools/annotator/verify-autosave.mjs   # ⭐ a real browser, real frames, a real reload
 ```
 
 ⭐ It lifts the tool's **own** `buildDocument()` out of the generated HTML, runs it against a stub

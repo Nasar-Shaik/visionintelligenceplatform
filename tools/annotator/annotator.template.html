@@ -101,6 +101,7 @@
   <span class="grow"></span>
   <button id="markEmpty" title="No person in this frame (E)">Mark EMPTY</button>
   <button id="clearFrame" class="danger" title="Clear this frame (C)">Clear</button>
+  <span id="saveStatus" class="note" title="Work is kept in this browser until you export"></span>
   <button id="importBtn">Import…</button>
   <button id="exportBtn" class="primary">Export annotations.json</button>
 </header>
@@ -122,6 +123,11 @@
         <p><button id="pickBtn" class="primary">Choose frame files…</button></p>
         <p class="note">Select every <code>frame-000NN.png</code> (⌘A / Ctrl-A in the file dialog).</p>
         <p class="note" id="dropError"></p>
+        <!-- ⭐ Shown only when unfinished work from a previous session is waiting. -->
+        <div id="draftNote" class="hidden">
+          <p id="draftText" class="note"></p>
+          <p><button id="discardDraft" class="danger">Discard saved work</button></p>
+        </div>
       </div>
     </div>
   </div>
@@ -208,6 +214,7 @@ const state = {
   drag: null,
   panning: false,
   spaceDown: false,
+  pendingDraft: null,  // autosaved work waiting for its frames to be chosen again
 };
 
 function blankFrame(index) {
@@ -275,6 +282,17 @@ function loadFiles(files) {
     state.images[i] = img;
   });
   state.current = 0;
+
+  /* ⭐ The frames are back, so the saved work has somewhere to land. Restore before the first
+     render so the annotator sees their own work, not an empty tool. */
+  if (state.pendingDraft) {
+    const restored = applyDocument(state.pendingDraft.doc);
+    state.pendingDraft = null;
+    document.getElementById("draftNote").classList.add("hidden");
+    if (!restored.ok) {
+      error.textContent = "⛔ saved work could not be restored: " + restored.error;
+    }
+  }
   renderSidebar();
 }
 
@@ -424,6 +442,12 @@ function renderSidebar() {
     f ? "(" + f.joints.size + " / 17 placed)" : "";
 
   renderWarnings();
+
+  /* ⛔ The single autosave point. Every discrete change — a joint placed, moved, deleted, a frame
+     marked EMPTY or cleared, a frame navigated — redraws this sidebar, while a mousemove mid-drag
+     redraws only the canvas. So hooking here saves on every committed change and never once per
+     mouse event. Do not make this conditional. */
+  saveDraft();
 }
 
 /* ── Checks ─────────────────────────────────────────────────────────────────────────────────── */
@@ -623,23 +647,26 @@ function exportJson() {
     (found.length ? whyAsked(blocking.length, advisory.length) + " You confirmed anyway." : ""));
 }
 
-function importJson(file) {
-  const reader = new FileReader();
-  reader.onload = () => {
-    let doc;
-    try { doc = JSON.parse(String(reader.result)); }
-    catch (e) { window.alert("⛔ not valid JSON: " + e.message); return; }
+/**
+ * Apply an export document to the live state.
+ *
+ * ⭐ Shared by **Import…** and by the autosaved draft, so a restored draft and an imported file
+ * cannot come to disagree about what a document means. Returns a result rather than alerting, so
+ * the draft path can restore silently while the import path can speak.
+ */
+function applyDocument(doc) {
+  /* ⛔ Refuse a document describing other pixels. Silently merging one would produce coordinates
+     that are precise, reproducible and about a different clip. */
+  if (doc.caseId && doc.caseId !== CASE_ID) {
+    return { ok: false, error: "that file is for case '" + doc.caseId + "', not '" + CASE_ID + "'" };
+  }
+  if (doc.clipSha256 && CLIP_SHA256 && doc.clipSha256 !== CLIP_SHA256) {
+    return { ok: false, error: "that file describes a different clip digest — different pixels" };
+  }
+  if (!Array.isArray(doc.frames)) return { ok: false, error: "that file has no frames array" };
 
-    /* ⛔ Refuse a file describing other pixels. Silently merging one would produce coordinates that
-       are precise, reproducible and about a different clip. */
-    if (doc.caseId && doc.caseId !== CASE_ID) {
-      window.alert("⛔ that file is for case '" + doc.caseId + "', not '" + CASE_ID + "'"); return;
-    }
-    if (doc.clipSha256 && CLIP_SHA256 && doc.clipSha256 !== CLIP_SHA256) {
-      window.alert("⛔ that file describes a different clip digest — different pixels"); return;
-    }
-    if (!Array.isArray(doc.frames)) { window.alert("⛔ that file has no frames array"); return; }
-
+  let applied = 0;
+  {
     for (const entry of doc.frames) {
       const f = state.frames[entry.frameIndex];
       if (!f) continue;
@@ -658,12 +685,107 @@ function importJson(file) {
          ANNOTATED. Frames it left empty stay UNREVIEWED, which is the honest reading — nothing in
          such a file distinguishes "confirmed empty" from "not yet looked at". */
       if (!entry.reviewStatus) refreshStatus(f);
+      applied += 1;
     }
-    document.getElementById("annotator").value = doc.annotator || "";
-    renderSidebar(); render();
-    window.alert("✓ imported " + doc.frames.length + " frames");
+  }
+  if (doc.annotator) document.getElementById("annotator").value = doc.annotator;
+  renderSidebar(); render();
+  return { ok: true, frames: applied };
+}
+
+function importJson(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    let doc;
+    try { doc = JSON.parse(String(reader.result)); }
+    catch (e) { window.alert("⛔ not valid JSON: " + e.message); return; }
+    const result = applyDocument(doc);
+    if (!result.ok) { window.alert("⛔ " + result.error); return; }
+    window.alert("✓ imported " + result.frames + " frames");
   };
   reader.readAsText(file);
+}
+
+/* ── Autosave ───────────────────────────────────────────────────────────────────────────────────
+ *
+ * ⛔ **The work must survive the tab.** Nothing reaches disk until an export succeeds, and a closed
+ * tab once took an hour of hand annotation with it — there was no second copy anywhere. Every
+ * discrete change is now written to this browser's local storage immediately and offered back the
+ * next time the tool opens.
+ *
+ * ⚠️ Coordinates and statuses only — never the frames. The PNGs stay on disk where they are; a
+ * browser cannot reopen them without you, which is why restoring asks for the same files again.
+ * ⛔ Still local-only: local storage is this machine's disk, the CSP is unchanged, and nothing here
+ * can leave the browser.
+ */
+const DRAFT_KEY = "vip.pose.draft." + CASE_ID + "." + CLIP_SHA256.slice(0, 12);
+
+/** ⚠️ Private browsing and disabled storage both throw on access rather than returning null. */
+function storage() {
+  try { return window.localStorage || null; } catch (err) { return null; }
+}
+
+function showSaveStatus(text, bad) {
+  const el = document.getElementById("saveStatus");
+  el.textContent = text;
+  el.className = bad ? "note warn" : "note";
+}
+
+/**
+ * Write the current work to local storage. Returns the record written, or null if it could not be
+ * written — ⛔ and says so on screen either way, because silent persistence is the same lie as a
+ * silent export.
+ */
+function saveDraft() {
+  const store = storage();
+  if (state.frames.length === 0) return null;
+  if (store === null) {
+    showSaveStatus("⚠️ not saved — this browser blocks local storage; export often", true);
+    return null;
+  }
+  let record;
+  try {
+    record = { savedAt: new Date().toISOString(), doc: buildDocument() };
+    store.setItem(DRAFT_KEY, JSON.stringify(record));
+  } catch (err) {
+    showSaveStatus("⚠️ autosave failed: " + (err && err.message ? err.message : err), true);
+    return null;
+  }
+  const reviewed = record.doc.frames.filter((f) => f.reviewStatus !== STATUS.UNREVIEWED).length;
+  showSaveStatus("saved " + record.savedAt.slice(11, 19) + " · " + reviewed + "/" +
+    record.doc.frames.length + " reviewed");
+  return record;
+}
+
+/** The draft waiting for its frames, or null. Bound to this clip by the storage key. */
+function readDraft() {
+  const store = storage();
+  if (store === null) return null;
+  let record;
+  try { record = JSON.parse(store.getItem(DRAFT_KEY) || "null"); } catch (err) { return null; }
+  if (!record || !record.doc || !Array.isArray(record.doc.frames)) return null;
+  return record;
+}
+
+function clearDraft() {
+  const store = storage();
+  if (store !== null) { try { store.removeItem(DRAFT_KEY); } catch (err) { /* nothing to undo */ } }
+  state.pendingDraft = null;
+  document.getElementById("draftNote").classList.add("hidden");
+  showSaveStatus("");
+}
+
+/** ⚠️ Restores only what a human placed; the frames themselves must be chosen again. */
+function offerDraft() {
+  const record = readDraft();
+  if (record === null) return;
+  state.pendingDraft = record;
+  const reviewed = record.doc.frames.filter((f) => f.reviewStatus !== STATUS.UNREVIEWED).length;
+  document.getElementById("draftText").textContent =
+    "⭐ Unfinished work from " + record.savedAt.slice(0, 19).replace("T", " ") + " is saved in this " +
+    "browser — " + reviewed + " of " + record.doc.frames.length + " frames reviewed. Choose the " +
+    "same frames above and it comes back automatically.";
+  document.getElementById("draftNote").classList.remove("hidden");
 }
 
 /* ── Interaction ────────────────────────────────────────────────────────────────────────────── */
@@ -827,7 +949,12 @@ document.getElementById("jsonPicker").onchange = (e) => {
 };
 window.addEventListener("resize", () => { fit(); render(); });
 
+document.getElementById("discardDraft").onclick = () => {
+  if (window.confirm("Discard the saved work permanently? This cannot be undone.")) clearDraft();
+};
+
 renderSidebar();
+offerDraft();
 </script>
 </body>
 </html>
