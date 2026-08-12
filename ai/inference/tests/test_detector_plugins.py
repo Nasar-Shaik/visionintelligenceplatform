@@ -357,6 +357,55 @@ class PreprocessingParityTests(unittest.TestCase):
         self.assertGreater(float(tensor.max()), 1.0, "yolox takes raw 0-255 values, scale 1.0")
 
 
+#: Every task the catalogue may declare. ⛔ **Enumerated, so a filter cannot silently miss.** The
+#: detector invariants below select entries by task; a typo like `object_detection` would otherwise
+#: drop that model out of every check while the suite stayed green — the same shape of failure as a
+#: metric that reads zero because nothing reached it. `CatalogueScopeTests` asserts the set is
+#: exhaustive, so an unrecognised task fails loudly here instead of hiding a detector from its rules.
+CATALOGUE_TASKS = ("object-detection", "pose-estimation")
+
+DETECTOR_TASK = "object-detection"
+
+
+def _catalogue_models():
+    import json
+
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "models", "registry.json")
+    with open(path, encoding="utf-8") as handle:
+        return json.load(handle)["models"]
+
+
+@requires_numpy
+class CatalogueScopeTests(unittest.TestCase):
+    """⛔ **The guards that keep the scoping honest.**
+
+    The three tests below were written when every catalogued model was a detector, and they said
+    "every catalogue entry". Cataloguing `rtmpose-tiny` (P3.3b) made that premise false: a pose model
+    has 17 joint names where a detector has 80 COCO classes, and its output is decoded by `pose.py`
+    rather than by any `adapters.model_formats` decoder. The assertions were right; their *scope* was
+    a leftover from a single-task catalogue.
+
+    ⚠️ Narrowing a scope is how a suite quietly stops testing things, so it is paid for here: the
+    task set must be exhaustive, and each filtered group must be non-empty.
+    """
+
+    def test_every_catalogue_entry_declares_a_known_task(self):
+        for model in _catalogue_models():
+            with self.subTest(model=model["id"]):
+                self.assertIn(model.get("task"), CATALOGUE_TASKS)
+
+    def test_the_detector_filter_actually_matches_detectors(self):
+        """⛔ A filter that matches nothing passes every assertion it guards."""
+        detectors = [m for m in _catalogue_models() if m.get("task") == DETECTOR_TASK]
+        self.assertGreaterEqual(len(detectors), 2, "the detector invariants would be vacuous")
+
+    def test_every_non_detector_is_excluded_for_a_stated_reason(self):
+        """⚠️ The excluded set is asserted rather than assumed. If a future entry is excluded from
+        the detector rules, this test is where somebody has to say so on purpose."""
+        excluded = [m["id"] for m in _catalogue_models() if m.get("task") != DETECTOR_TASK]
+        self.assertEqual(excluded, ["rtmpose-tiny"])
+
+
 @requires_numpy
 class ClassMappingTests(unittest.TestCase):
     """⛔ The portability defect this milestone found."""
@@ -368,9 +417,19 @@ class ClassMappingTests(unittest.TestCase):
         with open(path, encoding="utf-8") as handle:
             return json.load(handle)
 
+    def _detectors(self):
+        """⛔ Object-detection entries only — these invariants are about the COCO-80 label space.
+
+        A pose model's `labels` are the 17 COCO **joint** names; asserting `labels[0] == "person"`
+        against them tests nothing true and fails for the right reason in the wrong place.
+        """
+        return [m for m in self._catalogue()["models"] if m.get("task") == DETECTOR_TASK]
+
     def test_person_is_class_zero_for_every_registered_detector(self):
         """The shipped capability is person detection; class 0 is the load-bearing fact."""
-        for model in self._catalogue()["models"]:
+        detectors = self._detectors()
+        self.assertTrue(detectors, "no detector in the catalogue — this assertion would be vacuous")
+        for model in detectors:
             self.assertEqual(model["labels"][0], "person", model["id"])
 
     def test_every_detector_shares_one_label_space(self):
@@ -378,13 +437,28 @@ class ClassMappingTests(unittest.TestCase):
         `diningtable`, `tvmonitor` — VOC spellings at identical COCO indices. A rule written
         `label == "couch"` would work under YOLOX and silently never fire under RT-DETR, so the
         catalogue normalises the strings and never rebases the ids."""
-        catalogue = self._catalogue()["models"]
-        reference = catalogue[0]["labels"]
+        detectors = self._detectors()
+        self.assertGreater(len(detectors), 1, "one detector cannot diverge from itself")
+        reference = detectors[0]["labels"]
 
-        for model in catalogue[1:]:
+        for model in detectors[1:]:
             self.assertEqual(model["labels"], reference, f"{model['id']} diverges from the label space")
 
+    def test_a_pose_entry_carries_the_joint_vocabulary_instead(self):
+        """⭐ The excluded entry is still asserted, against the rules that DO apply to it — the
+        alternative is a catalogue entry no test looks at."""
+        from perception import COCO_17  # noqa: WPS433
+
+        pose_models = [m for m in self._catalogue()["models"] if m.get("task") == "pose-estimation"]
+        self.assertTrue(pose_models)
+        for model in pose_models:
+            with self.subTest(model=model["id"]):
+                self.assertEqual(model["labels"], list(COCO_17))
+                self.assertNotEqual(model["labels"][0], "person")
+
     def test_the_declared_class_count_matches_the_label_list(self):
+        """⚠️ Catalogue-wide on purpose: it is about internal consistency, not the label space, and
+        holds for any entry that declares `numClasses`."""
         for model in self._catalogue()["models"]:
             declared = model.get("outputParams", {}).get("numClasses")
             if declared is not None:
@@ -398,13 +472,31 @@ class RegistryTests(unittest.TestCase):
 
     def test_every_catalogue_entry_has_a_decoder(self):
         """⛔ A catalogue entry whose outputFormat has no decoder fails at the first frame, in
-        production, rather than here."""
-        import json
+        production, rather than here.
 
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "models", "registry.json")
-        with open(path, encoding="utf-8") as handle:
-            for model in json.load(handle)["models"]:
+        ⚠️ **Object-detection entries only**, and the restriction is the point rather than an
+        exemption. `model_formats.get_decoder` serves the detector adapter, whose contract is
+        `frame → RawDetection[]`. A pose model is `person box → keypoints`: it never reaches this
+        registry, it is decoded by `pose.py`, and requiring a `model_formats` decoder for it would
+        force a fake detector into the catalogue to satisfy a test.
+        """
+        detectors = [m for m in _catalogue_models() if m.get("task") == DETECTOR_TASK]
+        self.assertTrue(detectors, "no detector in the catalogue — this assertion would be vacuous")
+        for model in detectors:
+            with self.subTest(model=model["id"]):
                 model_formats.get_decoder(model["outputFormat"])
+
+    def test_a_pose_entry_is_decoded_outside_this_registry(self):
+        """⛔ The excluded case, asserted rather than merely skipped: the pose format must NOT be
+        here, and `pose.py` must be the thing that declares it."""
+        import pose  # noqa: WPS433
+
+        pose_models = [m for m in _catalogue_models() if m.get("task") == "pose-estimation"]
+        self.assertTrue(pose_models)
+        for model in pose_models:
+            with self.subTest(model=model["id"]):
+                self.assertEqual(model["outputFormat"], pose.OUTPUT_FORMAT)
+                self.assertNotIn(model["outputFormat"], model_formats.available_decoders())
 
 
 if __name__ == "__main__":
