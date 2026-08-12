@@ -13,6 +13,8 @@ what the model thought.
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import unittest
 
@@ -210,6 +212,70 @@ class ExportShapeTests(unittest.TestCase):
         })
         self.assertEqual(len(parsed.frames), 1)
         self.assertEqual(parsed.frames[0].boxes, ())
+
+
+def export_body() -> str:
+    """The source of `exportJson`, comments stripped — every path through it must report."""
+    body = re.search(r"^function exportJson\(\) \{$(.*?)^\}$", code(), re.S | re.M)
+    if body is None:
+        raise AssertionError("exportJson is not declared in the generated annotator")
+    return body.group(1)
+
+
+class ExportFeedbackTests(unittest.TestCase):
+    """⛔ Every export attempt must say what happened.
+
+    The first version returned silently when the confirm dialog was dismissed. A silent return is
+    indistinguishable from a successful export: an annotator exported 37 frames, was shown nothing,
+    and the file did not exist. These tests pin the outcome of each path.
+    """
+
+    def test_a_status_banner_exists_for_the_result_to_be_shown_in(self) -> None:
+        page = html()
+        self.assertIn('id="exportStatus"', page)
+        self.assertIn('role="status"', page)
+
+    def test_all_three_outcomes_are_reported(self) -> None:
+        for outcome in ("exported", "cancelled", "failed"):
+            with self.subTest(outcome=outcome):
+                self.assertIn(f'reportExport("{outcome}"', code())
+
+    def test_no_path_out_of_export_is_silent(self) -> None:
+        """⛔ The regression itself. A bare `return` anywhere in exportJson is the defect."""
+        self.assertNotIn("return;", export_body())
+        for path in re.findall(r"return\s+(\w+)", export_body()):
+            with self.subTest(path=path):
+                self.assertEqual(path, "reportExport")
+
+    def test_the_cancelled_path_says_nothing_was_written(self) -> None:
+        page = html()
+        self.assertIn("Export cancelled", page)
+        self.assertIn("nothing was written", page)
+
+    def test_the_successful_path_names_the_file_it_wrote(self) -> None:
+        self.assertIn('const EXPORT_FILENAME = "annotations.json";', html())
+        self.assertIn("EXPORT_FILENAME", export_body())
+
+    def test_the_banner_is_never_suppressed_by_the_hidden_class(self) -> None:
+        """`className = outcome` replaces `hidden` outright; a `classList.add` would not."""
+        self.assertIn("el.className = outcome;", code())
+
+
+class ExportBehaviourTests(unittest.TestCase):
+    """⭐ The static tests above prove the code says the right words. This one runs it.
+
+    `verify-export.mjs` lifts the tool's own `exportJson` into a VM and drives all four outcomes
+    against a DOM stub that really records what the banner rendered.
+    """
+
+    @unittest.skipUnless(shutil.which("node"), "node is required to run the annotator's own export")
+    def test_the_export_harness_passes(self) -> None:
+        result = subprocess.run(
+            [shutil.which("node"), os.path.join(REPO, "tools", "annotator", "verify-export.mjs")],
+            cwd=REPO, capture_output=True, text=True, timeout=180,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("export UX", result.stdout)
 
 
 if __name__ == "__main__":

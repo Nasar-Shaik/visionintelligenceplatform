@@ -32,7 +32,8 @@
     --ok: #38d39f;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+         display: flex; flex-direction: column; height: 100vh; }
   header { display: flex; align-items: center; gap: 14px; padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   header h1 { font-size: 13px; margin: 0; font-weight: 600; letter-spacing: .02em; }
   .grow { flex: 1; }
@@ -41,7 +42,15 @@
   button:disabled { opacity: .4; cursor: default; }
   button.primary { background: #2b6cb0; border-color: #3b82c4; }
   button.danger { background: #7a2b2b; border-color: #a13a3a; }
-  main { display: grid; grid-template-columns: 1fr 330px; height: calc(100vh - 47px); }
+  /* ⚠️ flex:1 rather than calc(100vh - 47px): the export banner appears and disappears above this,
+     and a hard-coded header height silently mis-sizes the canvas the moment anything wraps. */
+  main { display: grid; grid-template-columns: 1fr 330px; flex: 1; min-height: 0; }
+  #exportStatus { display: flex; gap: 9px; align-items: baseline; flex-wrap: wrap;
+                  padding: 7px 14px; border-bottom: 1px solid var(--line); font-size: 12px; }
+  #exportStatus .detail { opacity: .85; }
+  #exportStatus.exported  { background: #12291f; border-bottom-color: #235c43; color: #9ce8c6; }
+  #exportStatus.cancelled { background: #33260f; border-bottom-color: #6b4d18; color: #ffd08a; }
+  #exportStatus.failed    { background: #331717; border-bottom-color: #6b2626; color: #ffb0b0; }
   #stage { position: relative; overflow: hidden; background: #0b0d10; cursor: crosshair; }
   #stage.pan { cursor: grab; }
   canvas { position: absolute; top: 0; left: 0; }
@@ -95,6 +104,9 @@
   <button id="importBtn">Import…</button>
   <button id="exportBtn" class="primary">Export annotations.json</button>
 </header>
+
+<!-- ⛔ Every export attempt reports here. Never let this become conditional. -->
+<div id="exportStatus" class="hidden" role="status" aria-live="polite"></div>
 
 <main>
   <div id="stage">
@@ -529,22 +541,86 @@ function buildDocument() {
   };
 }
 
+/** The one file this tool writes, and where it has to end up to be scored. */
+const EXPORT_FILENAME = "annotations.json";
+const EXPORT_DESTINATION = ".data/real/" + CASE_ID + "-pose/" + EXPORT_FILENAME;
+
+/**
+ * ⛔ **Report the outcome of every export attempt, without exception.**
+ *
+ * This banner exists because the previous version returned silently when the confirm dialog was
+ * dismissed — and a silent return is indistinguishable from a successful export. An annotator
+ * believed 37 frames had been written, closed nothing, and only a disk check hours later showed
+ * there was no file. Whatever happens here, the page must say so on screen.
+ *
+ * Returns the outcome so it can be asserted against; the DOM is the human's copy of the same fact.
+ */
+function reportExport(outcome, headline, detail) {
+  const el = document.getElementById("exportStatus");
+  el.className = outcome;               /* also clears "hidden" — the banner is never suppressed */
+  el.textContent = "";
+  const strong = document.createElement("b");
+  strong.textContent = headline;
+  el.appendChild(strong);
+  if (detail) {
+    const span = document.createElement("span");
+    span.className = "detail";
+    span.textContent = detail;
+    el.appendChild(span);
+  }
+  return { outcome: outcome, headline: headline, detail: detail || "" };
+}
+
+/** Why the annotator was asked to confirm — stated back to them, not just counted. */
+function whyAsked(blocking, advisory) {
+  const parts = [];
+  if (blocking) parts.push(blocking + " blocking problem(s)");
+  if (advisory) parts.push(advisory + " warning(s)");
+  return parts.length ? "You were asked because of " + parts.join(" and ") + "." : "";
+}
+
 function exportJson() {
   const found = problems("all");
   const blocking = found.filter((p) => p.startsWith("⛔"));
+  const advisory = found.filter((p) => !p.startsWith("⛔"));
+
   if (found.length) {
     const message = found.join("\n\n") + "\n\n" +
       (blocking.length
         ? "⛔ " + blocking.length + " blocking problem(s). Export anyway?"
         : "No blocking problems. Export?");
-    if (!window.confirm(message)) return;
+    /* ⛔ The path that lost an hour of work. It must never again be silent. */
+    if (!window.confirm(message)) {
+      return reportExport("cancelled", "Export cancelled — nothing was written.",
+        whyAsked(blocking.length, advisory.length) +
+        " Your annotation exists only in this browser tab: closing or reloading it loses the work." +
+        " Press Export again and confirm to write the file anyway.");
+    }
   }
-  const blob = new Blob([JSON.stringify(buildDocument(), null, 1)], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "annotations.json";
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+
+  let doc;
+  try {
+    doc = buildDocument();
+    const blob = new Blob([JSON.stringify(doc, null, 1)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = EXPORT_FILENAME;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  } catch (err) {
+    /* ⛔ A swallowed throw is the same lie as a silent cancel. */
+    return reportExport("failed", "⛔ Export failed — nothing was written.",
+      (err && err.message ? err.message : String(err)) +
+      " Your annotation is still in this tab; do not close it.");
+  }
+
+  const people = doc.frames.reduce((n, f) => n + f.boxes.length, 0);
+  const reviewed = doc.frames.filter((f) => f.reviewStatus !== STATUS.UNREVIEWED).length;
+  return reportExport("exported",
+    "✓ Exported " + EXPORT_FILENAME + " — " + doc.frames.length + " frames, " +
+    reviewed + " reviewed, " + people + " annotated person(s).",
+    "Written to your browser's download location; move it to " + EXPORT_DESTINATION + ". " +
+    (found.length ? whyAsked(blocking.length, advisory.length) + " You confirmed anyway." : ""));
 }
 
 function importJson(file) {

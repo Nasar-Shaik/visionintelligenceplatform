@@ -89,6 +89,28 @@ name. Save the download to:
 .data/real/movie101-pose/annotations.json
 ```
 
+### ⛔ Every export attempt reports back
+
+A banner under the toolbar states the outcome of **every** press, because an earlier version
+returned silently when the confirm dialog was dismissed — indistinguishable from success, and an
+hour of annotation was lost to it.
+
+| Banner | Means |
+| --- | --- |
+| ✓ **Exported annotations.json** — *n* frames, *n* reviewed, *n* person(s) | the file was written; move it to the path above |
+| ⚠️ **Export cancelled — nothing was written** | you dismissed the dialog. ⛔ **The work is still only in this tab** |
+| ⛔ **Export failed — nothing was written** | the browser refused; the error is shown and the work is still in the tab |
+
+⚠️ **There is no autosave.** Nothing is written to disk until an export succeeds and you see the
+green banner. If the tab is ever closed with unsaved work, this recovers it from the console:
+
+```js
+const a = document.createElement('a');
+a.href = URL.createObjectURL(new Blob([JSON.stringify(buildDocument(), null, 1)],
+                                      { type: 'application/json' }));
+a.download = 'annotations.json'; a.click();
+```
+
 **Import…** reads a previously exported file back, so you can stop and resume. It refuses a file
 whose `caseId` or `clipSha256` describes a different clip.
 
