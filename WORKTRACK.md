@@ -381,7 +381,24 @@ not approve Re-ID.
 
 ## 7b. Professional Perception
 
-### P3.3 — pose: CLOSED 2026-08-12, accepted on the physical webcam
+### P3.3 — pose: running, accepted on the webcam, and now measurable
+
+### P3.3c — pose accuracy: the instrument is built, the number is not yet earned
+
+⭐ **`docs/validation/POSE_ACCURACY.md`.** PCK@0.2 against human keypoints, normalized by **torso**
+— because a box-normalized PCK@0.2 on a 1080×1920 portrait frame has a tolerance of **74 % of the
+person's box width** and would accept a wrist on the opposite side of the body. Nine negative
+controls, a coverage gate that refuses a headline below a declared minimum, and provenance binding
+that refuses to write a predictions file it cannot fully attribute.
+
+⛔ **No accuracy result exists and none may be quoted** — zero human keypoint annotations. The tool
+refuses to publish rather than reporting zero. Blocked on a human filling in
+`.data/real/movie101-pose/annotations.template.json`; the guide is `POSE_ANNOTATION_MOVIE101.md`.
+
+⚠️ Even annotated perfectly, movie101 yields ~204 joints from **one subject** — `indicative` at best.
+It is excellent at catching *structural* error and cannot establish generalisable accuracy.
+
+### P3.3b — pose runs, and reaches the operator
 
 ⭐ **Full closure report: `docs/validation/POSE_VERIFICATION.md`.** The Architect stood in front of
 the laptop webcam and confirmed their own 17-keypoint skeleton rendered by the console — the primary

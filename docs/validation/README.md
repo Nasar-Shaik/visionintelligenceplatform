@@ -32,6 +32,8 @@ proposal — every document reports what was observed, on which build, with what
 | [POSE_VERIFICATION](POSE_VERIFICATION.md) | ⭐ **The closure report.** Does pose run on real frames in the deployed runtime, and reach the operator's screen? Keeps *implemented* · *verified on recorded footage* · *verified on physical webcam* strictly apart, and records what is still unproved |
 | [POSE_ARTIFACT](POSE_ARTIFACT.md) | Where the weights came from, under what licence, and what was checked before any of it was catalogued |
 | [POSE_SEAM](POSE_SEAM.md) | The seam pose arrived through — written before there was a model, so integration would be integration rather than architecture |
+| [POSE_ACCURACY](POSE_ACCURACY.md) | ⛔ **The measurement path, and why there is still no accuracy number.** PCK@0.2 with the normalizer choice justified, the coverage gate, nine negative controls, and the instrument's calibration |
+| [POSE_ANNOTATION_MOVIE101](POSE_ANNOTATION_MOVIE101.md) | ⭐ For the person marking the joints: the 17-joint rules, the exact commands, and what this clip can and cannot establish |
 
 ## Release soaks
 
