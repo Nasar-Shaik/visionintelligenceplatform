@@ -1,0 +1,757 @@
+<!doctype html>
+<!--
+  VIP pose annotator — movie101, P3.3c.
+
+  ⛔ GENERATED FILE when built. Edit annotator.template.html, then run:
+       python3 tools/annotator/build_annotator.py
+  The joint vocabulary, skeleton edges, schema version and clip metadata are injected from the
+  Python that owns them, so this tool cannot drift into a second vocabulary.
+
+  ⛔ NOTHING HERE READS THE MODEL. There is no code path to the runtime's output, and the build
+  refuses to write a file containing the word for it. Ground truth influenced by the thing it is
+  meant to score is not ground truth.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!--
+  ⛔ The no-network guarantee, made structural rather than promised. `default-src 'none'` denies
+  every outbound request by default and `connect-src 'none'` denies the scripted ones specifically,
+  so this page cannot upload a frame of consented footage even if a future edit tried to.
+
+  ⚠️ The build additionally refuses to write this file if it contains any request-issuing API by
+  name — which is why the sentence above describes them rather than spelling them.
+-->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src blob: data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>VIP pose annotator — movie101</title>
+<style>
+  :root {
+    --bg: #14161a; --panel: #1c1f26; --line: #2c313b; --text: #e7e9ee; --muted: #949bab;
+    --left: #46b3ff; --right: #ffb038; --occluded: #7a8296; --box: #38d39f; --warn: #ff6b6b;
+    --ok: #38d39f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
+  header { display: flex; align-items: center; gap: 14px; padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 13px; margin: 0; font-weight: 600; letter-spacing: .02em; }
+  .grow { flex: 1; }
+  button { background: #262b34; color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 5px 10px; font: inherit; cursor: pointer; }
+  button:hover:not(:disabled) { background: #303743; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: #2b6cb0; border-color: #3b82c4; }
+  button.danger { background: #7a2b2b; border-color: #a13a3a; }
+  main { display: grid; grid-template-columns: 1fr 330px; height: calc(100vh - 47px); }
+  #stage { position: relative; overflow: hidden; background: #0b0d10; cursor: crosshair; }
+  #stage.pan { cursor: grab; }
+  canvas { position: absolute; top: 0; left: 0; }
+  aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 10px 12px; }
+  .badge { padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: .04em; }
+  .UNREVIEWED { background: #4a3a12; color: #ffcf6b; }
+  .EMPTY { background: #2a3340; color: #9fb6d0; }
+  .ANNOTATED { background: #12402e; color: #5fe0ac; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 14px 0 6px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; }
+  tr.joint { cursor: pointer; }
+  tr.joint:hover td { background: #232833; }
+  tr.joint.sel td { background: #2b3444; }
+  td { padding: 2px 4px; border-bottom: 1px solid #22262e; }
+  td.name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .unset { color: var(--muted); }
+  .vis { color: var(--ok); font-size: 11px; }
+  .occ { color: var(--occluded); font-size: 11px; }
+  .none { color: #5b6270; font-size: 11px; }
+  .note { color: var(--muted); font-size: 11.5px; margin: 6px 0; }
+  .warn { color: var(--warn); }
+  .rule { background: #241a1a; border: 1px solid #4a2b2b; border-radius: 6px; padding: 7px 9px; margin: 8px 0; font-size: 11.5px; }
+  .rule b { color: #ff9a9a; }
+  #warnings li { margin-bottom: 5px; font-size: 11.5px; }
+  #warnings { padding-left: 16px; margin: 4px 0; }
+  kbd { background: #262b34; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; font-family: ui-monospace, monospace; font-size: 11px; }
+  #shortcuts { color: var(--muted); font-size: 11px; line-height: 1.9; }
+  #drop { position: absolute; inset: 0; display: grid; place-items: center; background: #0b0d10; text-align: center; padding: 30px; }
+  #drop div { max-width: 520px; }
+  .hidden { display: none !important; }
+  input[type=text] { background: #14171d; color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 4px 7px; font: inherit; width: 100%; }
+  progress { width: 130px; height: 8px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>VIP pose annotator</h1>
+  <span class="note" id="caseLabel"></span>
+  <span class="grow"></span>
+  <button id="prev" title="Previous frame (←)">←</button>
+  <span id="frameLabel" class="note">— / —</span>
+  <button id="next" title="Next frame (→)">→</button>
+  <span id="statusBadge" class="badge UNREVIEWED">UNREVIEWED</span>
+  <progress id="progress" max="1" value="0"></progress>
+  <span id="progressLabel" class="note">0 / 0 reviewed</span>
+  <span class="grow"></span>
+  <button id="markEmpty" title="No person in this frame (E)">Mark EMPTY</button>
+  <button id="clearFrame" class="danger" title="Clear this frame (C)">Clear</button>
+  <button id="importBtn">Import…</button>
+  <button id="exportBtn" class="primary">Export annotations.json</button>
+</header>
+
+<main>
+  <div id="stage">
+    <canvas id="canvas"></canvas>
+    <div id="drop">
+      <div>
+        <h2 style="margin-top:0">Load the frames</h2>
+        <p class="note">
+          Choose the <b>37 PNG files</b> in <code>.data/real/movie101-frames/</code>.
+          They are read from your disk by the browser and never leave this machine — this page has no
+          network access at all.
+        </p>
+        <p><button id="pickBtn" class="primary">Choose frame files…</button></p>
+        <p class="note">Select every <code>frame-000NN.png</code> (⌘A / Ctrl-A in the file dialog).</p>
+        <p class="note" id="dropError"></p>
+      </div>
+    </div>
+  </div>
+
+  <aside>
+    <div class="rule">
+      <b>⛔ Left and right are the SUBJECT'S.</b> A person facing the camera has their
+      <span style="color:var(--left)">left</span> side on the <b>right</b> of your screen.
+      A mirrored ground truth makes a correct model look broken.
+    </div>
+
+    <h2>Bounding box</h2>
+    <div id="boxInfo" class="note">none — press <kbd>B</kbd> and drag</div>
+    <div class="note">visibility:
+      <select id="visibility" style="background:#14171d;color:var(--text);border:1px solid var(--line);border-radius:4px;padding:2px 4px;font:inherit"></select>
+    </div>
+
+    <h2>Joints <span id="jointCount" class="note"></span></h2>
+    <table><tbody id="joints"></tbody></table>
+
+    <h2>Checks</h2>
+    <ul id="warnings"><li class="note">—</li></ul>
+
+    <h2>Annotator</h2>
+    <input type="text" id="annotator" placeholder="your name — recorded in the file">
+    <p class="note" style="margin-top:8px">
+      <b>Frame status</b> is exported as <code>reviewStatus</code>. An
+      <span class="badge EMPTY">EMPTY</span> frame is a deliberate statement that nobody was there;
+      an <span class="badge UNREVIEWED">UNREVIEWED</span> one is a frame you have not looked at, and
+      the two must never be confused.
+    </p>
+
+    <h2>Keys</h2>
+    <div id="shortcuts">
+      <kbd>←</kbd> <kbd>→</kbd> frame &nbsp; <kbd>N</kbd> <kbd>P</kbd> next/prev joint<br>
+      <kbd>click</kbd> place selected joint &nbsp; <kbd>drag</kbd> move a joint<br>
+      <kbd>V</kbd> visible ⇄ occluded &nbsp; <kbd>X</kbd> delete joint<br>
+      <kbd>B</kbd> box mode &nbsp; <kbd>J</kbd> joint mode &nbsp; <kbd>E</kbd> empty frame<br>
+      <kbd>C</kbd> clear frame &nbsp; <kbd>space</kbd>+drag pan &nbsp; <kbd>wheel</kbd> zoom<br>
+      <kbd>0</kbd> fit &nbsp; <kbd>+</kbd> <kbd>-</kbd> zoom
+    </div>
+  </aside>
+</main>
+
+<input type="file" id="filePicker" multiple accept="image/png" class="hidden">
+<input type="file" id="jsonPicker" accept="application/json,.json" class="hidden">
+
+<script>
+"use strict";
+
+/* ── Injected from the Python that owns these definitions ──────────────────────────────────────
+   ⛔ Do not edit by hand. `build_annotator.py` writes them and a test fails if they drift. */
+const COCO_17       = ["nose", "left_eye", "right_eye", "left_ear", "right_ear", "left_shoulder", "right_shoulder", "left_elbow", "right_elbow", "left_wrist", "right_wrist", "left_hip", "right_hip", "left_knee", "right_knee", "left_ankle", "right_ankle"];
+const EDGES         = [["left_ankle", "left_knee"], ["left_knee", "left_hip"], ["right_ankle", "right_knee"], ["right_knee", "right_hip"], ["left_hip", "right_hip"], ["left_shoulder", "left_hip"], ["right_shoulder", "right_hip"], ["left_shoulder", "right_shoulder"], ["left_shoulder", "left_elbow"], ["right_shoulder", "right_elbow"], ["left_elbow", "left_wrist"], ["right_elbow", "right_wrist"], ["left_eye", "right_eye"], ["nose", "left_eye"], ["nose", "right_eye"], ["left_eye", "left_ear"], ["right_eye", "right_ear"], ["left_ear", "left_shoulder"], ["right_ear", "right_shoulder"]];
+const TORSO         = ["left_shoulder", "right_shoulder", "left_hip", "right_hip"];
+const VISIBILITY    = ["fully-visible", "partially-occluded", "heavily-occluded"];
+const SCHEMA_VERSION= "tier1-2026-08-11";
+const SKELETON      = "coco-17";
+const CASE_ID       = "movie101";
+const CLIP_SHA256   = "e6f1448f54821fae4d5a197e464a08fc6c5a85453309f98fffc407aa99396107";
+const FRAME_W       = 1080;
+const FRAME_H       = 1920;
+const ANNOTATED_FPS = 1.928609;
+const GENERATED_BY  = "tools/annotator/build_annotator.py";
+
+/* ⛔ gtId is LOCKED to 1. movie101 is declared as a single-subject clip; a second identity here
+   would be a claim about the footage that the corpus does not make. If a second person ever
+   appears, this constant is the thing to revisit — deliberately, not by typing a different number
+   into one frame and creating an identity that exists for three frames and then vanishes. */
+const GT_ID = 1;
+const LABEL = "person";
+
+const STATUS = { UNREVIEWED: "UNREVIEWED", EMPTY: "EMPTY", ANNOTATED: "ANNOTATED" };
+
+/* ── State ──────────────────────────────────────────────────────────────────────────────────── */
+
+const state = {
+  frames: [],          // { index, atSeconds, status, bbox|null, visibility, joints: Map<name,{x,y,visible}> }
+  images: [],          // HTMLImageElement per index
+  current: 0,
+  selected: 0,         // index into COCO_17
+  mode: "joint",       // "joint" | "box"
+  view: { zoom: 1, x: 0, y: 0 },
+  drag: null,
+  panning: false,
+  spaceDown: false,
+};
+
+function blankFrame(index) {
+  return {
+    index,
+    atSeconds: Math.round((index / ANNOTATED_FPS) * 1000) / 1000,
+    status: STATUS.UNREVIEWED,
+    bbox: null,
+    visibility: VISIBILITY[0],
+    joints: new Map(),
+  };
+}
+
+function frame() { return state.frames[state.current]; }
+
+/* ⭐ Status is DERIVED from the work, never set by drawing alone — except EMPTY, which is the one
+   status a human must assert deliberately. A frame with a box or a joint is ANNOTATED; a frame
+   someone cleared goes back to UNREVIEWED rather than silently becoming an empty-room claim. */
+function refreshStatus(f) {
+  if (f.status === STATUS.EMPTY) return;
+  f.status = (f.bbox || f.joints.size > 0) ? STATUS.ANNOTATED : STATUS.UNREVIEWED;
+}
+
+/* ── Loading frames ─────────────────────────────────────────────────────────────────────────── */
+
+function indexFromName(name) {
+  const m = /(\d+)\s*\.png$/i.exec(name);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function loadFiles(files) {
+  const picked = [];
+  for (const file of files) {
+    const index = indexFromName(file.name);
+    if (index === null) continue;
+    picked.push({ index, file });
+  }
+  picked.sort((a, b) => a.index - b.index);
+
+  const error = document.getElementById("dropError");
+  if (picked.length === 0) {
+    error.textContent = "⛔ none of those files are named frame-000NN.png";
+    return;
+  }
+  /* ⛔ Contiguous from zero, or the annotator's frame N and the runtime's frame N are different
+     pixels — the join everything downstream depends on. */
+  for (let i = 0; i < picked.length; i++) {
+    if (picked[i].index !== i) {
+      error.textContent = "⛔ frame indices are not contiguous from 0 (missing " + i +
+        "). Select every frame-000NN.png in the folder.";
+      return;
+    }
+  }
+
+  state.frames = picked.map((p) => blankFrame(p.index));
+  state.images = new Array(picked.length);
+  let pending = picked.length;
+  picked.forEach((p, i) => {
+    const img = new Image();
+    img.onload = () => {
+      if (--pending === 0) { document.getElementById("drop").classList.add("hidden"); fit(); render(); }
+    };
+    img.onerror = () => { error.textContent = "⛔ could not decode " + p.file.name; };
+    img.src = URL.createObjectURL(p.file);
+    state.images[i] = img;
+  });
+  state.current = 0;
+  renderSidebar();
+}
+
+/* ── View transform ─────────────────────────────────────────────────────────────────────────── */
+
+const canvas = document.getElementById("canvas");
+const stage = document.getElementById("stage");
+const ctx = canvas.getContext("2d");
+
+function fit() {
+  const img = state.images[state.current];
+  if (!img) return;
+  const z = Math.min(stage.clientWidth / img.naturalWidth, stage.clientHeight / img.naturalHeight);
+  state.view.zoom = z;
+  state.view.x = (stage.clientWidth - img.naturalWidth * z) / 2;
+  state.view.y = (stage.clientHeight - img.naturalHeight * z) / 2;
+}
+
+/** Screen point → normalized [0,1] image coordinates. */
+function toNorm(clientX, clientY) {
+  const rect = stage.getBoundingClientRect();
+  const img = state.images[state.current];
+  const ix = (clientX - rect.left - state.view.x) / state.view.zoom;
+  const iy = (clientY - rect.top - state.view.y) / state.view.zoom;
+  return { x: ix / img.naturalWidth, y: iy / img.naturalHeight };
+}
+
+/** Normalized → screen. */
+function toScreen(nx, ny) {
+  const img = state.images[state.current];
+  return { x: state.view.x + nx * img.naturalWidth * state.view.zoom,
+           y: state.view.y + ny * img.naturalHeight * state.view.zoom };
+}
+
+const inRange = (v) => typeof v === "number" && isFinite(v) && v >= 0 && v <= 1;
+
+/* ── Rendering ──────────────────────────────────────────────────────────────────────────────── */
+
+function sideColour(name) {
+  if (name.startsWith("left_")) return "#46b3ff";
+  if (name.startsWith("right_")) return "#ffb038";
+  return "#e7e9ee";
+}
+
+function render() {
+  const img = state.images[state.current];
+  if (!img) return;
+  canvas.width = stage.clientWidth;
+  canvas.height = stage.clientHeight;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = state.view.zoom < 2;
+  ctx.drawImage(img, state.view.x, state.view.y,
+                img.naturalWidth * state.view.zoom, img.naturalHeight * state.view.zoom);
+
+  const f = frame();
+  if (f.bbox) {
+    const a = toScreen(f.bbox[0], f.bbox[1]);
+    const b = toScreen(f.bbox[0] + f.bbox[2], f.bbox[1] + f.bbox[3]);
+    ctx.strokeStyle = "#38d39f";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+  }
+
+  /* Limbs first, so joints sit on top. ⚠️ A limb is drawn only when BOTH ends were placed — the
+     same rule the console overlay applies, for the same reason: a line to a joint nobody located
+     is a claim nobody made. */
+  ctx.lineWidth = 2;
+  for (const [from, to] of EDGES) {
+    const a = f.joints.get(from), b = f.joints.get(to);
+    if (!a || !b) continue;
+    const p = toScreen(a.x, a.y), q = toScreen(b.x, b.y);
+    ctx.strokeStyle = (a.visible && b.visible) ? "rgba(120,200,255,.75)" : "rgba(122,130,150,.55)";
+    ctx.setLineDash(a.visible && b.visible ? [] : [4, 4]);
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  COCO_17.forEach((name, i) => {
+    const j = f.joints.get(name);
+    if (!j) return;
+    const p = toScreen(j.x, j.y);
+    const chosen = i === state.selected;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, chosen ? 7 : 5, 0, Math.PI * 2);
+    /* ⛔ Occluded joints are HOLLOW, visible ones filled. The distinction has to be legible at a
+       glance or it stops being made — and "was the hidden wrist found" is half the measurement. */
+    if (j.visible) { ctx.fillStyle = sideColour(name); ctx.fill(); }
+    else { ctx.strokeStyle = sideColour(name); ctx.lineWidth = 2; ctx.stroke(); }
+    if (chosen) {
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 11, 0, Math.PI * 2); ctx.stroke();
+    }
+  });
+
+  const sel = COCO_17[state.selected];
+  ctx.fillStyle = "rgba(0,0,0,.6)";
+  ctx.fillRect(8, 8, 260, 24);
+  ctx.fillStyle = sideColour(sel);
+  ctx.font = "12px ui-monospace, monospace";
+  ctx.fillText((state.mode === "box" ? "BOX MODE — drag" : "place: " + sel), 16, 24);
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────────────────────────────────── */
+
+function renderSidebar() {
+  const f = frame();
+  document.getElementById("caseLabel").textContent =
+    CASE_ID + " · " + FRAME_W + "×" + FRAME_H + " · " + ANNOTATED_FPS + " fps · sha256:" +
+    String(CLIP_SHA256).slice(0, 12) + "…";
+  document.getElementById("frameLabel").textContent =
+    f ? ("frame " + f.index + " / " + (state.frames.length - 1) + "  ·  " + f.atSeconds + "s") : "— / —";
+
+  const badge = document.getElementById("statusBadge");
+  badge.textContent = f ? f.status : STATUS.UNREVIEWED;
+  badge.className = "badge " + (f ? f.status : STATUS.UNREVIEWED);
+
+  const reviewed = state.frames.filter((x) => x.status !== STATUS.UNREVIEWED).length;
+  document.getElementById("progress").max = Math.max(1, state.frames.length);
+  document.getElementById("progress").value = reviewed;
+  document.getElementById("progressLabel").textContent =
+    reviewed + " / " + state.frames.length + " reviewed";
+
+  const boxInfo = document.getElementById("boxInfo");
+  if (f && f.bbox) {
+    boxInfo.innerHTML = "gtId <b>" + GT_ID + "</b> · " +
+      f.bbox.map((v) => v.toFixed(4)).join(", ");
+  } else {
+    boxInfo.innerHTML = 'none — press <kbd>B</kbd> and drag';
+  }
+
+  const body = document.getElementById("joints");
+  body.innerHTML = "";
+  COCO_17.forEach((name, i) => {
+    const j = f ? f.joints.get(name) : null;
+    const tr = document.createElement("tr");
+    tr.className = "joint" + (i === state.selected ? " sel" : "");
+    tr.onclick = () => { state.selected = i; renderSidebar(); render(); };
+    const dot = '<span class="dot" style="background:' + (j && j.visible ? sideColour(name) : "transparent") +
+      ";border:2px solid " + sideColour(name) + '"></span>';
+    const stateCell = !j ? '<span class="none">—</span>'
+      : (j.visible ? '<span class="vis">visible</span>' : '<span class="occ">occluded</span>');
+    tr.innerHTML = '<td class="name">' + dot + name + "</td><td style='text-align:right'>" + stateCell + "</td>";
+    body.appendChild(tr);
+  });
+  document.getElementById("jointCount").textContent =
+    f ? "(" + f.joints.size + " / 17 placed)" : "";
+
+  renderWarnings();
+}
+
+/* ── Checks ─────────────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * ⛔ Every check the downstream validator and scorer apply, run here while the fix is cheap.
+ * A person finishing two hours of work and only then learning the file is unusable is the
+ * expensive order to find these in.
+ */
+function problems(scope) {
+  const out = [];
+  const frames = scope === "all" ? state.frames : [frame()];
+  if (!frames[0]) return out;
+
+  if (scope === "all") {
+    const unreviewed = state.frames.filter((f) => f.status === STATUS.UNREVIEWED);
+    if (unreviewed.length) {
+      out.push("⛔ " + unreviewed.length + " frame(s) never reviewed (" +
+        unreviewed.slice(0, 6).map((f) => f.index).join(", ") +
+        (unreviewed.length > 6 ? "…" : "") +
+        "). An unreviewed frame is not an empty one — mark it EMPTY to state that nobody was there.");
+    }
+    if (!document.getElementById("annotator").value.trim()) {
+      out.push("⚠️ no annotator name — the file records who made these judgements");
+    }
+  }
+
+  for (const f of frames) {
+    const where = "frame " + f.index + ": ";
+    if (f.status === STATUS.EMPTY && (f.bbox || f.joints.size)) {
+      out.push("⛔ " + where + "marked EMPTY but carries a box or joints");
+    }
+    if (f.joints.size > 0 && !f.bbox) {
+      out.push("⛔ " + where + "joints without a bounding box — the scorer matches people by box");
+    }
+    if (f.bbox) {
+      if (!(f.bbox[2] > 0 && f.bbox[3] > 0)) out.push("⛔ " + where + "box has zero area");
+      for (const v of f.bbox) {
+        if (!inRange(v)) { out.push("⛔ " + where + "box coordinate outside [0,1]"); break; }
+      }
+      if (f.bbox[0] + f.bbox[2] > 1.0001 || f.bbox[1] + f.bbox[3] > 1.0001) {
+        out.push("⛔ " + where + "box extends past the frame edge");
+      }
+    }
+    for (const [name, j] of f.joints) {
+      if (COCO_17.indexOf(name) < 0) out.push("⛔ " + where + "unknown joint '" + name + "'");
+      if (!inRange(j.x) || !inRange(j.y)) out.push("⛔ " + where + name + " outside [0,1]");
+      if (typeof j.visible !== "boolean") out.push("⛔ " + where + name + " has no visible flag");
+    }
+    if (f.bbox && f.joints.size > 0) {
+      const missing = TORSO.filter((n) => !f.joints.has(n));
+      if (missing.length) {
+        out.push("⚠️ " + where + "torso incomplete (" + missing.join(", ") +
+          "). Without a shoulder AND the opposite hip this person is EXCLUDED from PCK entirely — " +
+          "place hidden ones with visible=false rather than omitting them.");
+      }
+    }
+  }
+  return out;
+}
+
+function renderWarnings() {
+  const list = document.getElementById("warnings");
+  const found = problems("frame");
+  list.innerHTML = "";
+  if (!found.length) {
+    const li = document.createElement("li");
+    li.innerHTML = '<span class="note" style="color:var(--ok)">✓ this frame is consistent</span>';
+    list.appendChild(li);
+    return;
+  }
+  for (const p of found) {
+    const li = document.createElement("li");
+    li.className = p.startsWith("⛔") ? "warn" : "note";
+    li.textContent = p;
+    list.appendChild(li);
+  }
+}
+
+/* ── Export / import ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * ⛔ Only joints a human actually placed are emitted. An unplaced joint is OMITTED, never written
+ * with a guessed coordinate and never written as "invisible" — omitted and hidden are different
+ * facts and the scorer counts them differently.
+ * ⛔ No `confidence` field is ever written. Ground truth has none; the parser refuses it.
+ */
+function buildDocument() {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    caseId: CASE_ID,
+    clipSha256: CLIP_SHA256,
+    annotatedFps: ANNOTATED_FPS,
+    annotator: document.getElementById("annotator").value.trim(),
+    note: "Human keypoint ground truth for " + CASE_ID +
+          ". Joints placed by hand; no model output was displayed or consulted. Generated with " +
+          GENERATED_BY + ".",
+    frames: state.frames.map((f) => ({
+      frameIndex: f.index,
+      atSeconds: f.atSeconds,
+      reviewStatus: f.status,
+      boxes: (f.bbox ? [{
+        label: LABEL,
+        gtId: GT_ID,
+        bbox: f.bbox.map((v) => Math.round(v * 1e6) / 1e6),
+        visibility: f.visibility,
+        skeleton: SKELETON,
+        keypoints: COCO_17.filter((n) => f.joints.has(n)).map((n) => {
+          const j = f.joints.get(n);
+          return { name: n, x: Math.round(j.x * 1e6) / 1e6, y: Math.round(j.y * 1e6) / 1e6,
+                   visible: j.visible };
+        }),
+      }] : []),
+    })),
+  };
+}
+
+function exportJson() {
+  const found = problems("all");
+  const blocking = found.filter((p) => p.startsWith("⛔"));
+  if (found.length) {
+    const message = found.join("\n\n") + "\n\n" +
+      (blocking.length
+        ? "⛔ " + blocking.length + " blocking problem(s). Export anyway?"
+        : "No blocking problems. Export?");
+    if (!window.confirm(message)) return;
+  }
+  const blob = new Blob([JSON.stringify(buildDocument(), null, 1)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "annotations.json";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+function importJson(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    let doc;
+    try { doc = JSON.parse(String(reader.result)); }
+    catch (e) { window.alert("⛔ not valid JSON: " + e.message); return; }
+
+    /* ⛔ Refuse a file describing other pixels. Silently merging one would produce coordinates that
+       are precise, reproducible and about a different clip. */
+    if (doc.caseId && doc.caseId !== CASE_ID) {
+      window.alert("⛔ that file is for case '" + doc.caseId + "', not '" + CASE_ID + "'"); return;
+    }
+    if (doc.clipSha256 && CLIP_SHA256 && doc.clipSha256 !== CLIP_SHA256) {
+      window.alert("⛔ that file describes a different clip digest — different pixels"); return;
+    }
+    if (!Array.isArray(doc.frames)) { window.alert("⛔ that file has no frames array"); return; }
+
+    for (const entry of doc.frames) {
+      const f = state.frames[entry.frameIndex];
+      if (!f) continue;
+      f.bbox = null; f.joints = new Map();
+      f.status = STATUS[entry.reviewStatus] || STATUS.UNREVIEWED;
+      const box = (entry.boxes || [])[0];
+      if (box) {
+        f.bbox = box.bbox.slice(0, 4).map(Number);
+        f.visibility = VISIBILITY.indexOf(box.visibility) >= 0 ? box.visibility : VISIBILITY[0];
+        for (const k of box.keypoints || []) {
+          if (COCO_17.indexOf(k.name) < 0) continue;
+          f.joints.set(k.name, { x: Number(k.x), y: Number(k.y), visible: k.visible === true });
+        }
+      }
+      /* ⚠️ A file written before reviewStatus existed still has boxes; those frames are plainly
+         ANNOTATED. Frames it left empty stay UNREVIEWED, which is the honest reading — nothing in
+         such a file distinguishes "confirmed empty" from "not yet looked at". */
+      if (!entry.reviewStatus) refreshStatus(f);
+    }
+    document.getElementById("annotator").value = doc.annotator || "";
+    renderSidebar(); render();
+    window.alert("✓ imported " + doc.frames.length + " frames");
+  };
+  reader.readAsText(file);
+}
+
+/* ── Interaction ────────────────────────────────────────────────────────────────────────────── */
+
+function nearestJoint(nx, ny) {
+  const f = frame();
+  let best = null, bestDistance = Infinity;
+  for (const [name, j] of f.joints) {
+    const dx = (j.x - nx) * FRAME_W, dy = (j.y - ny) * FRAME_H;
+    const d = Math.hypot(dx, dy);
+    if (d < bestDistance) { bestDistance = d; best = name; }
+  }
+  return bestDistance * state.view.zoom < 14 ? best : null;
+}
+
+stage.addEventListener("mousedown", (e) => {
+  if (!state.images[state.current]) return;
+  if (state.spaceDown || e.button === 1) {
+    state.panning = { x: e.clientX - state.view.x, y: e.clientY - state.view.y };
+    return;
+  }
+  const p = toNorm(e.clientX, e.clientY);
+  if (state.mode === "box") { state.drag = { kind: "box", x0: p.x, y0: p.y }; return; }
+
+  const hit = nearestJoint(p.x, p.y);
+  if (hit) {
+    state.selected = COCO_17.indexOf(hit);
+    state.drag = { kind: "joint", name: hit };
+    renderSidebar(); render();
+    return;
+  }
+  if (!inRange(p.x) || !inRange(p.y)) return;   // ⛔ outside the frame is never a joint position
+  const f = frame();
+  const name = COCO_17[state.selected];
+  f.joints.set(name, { x: p.x, y: p.y, visible: true });
+  refreshStatus(f);
+  /* ⭐ Advance to the next UNPLACED joint, so a full skeleton is a run of clicks in COCO order and
+     nothing is skipped by accident. */
+  for (let step = 1; step <= COCO_17.length; step++) {
+    const candidate = (state.selected + step) % COCO_17.length;
+    if (!f.joints.has(COCO_17[candidate])) { state.selected = candidate; break; }
+  }
+  renderSidebar(); render();
+});
+
+stage.addEventListener("mousemove", (e) => {
+  if (state.panning) {
+    state.view.x = e.clientX - state.panning.x;
+    state.view.y = e.clientY - state.panning.y;
+    render(); return;
+  }
+  if (!state.drag) return;
+  const p = toNorm(e.clientX, e.clientY);
+  const f = frame();
+  if (state.drag.kind === "box") {
+    const x = Math.min(state.drag.x0, p.x), y = Math.min(state.drag.y0, p.y);
+    f.bbox = [Math.max(0, x), Math.max(0, y),
+              Math.min(1, Math.abs(p.x - state.drag.x0)), Math.min(1, Math.abs(p.y - state.drag.y0))];
+  } else {
+    const j = f.joints.get(state.drag.name);
+    if (j) { j.x = Math.min(1, Math.max(0, p.x)); j.y = Math.min(1, Math.max(0, p.y)); }
+  }
+  render();
+});
+
+window.addEventListener("mouseup", () => {
+  if (state.drag) { refreshStatus(frame()); renderSidebar(); }
+  state.drag = null; state.panning = false;
+});
+
+stage.addEventListener("wheel", (e) => {
+  if (!state.images[state.current]) return;
+  e.preventDefault();
+  const rect = stage.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  const next = Math.min(20, Math.max(0.05, state.view.zoom * factor));
+  state.view.x = mx - (mx - state.view.x) * (next / state.view.zoom);
+  state.view.y = my - (my - state.view.y) * (next / state.view.zoom);
+  state.view.zoom = next;
+  render();
+}, { passive: false });
+
+function go(delta) {
+  if (!state.frames.length) return;
+  state.current = Math.min(state.frames.length - 1, Math.max(0, state.current + delta));
+  state.selected = 0;
+  fit(); renderSidebar(); render();
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  const f = frame();
+  const key = e.key.toLowerCase();
+  if (e.code === "Space") { state.spaceDown = true; stage.classList.add("pan"); e.preventDefault(); return; }
+  if (e.key === "ArrowLeft") { go(-1); e.preventDefault(); return; }
+  if (e.key === "ArrowRight") { go(1); e.preventDefault(); return; }
+  if (!f) return;
+  if (key === "n") { state.selected = (state.selected + 1) % COCO_17.length; }
+  else if (key === "p") { state.selected = (state.selected + COCO_17.length - 1) % COCO_17.length; }
+  else if (key === "v") {
+    const j = f.joints.get(COCO_17[state.selected]);
+    if (j) j.visible = !j.visible;
+  }
+  else if (key === "x" || e.key === "Delete" || e.key === "Backspace") {
+    f.joints.delete(COCO_17[state.selected]); refreshStatus(f);
+  }
+  else if (key === "b") { state.mode = "box"; }
+  else if (key === "j") { state.mode = "joint"; }
+  else if (key === "e") { markEmpty(); }
+  else if (key === "c") { clearFrame(); }
+  else if (key === "0") { fit(); }
+  else if (e.key === "+" || e.key === "=") { state.view.zoom *= 1.2; }
+  else if (e.key === "-") { state.view.zoom /= 1.2; }
+  else return;
+  e.preventDefault();
+  renderSidebar(); render();
+});
+
+document.addEventListener("keyup", (e) => {
+  if (e.code === "Space") { state.spaceDown = false; stage.classList.remove("pan"); }
+});
+
+function markEmpty() {
+  const f = frame();
+  if (!f) return;
+  if (f.bbox || f.joints.size) {
+    if (!window.confirm("This frame has a box or joints. Marking it EMPTY discards them. Continue?")) return;
+  }
+  f.bbox = null; f.joints = new Map(); f.status = STATUS.EMPTY;
+  renderSidebar(); render();
+}
+
+function clearFrame() {
+  const f = frame();
+  if (!f) return;
+  f.bbox = null; f.joints = new Map(); f.status = STATUS.UNREVIEWED;
+  renderSidebar(); render();
+}
+
+/* ── Wiring ─────────────────────────────────────────────────────────────────────────────────── */
+
+const visibilitySelect = document.getElementById("visibility");
+VISIBILITY.forEach((v) => {
+  const option = document.createElement("option");
+  option.value = v; option.textContent = v;
+  visibilitySelect.appendChild(option);
+});
+visibilitySelect.onchange = () => { if (frame()) { frame().visibility = visibilitySelect.value; } };
+
+document.getElementById("prev").onclick = () => go(-1);
+document.getElementById("next").onclick = () => go(1);
+document.getElementById("markEmpty").onclick = markEmpty;
+document.getElementById("clearFrame").onclick = clearFrame;
+document.getElementById("exportBtn").onclick = exportJson;
+document.getElementById("pickBtn").onclick = () => document.getElementById("filePicker").click();
+document.getElementById("importBtn").onclick = () => document.getElementById("jsonPicker").click();
+document.getElementById("filePicker").onchange = (e) => loadFiles(e.target.files);
+document.getElementById("jsonPicker").onchange = (e) => {
+  if (e.target.files[0]) importJson(e.target.files[0]);
+};
+window.addEventListener("resize", () => { fit(); render(); });
+
+renderSidebar();
+</script>
+</body>
+</html>

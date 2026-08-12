@@ -519,6 +519,29 @@ class SampleRateRoundingTests(unittest.TestCase):
         problems = self._validate(self.FROM_ROUNDED)
         self.assertTrue(any("different instants" in p for p in problems), problems)
 
+    def test_an_unreadable_clip_discloses_that_the_rate_was_not_checked(self) -> None:
+        """⛔ **The silent skip, found in P3.3c on a host with no cv2.**
+
+        `probe` returns `{"probe": "unavailable: OpenCV is not installed here"}` there, `sampled_fps`
+        stays `None`, and `align()` skips the rate comparison entirely — so the validator printed
+        **PASS** with its strongest check quietly not run. The missing-file case had always disclosed
+        itself; the present-but-unreadable case had not. A PASS that skipped alignment is a weaker
+        claim wearing the same word.
+        """
+        rf.probe = lambda _path: {"bytes": 4, "probe": "unavailable: OpenCV is not installed here"}
+        self.doc["annotatedFps"] = 2.0  # ⚠️ a rate that WOULD fail, had the check been able to run
+        path = os.path.join(self.dir, "a.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(self.doc, handle)
+        corpus = bc.Corpus(version="v", cases=(bc.BenchmarkCase(
+            case_id="walk-01", path="walk-01.mp4", category="motion",
+            footage_kind="AUTHORED", scenarios=("normal-person",)),))
+        problems = rf.validate_annotations(path, corpus=corpus, real_root=self.dir,
+                                           fixtures_root=self.dir)
+        notes = [p for p in problems if p.startswith("⚠️ NOT CHECKED")]
+        self.assertTrue(any("could not be read" in p for p in notes), problems)
+        self.assertTrue(any("OpenCV" in p for p in notes), problems)
+
     def test_a_genuinely_wrong_rate_still_fails(self) -> None:
         """⚠️ The check this one exists for: 2.0 instead of 1.93 is a 3.6% drift that misaligns
         every box by a growing offset."""

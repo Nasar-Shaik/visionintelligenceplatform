@@ -327,6 +327,18 @@ def validate_annotations(
             sampled_fps = float(source_fps) / stride
             if isinstance(frames, int) and frames > 0:
                 analysed = (frames + stride - 1) // stride
+        else:
+            # ⛔ **The clip is here and could not be read — which is not the same as checked.**
+            # `probe` returns `{"probe": "unavailable: OpenCV is not installed here"}` on a machine
+            # without cv2, and `align()` silently skips the rate comparison when `sampled_fps` is
+            # None. So the file-missing case disclosed itself while the unreadable-clip case
+            # reported **PASS** with the strongest check quietly not run. Found in P3.3c, on the
+            # host, where cv2 is absent — the same class of defect the note below exists to prevent.
+            problems.append(
+                f"⚠️ NOT CHECKED: rate and range — the clip is present but could not be read "
+                f"({measured.get('probe') or 'it reported no frame rate'}). Schema, boxes, "
+                f"keypoints, digest, case and identity were checked."
+            )
     else:
         problems.append(f"⚠️ NOT CHECKED: rate and range — the clip is not present at '{clip}'")
 

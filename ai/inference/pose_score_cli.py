@@ -519,8 +519,13 @@ def _score(args) -> int:  # noqa: ANN001
         print(f"\n⛔ {len(hard)} problem(s) — refusing to score. Ground truth that cannot be "
               f"trusted as ground truth produces a score that cannot be trusted as a score.")
         return 2
-    print("✓ annotations validated: schema, boxes, keypoints, digest, effective rate, "
-          "frame range, gtId continuity")
+    # ⚠️ Names only what the validator actually ran. It reports a "NOT CHECKED" line for anything it
+    # could not do — a clip it cannot find, or one it cannot read because cv2 is absent — and those
+    # lines are printed above. A blanket "✓ everything checked" here would contradict them, which is
+    # how a PASS that skipped its strongest check starts being quoted as a full one.
+    skipped = [p for p in problems if p.startswith("⚠️ NOT CHECKED")]
+    print("✓ annotations validated: schema, boxes, keypoints, digest, case, gtId continuity"
+          + ("" if not skipped else f" — ⚠️ {len(skipped)} check(s) could not run, see above"))
 
     parsed = ann.load(args.annotations)
     document = load_predictions(args.predictions, case_id=args.case,
